@@ -12,6 +12,7 @@ import {
 } from '@/components/ui';
 import { won, shortDate } from '@/lib/format';
 import { useTacoStore } from '@/lib/store';
+import { isCEO, isAdmin, roleLabel } from '@/lib/roles';
 import { BackendPanel } from '@/features/system/BackendPanel';
 import type { EnrollmentStatus } from '@/types';
 
@@ -30,6 +31,25 @@ const statusLabel: Record<EnrollmentStatus, string> = {
 
 export function DashboardView() {
   const store = useTacoStore();
+  const role = store.currentRole;
+  const ceo = isCEO(role); // 경영 지표(총액·미수금·원장)
+  const admin = isAdmin(role); // 운영 데이터
+
+  // 학생/학부모는 운영 대시보드 대신 본인 일정으로 안내
+  if (!admin) {
+    return (
+      <div className="p-6 max-w-[760px] mx-auto">
+        <h1 className="text-[20px] font-semibold">안녕하세요 ({roleLabel[role]})</h1>
+        <p className="text-[13px] text-fg-muted mt-1 mb-5">학원 일정과 내 수업을 캘린더에서 확인하세요.</p>
+        <SectionCard title="바로가기">
+          <div className="p-4 flex gap-2">
+            <a href="/schedule" className="btn btn-primary">학원 캘린더 보기</a>
+            <a href="/reports" className="btn">수업 피드백</a>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
 
   // 스토어(mock)에서 파생
   const inbound = store.transactions.filter((t) => t.direction === 'in').reduce((a, t) => a + t.amount, 0);
@@ -55,19 +75,20 @@ export function DashboardView() {
         </div>
         <div className="flex items-center gap-2 text-[12px] text-fg-subtle">
           <span className="dot" style={{ backgroundColor: 'var(--color-success)' }} />
-          mock 스토어 연결됨
+          {roleLabel[role]} · {ceo ? '경영 지표 열람' : '운영 화면'}
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label="이번 달 입금" value={won(inbound)} tone="success" icon={<IconArrowDown />} sub="신규·재수강" />
-        <StatCard label="이번 달 출금" value={won(outbound)} tone="attention" icon={<IconArrowUp />} sub="강사 페이 · 지출" />
+        {/* 경영 지표(금액)는 대표(CEO) 전용 */}
+        {ceo && <StatCard label="이번 달 입금" value={won(inbound)} tone="success" icon={<IconArrowDown />} sub="신규·재수강" />}
+        {ceo && <StatCard label="이번 달 출금" value={won(outbound)} tone="attention" icon={<IconArrowUp />} sub="강사 페이 · 지출" />}
         <StatCard label="수강 등록" value={`${store.enrollments.length}건`} tone="accent" icon={<IconUsers />} sub={`학생 ${store.students.length}명`} />
-        <StatCard label="미수금" value={won(unpaid)} tone="danger" icon={<IconReceipt />} sub={`청구 ${store.payments.filter((p) => p.status === 'pending').length}건 대기`} />
+        {ceo && <StatCard label="미수금" value={won(unpaid)} tone="danger" icon={<IconReceipt />} sub={`청구 ${store.payments.filter((p) => p.status === 'pending').length}건 대기`} />}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+      <div className={`grid grid-cols-1 ${ceo ? 'lg:grid-cols-3' : ''} gap-6`}>
+        <div className={ceo ? 'lg:col-span-2' : ''}>
           <SectionCard title="최근 수강 등록" action={<a href="/students" className="btn btn-sm">학생 관리</a>}>
             <table className="table">
               <thead>
@@ -101,6 +122,7 @@ export function DashboardView() {
           </SectionCard>
         </div>
 
+        {ceo && (
         <div>
           <SectionCard title="입·출금 원장" action={<span className="badge badge-neutral">오늘</span>}>
             <ul className="divide-y" style={{ borderColor: 'var(--color-line-muted)' }}>
@@ -130,6 +152,7 @@ export function DashboardView() {
             </ul>
           </SectionCard>
         </div>
+        )}
       </div>
 
       <div className="mt-6">

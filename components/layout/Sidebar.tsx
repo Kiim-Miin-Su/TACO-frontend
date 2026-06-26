@@ -12,6 +12,7 @@ import {
   IconSettings,
   IconChat,
   IconGrid,
+  IconCalendar,
 } from "../ui/icons";
 
 type Item = { label: string; icon: React.FC<any>; href: string; badge?: string };
@@ -21,6 +22,7 @@ const groups: { title: string; items: Item[] }[] = [
     title: "운영",
     items: [
       { label: "대시보드", icon: IconHome, href: "/" },
+      { label: "캘린더", icon: IconCalendar, href: "/schedule" },
       { label: "상담", icon: IconChat, href: "/counsel" },
       { label: "학생 · 부모", icon: IconUsers, href: "/students" },
       { label: "수업 (강사)", icon: IconBook, href: "/sessions" },

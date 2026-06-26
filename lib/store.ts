@@ -19,6 +19,8 @@ import type {
   InstructorPayout,
   AcademyEvent,
   EventType,
+  EventPriority,
+  AccountRole,
   CounselForm,
   CounselRound,
   CounselStatus,
@@ -103,6 +105,7 @@ export type NewCourseInput = { name: string; subjectId: number; instructorId: nu
 export type NewEventInput = {
   title: string;
   type: EventType;
+  priority?: EventPriority;
   startDate: string;
   endDate: string;
   allDay?: boolean;
@@ -139,6 +142,12 @@ type TacoState = {
   counselForms: CounselForm[];
   counselRounds: CounselRound[];
   academyEvents: AcademyEvent[];
+
+  // 데모용 현재 사용자(권한/본인 식별)
+  currentRole: AccountRole;
+  currentStudentId: number;
+  setCurrentRole: (role: AccountRole) => void;
+  setCurrentStudentId: (id: number) => void;
 
   // actions
   addStudent: (input: NewStudentInput) => Student;
@@ -184,6 +193,11 @@ export const useTacoStore = create<TacoState>((set) => ({
   counselForms: [...seed.counselForms],
   counselRounds: [...seed.counselRounds],
   academyEvents: [...seed.academyEvents],
+
+  currentRole: 'super_admin',
+  currentStudentId: 1,
+  setCurrentRole: (role) => set({ currentRole: role }),
+  setCurrentStudentId: (id) => set({ currentStudentId: id }),
 
   addStudent: (input) => {
     const student: Student = {
@@ -526,6 +540,7 @@ export const useTacoStore = create<TacoState>((set) => ({
       id: 0,
       title: input.title,
       type: input.type,
+      priority: input.priority ?? 'normal',
       startDate: input.startDate,
       endDate: input.endDate,
       allDay: input.allDay,
