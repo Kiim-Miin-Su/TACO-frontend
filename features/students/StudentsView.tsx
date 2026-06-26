@@ -1,14 +1,22 @@
-'use client';
-import { Badge, SectionCard, StatusDot, type Tone } from '@/components/ui';
-import { useTacoStore } from '@/lib/store';
-import type { StudentStatus } from '@/types';
-import { StudentForm } from './StudentForm';
+"use client";
+import { Badge, SectionCard, StatusDot, type Tone } from "@/components/ui";
+import { useTacoStore } from "@/lib/store";
+import type { StudentStatus } from "@/types";
+import { StudentForm } from "./StudentForm";
 
 const tone: Record<StudentStatus, Tone> = {
-  lead: 'neutral', active: 'success', paused: 'attention', completed: 'done', canceled: 'danger',
+  lead: "neutral",
+  active: "success",
+  paused: "attention",
+  completed: "done",
+  canceled: "danger",
 };
 const label: Record<StudentStatus, string> = {
-  lead: '신규접수', active: '수강중', paused: '일시정지', completed: '수료', canceled: '취소',
+  lead: "신규접수",
+  active: "수강중",
+  paused: "일시정지",
+  completed: "수료",
+  canceled: "취소",
 };
 
 export function StudentsView() {
@@ -29,7 +37,7 @@ export function StudentsView() {
     const link = parentStudents.find((ps) => ps.studentId === studentId);
     if (!link) return undefined;
     const p = parents.find((x) => x.id === link.parentId);
-    return p ? `${p.name} (${link.relation ?? '보호자'})` : undefined;
+    return p ? `${p.name} (${link.relation ?? "보호자"})` : undefined;
   };
 
   return (
@@ -64,12 +72,12 @@ export function StudentsView() {
                   <tr key={s.id}>
                     <td>
                       <div className="font-medium">{s.name}</div>
-                      <div className="text-[12px] text-fg-subtle">{s.englishName ?? ''}</div>
+                      <div className="text-[12px] text-fg-subtle">{s.englishName ?? ""}</div>
                     </td>
-                    <td className="mono">{s.grade ?? '—'}</td>
+                    <td className="mono">{s.grade ?? "—"}</td>
                     <td className="mono text-fg-muted">{s.webId ?? <span className="text-fg-subtle">미가입</span>}</td>
-                    <td className="text-fg-muted">{cs.length ? cs.join(', ') : '—'}</td>
-                    <td className="text-fg-muted">{parentOf(s.id) ?? '—'}</td>
+                    <td className="text-fg-muted">{cs.length ? cs.join(", ") : "—"}</td>
+                    <td className="text-fg-muted">{parentOf(s.id) ?? "—"}</td>
                     <td>
                       <Badge tone={tone[s.status]}>
                         <StatusDot tone={tone[s.status]} label={label[s.status]} />

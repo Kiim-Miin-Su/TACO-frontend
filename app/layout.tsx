@@ -1,11 +1,11 @@
-import type { Metadata } from 'next';
-import './globals.css';
-import Sidebar from '@/components/layout/Sidebar';
-import Topbar from '@/components/layout/Topbar';
+import type { Metadata } from "next";
+import "globals.css";
+import Sidebar from "@/components/layout/Sidebar";
+import Topbar from "@/components/layout/Topbar";
 
 export const metadata: Metadata = {
-  title: 'TACO ERP — TnAcademy',
-  description: 'TnAcademy 백오피스 ERP',
+  title: "TACO ERP — TnAcademy",
+  description: "TnAcademy 백오피스 ERP",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

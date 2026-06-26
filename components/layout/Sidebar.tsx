@@ -27,13 +27,13 @@ const groups: { title: string; items: Item[] }[] = [
   },
   {
     title: "입금",
-    items: [{ label: "결제 · 수납", icon: IconCard, href: "#", badge: "2" }],
+    items: [{ label: "결제 · 수납", icon: IconCard, href: "/payments", badge: "2" }],
   },
   {
     title: "출금",
     items: [
       { label: "강사 페이", icon: IconWallet, href: "#" },
-      { label: "지출 · 비품", icon: IconReceipt, href: "#" },
+      { label: "지출 · 비품", icon: IconReceipt, href: "/expenses" },
     ],
   },
   {

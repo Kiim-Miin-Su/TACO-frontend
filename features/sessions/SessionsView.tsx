@@ -3,6 +3,7 @@ import { Badge, SectionCard, type Tone } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
 import type { SessionStatus } from '@/types';
 import { shortDate } from '@/lib/format';
+import { SessionForm } from './SessionForm';
 
 const tone: Record<SessionStatus, Tone> = {
   scheduled: 'accent',
@@ -31,6 +32,10 @@ export function SessionsView() {
         <h1 className="text-[20px] font-semibold">수업 (강사)</h1>
         <p className="text-[13px] text-fg-muted mt-0.5">진행 수업 목록 · 출석·피드백은 상세에서</p>
       </div>
+
+      <SectionCard title="신규 수업 개설">
+        <SessionForm />
+      </SectionCard>
 
       <SectionCard title="수업 목록">
         <table className="table">

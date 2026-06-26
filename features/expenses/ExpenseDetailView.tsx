@@ -1,0 +1,49 @@
+'use client';
+import Link from 'next/link';
+import { Badge, SectionCard } from '@/components/ui';
+import { useTacoStore } from '@/lib/store';
+import { won } from '@/lib/format';
+import { categoryLabel, categoryTone } from './labels';
+
+export function ExpenseDetailView({ expenseId }: { expenseId: number }) {
+  const expense = useTacoStore((s) => s.expenses.find((e) => e.id === expenseId));
+
+  if (!expense) {
+    return (
+      <div className="p-6 max-w-[720px] mx-auto">
+        <Link href="/expenses" className="text-[12px] text-fg-muted hover:underline">← 지출 목록</Link>
+        <div className="mt-3 text-fg-muted">지출을 찾을 수 없습니다. (id: {expenseId})</div>
+      </div>
+    );
+  }
+
+  const rows: [string, string][] = [
+    ['항목', expense.title],
+    ['금액', won(expense.amount)],
+    ['거래처', expense.vendor ?? '—'],
+    ['지출일', expense.spentAt],
+    ['메모', expense.memo ?? '—'],
+  ];
+
+  return (
+    <div className="p-6 max-w-[720px] mx-auto space-y-5">
+      <div>
+        <Link href="/expenses" className="text-[12px] text-fg-muted hover:underline">← 지출 목록</Link>
+        <div className="flex items-center gap-2 mt-1">
+          <h1 className="text-[20px] font-semibold">{expense.title}</h1>
+          <Badge tone={categoryTone[expense.category]}>{categoryLabel[expense.category]}</Badge>
+        </div>
+      </div>
+      <SectionCard title="지출 상세">
+        <div className="divide-y" style={{ borderColor: 'var(--color-line-muted)' }}>
+          {rows.map(([k, v]) => (
+            <div key={k} className="flex px-4 py-3 text-[13px]">
+              <span className="w-32 text-fg-muted">{k}</span>
+              <span className={k === '금액' ? 'mono font-medium' : ''}>{v}</span>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+    </div>
+  );
+}

@@ -12,8 +12,10 @@ import type {
   AttendanceStatus,
   SessionReport,
   Payment,
+  PaymentMethod,
   Transaction,
   Expense,
+  ExpenseCategory,
   InstructorPayout,
   CounselForm,
   CounselRound,
@@ -69,6 +71,31 @@ export type NewRoundInput = {
   nextContactAt?: string;
 };
 
+export type NewClassSessionInput = {
+  courseId: number;
+  instructorId: number;
+  sessionDate: string;
+  durationMinutes: number;
+  topic?: string;
+};
+
+export type NewPaymentInput = {
+  studentId: number;
+  enrollmentId?: number;
+  amount: number;
+  paymentMethod?: PaymentMethod;
+  dueAt?: string;
+};
+
+export type NewExpenseInput = {
+  category: ExpenseCategory;
+  title: string;
+  amount: number;
+  spentAt: string;
+  vendor?: string;
+  memo?: string;
+};
+
 type TacoState = {
   // collections (in-memory mock DB)
   students: Student[];
@@ -95,6 +122,10 @@ type TacoState = {
   updateCounselForm: (formId: number, patch: Partial<CounselForm>) => void;
   updateCounselStatus: (formId: number, status: CounselStatus) => void;
   addCounselRound: (formId: number, input: NewRoundInput) => void;
+  addClassSession: (input: NewClassSessionInput) => ClassSession;
+  addPayment: (input: NewPaymentInput) => Payment;
+  markPaymentPaid: (paymentId: number) => void;
+  addExpense: (input: NewExpenseInput) => Expense;
   setAttendance: (sessionId: number, studentId: number, status: AttendanceStatus) => void;
   upsertReport: (
     sessionId: number,
@@ -310,4 +341,95 @@ export const useTacoStore = create<TacoState>((set) => ({
         ],
       };
     }),
+
+  // 신규 수업 개설 (예정 상태)
+  addClassSession: (input) => {
+    const session: ClassSession = {
+      id: 0,
+      courseId: input.courseId,
+      instructorId: input.instructorId,
+      sessionDate: input.sessionDate,
+      durationMinutes: input.durationMinutes,
+      status: 'scheduled',
+      topic: input.topic,
+    };
+    set((s) => {
+      session.id = nextId(s.classSessions);
+      return { classSessions: [session, ...s.classSessions] };
+    });
+    return session;
+  },
+
+  // 결제 청구 생성 (미수)
+  addPayment: (input) => {
+    const payment: Payment = {
+      id: 0,
+      studentId: input.studentId,
+      enrollmentId: input.enrollmentId,
+      amount: input.amount,
+      paidAmount: 0,
+      status: 'pending',
+      paymentMethod: input.paymentMethod,
+      dueAt: input.dueAt,
+    };
+    set((s) => {
+      payment.id = nextId(s.payments);
+      return { payments: [payment, ...s.payments] };
+    });
+    return payment;
+  },
+
+  // 수납 완료 → 입금 거래 원장에 반영 (대시보드 입금/미수금 연동)
+  markPaymentPaid: (paymentId) =>
+    set((s) => {
+      const payment = s.payments.find((p) => p.id === paymentId);
+      if (!payment || payment.status === 'paid') return {};
+      const student = s.students.find((st) => st.id === payment.studentId);
+      const tx: Transaction = {
+        id: nextId(s.transactions),
+        direction: 'in',
+        category: 'enrollment',
+        label: `수강료 입금 · ${student?.name ?? '학생'}`,
+        amount: payment.amount,
+        method: payment.paymentMethod,
+        occurredAt: today(),
+      };
+      return {
+        payments: s.payments.map((p) =>
+          p.id === paymentId
+            ? { ...p, status: 'paid', paidAmount: p.amount, paidAt: today() }
+            : p,
+        ),
+        transactions: [tx, ...s.transactions],
+      };
+    }),
+
+  // 지출 처리 → 출금 거래 원장에 반영 (대시보드 출금 연동)
+  addExpense: (input) => {
+    const expense: Expense = {
+      id: 0,
+      category: input.category,
+      title: input.title,
+      amount: input.amount,
+      spentAt: input.spentAt,
+      vendor: input.vendor,
+      memo: input.memo,
+    };
+    set((s) => {
+      expense.id = nextId(s.expenses);
+      const tx: Transaction = {
+        id: nextId(s.transactions),
+        direction: 'out',
+        category: 'expense',
+        label: input.title,
+        amount: input.amount,
+        occurredAt: input.spentAt,
+      };
+      return {
+        expenses: [expense, ...s.expenses],
+        transactions: [tx, ...s.transactions],
+      };
+    });
+    return expense;
+  },
 }));
