@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Badge, SectionCard, type Tone } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
-import { computeInstructorPay } from '@/lib/payroll';
+import { computeInstructorPay, instructorPaySessionRows } from '@/lib/payroll';
 import { won } from '@/lib/format';
 import type { PayoutStatus } from '@/types';
 
@@ -21,6 +21,10 @@ export function PayoutsView() {
   const preview = instructorId
     ? computeInstructorPay(store.classSessions, store.courses, Number(instructorId), start, end)
     : null;
+  const breakdown = instructorId
+    ? instructorPaySessionRows(store.classSessions, store.courses, Number(instructorId), start, end)
+    : [];
+  const courseName = (id: number) => store.courses.find((c) => c.id === id)?.name ?? '—';
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +57,32 @@ export function PayoutsView() {
           )}
         </form>
       </SectionCard>
+
+      {instructorId && (
+        <SectionCard title={`진행 수업 내역 (${breakdown.length}건)`}>
+          {breakdown.length === 0 ? (
+            <div className="p-4 text-[13px] text-fg-subtle">해당 기간에 진행 완료된 수업이 없습니다.</div>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr><th>날짜</th><th>코스</th><th>주제</th><th className="text-right">시수</th><th className="text-right">시급</th><th className="text-right">페이</th></tr>
+              </thead>
+              <tbody>
+                {breakdown.map((r) => (
+                  <tr key={r.sessionId}>
+                    <td className="mono">{r.date}</td>
+                    <td className="font-medium">{courseName(r.courseId)}</td>
+                    <td className="text-fg-muted">{r.topic ?? '—'}</td>
+                    <td className="text-right mono">{(r.minutes / 60).toFixed(1)}h</td>
+                    <td className="text-right mono text-fg-muted">{won(r.rate)}</td>
+                    <td className="text-right mono">{won(r.pay)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </SectionCard>
+      )}
 
       <SectionCard title="정산 목록">
         <table className="table">
