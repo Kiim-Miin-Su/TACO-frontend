@@ -37,14 +37,14 @@ features/            # 도메인 단위 (확장 지점)
 │  payments · payouts · expenses · admin · system(BackendPanel)
 lib/                 # api(axios) · store(zustand) · mock/seed · mock/integrity
 │  payroll(시수×시급) · roles(RBAC) · format(결정적) · auth(jwt-decode)
-types/               # @taco/contracts 재노출(단일 소스)
+types/               # @kms545487/contracts 재노출(단일 소스)
 ```
 
 데이터 계층은 **Zustand 단일 스토어**(`lib/store`)가 in-memory mock DB 역할을 하며, `lib/mock/seed`로 초기화하고 `lib/mock/integrity`로 참조 무결성을 검사합니다.
 
 ## 타입 컨벤션
 
-기본적으로 `type`을 사용합니다. `interface`는 선언 병합이나 클래스 implements 계약이 필요할 때만 쓰고, 사유를 주석으로 남깁니다. 도메인 타입은 `@taco/contracts`가 단일 소스이며 `@/types`로 재노출합니다.
+기본적으로 `type`을 사용합니다. `interface`는 선언 병합이나 클래스 implements 계약이 필요할 때만 쓰고, 사유를 주석으로 남깁니다. 도메인 타입은 `@kms545487/contracts`가 단일 소스이며 `@/types`로 재노출합니다.
 
 ## 자세한 개발 가이드
 

@@ -9,7 +9,7 @@ import type {
   CreateStudentInput,
   CreateEnrollmentInput,
   WebIdCheckResult,
-} from "@taco/contracts";
+} from "@kms545487/contracts";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
