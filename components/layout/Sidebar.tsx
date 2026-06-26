@@ -11,6 +11,7 @@ import {
   IconReport,
   IconSettings,
   IconChat,
+  IconGrid,
 } from "../ui/icons";
 
 type Item = { label: string; icon: React.FC<any>; href: string; badge?: string };
@@ -40,6 +41,7 @@ const groups: { title: string; items: Item[] }[] = [
     title: "기타",
     items: [
       { label: "수업 보고서", icon: IconReport, href: "/reports" },
+      { label: "관리자", icon: IconGrid, href: "/admin" },
       { label: "설정", icon: IconSettings, href: "#" },
     ],
   },

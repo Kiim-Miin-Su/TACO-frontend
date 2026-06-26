@@ -66,6 +66,7 @@
   html {
     -webkit-font-smoothing: antialiased;
   }
+
   body {
     background-color: var(--color-canvas-subtle);
     color: var(--color-fg);
@@ -73,61 +74,72 @@
     font-size: 14px;
     line-height: 1.5;
   }
+
   a {
     color: var(--color-accent);
     text-decoration: none;
   }
+
   a:hover {
     text-decoration: underline;
   }
+
   * {
     border-color: var(--color-line);
   }
 }
 
 @layer components {
+
   /* ---------- Buttons ---------- */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-md px-3 h-8
-      text-[13px] font-semibold whitespace-nowrap cursor-pointer
-      transition-colors select-none;
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3 h-8 text-[13px] font-semibold whitespace-nowrap cursor-pointer transition-colors select-none;
     border: 1px solid var(--color-line);
     background-color: var(--color-canvas-subtle);
     color: var(--color-fg);
   }
+
   .btn:hover {
     background-color: #eef1f4;
     border-color: #cdd4db;
   }
+
   .btn:active {
     background-color: #e8ebef;
   }
+
   .btn-primary {
     background-color: var(--color-success-emphasis);
     border-color: rgba(31, 35, 40, 0.15);
     color: var(--color-fg-onemph);
   }
+
   .btn-primary:hover {
     background-color: var(--color-success);
     border-color: rgba(31, 35, 40, 0.15);
   }
+
   .btn-danger {
     color: var(--color-danger);
   }
+
   .btn-danger:hover {
     background-color: var(--color-danger);
     border-color: var(--color-danger);
     color: var(--color-fg-onemph);
   }
+
   .btn-invisible {
     background-color: transparent;
     border-color: transparent;
     color: var(--color-fg-muted);
   }
+
   .btn-invisible:hover {
     background-color: var(--color-neutral-subtle);
     border-color: transparent;
   }
+
   .btn-sm {
     @apply h-7 px-2.5 text-[12px];
   }
@@ -139,36 +151,42 @@
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-resting);
   }
+
   .card-pad {
     @apply p-4;
   }
 
   /* ---------- Labels / Badges (Primer "Label") ---------- */
   .badge {
-    @apply inline-flex items-center gap-1 rounded-full px-2 h-5
-      text-[12px] font-medium leading-none;
+    @apply inline-flex items-center gap-1 rounded-full px-2 h-5 text-[12px] font-medium leading-none;
     border: 1px solid transparent;
   }
+
   .badge-neutral {
     background-color: var(--color-neutral-subtle);
     color: var(--color-fg-muted);
   }
+
   .badge-accent {
     background-color: var(--color-accent-subtle);
     color: var(--color-accent);
   }
+
   .badge-success {
     background-color: var(--color-success-subtle);
     color: var(--color-success);
   }
+
   .badge-attention {
     background-color: var(--color-attention-subtle);
     color: var(--color-attention);
   }
+
   .badge-danger {
     background-color: var(--color-danger-subtle);
     color: var(--color-danger);
   }
+
   .badge-done {
     background-color: var(--color-done-subtle);
     color: var(--color-done);
@@ -186,9 +204,11 @@
     border: 1px solid var(--color-line);
     color: var(--color-fg);
   }
+
   .input::placeholder {
     color: var(--color-fg-subtle);
   }
+
   .input:focus {
     border-color: var(--color-accent);
     box-shadow: 0 0 0 3px var(--color-accent-subtle);
@@ -198,19 +218,23 @@
   .table {
     @apply w-full text-[13px] border-collapse;
   }
+
   .table thead th {
     @apply text-left font-semibold px-4 py-2.5;
     color: var(--color-fg-muted);
     background-color: var(--color-canvas-subtle);
     border-bottom: 1px solid var(--color-line);
   }
+
   .table tbody td {
     @apply px-4 py-2.5 align-middle;
     border-bottom: 1px solid var(--color-line-muted);
   }
+
   .table tbody tr:last-child td {
     border-bottom: none;
   }
+
   .table tbody tr:hover td {
     background-color: var(--color-canvas-subtle);
   }

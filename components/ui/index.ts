@@ -4,5 +4,6 @@ export { StatusDot } from './StatusDot';
 export { StatCard } from './StatCard';
 export { SectionCard } from './SectionCard';
 export { MonthCalendar } from './MonthCalendar';
+export { Combobox } from './Combobox';
 export type { Tone } from './tokens';
 export * from './icons';

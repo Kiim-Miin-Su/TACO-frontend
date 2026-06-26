@@ -17,6 +17,8 @@ import type {
   Expense,
   ExpenseCategory,
   InstructorPayout,
+  AcademyEvent,
+  EventType,
   CounselForm,
   CounselRound,
   CounselStatus,
@@ -96,6 +98,28 @@ export type NewExpenseInput = {
   memo?: string;
 };
 
+export type NewSubjectInput = { code: string; name: string };
+export type NewCourseInput = { name: string; subjectId: number; instructorId: number; price: number };
+export type NewEventInput = {
+  title: string;
+  type: EventType;
+  startDate: string;
+  endDate: string;
+  allDay?: boolean;
+  memo?: string;
+};
+
+// 기간 + 요일 반복으로 다건 수업 생성
+export type RecurringSessionInput = {
+  courseId: number;
+  instructorId: number;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  weekdays: number[]; // 0(일)~6(토)
+  durationMinutes: number;
+  topic?: string;
+};
+
 type TacoState = {
   // collections (in-memory mock DB)
   students: Student[];
@@ -114,6 +138,7 @@ type TacoState = {
   instructorPayouts: InstructorPayout[];
   counselForms: CounselForm[];
   counselRounds: CounselRound[];
+  academyEvents: AcademyEvent[];
 
   // actions
   addStudent: (input: NewStudentInput) => Student;
@@ -123,9 +148,14 @@ type TacoState = {
   updateCounselStatus: (formId: number, status: CounselStatus) => void;
   addCounselRound: (formId: number, input: NewRoundInput) => void;
   addClassSession: (input: NewClassSessionInput) => ClassSession;
+  addRecurringClassSessions: (input: RecurringSessionInput) => number;
   addPayment: (input: NewPaymentInput) => Payment;
   markPaymentPaid: (paymentId: number) => void;
+  updatePayment: (id: number, patch: Partial<Payment>) => void;
   addExpense: (input: NewExpenseInput) => Expense;
+  addSubject: (input: NewSubjectInput) => Subject;
+  addCourse: (input: NewCourseInput) => Course;
+  addAcademyEvent: (input: NewEventInput) => AcademyEvent;
   setAttendance: (sessionId: number, studentId: number, status: AttendanceStatus) => void;
   upsertReport: (
     sessionId: number,
@@ -153,6 +183,7 @@ export const useTacoStore = create<TacoState>((set) => ({
   instructorPayouts: [...seed.instructorPayouts],
   counselForms: [...seed.counselForms],
   counselRounds: [...seed.counselRounds],
+  academyEvents: [...seed.academyEvents],
 
   addStudent: (input) => {
     const student: Student = {
@@ -431,5 +462,79 @@ export const useTacoStore = create<TacoState>((set) => ({
       };
     });
     return expense;
+  },
+
+  // 기간 + 요일 반복으로 수업 다건 생성 (캘린더 표시용)
+  addRecurringClassSessions: (input) => {
+    let count = 0;
+    set((s) => {
+      const sessions: ClassSession[] = [];
+      const start = new Date(input.startDate);
+      const end = new Date(input.endDate);
+      let nid = s.classSessions.reduce((m, r) => Math.max(m, r.id), 0);
+      for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        if (input.weekdays.includes(d.getDay())) {
+          nid += 1;
+          sessions.push({
+            id: nid,
+            courseId: input.courseId,
+            instructorId: input.instructorId,
+            sessionDate: d.toISOString().slice(0, 10),
+            durationMinutes: input.durationMinutes,
+            status: 'scheduled',
+            topic: input.topic,
+          });
+        }
+      }
+      count = sessions.length;
+      return { classSessions: [...sessions, ...s.classSessions] };
+    });
+    return count;
+  },
+
+  updatePayment: (id, patch) =>
+    set((s) => ({
+      payments: s.payments.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+    })),
+
+  addSubject: (input) => {
+    const subject: Subject = { id: 0, code: input.code, name: input.name };
+    set((s) => {
+      subject.id = nextId(s.subjects);
+      return { subjects: [...s.subjects, subject] };
+    });
+    return subject;
+  },
+
+  addCourse: (input) => {
+    const course: Course = {
+      id: 0,
+      name: input.name,
+      subjectId: input.subjectId,
+      instructorId: input.instructorId,
+      price: input.price,
+    };
+    set((s) => {
+      course.id = nextId(s.courses);
+      return { courses: [...s.courses, course] };
+    });
+    return course;
+  },
+
+  addAcademyEvent: (input) => {
+    const ev: AcademyEvent = {
+      id: 0,
+      title: input.title,
+      type: input.type,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      allDay: input.allDay,
+      memo: input.memo,
+    };
+    set((s) => {
+      ev.id = nextId(s.academyEvents);
+      return { academyEvents: [ev, ...s.academyEvents] };
+    });
+    return ev;
   },
 }));

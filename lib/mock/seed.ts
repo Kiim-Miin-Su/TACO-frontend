@@ -20,6 +20,7 @@ import type {
   InstructorPayout,
   CounselForm,
   CounselRound,
+  AcademyEvent,
 } from '@/types';
 
 export const instructors: Instructor[] = [
@@ -192,4 +193,11 @@ export const counselRounds: CounselRound[] = [
     summary: '등록 확정 상담', detail: 'AP Calculus BC 등록 결정.',
     result: 'registered', nextAction: '결제 및 반 배정',
   },
+];
+
+// ── 학원 이벤트 (admin 발행) ──
+export const academyEvents: AcademyEvent[] = [
+  { id: 1, title: '여름 특강 등록 시작', type: 'notice', startDate: '2026-06-25', endDate: '2026-06-30' },
+  { id: 2, title: 'SAT 모의고사', type: 'exam', startDate: '2026-06-28', endDate: '2026-06-28', allDay: true },
+  { id: 3, title: '창립기념일 휴원', type: 'holiday', startDate: '2026-07-01', endDate: '2026-07-01', allDay: true },
 ];

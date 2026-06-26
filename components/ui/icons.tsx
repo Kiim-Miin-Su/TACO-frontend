@@ -54,3 +54,6 @@ export const IconArrowDown = (p: SVGProps<SVGSVGElement>) => (
 export const IconChat = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M4 5h16v11H9l-4 4v-4H4z" /><path d="M8 9.5h8M8 12.5h5" /></svg>
 );
+export const IconGrid = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" /></svg>
+);

@@ -11,3 +11,4 @@ export const methodLabel: Record<PaymentMethod, string> = {
   card: '카드', transfer: '이체', cash: '현금', point: '포인트', etc: '기타',
 };
 export const METHODS: PaymentMethod[] = ['card', 'transfer', 'cash', 'point', 'etc'];
+export const STATUSES: PaymentStatus[] = ['pending', 'paid', 'overdue', 'refunded', 'partial_refund'];

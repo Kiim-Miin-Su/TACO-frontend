@@ -1,58 +1,124 @@
 'use client';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Combobox } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
+const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 
 export function SessionForm() {
   const courses = useTacoStore((s) => s.courses);
   const instructors = useTacoStore((s) => s.instructors);
+  const classSessions = useTacoStore((s) => s.classSessions);
   const addClassSession = useTacoStore((s) => s.addClassSession);
+  const addRecurring = useTacoStore((s) => s.addRecurringClassSessions);
 
+  const [mode, setMode] = useState<'single' | 'recurring'>('single');
   const [courseId, setCourseId] = useState('');
   const [instructorId, setInstructorId] = useState('');
-  const [sessionDate, setSessionDate] = useState(todayStr());
   const [duration, setDuration] = useState('90');
   const [topic, setTopic] = useState('');
+  // single
+  const [sessionDate, setSessionDate] = useState(todayStr());
+  // recurring
+  const [startDate, setStartDate] = useState(todayStr());
+  const [endDate, setEndDate] = useState(todayStr());
+  const [weekdays, setWeekdays] = useState<number[]>([]);
 
-  // 코스 선택 시 담당 강사 자동 채움(변경 가능)
+  // 이미 사용된 주제 라벨(중복 제거)
+  const topicSuggestions = useMemo(
+    () => Array.from(new Set(classSessions.map((s) => s.topic).filter((t): t is string => !!t))),
+    [classSessions],
+  );
+
   const pickCourse = (id: string) => {
     setCourseId(id);
     const c = courses.find((x) => x.id === Number(id));
     if (c) setInstructorId(String(c.instructorId));
   };
 
+  const toggleWeekday = (d: number) =>
+    setWeekdays((w) => (w.includes(d) ? w.filter((x) => x !== d) : [...w, d].sort()));
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!courseId || !instructorId) return;
-    addClassSession({
+    const common = {
       courseId: Number(courseId),
       instructorId: Number(instructorId),
-      sessionDate,
       durationMinutes: Number(duration) || 90,
       topic: topic.trim() || undefined,
-    });
-    setCourseId(''); setInstructorId(''); setTopic(''); setDuration('90'); setSessionDate(todayStr());
+    };
+    if (mode === 'single') {
+      addClassSession({ ...common, sessionDate });
+    } else {
+      if (weekdays.length === 0) { alert('반복 요일을 1개 이상 선택하세요.'); return; }
+      const n = addRecurring({ ...common, startDate, endDate, weekdays });
+      alert(`${n}개의 수업이 생성되었습니다.`);
+    }
+    setCourseId(''); setInstructorId(''); setTopic(''); setDuration('90');
+    setSessionDate(todayStr()); setWeekdays([]);
   };
 
   return (
-    <form onSubmit={submit} className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-end">
-      <Field label="코스 *">
-        <select className="input" value={courseId} onChange={(e) => pickCourse(e.target.value)}>
-          <option value="">선택</option>
-          {courses.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
-        </select>
-      </Field>
-      <Field label="강사 *">
-        <select className="input" value={instructorId} onChange={(e) => setInstructorId(e.target.value)}>
-          <option value="">선택</option>
-          {instructors.map((i) => (<option key={i.id} value={i.id}>{i.name}</option>))}
-        </select>
-      </Field>
-      <Field label="날짜 *"><input type="date" className="input" value={sessionDate} onChange={(e) => setSessionDate(e.target.value)} /></Field>
-      <Field label="시간(분)"><input className="input" type="number" min={10} step={10} value={duration} onChange={(e) => setDuration(e.target.value)} /></Field>
-      <Field label="주제"><input className="input" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Reading: Inference" /></Field>
-      <button type="submit" className="btn btn-primary h-8">수업 개설</button>
+    <form onSubmit={submit} className="p-4 space-y-4">
+      <div className="flex gap-2">
+        <button type="button" className={`btn btn-sm ${mode === 'single' ? 'badge-accent' : ''}`} onClick={() => setMode('single')}>단일</button>
+        <button type="button" className={`btn btn-sm ${mode === 'recurring' ? 'badge-accent' : ''}`} onClick={() => setMode('recurring')}>기간·반복</button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <Field label="코스 *">
+          <select className="input" value={courseId} onChange={(e) => pickCourse(e.target.value)}>
+            <option value="">선택</option>
+            {courses.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
+          </select>
+        </Field>
+        <Field label="강사 *">
+          <select className="input" value={instructorId} onChange={(e) => setInstructorId(e.target.value)}>
+            <option value="">선택</option>
+            {instructors.map((i) => (<option key={i.id} value={i.id}>{i.name}</option>))}
+          </select>
+        </Field>
+        <Field label="시간(분)"><input className="input" type="number" min={10} step={10} value={duration} onChange={(e) => setDuration(e.target.value)} /></Field>
+        <div className="sm:col-span-2 lg:col-span-3">
+          <Field label="주제 (기존 라벨 추천 / 새로 입력)">
+            <Combobox value={topic} onChange={setTopic} suggestions={topicSuggestions} placeholder="Reading: Inference" />
+          </Field>
+        </div>
+      </div>
+
+      {mode === 'single' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Field label="날짜 *"><input type="date" className="input" value={sessionDate} onChange={(e) => setSessionDate(e.target.value)} /></Field>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="시작일 *"><input type="date" className="input" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></Field>
+            <Field label="종료일 *"><input type="date" className="input" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></Field>
+          </div>
+          <div>
+            <span className="block text-[12px] font-medium text-fg-muted mb-1">반복 요일 *</span>
+            <div className="flex gap-1.5">
+              {WEEK.map((w, i) => (
+                <button
+                  key={w}
+                  type="button"
+                  onClick={() => toggleWeekday(i)}
+                  className={`btn btn-sm w-9 ${weekdays.includes(i) ? 'badge-accent' : ''} ${i === 0 ? 'text-danger' : i === 6 ? 'text-accent' : ''}`}
+                >
+                  {w}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end">
+        <button type="submit" className="btn btn-primary">{mode === 'single' ? '수업 개설' : '반복 수업 생성'}</button>
+      </div>
     </form>
   );
 }
