@@ -1,18 +1,18 @@
-'use client';
-import Link from 'next/link';
-import { Badge, SectionCard, type Tone } from '@/components/ui';
-import { useTacoStore } from '@/lib/store';
-import type { AttendanceStatus, ReportStatus } from '@/types';
-import { shortDate } from '@/lib/format';
+"use client";
+import Link from "next/link";
+import { Badge, SectionCard, type Tone } from "@/components/ui";
+import { useTacoStore } from "@/lib/store";
+import type { AttendanceStatus, ReportStatus } from "@/types";
+import { shortDate } from "@/lib/format";
 
 const ATT: { value: AttendanceStatus; label: string; tone: Tone }[] = [
-  { value: 'present', label: '출석', tone: 'success' },
-  { value: 'late', label: '지각', tone: 'attention' },
-  { value: 'absent', label: '결석', tone: 'danger' },
-  { value: 'excused', label: '인정결석', tone: 'done' },
+  { value: "present", label: "출석", tone: "success" },
+  { value: "late", label: "지각", tone: "attention" },
+  { value: "absent", label: "결석", tone: "danger" },
+  { value: "excused", label: "인정결석", tone: "done" },
 ];
-const reportTone: Record<ReportStatus, Tone> = { draft: 'neutral', submitted: 'accent', sent: 'success' };
-const reportLabel: Record<ReportStatus, string> = { draft: '작성중', submitted: '작성완료', sent: '발송됨' };
+const reportTone: Record<ReportStatus, Tone> = { draft: "neutral", submitted: "accent", sent: "success" };
+const reportLabel: Record<ReportStatus, string> = { draft: "작성중", submitted: "작성완료", sent: "발송됨" };
 
 export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   const store = useTacoStore();
@@ -34,22 +34,22 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   return (
     <div className="p-6 max-w-[920px] mx-auto space-y-6">
       <div>
-        <a href="/sessions" className="text-[12px] text-fg-muted hover:underline">← 수업 목록</a>
-        <h1 className="text-[20px] font-semibold mt-1">{course?.name ?? '수업'} · {shortDate(session.sessionDate)}</h1>
+        <a href="/sessions" className="text-[12px] text-fg-muted hover:underline">
+          ← 수업 목록
+        </a>
+        <h1 className="text-[20px] font-semibold mt-1">
+          {course?.name ?? "수업"} · {shortDate(session.sessionDate)}
+        </h1>
         <p className="text-[13px] text-fg-muted mt-0.5">
-          강사 {instructor?.name ?? '—'} · {session.durationMinutes}분 · {session.topic ?? '주제 미정'}
+          강사 {instructor?.name ?? "—"} · {session.durationMinutes}분 · {session.topic ?? "주제 미정"}
         </p>
       </div>
 
       <SectionCard title={`학생 출석 · 피드백 (${roster.length}명)`}>
-        <div className="divide-y" style={{ borderColor: 'var(--color-line-muted)' }}>
+        <div className="divide-y" style={{ borderColor: "var(--color-line-muted)" }}>
           {roster.map((student) => {
-            const att = store.attendance.find(
-              (a) => a.sessionId === sessionId && a.studentId === student.id,
-            );
-            const report = store.sessionReports.find(
-              (r) => r.sessionId === sessionId && r.studentId === student.id,
-            );
+            const att = store.attendance.find((a) => a.sessionId === sessionId && a.studentId === student.id);
+            const report = store.sessionReports.find((r) => r.sessionId === sessionId && r.studentId === student.id);
             return (
               <div key={student.id} className="p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -69,8 +69,8 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                         key={opt.value}
                         type="button"
                         onClick={() => store.setAttendance(sessionId, student.id, opt.value)}
-                        className={`btn btn-sm ${active ? `badge-${opt.tone}` : ''}`}
-                        style={active ? { borderColor: 'transparent', fontWeight: 600 } : undefined}
+                        className={`btn btn-sm ${active ? `badge-${opt.tone}` : ""}`}
+                        style={active ? { borderColor: "transparent", fontWeight: 600 } : undefined}
                       >
                         {opt.label}
                       </button>
@@ -81,10 +81,10 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                 {/* 피드백은 상세 폼 페이지에서 작성 (학부모 join + 추후 항목 확장) */}
                 <div className="flex items-center justify-between">
                   <span className="text-[12px] text-fg-subtle truncate max-w-[60%]">
-                    {report?.content ? report.content : '작성된 피드백 없음'}
+                    {report?.content ? report.content : "작성된 피드백 없음"}
                   </span>
                   <Link href={`/sessions/${sessionId}/feedback/${student.id}`} className="btn btn-sm btn-primary">
-                    {report ? '피드백 수정' : '피드백 작성'}
+                    {report ? "피드백 수정" : "피드백 작성"}
                   </Link>
                 </div>
               </div>

@@ -97,6 +97,7 @@ export default function Sidebar() {
           교
         </div>
         <div className="leading-tight flex-1">
+          {/* FIXME: fetch to server */}
           <div className="text-[13px] font-medium">교수실장</div>
           <div className="text-[11px] text-fg-subtle">super_admin</div>
         </div>

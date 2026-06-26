@@ -15,6 +15,7 @@ export function RevenueCharts() {
   const subjects = useTacoStore((s) => s.subjects);
   const students = useTacoStore((s) => s.students);
 
+  const today = new Date().toISOString().slice(0, 10);
   const [start, setStart] = useState('2026-05-01');
   const [end, setEnd] = useState('2026-06-30');
 
@@ -72,9 +73,9 @@ export function RevenueCharts() {
         title={`매출 분석 (실현 매출 ${won(total)})`}
         action={
           <div className="flex items-center gap-1.5">
-            <input type="date" className="input h-7 w-36" value={start} onChange={(e) => setStart(e.target.value)} />
+            <input type="date" className="input h-7 w-36" max={today} value={start} onChange={(e) => setStart(e.target.value)} />
             <span className="text-fg-subtle">~</span>
-            <input type="date" className="input h-7 w-36" value={end} onChange={(e) => setEnd(e.target.value)} />
+            <input type="date" className="input h-7 w-36" max={today} min={start} value={end} onChange={(e) => setEnd(e.target.value)} />
           </div>
         }
       >
