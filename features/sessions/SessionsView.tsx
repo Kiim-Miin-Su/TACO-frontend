@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 import { Badge, SectionCard, type Tone } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
 import type { SessionStatus } from '@/types';
@@ -26,6 +27,16 @@ export function SessionsView() {
   const courses = useTacoStore((s) => s.courses);
   const instructors = useTacoStore((s) => s.instructors);
 
+  const [q, setQ] = useState('');
+  const kw = q.trim().toLowerCase();
+  const rows = classSessions.filter((cs) => {
+    if (!kw) return true;
+    const course = courses.find((c) => c.id === cs.courseId)?.name ?? '';
+    const instructor = instructors.find((i) => i.id === cs.instructorId)?.name ?? '';
+    return [course, instructor, cs.topic ?? '', cs.sessionDate]
+      .some((v) => v.toLowerCase().includes(kw));
+  });
+
   return (
     <div className="p-6 max-w-[1000px] mx-auto space-y-6">
       <div>
@@ -37,7 +48,7 @@ export function SessionsView() {
         <SessionForm />
       </SectionCard>
 
-      <SectionCard title="수업 목록">
+      <SectionCard title="수업 목록" action={<input className="input w-56 h-7" placeholder="코스·강사·주제·날짜 검색" value={q} onChange={(e) => setQ(e.target.value)} />}>
         <table className="table">
           <thead>
             <tr>
@@ -50,7 +61,7 @@ export function SessionsView() {
             </tr>
           </thead>
           <tbody>
-            {classSessions.map((cs) => {
+            {rows.map((cs) => {
               const course = courses.find((c) => c.id === cs.courseId);
               const instructor = instructors.find((i) => i.id === cs.instructorId);
               return (

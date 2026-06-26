@@ -19,6 +19,14 @@ export function ExpenseFormView() {
   const [spentAt, setSpentAt] = useState(todayStr());
   const [vendor, setVendor] = useState('');
   const [memo, setMemo] = useState('');
+  const [receipt, setReceipt] = useState('');
+
+  const onFile = (f?: File) => {
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => setReceipt(String(reader.result));
+    reader.readAsDataURL(f); // 데모: data URL (실제 백엔드는 업로드 후 URL 저장)
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,6 +38,7 @@ export function ExpenseFormView() {
       spentAt: spentAt || todayStr(),
       vendor: vendor.trim() || undefined,
       memo: memo.trim() || undefined,
+      receiptUrl: receipt || undefined,
     });
     router.push('/expenses');
   };
@@ -52,12 +61,20 @@ export function ExpenseFormView() {
           <Field label="지출일 *"><input type="date" className="input" value={spentAt} onChange={(e) => setSpentAt(e.target.value)} /></Field>
           <Field label="거래처"><input className="input" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="오피스디포" /></Field>
           <Field label="메모"><input className="input" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="비고" /></Field>
+          <div className="sm:col-span-2">
+            <span className="block text-[12px] font-medium text-fg-muted mb-1">영수증 사진</span>
+            <input type="file" accept="image/*" className="text-[13px]" onChange={(e) => onFile(e.target.files?.[0])} />
+            {receipt && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={receipt} alt="영수증 미리보기" className="mt-2 max-h-40 rounded border" style={{ borderColor: 'var(--color-line)' }} />
+            )}
+          </div>
           <div className="sm:col-span-2 flex justify-end pt-1">
-            <button type="submit" className="btn btn-primary">지출 처리</button>
+            <button type="submit" className="btn btn-primary">지출 요청</button>
           </div>
         </form>
       </SectionCard>
-      <p className="text-[12px] text-fg-subtle">지출 처리하면 출금 거래 원장과 대시보드 출금에 반영됩니다.</p>
+      <p className="text-[12px] text-fg-subtle">지출은 <b>대표(super_admin) 승인</b> 후 출금 원장·대시보드에 반영됩니다. (관리자 &gt; 승인 센터)</p>
     </div>
   );
 }

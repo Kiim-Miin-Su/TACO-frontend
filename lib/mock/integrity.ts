@@ -12,6 +12,7 @@ import type {
   Payment,
   CounselForm,
   CounselRound,
+  InstructorPayout,
 } from '@/types';
 
 // 참조 무결성 검사 대상 컬렉션
@@ -29,6 +30,7 @@ export type IntegrityInput = {
   payments: Payment[];
   counselForms: CounselForm[];
   counselRounds: CounselRound[];
+  instructorPayouts: InstructorPayout[];
 };
 
 export type Problem = { table: string; id: number; issue: string };
@@ -122,6 +124,11 @@ export function checkIntegrity(s: IntegrityInput): Problem[] {
   for (const r of s.counselRounds) {
     if (!counselFormIds.has(r.counselFormId)) add('counselRounds', r.id, `counselFormId ${r.counselFormId} 없음(삭제된 상담?)`);
     if (r.counselorId !== undefined && !instructorIds.has(r.counselorId)) add('counselRounds', r.id, `counselorId ${r.counselorId} 없음`);
+  }
+
+  // 강사 페이 → 강사
+  for (const p of s.instructorPayouts) {
+    if (!instructorIds.has(p.instructorId)) add('instructorPayouts', p.id, `instructorId ${p.instructorId} 없음`);
   }
 
   return problems;

@@ -16,6 +16,7 @@ import type {
   Transaction,
   Expense,
   ExpenseCategory,
+  ApprovalStatus,
   InstructorPayout,
   AcademyEvent,
   EventType,
@@ -31,6 +32,7 @@ import type {
   StudentIntention,
 } from '@/types';
 import * as seed from './mock/seed';
+import { computeInstructorPay } from './payroll';
 
 const nextId = (rows: { id: number }[]) =>
   rows.reduce((max, r) => Math.max(max, r.id), 0) + 1;
@@ -98,10 +100,12 @@ export type NewExpenseInput = {
   spentAt: string;
   vendor?: string;
   memo?: string;
+  receiptUrl?: string;
 };
 
 export type NewSubjectInput = { code: string; name: string };
-export type NewCourseInput = { name: string; subjectId: number; instructorId: number; price: number };
+export type NewCourseInput = { name: string; subjectId: number; instructorId: number; price: number; hourlyRate: number };
+export type NewPayoutInput = { instructorId: number; periodStart: string; periodEnd: string };
 export type NewEventInput = {
   title: string;
   type: EventType;
@@ -161,7 +165,12 @@ type TacoState = {
   addPayment: (input: NewPaymentInput) => Payment;
   markPaymentPaid: (paymentId: number) => void;
   updatePayment: (id: number, patch: Partial<Payment>) => void;
-  addExpense: (input: NewExpenseInput) => Expense;
+  addExpense: (input: NewExpenseInput) => Expense; // status=requested (승인 대기)
+  approveExpense: (id: number) => void; // super_admin
+  rejectExpense: (id: number) => void; // super_admin
+  addInstructorPayout: (input: NewPayoutInput) => InstructorPayout; // status=pending(요청)
+  approvePayout: (id: number) => void; // super_admin → confirmed
+  markPayoutPaid: (id: number) => void; // confirmed → paid (출금)
   addSubject: (input: NewSubjectInput) => Subject;
   addCourse: (input: NewCourseInput) => Course;
   addAcademyEvent: (input: NewEventInput) => AcademyEvent;
@@ -449,7 +458,7 @@ export const useTacoStore = create<TacoState>((set) => ({
       };
     }),
 
-  // 지출 처리 → 출금 거래 원장에 반영 (대시보드 출금 연동)
+  // 지출 요청 → super_admin 승인 후 출금 반영 (승인 전에는 원장/대시보드 미반영)
   addExpense: (input) => {
     const expense: Expense = {
       id: 0,
@@ -459,24 +468,89 @@ export const useTacoStore = create<TacoState>((set) => ({
       spentAt: input.spentAt,
       vendor: input.vendor,
       memo: input.memo,
+      receiptUrl: input.receiptUrl,
+      status: 'requested',
     };
     set((s) => {
       expense.id = nextId(s.expenses);
+      return { expenses: [expense, ...s.expenses] };
+    });
+    return expense;
+  },
+
+  approveExpense: (id) =>
+    set((s) => {
+      const ex = s.expenses.find((e) => e.id === id);
+      if (!ex || ex.status !== 'requested') return {};
       const tx: Transaction = {
         id: nextId(s.transactions),
         direction: 'out',
         category: 'expense',
-        label: input.title,
-        amount: input.amount,
-        occurredAt: input.spentAt,
+        label: ex.title,
+        amount: ex.amount,
+        occurredAt: ex.spentAt,
       };
       return {
-        expenses: [expense, ...s.expenses],
+        expenses: s.expenses.map((e) => (e.id === id ? { ...e, status: 'approved' } : e)),
         transactions: [tx, ...s.transactions],
       };
+    }),
+
+  rejectExpense: (id) =>
+    set((s) => ({
+      expenses: s.expenses.map((e) => (e.id === id ? { ...e, status: 'rejected' } : e)),
+    })),
+
+  // 강사 페이: 시수×시급으로 산정해 요청 생성 (status=pending)
+  addInstructorPayout: (input) => {
+    const payout: InstructorPayout = {
+      id: 0,
+      instructorId: input.instructorId,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+      sessionCount: 0,
+      totalMinutes: 0,
+      amount: 0,
+      status: 'pending',
+    };
+    set((s) => {
+      const c = computeInstructorPay(s.classSessions, s.courses, input.instructorId, input.periodStart, input.periodEnd);
+      payout.id = nextId(s.instructorPayouts);
+      payout.sessionCount = c.sessionCount;
+      payout.totalMinutes = c.totalMinutes;
+      payout.amount = c.amount;
+      return { instructorPayouts: [payout, ...s.instructorPayouts] };
     });
-    return expense;
+    return payout;
   },
+
+  approvePayout: (id) =>
+    set((s) => ({
+      instructorPayouts: s.instructorPayouts.map((p) =>
+        p.id === id && p.status === 'pending' ? { ...p, status: 'confirmed' } : p,
+      ),
+    })),
+
+  markPayoutPaid: (id) =>
+    set((s) => {
+      const p = s.instructorPayouts.find((x) => x.id === id);
+      if (!p || p.status !== 'confirmed') return {};
+      const instr = s.instructors.find((i) => i.id === p.instructorId);
+      const tx: Transaction = {
+        id: nextId(s.transactions),
+        direction: 'out',
+        category: 'instructor_payout',
+        label: `강사 페이 · ${instr?.name ?? '강사'}`,
+        amount: p.amount,
+        occurredAt: today(),
+      };
+      return {
+        instructorPayouts: s.instructorPayouts.map((x) =>
+          x.id === id ? { ...x, status: 'paid', paidAt: today() } : x,
+        ),
+        transactions: [tx, ...s.transactions],
+      };
+    }),
 
   // 기간 + 요일 반복으로 수업 다건 생성 (캘린더 표시용)
   addRecurringClassSessions: (input) => {
@@ -527,6 +601,7 @@ export const useTacoStore = create<TacoState>((set) => ({
       subjectId: input.subjectId,
       instructorId: input.instructorId,
       price: input.price,
+      hourlyRate: input.hourlyRate,
     };
     set((s) => {
       course.id = nextId(s.courses);

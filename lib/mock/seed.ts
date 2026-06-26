@@ -34,9 +34,9 @@ export const subjects: Subject[] = [
 ];
 
 export const courses: Course[] = [
-  { id: 10, name: 'SAT Reading 정규', subjectId: 1, instructorId: 1, price: 480000 },
-  { id: 11, name: 'AP Calculus BC', subjectId: 2, instructorId: 2, price: 520000 },
-  { id: 12, name: 'TOEFL 정규', subjectId: 1, instructorId: 1, price: 420000 },
+  { id: 10, name: 'SAT Reading 정규', subjectId: 1, instructorId: 1, price: 480000, hourlyRate: 50000 },
+  { id: 11, name: 'AP Calculus BC', subjectId: 2, instructorId: 2, price: 520000, hourlyRate: 60000 },
+  { id: 12, name: 'TOEFL 정규', subjectId: 1, instructorId: 1, price: 420000, hourlyRate: 45000 },
 ];
 
 export const students: Student[] = [
@@ -95,6 +95,9 @@ export const payments: Payment[] = [
   { id: 2, enrollmentId: 2, studentId: 2, amount: 520000, status: 'paid', paymentMethod: 'transfer', paidAt: '2026-06-23' },
   { id: 3, enrollmentId: 3, studentId: 4, amount: 480000, status: 'pending', dueAt: '2026-06-30' },
   { id: 4, enrollmentId: 4, studentId: 1, amount: 420000, status: 'pending', dueAt: '2026-06-28' },
+  { id: 5, enrollmentId: 3, studentId: 4, amount: 480000, status: 'paid', paymentMethod: 'card', paidAt: '2026-06-10' },
+  { id: 6, enrollmentId: 4, studentId: 1, amount: 420000, status: 'paid', paymentMethod: 'transfer', paidAt: '2026-05-28' },
+  { id: 7, enrollmentId: 2, studentId: 2, amount: 520000, status: 'paid', paymentMethod: 'card', paidAt: '2026-05-15' },
 ];
 
 export const transactions: Transaction[] = [
@@ -105,11 +108,11 @@ export const transactions: Transaction[] = [
 ];
 
 export const expenses: Expense[] = [
-  { id: 1, category: 'supplies', title: '화이트보드 마커 외', amount: 86000, spentAt: '2026-06-22', vendor: '오피스디포' },
-  { id: 2, category: 'books', title: 'SAT 교재 30부', amount: 450000, spentAt: '2026-06-18', vendor: '교보문고' },
-  { id: 3, category: 'equipment', title: '빔프로젝터 1대', amount: 680000, spentAt: '2026-06-15', vendor: '전자랜드' },
-  { id: 4, category: 'utility', title: '6월 전기·인터넷', amount: 240000, spentAt: '2026-06-10' },
-  { id: 5, category: 'meal', title: '강사 회식', amount: 180000, spentAt: '2026-06-20' },
+  { id: 1, category: 'supplies', title: '화이트보드 마커 외', amount: 86000, spentAt: '2026-06-22', vendor: '오피스디포', status: 'approved' },
+  { id: 2, category: 'books', title: 'SAT 교재 30부', amount: 450000, spentAt: '2026-06-18', vendor: '교보문고', status: 'approved' },
+  { id: 3, category: 'equipment', title: '빔프로젝터 1대', amount: 680000, spentAt: '2026-06-15', vendor: '전자랜드', status: 'approved' },
+  { id: 4, category: 'utility', title: '6월 전기·인터넷', amount: 240000, spentAt: '2026-06-10', status: 'approved' },
+  { id: 5, category: 'meal', title: '강사 회식', amount: 180000, spentAt: '2026-06-20', status: 'requested' },
 ];
 
 export const instructorPayouts: InstructorPayout[] = [

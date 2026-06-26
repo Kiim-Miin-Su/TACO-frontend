@@ -1,5 +1,8 @@
-import type { ExpenseCategory } from '@/types';
+import type { ExpenseCategory, ApprovalStatus } from '@/types';
 import type { Tone } from '@/components/ui';
+
+export const approvalLabel: Record<ApprovalStatus, string> = { requested: '승인대기', approved: '승인됨', rejected: '반려' };
+export const approvalTone: Record<ApprovalStatus, Tone> = { requested: 'attention', approved: 'success', rejected: 'danger' };
 
 export const categoryLabel: Record<ExpenseCategory, string> = {
   supplies: '비품', equipment: '기자재', books: '교재', rent: '임대료',

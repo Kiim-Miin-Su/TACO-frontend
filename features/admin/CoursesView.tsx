@@ -48,18 +48,23 @@ function CourseForm() {
   const [subjectId, setSubjectId] = useState('');
   const [instructorId, setInstructorId] = useState('');
   const [price, setPrice] = useState('');
+  const [hourlyRate, setHourlyRate] = useState('');
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !subjectId || !instructorId) return;
-    addCourse({ name: name.trim(), subjectId: Number(subjectId), instructorId: Number(instructorId), price: Number(price) || 0 });
-    setName(''); setSubjectId(''); setInstructorId(''); setPrice('');
+    addCourse({
+      name: name.trim(), subjectId: Number(subjectId), instructorId: Number(instructorId),
+      price: Number(price) || 0, hourlyRate: Number(hourlyRate) || 0,
+    });
+    setName(''); setSubjectId(''); setInstructorId(''); setPrice(''); setHourlyRate('');
   };
 
   return (
     <form onSubmit={submit} className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field label="코스명 *"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="SAT Reading 정규" /></Field>
       <Field label="정가(원)"><input className="input" type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="480000" /></Field>
+      <Field label="강사 시급(원/시간)"><input className="input" type="number" min={0} value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} placeholder="50000" /></Field>
       <Field label="과목 *">
         <select className="input" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
           <option value="">선택</option>

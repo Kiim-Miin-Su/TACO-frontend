@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { Badge, SectionCard, type Tone } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
 import type { AttendanceStatus, ReportStatus } from '@/types';
@@ -77,41 +78,14 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                   })}
                 </div>
 
-                {/* 학부모용 피드백 */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="sm:col-span-2">
-                    <span className="block text-[12px] font-medium text-fg-muted mb-1">학부모 피드백</span>
-                    <textarea
-                      className="input h-20 py-2 leading-relaxed"
-                      placeholder="오늘 수업 내용·태도·성취를 적어주세요 (카카오로 발송 예정)"
-                      value={report?.content ?? ''}
-                      onChange={(e) =>
-                        store.upsertReport(sessionId, student.id, session.instructorId, { content: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <span className="block text-[12px] font-medium text-fg-muted mb-1">숙제</span>
-                    <textarea
-                      className="input h-20 py-2 leading-relaxed"
-                      placeholder="다음 수업 전까지"
-                      value={report?.homework ?? ''}
-                      onChange={(e) =>
-                        store.upsertReport(sessionId, student.id, session.instructorId, { homework: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-3 flex justify-end">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-primary"
-                    disabled={!report?.content}
-                    onClick={() => store.submitReport(sessionId, student.id)}
-                  >
-                    피드백 제출 (발송 대기)
-                  </button>
+                {/* 피드백은 상세 폼 페이지에서 작성 (학부모 join + 추후 항목 확장) */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] text-fg-subtle truncate max-w-[60%]">
+                    {report?.content ? report.content : '작성된 피드백 없음'}
+                  </span>
+                  <Link href={`/sessions/${sessionId}/feedback/${student.id}`} className="btn btn-sm btn-primary">
+                    {report ? '피드백 수정' : '피드백 작성'}
+                  </Link>
                 </div>
               </div>
             );

@@ -3,6 +3,7 @@ import { Badge, SectionCard, StatusDot, type Tone } from "@/components/ui";
 import { useTacoStore } from "@/lib/store";
 import type { StudentStatus } from "@/types";
 import { StudentForm } from "./StudentForm";
+import { useState } from "react";
 
 const tone: Record<StudentStatus, Tone> = {
   lead: "neutral",
@@ -26,6 +27,15 @@ export function StudentsView() {
   const parentStudents = useTacoStore((s) => s.parentStudents);
   const parents = useTacoStore((s) => s.parents);
   const removeStudent = useTacoStore((s) => s.removeStudent);
+  const [q, setQ] = useState("");
+  const kw = q.trim().toLowerCase();
+  const filtered = kw
+    ? students.filter((s) =>
+        [s.name, s.englishName, s.webId, s.phone]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(kw)),
+      )
+    : students;
 
   const coursesOf = (studentId: number) =>
     enrollments
@@ -51,7 +61,7 @@ export function StudentsView() {
         <StudentForm />
       </SectionCard>
 
-      <SectionCard title="학생 목록">
+      <SectionCard title="학생 목록" action={<input className="input w-56 h-7" placeholder="이름·영문·ID·연락처 검색" value={q} onChange={(e) => setQ(e.target.value)} />}>
         <div className="overflow-x-auto">
           <table className="table">
             <thead>

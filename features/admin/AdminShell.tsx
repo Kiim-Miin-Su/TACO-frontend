@@ -23,6 +23,7 @@ const TABS: [string, string][] = [
   ['/admin', '개요·캘린더'],
   ['/admin/courses', '코스·과목'],
   ['/admin/events', '이벤트'],
+  ['/admin/approvals', '승인'],
 ];
 
 export function AdminHeader() {

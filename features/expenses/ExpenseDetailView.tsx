@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Badge, SectionCard } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
 import { won } from '@/lib/format';
-import { categoryLabel, categoryTone } from './labels';
+import { categoryLabel, categoryTone, approvalLabel, approvalTone } from './labels';
 
 export function ExpenseDetailView({ expenseId }: { expenseId: number }) {
   const expense = useTacoStore((s) => s.expenses.find((e) => e.id === expenseId));
@@ -32,6 +32,7 @@ export function ExpenseDetailView({ expenseId }: { expenseId: number }) {
         <div className="flex items-center gap-2 mt-1">
           <h1 className="text-[20px] font-semibold">{expense.title}</h1>
           <Badge tone={categoryTone[expense.category]}>{categoryLabel[expense.category]}</Badge>
+          <Badge tone={approvalTone[expense.status]}>{approvalLabel[expense.status]}</Badge>
         </div>
       </div>
       <SectionCard title="지출 상세">
@@ -43,6 +44,13 @@ export function ExpenseDetailView({ expenseId }: { expenseId: number }) {
             </div>
           ))}
         </div>
+        {expense.receiptUrl && (
+          <div className="p-4 border-t" style={{ borderColor: 'var(--color-line)' }}>
+            <div className="text-[12px] text-fg-muted mb-2">영수증</div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={expense.receiptUrl} alt="영수증" className="max-h-72 rounded border" style={{ borderColor: 'var(--color-line)' }} />
+          </div>
+        )}
       </SectionCard>
     </div>
   );

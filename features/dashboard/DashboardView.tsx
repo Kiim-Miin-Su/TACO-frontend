@@ -14,6 +14,7 @@ import { won, shortDate } from '@/lib/format';
 import { useTacoStore } from '@/lib/store';
 import { isCEO, isAdmin, roleLabel } from '@/lib/roles';
 import { BackendPanel } from '@/features/system/BackendPanel';
+import { RevenueCharts } from './RevenueCharts';
 import type { EnrollmentStatus } from '@/types';
 
 const statusTone: Record<EnrollmentStatus, Tone> = {
@@ -86,6 +87,9 @@ export function DashboardView() {
         <StatCard label="수강 등록" value={`${store.enrollments.length}건`} tone="accent" icon={<IconUsers />} sub={`학생 ${store.students.length}명`} />
         {ceo && <StatCard label="미수금" value={won(unpaid)} tone="danger" icon={<IconReceipt />} sub={`청구 ${store.payments.filter((p) => p.status === 'pending').length}건 대기`} />}
       </div>
+
+      {/* CEO 전용 매출 시각화 */}
+      {ceo && <div className="mb-6"><RevenueCharts /></div>}
 
       <div className={`grid grid-cols-1 ${ceo ? 'lg:grid-cols-3' : ''} gap-6`}>
         <div className={ceo ? 'lg:col-span-2' : ''}>

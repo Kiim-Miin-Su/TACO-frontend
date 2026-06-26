@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Badge, SectionCard, MonthCalendar } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
 import { won } from '@/lib/format';
-import { categoryLabel, categoryTone } from './labels';
+import { categoryLabel, categoryTone, approvalLabel, approvalTone } from './labels';
 
 export function ExpensesView() {
   const expenses = useTacoStore((s) => s.expenses);
@@ -37,6 +37,7 @@ export function ExpensesView() {
                 <th>분류</th>
                 <th>거래처</th>
                 <th className="text-right">금액</th>
+                <th>승인</th>
                 <th className="text-right">지출일</th>
                 <th></th>
               </tr>
@@ -48,6 +49,7 @@ export function ExpensesView() {
                   <td><Badge tone={categoryTone[e.category]}>{categoryLabel[e.category]}</Badge></td>
                   <td className="text-fg-muted">{e.vendor ?? '—'}</td>
                   <td className="text-right mono">{won(e.amount)}</td>
+                  <td><Badge tone={approvalTone[e.status]}>{approvalLabel[e.status]}</Badge></td>
                   <td className="text-right mono text-fg-muted">{e.spentAt}</td>
                   <td className="text-right"><Link href={`/expenses/${e.id}`} className="btn btn-sm">상세</Link></td>
                 </tr>
