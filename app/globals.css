@@ -1,0 +1,223 @@
+@import "tailwindcss";
+
+/* ============================================================
+   TACO Design System — GitHub(Primer) 느낌의 모던 ERP, 밝은 테마
+   토큰은 모두 CSS 변수 + Tailwind v4 @theme 로 노출됩니다.
+   (다크 테마는 :root 토큰만 재정의하면 확장됩니다)
+   ============================================================ */
+
+@theme {
+  /* Surfaces */
+  --color-canvas: #ffffff;
+  --color-canvas-subtle: #f6f8fa;
+  --color-canvas-inset: #f6f8fa;
+
+  /* Text */
+  --color-fg: #1f2328;
+  --color-fg-muted: #59636e;
+  --color-fg-subtle: #818b98;
+  --color-fg-onemph: #ffffff;
+
+  /* Borders */
+  --color-line: #d1d9e0;
+  --color-line-muted: #e7ebef;
+
+  /* Accent — blue */
+  --color-accent: #0969da;
+  --color-accent-subtle: #ddf4ff;
+
+  /* Success — green (also primary action) */
+  --color-success: #1a7f37;
+  --color-success-emphasis: #1f883d;
+  --color-success-subtle: #dafbe1;
+
+  /* Attention — amber */
+  --color-attention: #9a6700;
+  --color-attention-subtle: #fff8c5;
+
+  /* Danger — red */
+  --color-danger: #cf222e;
+  --color-danger-subtle: #ffebe9;
+
+  /* Done — purple */
+  --color-done: #8250df;
+  --color-done-subtle: #fbefff;
+
+  /* Neutral chips */
+  --color-neutral-subtle: #eaeef2;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR",
+    "Apple SD Gothic Neo", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* Radius */
+  --radius-md: 6px;
+  --radius-lg: 12px;
+
+  /* Shadows (Primer) */
+  --shadow-resting: 0 1px 0 rgba(31, 35, 40, 0.04);
+  --shadow-medium: 0 3px 6px rgba(140, 149, 159, 0.15);
+  --shadow-overlay: 0 8px 24px rgba(66, 74, 83, 0.12);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    background-color: var(--color-canvas-subtle);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  a {
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  * {
+    border-color: var(--color-line);
+  }
+}
+
+@layer components {
+  /* ---------- Buttons ---------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3 h-8
+      text-[13px] font-semibold whitespace-nowrap cursor-pointer
+      transition-colors select-none;
+    border: 1px solid var(--color-line);
+    background-color: var(--color-canvas-subtle);
+    color: var(--color-fg);
+  }
+  .btn:hover {
+    background-color: #eef1f4;
+    border-color: #cdd4db;
+  }
+  .btn:active {
+    background-color: #e8ebef;
+  }
+  .btn-primary {
+    background-color: var(--color-success-emphasis);
+    border-color: rgba(31, 35, 40, 0.15);
+    color: var(--color-fg-onemph);
+  }
+  .btn-primary:hover {
+    background-color: var(--color-success);
+    border-color: rgba(31, 35, 40, 0.15);
+  }
+  .btn-danger {
+    color: var(--color-danger);
+  }
+  .btn-danger:hover {
+    background-color: var(--color-danger);
+    border-color: var(--color-danger);
+    color: var(--color-fg-onemph);
+  }
+  .btn-invisible {
+    background-color: transparent;
+    border-color: transparent;
+    color: var(--color-fg-muted);
+  }
+  .btn-invisible:hover {
+    background-color: var(--color-neutral-subtle);
+    border-color: transparent;
+  }
+  .btn-sm {
+    @apply h-7 px-2.5 text-[12px];
+  }
+
+  /* ---------- Card ---------- */
+  .card {
+    background-color: var(--color-canvas);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-resting);
+  }
+  .card-pad {
+    @apply p-4;
+  }
+
+  /* ---------- Labels / Badges (Primer "Label") ---------- */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2 h-5
+      text-[12px] font-medium leading-none;
+    border: 1px solid transparent;
+  }
+  .badge-neutral {
+    background-color: var(--color-neutral-subtle);
+    color: var(--color-fg-muted);
+  }
+  .badge-accent {
+    background-color: var(--color-accent-subtle);
+    color: var(--color-accent);
+  }
+  .badge-success {
+    background-color: var(--color-success-subtle);
+    color: var(--color-success);
+  }
+  .badge-attention {
+    background-color: var(--color-attention-subtle);
+    color: var(--color-attention);
+  }
+  .badge-danger {
+    background-color: var(--color-danger-subtle);
+    color: var(--color-danger);
+  }
+  .badge-done {
+    background-color: var(--color-done-subtle);
+    color: var(--color-done);
+  }
+
+  /* status dot */
+  .dot {
+    @apply inline-block w-2 h-2 rounded-full;
+  }
+
+  /* ---------- Input ---------- */
+  .input {
+    @apply h-8 px-3 rounded-md text-[13px] w-full outline-none;
+    background-color: var(--color-canvas);
+    border: 1px solid var(--color-line);
+    color: var(--color-fg);
+  }
+  .input::placeholder {
+    color: var(--color-fg-subtle);
+  }
+  .input:focus {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-subtle);
+  }
+
+  /* ---------- Table ---------- */
+  .table {
+    @apply w-full text-[13px] border-collapse;
+  }
+  .table thead th {
+    @apply text-left font-semibold px-4 py-2.5;
+    color: var(--color-fg-muted);
+    background-color: var(--color-canvas-subtle);
+    border-bottom: 1px solid var(--color-line);
+  }
+  .table tbody td {
+    @apply px-4 py-2.5 align-middle;
+    border-bottom: 1px solid var(--color-line-muted);
+  }
+  .table tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .table tbody tr:hover td {
+    background-color: var(--color-canvas-subtle);
+  }
+
+  /* mono numbers */
+  .mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
