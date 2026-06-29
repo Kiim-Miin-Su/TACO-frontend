@@ -94,6 +94,52 @@ export function teachingHours(
   return { sessions: rows.length, minutes, hours: Math.round((minutes / 60) * 100) / 100 };
 }
 
+// ── 이동(드래그)·리사이즈 → 충돌검사용 후보 + PATCH 페이로드 ──
+export type SchedulePatch = {
+  sessionDate?: string;
+  startTime?: string;
+  endTime?: string;
+  durationMinutes?: number;
+  roomId?: ID;
+  instructorId?: ID;
+};
+
+/** 드래그 이동: 날짜/시작시각(과 선택적으로 강의실/강사) 변경. 길이 유지. */
+export function moveCandidate(
+  s: ClassSession,
+  to: { sessionDate?: string; startTime?: string; roomId?: ID; instructorId?: ID },
+): ConflictCandidate {
+  return {
+    sessionDate: to.sessionDate ?? s.sessionDate,
+    startTime: to.startTime ?? s.startTime ?? '00:00',
+    durationMinutes: s.durationMinutes,
+    instructorId: to.instructorId ?? s.instructorId,
+    roomId: to.roomId ?? s.roomId,
+    ignoreSessionId: s.id,
+  };
+}
+
+/** 리사이즈: 시작/끝 핸들 드래그 → 새 시작·종료로 길이 재계산(분). 최소 길이 보장. */
+export function resizeCandidate(
+  s: ClassSession,
+  edge: { startTime?: string; endTime?: string },
+  minMinutes = 15,
+): ConflictCandidate {
+  const startTime = edge.startTime ?? s.startTime ?? '00:00';
+  const endTime = edge.endTime ?? s.endTime ?? addMinutes(startTime, s.durationMinutes);
+  const durationMinutes = Math.max(minMinutes, toMin(endTime) - toMin(startTime));
+  return { sessionDate: s.sessionDate, startTime, durationMinutes, instructorId: s.instructorId, roomId: s.roomId, ignoreSessionId: s.id };
+}
+
+/** 후보 → PATCH 페이로드. */
+export const candidateToPatch = (c: ConflictCandidate): SchedulePatch => ({
+  sessionDate: c.sessionDate,
+  startTime: c.startTime,
+  durationMinutes: c.durationMinutes,
+  roomId: c.roomId,
+  instructorId: c.instructorId,
+});
+
 /** 주(週) 시작(월요일) 기준 7일 날짜 배열. */
 export function weekDates(weekStartISO: string): string[] {
   const base = new Date(weekStartISO + 'T00:00:00Z');

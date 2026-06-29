@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ClassSession, AvailabilityBlock } from '@/types';
-import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours } from './schedule';
+import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate } from './schedule';
 
 const sess = (p: Partial<ClassSession>): ClassSession => ({
   id: 1, courseId: 10, instructorId: 1, roomId: 1,
@@ -82,6 +82,31 @@ describe('detectConflicts', () => {
       { sessions: [], roomCapacity: { 1: 6 }, enrolledCount: 8 },
     );
     expect(c.some((x) => x.type === 'room_capacity')).toBe(true);
+  });
+});
+
+describe('move/resize 후보 + 충돌', () => {
+  const base = sess({ id: 1, instructorId: 1, roomId: 1, sessionDate: '2026-06-29', startTime: '16:00', endTime: '17:30', durationMinutes: 90 });
+  const other = sess({ id: 2, instructorId: 1, roomId: 2, sessionDate: '2026-06-30', startTime: '16:00', endTime: '17:00', durationMinutes: 60 });
+
+  it('moveCandidate: 길이 유지하며 날짜/시각 이동', () => {
+    const c = moveCandidate(base, { sessionDate: '2026-06-30', startTime: '16:30' });
+    expect(c).toMatchObject({ sessionDate: '2026-06-30', startTime: '16:30', durationMinutes: 90, ignoreSessionId: 1 });
+  });
+
+  it('moveCandidate: 다른 수업과 강사 시간겹침이면 충돌', () => {
+    const c = moveCandidate(base, { sessionDate: '2026-06-30', startTime: '16:30' }); // 16:30-18:00, 강사1
+    expect(detectConflicts(c, { sessions: [other] }).some((x) => x.resource === 'instructor')).toBe(true);
+  });
+
+  it('resizeCandidate: 끝 핸들 → 길이 재계산', () => {
+    const c = resizeCandidate(base, { endTime: '18:00' });
+    expect(c.durationMinutes).toBe(120);
+  });
+
+  it('resizeCandidate: 최소 길이(15분) 보장', () => {
+    const c = resizeCandidate(base, { startTime: '16:00', endTime: '16:05' });
+    expect(c.durationMinutes).toBe(15);
   });
 });
 

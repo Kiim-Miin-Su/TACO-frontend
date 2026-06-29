@@ -13,9 +13,18 @@ import type {
   AvailabilityBlock,
   AvailabilityOwner,
   ScheduleRow,
+  Conflict,
 } from "@kms545487/contracts";
 
 export type ScheduleQuery = { from?: string; to?: string; instructorId?: number; roomId?: number };
+export type SchedulePatchBody = {
+  sessionDate?: string; startTime?: string; endTime?: string; durationMinutes?: number;
+  roomId?: number; instructorId?: number; courseId?: number; status?: string; topic?: string; force?: boolean;
+};
+export type ConflictCheckBody = {
+  sessionDate: string; startTime: string; endTime?: string; durationMinutes?: number;
+  instructorId?: number; roomId?: number; ignoreSessionId?: number;
+};
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -49,6 +58,11 @@ export const api = {
   schedule: {
     list: (q: ScheduleQuery = {}) =>
       http.get<ScheduleRow[]>("/schedule", { params: q }).then((r) => r.data),
+    // 이동·리사이즈·편집 → { row, conflicts }. 충돌 시 409(서버) → force로 재시도.
+    update: (id: number, body: SchedulePatchBody) =>
+      http.patch<{ row: ScheduleRow; conflicts: Conflict[] }>(`/schedule/${id}`, body).then((r) => r.data),
+    conflicts: (body: ConflictCheckBody) =>
+      http.post<Conflict[]>("/schedule/conflicts", body).then((r) => r.data),
   },
   rooms: {
     list: () => http.get<Room[]>("/rooms").then((r) => r.data),
