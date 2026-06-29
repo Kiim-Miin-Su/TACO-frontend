@@ -49,3 +49,12 @@ types/               # @kms545487/contracts 재노출(단일 소스)
 ## 자세한 개발 가이드
 
 폴더 규칙·새 기능 추가 방법은 [CONTRIBUTING.md](./CONTRIBUTING.md) 참고.
+
+## 변경 이력 — 캘린더 탭 통합 + Lantiv 추천 (2026-06-29)
+
+- **캘린더 일원화**: `/calendar` 단일 탭에 **월간·주간·일간(강의실)·표** 뷰 통합. `/timetable`·`/schedule`는 redirect, 사이드바 "주간 표" 제거. 주간 표(엑셀/CSV·시수)는 "표" 뷰로 흡수.
+- **학생 차원**: 색상/필터 기준에 학생 추가, 블록·표·상세에 학생명(`ScheduleRow.studentNames`).
+- **자원 레일**(`features/calendar/ResourceRail.tsx`): 강사·학생·강의실 → 클릭 시 개인 스케줄 필터.
+- **불가시간 밴드**: 선택 자원의 `unavailable` 블록을 그리드에 회색 사선으로 표시.
+- **가용·추천 드로어**(`features/calendar/AvailabilityPanel.tsx`): 가용/불가 CRUD + **학생 중심 추천**(맞는 수업·강사, 불가 강사는 주황 "조정 배정") + **강사∧학생 가용 슬롯 추천** → `POST /schedule` 배정.
+- 엔진(`lib/domain/schedule.ts`): `suggestPairSlots`·`recommendForStudent`·`ownerWindows` (+Vitest 6).

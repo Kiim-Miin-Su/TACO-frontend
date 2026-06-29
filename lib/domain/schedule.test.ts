@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import type { ClassSession, AvailabilityBlock } from '@/types';
-import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots } from './schedule';
+import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, ownerWindows } from './schedule';
 
-const sess = (p: Partial<ClassSession>): ClassSession => ({
+const ablock = (p: Partial<AvailabilityBlock>): AvailabilityBlock => ({
+  id: 1, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '09:00', endTime: '12:00', ...p,
+});
+
+const sess = (p: Partial<ClassSession> & { studentIds?: number[] }): ClassSession & { studentIds?: number[] } => ({
   id: 1, courseId: 10, instructorId: 1, roomId: 1,
   sessionDate: '2026-06-29', startTime: '16:00', endTime: '17:30',
   durationMinutes: 90, status: 'scheduled', ...p,
@@ -207,5 +211,97 @@ describe.each([10, 100, 1000])('스케일 N=%i 불변식', (n) => {
   });
   it('③ 시수 합 = N×30분', () => {
     expect(teachingHours(sessions).minutes).toBe(n * 30);
+  });
+});
+
+// 2026-06-29 = 월요일(weekday 1). weekStart로 사용.
+const MON = '2026-06-29';
+
+describe('suggestPairSlots (학생가용 ∧ 강사가용)', () => {
+  it('교집합 윈도우에서만 후보 생성', () => {
+    const blocks = [
+      ablock({ id: 1, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '09:00', endTime: '12:00' }),
+      ablock({ id: 2, ownerType: 'student', ownerId: 2, kind: 'available', weekday: 1, startTime: '10:00', endTime: '11:00' }),
+    ];
+    const out = suggestPairSlots(
+      { weekStart: MON, weekdays: [1], durationMinutes: 60, stepMin: 30, instructorId: 1, studentId: 2 },
+      { sessions: [], blocks },
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ date: MON, startTime: '10:00', endTime: '11:00' });
+  });
+
+  it('강사 불가시간(Block)이 교집합을 가리면 제외', () => {
+    const blocks = [
+      ablock({ id: 1, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '09:00', endTime: '12:00' }),
+      ablock({ id: 2, ownerType: 'student', ownerId: 2, kind: 'available', weekday: 1, startTime: '10:00', endTime: '11:00' }),
+      ablock({ id: 3, ownerType: 'instructor', ownerId: 1, kind: 'unavailable', weekday: 1, startTime: '10:00', endTime: '10:30' }),
+    ];
+    const out = suggestPairSlots(
+      { weekStart: MON, weekdays: [1], durationMinutes: 60, stepMin: 30, instructorId: 1, studentId: 2 },
+      { sessions: [], blocks },
+    );
+    expect(out).toHaveLength(0);
+  });
+
+  it('강사 점유(기존 수업)와 겹치면 제외', () => {
+    const blocks = [
+      ablock({ id: 1, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '09:00', endTime: '12:00' }),
+      ablock({ id: 2, ownerType: 'student', ownerId: 2, kind: 'available', weekday: 1, startTime: '10:00', endTime: '12:00' }),
+    ];
+    const sessions = [sess({ id: 9, instructorId: 1, sessionDate: MON, startTime: '10:00', endTime: '11:00' })];
+    const out = suggestPairSlots(
+      { weekStart: MON, weekdays: [1], durationMinutes: 60, stepMin: 30, instructorId: 1, studentId: 2 },
+      { sessions, blocks },
+    );
+    expect(out.map((s) => s.startTime)).toEqual(['11:00']); // 10:00·10:30은 점유와 겹쳐 제외
+  });
+});
+
+describe('recommendForStudent (학생 중심 수업·강사 추천)', () => {
+  const courses = [
+    { id: 11, name: 'AP Calculus BC', instructorId: 2 },
+    { id: 10, name: 'SAT Reading 정규', instructorId: 1 },
+  ];
+
+  it('강사가 비면 instructorFree=true, 점유면 false (둘 다 후보로 노출)', () => {
+    const blocks = [ablock({ id: 1, ownerType: 'student', ownerId: 2, kind: 'available', weekday: 1, startTime: '16:00', endTime: '18:00' })];
+    // 강사1(코스10)은 16:00-17:30 점유 → 조정 필요. 강사2(코스11)는 가용.
+    const sessions = [sess({ id: 9, instructorId: 1, courseId: 10, sessionDate: MON, startTime: '16:00', endTime: '17:30', studentIds: [1, 4] })];
+    const out = recommendForStudent(
+      { weekStart: MON, weekdays: [1], durationMinutes: 90, stepMin: 30, studentId: 2, courses },
+      { sessions, blocks },
+    );
+    expect(out.length).toBeGreaterThan(0);
+    expect(out[0].instructorFree).toBe(true); // 가용 강사가 먼저
+    const free = out.find((r) => r.courseId === 11);
+    const adjust = out.find((r) => r.courseId === 10 && r.startTime === '16:00');
+    expect(free?.instructorFree).toBe(true);
+    expect(adjust?.instructorFree).toBe(false);
+    expect(adjust?.reason).toBeTruthy();
+  });
+
+  it('학생 본인 점유 시간은 후보에서 제외', () => {
+    // 학생 가용 16:00-20:00, 본인 수업 16:00-17:30 → 17:30 이전 시작은 모두 제외, 17:30부터 가능.
+    const blocks = [ablock({ id: 1, ownerType: 'student', ownerId: 2, kind: 'available', weekday: 1, startTime: '16:00', endTime: '20:00' })];
+    const sessions = [sess({ id: 9, instructorId: 2, courseId: 11, sessionDate: MON, startTime: '16:00', endTime: '17:30', studentIds: [2] })];
+    const out = recommendForStudent(
+      { weekStart: MON, weekdays: [1], durationMinutes: 90, stepMin: 30, studentId: 2, courses },
+      { sessions, blocks },
+    );
+    expect(out.every((r) => r.startTime >= '17:30')).toBe(true); // 본인 점유(–17:30)와 겹치는 시작 제외
+    expect(out.some((r) => r.startTime === '17:30')).toBe(true);
+  });
+});
+
+describe('ownerWindows', () => {
+  it('특정 owner/kind 블록만 요일별 분 구간으로', () => {
+    const blocks = [
+      ablock({ id: 1, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '09:00', endTime: '12:00' }),
+      ablock({ id: 2, ownerType: 'instructor', ownerId: 1, kind: 'unavailable', weekday: 1, startTime: '12:00', endTime: '13:00' }),
+      ablock({ id: 3, ownerType: 'student', ownerId: 2, kind: 'available', weekday: 1, startTime: '10:00', endTime: '11:00' }),
+    ];
+    const w = ownerWindows(blocks, 'instructor', 1, 'available');
+    expect(w).toEqual([{ weekday: 1, start: 540, end: 720 }]);
   });
 });

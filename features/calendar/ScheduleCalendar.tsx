@@ -1,9 +1,13 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import type { ScheduleRow, Room, Conflict } from "@/types";
+import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, AvailabilityBlock } from "@/types";
 import { api, type SchedulePatchBody } from "@/lib/api";
-import { weekDates, weekdayOf, layoutLanes } from "@/lib/domain/schedule";
+import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin as toMinD } from "@/lib/domain/schedule";
+import { exportScheduleXlsx, exportScheduleCsv } from "@/lib/export";
+import { ResourceRail } from "./ResourceRail";
+import { AvailabilityPanel } from "./AvailabilityPanel";
+import { TableView } from "./TableView";
 
 // ── 그리드 상수 ──
 const START_H = 9, END_H = 21, HOUR_H = 46, SNAP = 15;
@@ -31,8 +35,8 @@ const hashColor = (s: string) => PALETTE[[...s].reduce((a, c) => a + c.charCodeA
 const startMinOf = (r: ScheduleRow) => toMin(r.startTime ?? "09:00");
 const endMinOf = (r: ScheduleRow) => (r.endTime ? toMin(r.endTime) : startMinOf(r) + r.durationMinutes);
 
-type View = "month" | "week" | "day";
-type ColorBy = "subject" | "instructor" | "room";
+type View = "month" | "week" | "day" | "table";
+type ColorBy = "subject" | "instructor" | "room" | "student";
 type Resizing = { id: number; edge: "top" | "bottom"; startClientY: number; origStart: number; origEnd: number };
 type Pending = { row: ScheduleRow; patch: SchedulePatchBody; label: string };
 
@@ -46,12 +50,19 @@ export function ScheduleCalendar() {
   const [preview, setPreview] = useState<{ id: number; start: number; end: number } | null>(null);
   const [msg, setMsg] = useState("");
 
+  // ── 자원(레일)·가용 ──
+  const [resources, setResources] = useState<ScheduleResources | null>(null);
+  const [selected, setSelected] = useState<ScheduleResource | null>(null);
+  const [selBlocks, setSelBlocks] = useState<AvailabilityBlock[]>([]); // 선택 자원의 불가시간(밴드 표시)
+  const [showAvail, setShowAvail] = useState(false);
+
   // ── 필터(Lantiv형) ──
   const [q, setQ] = useState("");
   const [colorBy, setColorBy] = useState<ColorBy>("subject");
   const [fInstructors, setFInstructors] = useState<Set<number>>(new Set());
   const [fSubjects, setFSubjects] = useState<Set<string>>(new Set());
   const [fRooms, setFRooms] = useState<Set<number>>(new Set());
+  const [fStudents, setFStudents] = useState<Set<number>>(new Set());
   const [fStatuses, setFStatuses] = useState<Set<string>>(new Set());
 
   const grabOffsetRef = useRef(0);
@@ -61,33 +72,50 @@ export function ScheduleCalendar() {
   const weekStart = useMemo(() => mondayOf(anchor), [anchor]);
   const dates = useMemo(() => weekDates(weekStart), [weekStart]);
 
-  // 조회 기간(월/주/일)
+  // 조회 기간(월/주/일/표). 표는 주간 기준.
   const range = useMemo(() => {
     if (view === "month") {
       const ym = anchor.slice(0, 7);
       const last = new Date(Date.UTC(Number(anchor.slice(0, 4)), Number(anchor.slice(5, 7)), 0)).getUTCDate();
       return { from: `${ym}-01`, to: `${ym}-${pad(last)}` };
     }
-    if (view === "week") return { from: dates[0], to: dates[6] };
-    return { from: anchor, to: anchor };
+    if (view === "day") return { from: anchor, to: anchor };
+    return { from: dates[0], to: dates[6] };
   }, [view, anchor, dates]);
+
+  // 선택 자원 → 서버 필터(개인 스케줄)
+  const selQuery = useMemo(() => {
+    if (!selected) return {};
+    if (selected.type === "instructor") return { instructorId: selected.id };
+    if (selected.type === "room") return { roomId: selected.id };
+    return { studentId: selected.id };
+  }, [selected]);
 
   const load = useCallback(async () => {
     try {
       const [sc, rm] = await Promise.all([
-        api.schedule.list(range),
+        api.schedule.list({ ...range, ...selQuery }),
         rooms.length ? Promise.resolve(rooms) : api.rooms.list(),
       ]);
       setRows(sc);
       if (!rooms.length) setRooms(rm);
       setMsg("");
     } catch {
-      setMsg("백엔드 연결 실패 — docker로 API(:3001)를 실행했는지 확인하세요.");
+      setMsg("백엔드 연결 실패 — API(:3001)가 실행 중인지 확인하세요.");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to]);
+  }, [range.from, range.to, selQuery]);
 
   useEffect(() => { load(); }, [load]);
+
+  // 자원 목록(1회)
+  useEffect(() => { api.schedule.resources().then(setResources).catch(() => {}); }, []);
+
+  // 선택 자원의 불가시간(밴드)
+  useEffect(() => {
+    if (!selected) { setSelBlocks([]); return; }
+    api.availability.list(selected.type, selected.id).then(setSelBlocks).catch(() => setSelBlocks([]));
+  }, [selected]);
 
   // ── 필터 옵션(현재 조회 데이터에서 추출) ──
   const instructorOpts = useMemo(() => {
@@ -100,13 +128,25 @@ export function ScheduleCalendar() {
     rows.forEach((r) => { if (r.subjectName) m.set(r.subjectName, r.color ?? hashColor(r.subjectName)); });
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [rows]);
+  const studentOpts = useMemo(() => {
+    const m = new Map<number, string>();
+    rows.forEach((r) => (r.studentIds ?? []).forEach((id, i) => m.set(id, r.studentNames?.[i] ?? `학생 ${id}`)));
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [rows]);
 
   // ── 색/라벨 ──
   const colorOf = useCallback((r: ScheduleRow) =>
     colorBy === "subject" ? r.color ?? hashColor(r.subjectName)
       : colorBy === "instructor" ? PALETTE[r.instructorId % PALETTE.length]
-        : rooms.find((x) => x.id === r.roomId)?.color ?? hashColor(r.roomName ?? "—"),
+        : colorBy === "room" ? rooms.find((x) => x.id === r.roomId)?.color ?? hashColor(r.roomName ?? "—")
+          : hashColor((r.studentNames ?? []).join(",") || "—"),
     [colorBy, rooms]);
+  const labelOf = useCallback((r: ScheduleRow) =>
+    colorBy === "subject" ? r.courseName
+      : colorBy === "instructor" ? r.instructorName
+        : colorBy === "room" ? r.roomName ?? "—"
+          : (r.studentNames ?? []).join(", ") || r.courseName,
+    [colorBy]);
 
   // ── 필터 적용 ──
   const filtered = useMemo(() => {
@@ -115,26 +155,42 @@ export function ScheduleCalendar() {
       if (fInstructors.size && !fInstructors.has(r.instructorId)) return false;
       if (fSubjects.size && !fSubjects.has(r.subjectName)) return false;
       if (fRooms.size && !(r.roomId != null && fRooms.has(r.roomId))) return false;
+      if (fStudents.size && !(r.studentIds ?? []).some((id) => fStudents.has(id))) return false;
       if (fStatuses.size && !fStatuses.has(r.status)) return false;
       if (needle) {
-        const hay = `${r.courseName} ${r.subjectName} ${r.instructorName} ${r.roomName ?? ""} ${r.topic ?? ""}`.toLowerCase();
+        const hay = `${r.courseName} ${r.subjectName} ${r.instructorName} ${r.roomName ?? ""} ${(r.studentNames ?? []).join(" ")} ${r.topic ?? ""}`.toLowerCase();
         if (!hay.includes(needle)) return false;
       }
       return true;
     });
-  }, [rows, q, fInstructors, fSubjects, fRooms, fStatuses]);
+  }, [rows, q, fInstructors, fSubjects, fRooms, fStudents, fStatuses]);
 
-  const anyFilter = q.trim() !== "" || fInstructors.size || fSubjects.size || fRooms.size || fStatuses.size;
-  const clearFilters = () => { setQ(""); setFInstructors(new Set()); setFSubjects(new Set()); setFRooms(new Set()); setFStatuses(new Set()); };
+  const anyFilter = q.trim() !== "" || fInstructors.size || fSubjects.size || fRooms.size || fStudents.size || fStatuses.size;
+  const clearFilters = () => { setQ(""); setFInstructors(new Set()); setFSubjects(new Set()); setFRooms(new Set()); setFStudents(new Set()); setFStatuses(new Set()); };
 
-  // 컬럼: week=날짜, day=강의실
+  const hrs = teachingHours(filtered);
+
+  // 컬럼: week/table=날짜, day=강의실
   const columns: { key: string; label: string; sub?: string; date: string; roomId?: number }[] =
-    view === "week"
-      ? dates.map((d) => ({ key: d, label: WD[weekdayOf(d)], sub: d.slice(5), date: d }))
-      : rooms.map((r) => ({ key: `r${r.id}`, label: r.name, date: anchor, roomId: r.id }));
+    view === "day"
+      ? rooms.map((r) => ({ key: `r${r.id}`, label: r.name, date: anchor, roomId: r.id }))
+      : dates.map((d) => ({ key: d, label: WD[weekdayOf(d)], sub: d.slice(5), date: d }));
 
   const rowsOfColumn = (c: { date: string; roomId?: number }) =>
     filtered.filter((r) => r.sessionDate === c.date && (c.roomId == null || r.roomId === c.roomId));
+
+  // 불가시간(Block) 밴드 — 선택 자원 기준. week=요일 매칭 모든 컬럼, day=룸이면 해당 컬럼만/그 외 전체.
+  const bandsOfColumn = (c: { date: string; roomId?: number }): { top: number; h: number }[] => {
+    if (!selBlocks.length) return [];
+    const wd = weekdayOf(c.date);
+    return selBlocks
+      .filter((b) => b.kind === "unavailable" && b.weekday === wd &&
+        (selected?.type !== "room" || c.roomId == null || c.roomId === selected.id))
+      .map((b) => {
+        const s = clampMin(toMinD(b.startTime)), e = clampMin(toMinD(b.endTime));
+        return { top: ((s - GRID_MIN) / 60) * HOUR_H, h: Math.max(6, ((e - s) / 60) * HOUR_H) };
+      });
+  };
 
   // ── PATCH 적용(충돌 시 확인 후 force) ──
   async function applyPatch(id: number, patch: SchedulePatchBody) {
@@ -158,7 +214,6 @@ export function ScheduleCalendar() {
     }
   }
 
-  // 변경 요청 → 반복(시리즈)이면 범위 먼저 묻고, 아니면 바로 적용
   function requestChange(r: ScheduleRow, patch: SchedulePatchBody, label: string) {
     if (r.seriesId != null) setPending({ row: r, patch, label });
     else applyPatch(r.id, patch);
@@ -224,26 +279,28 @@ export function ScheduleCalendar() {
     if (view === "month") {
       const d = new Date(Date.UTC(Number(anchor.slice(0, 4)), Number(anchor.slice(5, 7)) - 1 + dir, 1));
       setAnchor(d.toISOString().slice(0, 10));
-    } else setAnchor(addDaysISO(anchor, (view === "week" ? 7 : 1) * dir));
+    } else setAnchor(addDaysISO(anchor, (view === "day" ? 1 : 7) * dir));
   };
   const periodLabel = view === "month" ? `${anchor.slice(0, 4)}년 ${Number(anchor.slice(5, 7))}월`
-    : view === "week" ? `${dates[0]} ~ ${dates[6]}` : anchor;
+    : view === "day" ? anchor : `${dates[0]} ~ ${dates[6]}`;
+  const isGrid = view === "week" || view === "day";
 
   return (
-    <div className="p-6 max-w-[1280px] mx-auto space-y-4">
-      <div className="flex items-end justify-between flex-wrap gap-3">
+    <div className="p-6 max-w-[1360px] mx-auto">
+      <div className="flex items-end justify-between flex-wrap gap-3 mb-4">
         <div>
           <h1 className="text-[20px] font-semibold">스케줄 캘린더</h1>
           <p className="text-[13px] text-fg-muted mt-0.5">
-            드래그로 이동 · 끝을 끌어 시간 조절 · 클릭하면 상세 · {periodLabel}
-            <span className="text-fg-subtle"> · {filtered.length}건{anyFilter ? ` / 전체 ${rows.length}` : ""}</span>
+            드래그 이동 · 끝을 끌어 시간 조절 · 클릭 상세 · {periodLabel}
+            <span className="text-fg-subtle"> · {filtered.length}건{anyFilter ? ` / 전체 ${rows.length}` : ""} · 시수 {hrs.hours}h</span>
+            {selected && <span className="text-accent"> · {selected.name} 개인 스케줄</span>}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex rounded-md overflow-hidden border" style={{ borderColor: "var(--color-line)" }}>
-            {(["month", "week", "day"] as View[]).map((v) => (
+            {(["month", "week", "day", "table"] as View[]).map((v) => (
               <button key={v} className={`btn btn-sm rounded-none border-0 ${view === v ? "badge-accent" : ""}`} onClick={() => setView(v)}>
-                {v === "month" ? "월간" : v === "week" ? "주간" : "일간(강의실)"}
+                {v === "month" ? "월간" : v === "week" ? "주간" : v === "day" ? "일간(강의실)" : "표"}
               </button>
             ))}
           </div>
@@ -253,101 +310,137 @@ export function ScheduleCalendar() {
           {view === "day" && (
             <input type="date" className="input h-7 w-36" value={anchor} onChange={(e) => setAnchor(e.target.value)} />
           )}
+          {view === "table" && (
+            <>
+              <button className="btn btn-sm btn-primary" disabled={!filtered.length}
+                onClick={() => exportScheduleXlsx(filtered, `timetable_${dates[0]}.xlsx`)}>엑셀</button>
+              <button className="btn btn-sm" disabled={!filtered.length}
+                onClick={() => exportScheduleCsv(filtered, `timetable_${dates[0]}.csv`)}>CSV</button>
+            </>
+          )}
+          {selected && <button className="btn btn-sm" onClick={() => setShowAvail(true)}>가용 · 추천</button>}
         </div>
       </div>
 
-      {/* ── 필터 바(Lantiv형: 검색 + 라벨 토글 + 색상기준) ── */}
-      <div className="card card-pad space-y-2.5">
-        <div className="flex items-center gap-2 flex-wrap">
-          <input className="input h-8 w-56" placeholder="검색 (수업·강사·강의실·주제)" value={q} onChange={(e) => setQ(e.target.value)} />
-          <label className="flex items-center gap-1.5 text-[12px] text-fg-muted">색상
-            <select className="input h-8 w-24" value={colorBy} onChange={(e) => setColorBy(e.target.value as ColorBy)}>
-              <option value="subject">과목</option>
-              <option value="instructor">강사</option>
-              <option value="room">강의실</option>
-            </select>
-          </label>
-          {anyFilter ? <button className="btn btn-sm" onClick={clearFilters}>필터 초기화</button> : null}
-        </div>
-        <ChipRow label="강사" items={instructorOpts.map(([id, name]) => ({ key: id, label: name, on: fInstructors.has(id) }))}
-          onToggle={(k) => setFInstructors(toggle(fInstructors, k as number))} />
-        <ChipRow label="과목" items={subjectOpts.map(([name, color]) => ({ key: name, label: name, color, on: fSubjects.has(name) }))}
-          onToggle={(k) => setFSubjects(toggle(fSubjects, k as string))} />
-        <ChipRow label="강의실" items={rooms.map((r) => ({ key: r.id, label: r.name, color: r.color, on: fRooms.has(r.id) }))}
-          onToggle={(k) => setFRooms(toggle(fRooms, k as number))} />
-        <ChipRow label="상태" items={Object.keys(STATUS_LABEL).map((s) => ({ key: s, label: STATUS_LABEL[s], on: fStatuses.has(s) }))}
-          onToggle={(k) => setFStatuses(toggle(fStatuses, k as string))} />
-      </div>
+      <div className="flex gap-4 items-start">
+        {/* 좌측 자원 레일 */}
+        <ResourceRail resources={resources} selected={selected} onSelect={setSelected} />
 
-      {msg && <div className="text-[12px] text-danger">{msg}</div>}
-
-      {view === "month" ? (
-        <MonthGrid anchor={anchor} rows={filtered} colorOf={colorOf}
-          onPick={(r) => setEditing(r)} onPickDay={(d) => { setAnchor(d); setView("day"); }} />
-      ) : (
-        <div className="card overflow-x-auto">
-          <div className="flex min-w-[760px]">
-            {/* 시간 거터 */}
-            <div className="shrink-0" style={{ width: 56 }}>
-              <div style={{ height: 34 }} />
-              {Array.from({ length: END_H - START_H }, (_, i) => (
-                <div key={i} className="text-[11px] text-fg-subtle mono text-right pr-2" style={{ height: HOUR_H }}>
-                  {pad(START_H + i)}:00
-                </div>
-              ))}
+        {/* 본문 */}
+        <div className="flex-1 min-w-0 space-y-4">
+          {/* ── 필터 바(검색 + 라벨 토글 + 색상기준) ── */}
+          <div className="card card-pad space-y-2.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <input className="input h-8 w-56" placeholder="검색 (수업·강사·강의실·학생·주제)" value={q} onChange={(e) => setQ(e.target.value)} />
+              <label className="flex items-center gap-1.5 text-[12px] text-fg-muted">색상
+                <select className="input h-8 w-24" value={colorBy} onChange={(e) => setColorBy(e.target.value as ColorBy)}>
+                  <option value="subject">과목</option>
+                  <option value="instructor">강사</option>
+                  <option value="room">강의실</option>
+                  <option value="student">학생</option>
+                </select>
+              </label>
+              {selBlocks.some((b) => b.kind === "unavailable") && (
+                <span className="text-[12px] text-fg-subtle inline-flex items-center gap-1.5">
+                  <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "var(--color-neutral-subtle)", border: "1px solid var(--color-line)" }} /> 불가시간
+                </span>
+              )}
+              {anyFilter ? <button className="btn btn-sm" onClick={clearFilters}>필터 초기화</button> : null}
             </div>
-            {/* 컬럼들 */}
-            <div className="flex-1 flex">
-              {columns.map((c) => {
-                const colRows = rowsOfColumn(c);
-                const sOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.start : startMinOf(r));
-                const eOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.end : endMinOf(r));
-                const lanes = layoutLanes(colRows.map((r) => ({ id: r.id, start: sOf(r), end: eOf(r) })));
-                return (
-                  <div key={c.key} className="flex-1 border-l" style={{ borderColor: "var(--color-line-muted)", minWidth: 90 }}>
-                    <div className="text-center text-[12px] font-semibold py-1.5 border-b truncate" style={{ height: 34, borderColor: "var(--color-line)" }}>
-                      {c.label}{c.sub && <span className="text-fg-subtle font-normal"> {c.sub}</span>}
-                    </div>
-                    <div
-                      className="relative"
-                      style={{
-                        height: GRID_H,
-                        backgroundImage: `repeating-linear-gradient(var(--color-line-muted) 0 1px, transparent 1px ${HOUR_H}px)`,
-                      }}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => onColumnDrop(e, c)}
-                    >
-                      {colRows.map((r) => {
-                        const s = sOf(r), en = eOf(r);
-                        const top = ((s - GRID_MIN) / 60) * HOUR_H;
-                        const h = Math.max(18, ((en - s) / 60) * HOUR_H);
-                        const ln = lanes[r.id] ?? { lane: 0, lanes: 1 };
-                        const wPct = 100 / ln.lanes;
-                        return (
-                          <div
-                            key={r.id}
-                            draggable
-                            onDragStart={(e) => onDragStart(e, r)}
-                            onClick={() => setEditing(r)}
-                            title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}`}
-                            className="absolute rounded text-white text-[10px] leading-tight px-1 py-0.5 cursor-grab overflow-hidden ring-1 ring-white/30"
-                            style={{ top, height: h, left: `calc(${ln.lane * wPct}% + 1px)`, width: `calc(${wPct}% - 2px)`, background: colorOf(r) }}
-                          >
-                            <div onPointerDown={(e) => onResizeDown(e, r, "top")} className="absolute left-0 right-0 top-0 h-1.5 cursor-ns-resize" />
-                            <div className="font-semibold truncate">{fromMin(s)} {r.courseName}</div>
-                            <div className="opacity-90 truncate">{view === "week" ? (r.roomName ?? "") : r.instructorName}</div>
-                            <div onPointerDown={(e) => onResizeDown(e, r, "bottom")} className="absolute left-0 right-0 bottom-0 h-1.5 cursor-ns-resize" />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <ChipRow label="강사" items={instructorOpts.map(([id, name]) => ({ key: id, label: name, on: fInstructors.has(id) }))}
+              onToggle={(k) => setFInstructors(toggle(fInstructors, k as number))} />
+            <ChipRow label="과목" items={subjectOpts.map(([name, color]) => ({ key: name, label: name, color, on: fSubjects.has(name) }))}
+              onToggle={(k) => setFSubjects(toggle(fSubjects, k as string))} />
+            <ChipRow label="학생" items={studentOpts.map(([id, name]) => ({ key: id, label: name, on: fStudents.has(id) }))}
+              onToggle={(k) => setFStudents(toggle(fStudents, k as number))} />
+            <ChipRow label="강의실" items={rooms.map((r) => ({ key: r.id, label: r.name, color: r.color, on: fRooms.has(r.id) }))}
+              onToggle={(k) => setFRooms(toggle(fRooms, k as number))} />
+            <ChipRow label="상태" items={Object.keys(STATUS_LABEL).map((s) => ({ key: s, label: STATUS_LABEL[s], on: fStatuses.has(s) }))}
+              onToggle={(k) => setFStatuses(toggle(fStatuses, k as string))} />
           </div>
+
+          {msg && <div className="text-[12px] text-danger">{msg}</div>}
+
+          {view === "month" ? (
+            <MonthGrid anchor={anchor} rows={filtered} colorOf={colorOf}
+              onPick={(r) => setEditing(r)} onPickDay={(d) => { setAnchor(d); setView("day"); }} />
+          ) : view === "table" ? (
+            <TableView dates={dates} rows={filtered} blocks={selBlocks} colorOf={colorOf} labelOf={labelOf} onPick={(r) => setEditing(r)} />
+          ) : (
+            <div className="card overflow-x-auto">
+              <div className="flex min-w-[760px]">
+                {/* 시간 거터 */}
+                <div className="shrink-0" style={{ width: 56 }}>
+                  <div style={{ height: 34 }} />
+                  {Array.from({ length: END_H - START_H }, (_, i) => (
+                    <div key={i} className="text-[11px] text-fg-subtle mono text-right pr-2" style={{ height: HOUR_H }}>
+                      {pad(START_H + i)}:00
+                    </div>
+                  ))}
+                </div>
+                {/* 컬럼들 */}
+                <div className="flex-1 flex">
+                  {columns.map((c) => {
+                    const colRows = rowsOfColumn(c);
+                    const sOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.start : startMinOf(r));
+                    const eOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.end : endMinOf(r));
+                    const lanes = layoutLanes(colRows.map((r) => ({ id: r.id, start: sOf(r), end: eOf(r) })));
+                    const bands = bandsOfColumn(c);
+                    return (
+                      <div key={c.key} className="flex-1 border-l" style={{ borderColor: "var(--color-line-muted)", minWidth: 90 }}>
+                        <div className="text-center text-[12px] font-semibold py-1.5 border-b truncate" style={{ height: 34, borderColor: "var(--color-line)" }}>
+                          {c.label}{c.sub && <span className="text-fg-subtle font-normal"> {c.sub}</span>}
+                        </div>
+                        <div
+                          className="relative"
+                          style={{
+                            height: GRID_H,
+                            backgroundImage: `repeating-linear-gradient(var(--color-line-muted) 0 1px, transparent 1px ${HOUR_H}px)`,
+                          }}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => onColumnDrop(e, c)}
+                        >
+                          {/* 불가시간 밴드 */}
+                          {bands.map((b, i) => (
+                            <div key={`b${i}`} className="absolute left-0 right-0 pointer-events-none"
+                              style={{ top: b.top, height: b.h, background: "repeating-linear-gradient(45deg, rgba(110,118,129,.18) 0 6px, rgba(110,118,129,.30) 6px 12px)" }} />
+                          ))}
+                          {colRows.map((r) => {
+                            const s = sOf(r), en = eOf(r);
+                            const top = ((s - GRID_MIN) / 60) * HOUR_H;
+                            const h = Math.max(18, ((en - s) / 60) * HOUR_H);
+                            const ln = lanes[r.id] ?? { lane: 0, lanes: 1 };
+                            const wPct = 100 / ln.lanes;
+                            return (
+                              <div
+                                key={r.id}
+                                draggable
+                                onDragStart={(e) => onDragStart(e, r)}
+                                onClick={() => setEditing(r)}
+                                title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${r.studentNames?.length ? " · " + r.studentNames.join(", ") : ""}`}
+                                className="absolute rounded text-white text-[10px] leading-tight px-1 py-0.5 cursor-grab overflow-hidden ring-1 ring-white/30"
+                                style={{ top, height: h, left: `calc(${ln.lane * wPct}% + 1px)`, width: `calc(${wPct}% - 2px)`, background: colorOf(r) }}
+                              >
+                                <div onPointerDown={(e) => onResizeDown(e, r, "top")} className="absolute left-0 right-0 top-0 h-1.5 cursor-ns-resize" />
+                                <div className="font-semibold truncate">{fromMin(s)} {labelOf(r)}</div>
+                                <div className="opacity-90 truncate">{view === "week" ? (r.roomName ?? "") : r.instructorName}</div>
+                                <div onPointerDown={(e) => onResizeDown(e, r, "bottom")} className="absolute left-0 right-0 bottom-0 h-1.5 cursor-ns-resize" />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+          {isGrid && selected?.type === "instructor" && (
+            <p className="text-[12px] text-fg-subtle">개인 스케줄: {selected.name} · {filtered.length}개 수업 · 시수 {hrs.hours}h</p>
+          )}
         </div>
-      )}
+      </div>
 
       {editing && (
         <DetailModal
@@ -364,6 +457,17 @@ export function ScheduleCalendar() {
           label={pending.label}
           onCancel={() => { setPending(null); load(); }}
           onPick={(scope) => { const p = pending; setPending(null); applyPatch(p.row.id, { ...p.patch, scope }); }}
+        />
+      )}
+
+      {showAvail && selected && resources && (
+        <AvailabilityPanel
+          selected={selected}
+          resources={resources}
+          weekStart={weekStart}
+          sessions={rows}
+          onClose={() => setShowAvail(false)}
+          onChanged={() => { load(); if (selected) api.availability.list(selected.type, selected.id).then(setSelBlocks).catch(() => {}); }}
         />
       )}
     </div>
@@ -479,7 +583,7 @@ function DetailModal({ row, rooms, colorOf, onClose, onSave }: {
           <span className="inline-block w-3 h-3 rounded-sm mt-1.5 shrink-0" style={{ background: colorOf(row) }} />
           <div className="flex-1">
             <div className="font-semibold">{row.courseName}</div>
-            <div className="text-fg-subtle text-[12px]">{row.subjectName} · {row.instructorName}</div>
+            <div className="text-fg-subtle text-[12px]">{row.subjectName} · {row.instructorName}{row.studentNames?.length ? ` · ${row.studentNames.join(", ")}` : ""}</div>
           </div>
           {isSeries && <span className="badge badge-accent">반복</span>}
         </div>
@@ -490,6 +594,7 @@ function DetailModal({ row, rooms, colorOf, onClose, onSave }: {
               <Dt>날짜</Dt><dd>{row.sessionDate} ({WD[weekdayOf(row.sessionDate)]})</dd>
               <Dt>시간</Dt><dd className="mono">{row.startTime ?? "-"} – {row.endTime ?? "-"} ({row.durationMinutes}분)</dd>
               <Dt>강의실</Dt><dd>{row.roomName ?? "미지정"}</dd>
+              <Dt>학생</Dt><dd>{row.studentNames?.length ? row.studentNames.join(", ") : "—"}</dd>
               <Dt>상태</Dt><dd>{STATUS_LABEL[row.status] ?? row.status}</dd>
               {row.topic && (<><Dt>주제</Dt><dd>{row.topic}</dd></>)}
             </dl>

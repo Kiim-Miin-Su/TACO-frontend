@@ -202,6 +202,175 @@ export function suggestSlots(input: SuggestInput, ctx: SuggestCtx): SlotCandidat
 }
 const fromMinLocal = (mm: number) => `${String(Math.floor(mm / 60)).padStart(2, '0')}:${String(mm % 60).padStart(2, '0')}`;
 
+// ── 가용 교집합 추천(Lantiv #7): 학생가용 ∧ 강사가용 − 불가 − 점유 → 주별 후보 ──
+// 요일별 분 구간(가용 윈도우).
+export type DayWindow = { weekday: number; start: number; end: number };
+
+/** owner의 특정 kind 블록 → 요일별 분 구간 목록. */
+export function ownerWindows(
+  blocks: AvailabilityBlock[],
+  ownerType: AvailabilityBlock['ownerType'],
+  ownerId: ID,
+  kind: AvailabilityBlock['kind'],
+): DayWindow[] {
+  return blocks
+    .filter((b) => b.ownerType === ownerType && b.ownerId === ownerId && b.kind === kind)
+    .map((b) => ({ weekday: b.weekday, start: toMin(b.startTime), end: toMin(b.endTime) }));
+}
+
+/** 한 요일에 대한 두 가용 윈도우 집합의 교집합. 한쪽이 비면(=가용 제약 없음) 다른 쪽을 그대로(없으면 full). */
+function dayIntersect(a: DayWindow[], b: DayWindow[], wd: number, full: [number, number]): [number, number][] {
+  const av = a.filter((w) => w.weekday === wd).map((w) => [w.start, w.end] as [number, number]);
+  const bv = b.filter((w) => w.weekday === wd).map((w) => [w.start, w.end] as [number, number]);
+  const A = av.length ? av : [full];
+  const B = bv.length ? bv : [full];
+  const out: [number, number][] = [];
+  for (const [as, ae] of A) for (const [bs, be] of B) {
+    const s = Math.max(as, bs, full[0]); const e = Math.min(ae, be, full[1]);
+    if (s < e) out.push([s, e]);
+  }
+  return out.sort((x, y) => x[0] - y[0]);
+}
+
+export type PairSuggestInput = {
+  weekStart: string; // 월요일 ISO
+  weekdays?: number[]; // 기본 월~금
+  workStart?: string; // 기본 09:00
+  workEnd?: string; // 기본 21:00
+  durationMinutes: number;
+  stepMin?: number; // 기본 30
+  instructorId: ID;
+  studentId?: ID; // 선택(없으면 강사 가용만)
+  roomId?: ID; // 선택(강의실 점유·불가도 제외)
+};
+export type PairSuggestCtx = {
+  sessions: ClassSession[]; // 점유(기존 수업)
+  blocks: AvailabilityBlock[]; // 가용/불가 전체(소유자 무관)
+  limit?: number;
+};
+
+/** 학생·강사(+강의실) 가용 교집합에서 불가/점유를 제외한 주별 배정 후보. */
+export function suggestPairSlots(input: PairSuggestInput, ctx: PairSuggestCtx): SlotCandidate[] {
+  const wds = input.weekdays ?? [1, 2, 3, 4, 5];
+  const step = input.stepMin ?? 30;
+  const full: [number, number] = [toMin(input.workStart ?? '09:00'), toMin(input.workEnd ?? '21:00')];
+  const dur = input.durationMinutes;
+  const limit = ctx.limit ?? 24;
+  const instAvail = ownerWindows(ctx.blocks, 'instructor', input.instructorId, 'available');
+  const studAvail = input.studentId != null ? ownerWindows(ctx.blocks, 'student', input.studentId, 'available') : [];
+
+  const blockedBy = (wd: number, s: number, e: number): boolean =>
+    ctx.blocks.some((b) => {
+      if (b.kind !== 'unavailable' || b.weekday !== wd) return false;
+      const owns = (b.ownerType === 'instructor' && b.ownerId === input.instructorId) ||
+        (b.ownerType === 'student' && b.ownerId === input.studentId) ||
+        (b.ownerType === 'room' && b.ownerId === input.roomId);
+      return owns && s < toMin(b.endTime) && toMin(b.startTime) < e;
+    });
+  const busy = (date: string, s: number, e: number): boolean =>
+    ctx.sessions.some((ss) => {
+      if (ss.sessionDate !== date || !ss.startTime) return false;
+      const sameRes = ss.instructorId === input.instructorId || (input.roomId != null && ss.roomId === input.roomId);
+      if (!sameRes) return false;
+      const se = ss.endTime ? toMin(ss.endTime) : toMin(ss.startTime) + ss.durationMinutes;
+      return s < se && toMin(ss.startTime) < e;
+    });
+
+  const out: SlotCandidate[] = [];
+  for (const date of weekDates(input.weekStart)) {
+    const wd = weekdayOf(date);
+    if (!wds.includes(wd)) continue;
+    for (const [ws, we] of dayIntersect(instAvail, studAvail, wd, full)) {
+      for (let s = ws; s + dur <= we; s += step) {
+        if (blockedBy(wd, s, s + dur) || busy(date, s, s + dur)) continue;
+        out.push({ date, weekday: wd, startTime: fromMinLocal(s), endTime: fromMinLocal(s + dur) });
+        if (out.length >= limit) return out;
+      }
+    }
+  }
+  return out;
+}
+
+// ── 학생 중심 추천(Lantiv): 학생 스케줄에 맞는 수업·강사 추천 ──
+// 학생 가용 − 학생 불가 − 학생 점유 안에서 후보 시간을 만들고,
+// 각 코스(=강사)에 대해 강사가 그 시간에 가용한지(instructorFree) 표시.
+// 불가능한 강사도 후보로 노출하되 색을 달리해 사용자가 "조정"으로 선택할 수 있게 한다.
+export type StudentRecoCourse = { id: ID; name: string; instructorId: ID; instructorName?: string; color?: string };
+export type StudentRecoInput = {
+  weekStart: string;
+  weekdays?: number[];
+  workStart?: string;
+  workEnd?: string;
+  durationMinutes: number;
+  stepMin?: number;
+  studentId: ID;
+  courses: StudentRecoCourse[];
+  roomId?: ID;
+};
+export type StudentReco = SlotCandidate & {
+  courseId: ID; courseName: string; instructorId: ID; instructorName?: string; color?: string;
+  instructorFree: boolean; reason?: string; // instructorFree=false 사유(불가/충돌)
+};
+export type StudentRecoCtx = {
+  sessions: (ClassSession & { studentIds?: ID[] })[];
+  blocks: AvailabilityBlock[];
+  limit?: number;
+};
+
+export function recommendForStudent(input: StudentRecoInput, ctx: StudentRecoCtx): StudentReco[] {
+  const wds = input.weekdays ?? [1, 2, 3, 4, 5];
+  const step = input.stepMin ?? 30;
+  const full: [number, number] = [toMin(input.workStart ?? '09:00'), toMin(input.workEnd ?? '21:00')];
+  const dur = input.durationMinutes;
+  const limit = ctx.limit ?? 30;
+  const studAvail = ownerWindows(ctx.blocks, 'student', input.studentId, 'available');
+
+  const overlapsBlock = (ownerType: AvailabilityBlock['ownerType'], ownerId: ID, wd: number, s: number, e: number) =>
+    ctx.blocks.some((b) => b.kind === 'unavailable' && b.ownerType === ownerType && b.ownerId === ownerId &&
+      b.weekday === wd && s < toMin(b.endTime) && toMin(b.startTime) < e);
+  const studentBusy = (date: string, s: number, e: number) =>
+    ctx.sessions.some((ss) => ss.sessionDate === date && ss.startTime && (ss.studentIds ?? []).includes(input.studentId) &&
+      s < (ss.endTime ? toMin(ss.endTime) : toMin(ss.startTime) + ss.durationMinutes) && toMin(ss.startTime) < e);
+  const instructorBusy = (instructorId: ID, date: string, s: number, e: number) =>
+    ctx.sessions.some((ss) => ss.sessionDate === date && ss.startTime && ss.instructorId === instructorId &&
+      s < (ss.endTime ? toMin(ss.endTime) : toMin(ss.startTime) + ss.durationMinutes) && toMin(ss.startTime) < e);
+  const instAvailOf = (instructorId: ID) => ownerWindows(ctx.blocks, 'instructor', instructorId, 'available');
+  const withinAvail = (wins: DayWindow[], wd: number, s: number, e: number) => {
+    const day = wins.filter((w) => w.weekday === wd);
+    if (!day.length) return true; // 가용 정의 없음 = 제약 없음
+    return day.some((w) => w.start <= s && e <= w.end);
+  };
+
+  const out: StudentReco[] = [];
+  for (const date of weekDates(input.weekStart)) {
+    const wd = weekdayOf(date);
+    if (!wds.includes(wd)) continue;
+    // 학생 가용 윈도우(없으면 full)
+    const dayWins = studAvail.filter((w) => w.weekday === wd).map((w) => [Math.max(w.start, full[0]), Math.min(w.end, full[1])] as [number, number]);
+    const windows = dayWins.length ? dayWins : [full];
+    for (const [ws, we] of windows) {
+      for (let s = ws; s + dur <= we; s += step) {
+        const e = s + dur;
+        if (overlapsBlock('student', input.studentId, wd, s, e) || studentBusy(date, s, e)) continue;
+        for (const c of input.courses) {
+          const free = !instructorBusy(c.instructorId, date, s, e) &&
+            !overlapsBlock('instructor', c.instructorId, wd, s, e) &&
+            withinAvail(instAvailOf(c.instructorId), wd, s, e) &&
+            (input.roomId == null || (!overlapsBlock('room', input.roomId, wd, s, e)));
+          out.push({
+            date, weekday: wd, startTime: fromMinLocal(s), endTime: fromMinLocal(e),
+            courseId: c.id, courseName: c.name, instructorId: c.instructorId, instructorName: c.instructorName, color: c.color,
+            instructorFree: free, reason: free ? undefined : '강사 시간 조정 필요',
+          });
+        }
+      }
+    }
+  }
+  // 가용 강사 우선 → 날짜/시간 순. 제한.
+  out.sort((a, b) => Number(b.instructorFree) - Number(a.instructorFree) || (a.date + a.startTime).localeCompare(b.date + b.startTime));
+  return out.slice(0, limit);
+}
+
 // ── 겹치는 일정 나란히 배치(구글 캘린더식 레인) ──
 // 같은 컬럼(요일/강의실)에서 시간이 겹치는 이벤트를 열로 나눠 lane/lanes 부여.
 export type LaneItem = { id: number; start: number; end: number };

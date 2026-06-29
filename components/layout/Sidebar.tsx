@@ -23,7 +23,6 @@ const groups: { title: string; items: Item[] }[] = [
     items: [
       { label: "대시보드", icon: IconHome, href: "/" },
       { label: "캘린더", icon: IconCalendar, href: "/calendar", badge: "NEW" },
-      { label: "주간 표", icon: IconCalendar, href: "/timetable" },
       { label: "상담", icon: IconChat, href: "/counsel" },
       { label: "학생 · 부모", icon: IconUsers, href: "/students" },
       { label: "수업 (강사)", icon: IconBook, href: "/sessions" },
