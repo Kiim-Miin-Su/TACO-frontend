@@ -5,10 +5,13 @@ import { Badge, SectionCard, MonthCalendar } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
 import { won } from '@/lib/format';
 import { categoryLabel, categoryTone, approvalLabel, approvalTone } from './labels';
+import { ReasonModal } from '@/components/ReasonModal';
 
 export function ExpensesView() {
   const expenses = useTacoStore((s) => s.expenses);
+  const rejectReasons = useTacoStore((s) => s.expenseRejectReasons);
   const [view, setView] = useState<'list' | 'calendar'>('list');
+  const [viewReason, setViewReason] = useState<number | null>(null);
 
   const total = expenses.reduce((a, e) => a + e.amount, 0);
 
@@ -49,7 +52,12 @@ export function ExpensesView() {
                   <td><Badge tone={categoryTone[e.category]}>{categoryLabel[e.category]}</Badge></td>
                   <td className="text-fg-muted">{e.vendor ?? '—'}</td>
                   <td className="text-right mono">{won(e.amount)}</td>
-                  <td><Badge tone={approvalTone[e.status]}>{approvalLabel[e.status]}</Badge></td>
+                  <td>
+                    <Badge tone={approvalTone[e.status]}>{approvalLabel[e.status]}</Badge>
+                    {e.status === 'rejected' && (
+                      <button className="block text-[11px] text-danger mt-0.5 hover:underline" onClick={() => setViewReason(e.id)}>반려 사유 보기</button>
+                    )}
+                  </td>
                   <td className="text-right mono text-fg-muted">{e.spentAt}</td>
                   <td className="text-right"><Link href={`/expenses/${e.id}`} className="btn btn-sm">상세</Link></td>
                 </tr>
@@ -75,6 +83,10 @@ export function ExpensesView() {
               ))
           }
         />
+      )}
+
+      {viewReason != null && (
+        <ReasonModal mode="view" title="지출 반려 사유" initial={rejectReasons[viewReason] ?? ''} onClose={() => setViewReason(null)} />
       )}
     </div>
   );

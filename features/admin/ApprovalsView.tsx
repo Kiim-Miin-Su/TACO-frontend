@@ -8,6 +8,7 @@ import { AdminHeader } from './AdminShell';
 import { categoryLabel } from '@/features/expenses/labels';
 import { api, type PendingAccount } from '@/lib/api';
 import { getToken } from '@/lib/auth';
+import { ReasonModal } from '@/components/ReasonModal';
 import type { AccountRole } from '@/types';
 
 const ROLE_OPTS: AccountRole[] = ['instructor', 'manager', 'admin', 'super_admin'];
@@ -76,6 +77,7 @@ export function ApprovalsView() {
   const isSuper = store.currentRole === 'super_admin';
   const instructorName = (id: number) => store.instructors.find((i) => i.id === id)?.name ?? '—';
 
+  const [expenseReject, setExpenseReject] = useState<number | null>(null);
   const pendingExpenses = store.expenses.filter((e) => e.status === 'requested');
   const pendingPayouts = store.instructorPayouts.filter((p) => p.status === 'pending');
   // 작성완료(submitted)·미승인 리포트 — 승인 시 시수 적격으로 편입
@@ -144,7 +146,7 @@ export function ApprovalsView() {
                   <td className="mono text-fg-muted">{e.spentAt}</td>
                   <td className="text-right whitespace-nowrap">
                     <button className="btn btn-sm btn-primary mr-1.5" onClick={() => store.approveExpense(e.id)}>승인</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => store.rejectExpense(e.id)}>반려</button>
+                    <button className="btn btn-sm btn-danger" onClick={() => setExpenseReject(e.id)}>반려</button>
                   </td>
                 </tr>
               ))}
@@ -175,6 +177,15 @@ export function ApprovalsView() {
         )}
       </SectionCard>
       <p className="text-[12px] text-fg-subtle">승인 시 지출은 즉시 출금 반영, 강사 페이는 승인 후 강사페이 탭에서 지급 처리합니다.</p>
+
+      {expenseReject != null && (
+        <ReasonModal
+          mode="input"
+          title="지출 반려"
+          onClose={() => setExpenseReject(null)}
+          onSubmit={(reason) => { store.rejectExpense(expenseReject, reason); setExpenseReject(null); }}
+        />
+      )}
     </div>
   );
 }

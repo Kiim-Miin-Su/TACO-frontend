@@ -102,7 +102,8 @@ type TacoState = {
   updatePayment: (id: number, patch: Partial<Payment>) => void;
   addExpense: (input: CreateExpenseInput) => Expense; // status=requested (승인 대기)
   approveExpense: (id: number) => void; // super_admin
-  rejectExpense: (id: number) => void; // super_admin
+  rejectExpense: (id: number, reason?: string) => void; // super_admin (사유 보존)
+  expenseRejectReasons: Record<number, string>; // 지출 반려 사유(Expense 계약 외 보관)
   addInstructorPayout: (input: CreatePayoutInput) => InstructorPayout; // status=pending(요청)
   approvePayout: (id: number) => void; // super_admin → confirmed
   markPayoutPaid: (id: number) => void; // confirmed → paid (출금)
@@ -145,6 +146,7 @@ export const useTacoStore = create<TacoState>((set) => ({
   payments: [...seed.payments],
   transactions: [...seed.transactions],
   expenses: [...seed.expenses],
+  expenseRejectReasons: {},
   instructorPayouts: [...seed.instructorPayouts],
   counselForms: [...seed.counselForms],
   counselRounds: [...seed.counselRounds],
@@ -470,9 +472,10 @@ export const useTacoStore = create<TacoState>((set) => ({
       };
     }),
 
-  rejectExpense: (id) =>
+  rejectExpense: (id, reason) =>
     set((s) => ({
       expenses: s.expenses.map((e) => (e.id === id ? { ...e, status: 'rejected' } : e)),
+      expenseRejectReasons: { ...s.expenseRejectReasons, [id]: reason ?? '사유 미기재' },
     })),
 
   // 강사 페이: 시수×시급으로 산정해 요청 생성 (status=pending)

@@ -5,6 +5,7 @@ import { useTacoStore } from '@/lib/store';
 import { isAdmin } from '@/lib/roles';
 import { won } from '@/lib/format';
 import { api, type MeasureResult, type PayoutRow, type PayoutRowStatus, type PayoutLine } from '@/lib/api';
+import { ReasonModal } from '@/components/ReasonModal';
 
 const statusLabel: Record<PayoutRowStatus, string> = {
   pending: '승인대기', confirmed: '승인됨', paid: '지급완료', rejected: '반려',
@@ -123,10 +124,8 @@ export function PayoutsView() {
     const reason = window.prompt('수정 사유(선택)', p.adjustReason ?? '') ?? undefined;
     act(() => api.payouts.adjust(p.id, amount, reason));
   };
-  const reject = (p: PayoutRow) => {
-    const reason = window.prompt('반려 사유', p.rejectedReason ?? '') ?? undefined;
-    act(() => api.payouts.reject(p.id, reason));
-  };
+  // 반려 사유 모달(입력/보기)
+  const [reasonModal, setReasonModal] = useState<{ mode: 'input' | 'view'; payout: PayoutRow } | null>(null);
 
   if (conn === 'offline') {
     return (
@@ -268,8 +267,10 @@ export function PayoutsView() {
                 </td>
                 <td>
                   <Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge>
-                  {p.status === 'rejected' && p.rejectedReason && (
-                    <div className="text-[11px] text-fg-subtle mt-0.5">{p.rejectedReason}</div>
+                  {p.status === 'rejected' && (
+                    <button className="block text-[11px] text-danger mt-0.5 hover:underline" onClick={() => setReasonModal({ mode: 'view', payout: p })}>
+                      반려 사유 보기
+                    </button>
                   )}
                 </td>
                 <td className="text-right">
@@ -286,7 +287,7 @@ export function PayoutsView() {
                       {(p.status === 'pending' || p.status === 'confirmed') && (
                         <>
                           <button className="btn btn-sm" disabled={busy} onClick={() => adjust(p)}>급여수정</button>
-                          <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => reject(p)}>반려</button>
+                          <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => setReasonModal({ mode: 'input', payout: p })}>반려</button>
                         </>
                       )}
                       {(p.status === 'paid' || p.status === 'rejected') && (
@@ -339,6 +340,16 @@ export function PayoutsView() {
         지급 시 출금 거래 원장과 대시보드에 반영됩니다.
         {!admin && ' 승인·지급·수정은 관리자(대표) 역할에서 가능합니다.'}
       </p>
+
+      {reasonModal && (
+        <ReasonModal
+          mode={reasonModal.mode}
+          title={reasonModal.mode === 'input' ? `강사 페이 반려 — ${instructorName(reasonModal.payout.instructorId)}` : '반려 사유'}
+          initial={reasonModal.payout.rejectedReason ?? ''}
+          onClose={() => setReasonModal(null)}
+          onSubmit={(reason) => { const p = reasonModal.payout; setReasonModal(null); act(() => api.payouts.reject(p.id, reason)); }}
+        />
+      )}
     </div>
   );
 }

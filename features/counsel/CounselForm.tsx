@@ -21,12 +21,15 @@ type FormState = {
   studentIntention: string;
   weakness: string;
   academyExpectation: string;
+  dateUndecided: boolean; // 다음 상담일 미정 여부
+  nextContactAt: string;  // 다음 상담일(미정 아니면)
 };
 
 const empty: FormState = {
   author: 'parent', applicantName: '', applicantPhone: '', interestSubjectId: '',
   interestCourseId: '', desiredStartTime: '', learningAtmosphere: '', studentIntention: '',
   weakness: '', academyExpectation: '',
+  dateUndecided: true, nextContactAt: '',
 };
 
 // 작성 주체 → source 매핑 (학생/학부모 = 내부폼, 상담실장 = 수기접수)
@@ -34,6 +37,7 @@ const sourceOf = (a: Author): CounselSource => (a === 'staff' ? 'manual' : 'inte
 
 export function CounselForm() {
   const addCounselForm = useTacoStore((s) => s.addCounselForm);
+  const updateCounselForm = useTacoStore((s) => s.updateCounselForm);
   const subjects = useTacoStore((s) => s.subjects);
   const courses = useTacoStore((s) => s.courses);
   const [f, setF] = useState<FormState>(empty);
@@ -42,7 +46,7 @@ export function CounselForm() {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!f.applicantName.trim()) return;
-    addCounselForm({
+    const created = addCounselForm({
       applicantName: f.applicantName.trim(),
       applicantPhone: f.applicantPhone.trim() || undefined,
       source: sourceOf(f.author),
@@ -55,6 +59,8 @@ export function CounselForm() {
       weakness: f.weakness.trim() || undefined,
       academyExpectation: f.academyExpectation.trim() || undefined,
     });
+    // 다음 상담일: 미정이면 비워두고(알림 대상), 정했으면 설정.
+    if (!f.dateUndecided && f.nextContactAt) updateCounselForm(created.id, { nextContactAt: f.nextContactAt });
     setF({ ...empty, author: f.author });
   };
 
@@ -109,6 +115,17 @@ export function CounselForm() {
           </select>
         </Field>
         <Field label="약점"><input className="input" value={f.weakness} onChange={(e) => set({ weakness: e.target.value })} placeholder="독해 속도 등" /></Field>
+
+        <Field label="다음 상담일">
+          <div className="flex items-center gap-2">
+            <input type="date" className="input flex-1" value={f.nextContactAt} disabled={f.dateUndecided}
+              onChange={(e) => set({ nextContactAt: e.target.value })} />
+            <label className="flex items-center gap-1 text-[12px] text-fg-muted whitespace-nowrap">
+              <input type="checkbox" checked={f.dateUndecided} onChange={(e) => set({ dateUndecided: e.target.checked, nextContactAt: e.target.checked ? '' : f.nextContactAt })} />
+              미정
+            </label>
+          </div>
+        </Field>
       </div>
 
       <Field label="학원에 바라는 점">

@@ -15,7 +15,7 @@ import type {
 } from '@/types';
 import type { Tone } from '@/components/ui';
 import { isAdmin } from '@/lib/roles';
-import { pendingReportSessions, type ReportSlice } from '@/lib/reports';
+import { pendingReportSessions, pendingReportCount, type ReportSlice } from '@/lib/reports';
 
 // 회계상 분리: pay(강사 페이=출금) / expense(지출=출금) / payment(결제·수납=입금) / counsel(상담) / report·class(강사)
 export type TaskGroup = 'pay' | 'expense' | 'payment' | 'counsel' | 'report' | 'class';
@@ -57,7 +57,6 @@ const won = (n: number) => '₩' + Math.round(n).toString().replace(/\B(?=(\d{3}
 function adminTasks(s: StoreSlice): TaskItem[] {
   const iname = (id: number) => s.instructors.find((i) => i.id === id)?.name ?? `강사 ${id}`;
   const sname = (id?: number) => s.students.find((x) => x.id === id)?.name ?? '학생';
-  const cname = (id: number) => s.courses.find((c) => c.id === id)?.name ?? '수업';
   const today = todayISO();
   const out: TaskItem[] = [];
 
@@ -80,23 +79,7 @@ function adminTasks(s: StoreSlice): TaskItem[] {
     }
   }
 
-  // ── 결제·수납(입금) — 재결제 임박 / 미수 ──
-  for (const e of s.enrollments) {
-    if (e.status !== 'active') continue;
-    const done = e.completedSessions ?? 0;
-    if (done <= 0) continue;
-    const intoCycle = done % PAYMENT_CYCLE_SESSIONS;
-    const remaining = intoCycle === 0 ? 0 : PAYMENT_CYCLE_SESSIONS - intoCycle;
-    if (remaining <= 1) {
-      out.push({
-        id: `pay-renew-${e.id}`, group: 'payment', tone: 'attention', counts: true,
-        title: `재결제 임박 — ${sname(e.studentId)} · ${cname(e.courseId)}`,
-        detail: `${done}/${PAYMENT_CYCLE_SESSIONS}회 진행${remaining === 0 ? ' · 재결제 시점 도달' : ` · ${remaining}회 남음`} · 재결제 안내 필요`,
-        href: '/payments',
-      });
-    }
-  }
-  // 미수: 진행했으나 결제 안 됨(청구 pending). 기한 경과면 연체.
+  // ── 결제·수납(입금) — 미수 건만(청구 pending). 기한 경과면 연체. ──
   for (const pm of s.payments) {
     if (pm.status !== 'pending') continue;
     const overdue = !!pm.dueAt && pm.dueAt < today;
@@ -184,27 +167,32 @@ export function buildTasks(s: StoreSlice, role: AccountRole = s.currentRole): { 
   return { items, count };
 }
 
-// 이벤트(TaskItem.href) → 사이드바 최상위 탭으로 매핑. 권한(role)에 따라 buildTasks가 이미
-// 역할에 맞는 이벤트만 만들므로, 그 결과를 탭별 배지 개수로 집계하면 "권한에 맞는 알림"이 된다.
-function taskHrefToNav(href: string): string {
-  if (href.startsWith('/admin')) return '/admin';
-  if (href.startsWith('/reports')) return '/reports';
-  if (href.startsWith('/payouts')) return '/payouts';
-  if (href.startsWith('/payments')) return '/payments';
-  if (href.startsWith('/counsel')) return '/counsel';
-  if (href.startsWith('/expenses')) return '/expenses';
-  if (href.startsWith('/sessions')) return '/sessions';
-  return href;
-}
-
-// 사이드바 탭별 빨간 배지 개수(역할 반영). { '/reports': 2, '/payouts': 1, ... }
+// 사이드바 탭별 빨간 배지 개수 — 탭마다 명시적 기준(권한 반영). 0인 탭은 키 없음.
+// 기준(요구사항): 상담=다음 만남 날짜 미정 / 결제=미수 / 강사페이=미정산 / 지출=승인대기 /
+//   수업보고서=미작성(작성해야 할 세션당 1) / 관리자=미승인(승인 대기) 모두.
 export function navBadges(s: StoreSlice, role: AccountRole = s.currentRole): Record<string, number> {
-  const { items } = buildTasks(s, role);
-  const map: Record<string, number> = {};
-  for (const t of items) {
-    if (!t.counts) continue;
-    const nav = taskHrefToNav(t.href);
-    map[nav] = (map[nav] ?? 0) + 1;
+  const out: Record<string, number> = {};
+  const put = (nav: string, n: number) => { if (n > 0) out[nav] = n; };
+
+  // 강사: 본인 수업보고서 미작성만
+  if (role === 'instructor') {
+    put('/reports', pendingReportCount(s, DEMO_INSTRUCTOR_ID));
+    return out;
   }
-  return map;
+  if (!isAdmin(role)) return out; // 학생/학부모 등은 알림 없음
+
+  // 관리자/매니저
+  put('/counsel', s.counselForms.filter((c) => c.status === 'requested' && !c.nextContactAt).length); // 다음 만남 날짜 미정
+  put('/payments', s.payments.filter((p) => p.status === 'pending').length); // 미수(미납)
+  put('/payouts', s.instructorPayouts.filter((p) => p.status === 'pending' || p.status === 'confirmed').length); // 미정산(미지급)
+  put('/expenses', s.expenses.filter((e) => e.status === 'requested').length); // 승인 대기
+  put('/reports', pendingReportCount(s)); // 미작성(전체)
+
+  // 관리자(승인 센터): 미승인 모두 = 보고서 승인대기 + 지출 승인대기 + 강사페이 승인대기 (가입 승인은 백엔드 계정)
+  const reportApprove = s.sessionReports.filter((r) => (r.status === 'submitted' || r.approvalStatus === 'submitted') && r.approvalStatus !== 'approved').length;
+  const expenseApprove = s.expenses.filter((e) => e.status === 'requested').length;
+  const payoutApprove = s.instructorPayouts.filter((p) => p.status === 'pending').length;
+  put('/admin', reportApprove + expenseApprove + payoutApprove);
+
+  return out;
 }

@@ -21,14 +21,14 @@ import {
   IconCalendar,
 } from "../ui/icons";
 
-type Item = { label: string; icon: React.FC<any>; href: string; badge?: string };
+type Item = { label: string; icon: React.FC<any>; href: string };
 
 const groups: { title: string; items: Item[] }[] = [
   {
     title: "운영",
     items: [
       { label: "대시보드", icon: IconHome, href: "/" },
-      { label: "캘린더", icon: IconCalendar, href: "/calendar", badge: "NEW" },
+      { label: "캘린더", icon: IconCalendar, href: "/calendar" },
       { label: "상담", icon: IconChat, href: "/counsel" },
       { label: "학생 · 부모", icon: IconUsers, href: "/students" },
       { label: "수업 (강사)", icon: IconBook, href: "/sessions" },
@@ -36,7 +36,7 @@ const groups: { title: string; items: Item[] }[] = [
   },
   {
     title: "입금",
-    items: [{ label: "결제 · 수납", icon: IconCard, href: "/payments", badge: "2" }],
+    items: [{ label: "결제 · 수납", icon: IconCard, href: "/payments" }],
   },
   {
     title: "출금",
@@ -138,8 +138,7 @@ export default function Sidebar() {
                 >
                   <Icon className="text-fg-subtle" />
                   {!collapsed && <span className="flex-1">{it.label}</span>}
-                  {!collapsed && it.badge && <span className="badge badge-accent">{it.badge}</span>}
-                  {/* 역할별 이벤트 빨간 배지(buildTasks → navBadges). 접힘 상태에선 점만. */}
+                  {/* 역할별 이벤트 빨간 배지(navBadges). 접힘 상태에선 점만. */}
                   {(badges[it.href] ?? 0) > 0 && (
                     <span
                       className={`grid place-items-center rounded-full text-[10px] font-bold text-white leading-none ${collapsed ? "absolute top-1 right-1 w-2 h-2" : "min-w-[16px] h-[16px] px-1"}`}
