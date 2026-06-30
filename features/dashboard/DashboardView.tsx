@@ -10,12 +10,35 @@ import {
   IconReceipt,
   type Tone,
 } from '@/components/ui';
+import Link from 'next/link';
 import { won, shortDate } from '@/lib/format';
 import { useTacoStore } from '@/lib/store';
 import { isCEO, isAdmin, roleLabel } from '@/lib/roles';
+import { buildTasks, type TaskItem } from '@/lib/tasks';
 import { BackendPanel } from '@/features/system/BackendPanel';
 import { RevenueCharts } from './RevenueCharts';
 import type { EnrollmentStatus } from '@/types';
+
+// To-do 항목 리스트 — 알림/대시보드 공용 표현. 항목 클릭 시 해당 화면으로.
+function TaskList({ items, empty }: { items: TaskItem[]; empty: string }) {
+  if (items.length === 0) return <div className="p-4 text-[13px] text-fg-subtle">{empty}</div>;
+  return (
+    <ul className="divide-y" style={{ borderColor: 'var(--color-line-muted)' }}>
+      {items.map((t) => (
+        <li key={t.id}>
+          <Link href={t.href} className="flex items-center gap-3 px-4 py-3 hover:bg-canvas-subtle">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: `var(--color-${t.tone === 'neutral' ? 'fg-subtle' : t.tone})` }} />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13px] font-medium text-fg truncate">{t.title}</span>
+              {t.detail && <span className="block text-[12px] text-fg-subtle truncate">{t.detail}</span>}
+            </span>
+            <span className="text-fg-subtle text-[13px]">›</span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 const statusTone: Record<EnrollmentStatus, Tone> = {
   active: 'success',
@@ -35,6 +58,37 @@ export function DashboardView() {
   const role = store.currentRole;
   const ceo = isCEO(role); // 경영 지표(총액·미수금·원장)
   const admin = isAdmin(role); // 운영 데이터
+  const { items: tasks, count: taskCount } = buildTasks(store, role);
+
+  // 강사: 내 수업·리포트 중심 To-do 대시보드
+  if (role === 'instructor') {
+    const reportTasks = tasks.filter((t) => t.group === 'report');
+    const classTasks = tasks.filter((t) => t.group === 'class');
+    return (
+      <div className="p-6 max-w-[860px] mx-auto space-y-6">
+        <div className="flex items-end justify-between">
+          <div>
+            <h1 className="text-[20px] font-semibold">내 할 일</h1>
+            <p className="text-[13px] text-fg-muted mt-0.5">오늘·다가오는 수업과 작성할 리포트를 확인하세요.</p>
+          </div>
+          <div className="flex items-center gap-2 text-[12px] text-fg-subtle">
+            <span className="dot" style={{ backgroundColor: 'var(--color-success)' }} />
+            {roleLabel[role]} · 대기 {taskCount}건
+          </div>
+        </div>
+
+        <SectionCard title={`리포트 미작성 (${reportTasks.length})`} action={<a href="/reports" className="btn btn-sm">리포트 작성</a>}>
+          <TaskList items={reportTasks} empty="작성할 리포트가 없습니다. 진행한 수업의 리포트가 모두 제출되었습니다." />
+        </SectionCard>
+
+        <SectionCard title={`오늘 · 다가오는 수업 (${classTasks.length})`} action={<a href="/schedule" className="btn btn-sm">캘린더</a>}>
+          <TaskList items={classTasks} empty="예정된 수업이 없습니다." />
+        </SectionCard>
+
+        <p className="text-[12px] text-fg-subtle">진행한 수업은 <b>리포트를 작성·승인</b>받아야 시수로 측정되고 페이가 산정됩니다.</p>
+      </div>
+    );
+  }
 
   // 학생/학부모는 운영 대시보드 대신 본인 일정으로 안내
   if (!admin) {
@@ -78,6 +132,22 @@ export function DashboardView() {
           <span className="dot" style={{ backgroundColor: 'var(--color-success)' }} />
           {roleLabel[role]} · {ceo ? '경영 지표 열람' : '운영 화면'}
         </div>
+      </div>
+
+      {/* 관리자/매니저 할 일 — 페이 미지급·승인, 상담/등록 요청, 지출 승인 */}
+      <div className="mb-6">
+        <SectionCard
+          title={`할 일 · 처리 대기 (${taskCount})`}
+          action={
+            <span className="flex items-center gap-1.5 text-[11px] text-fg-subtle">
+              {tasks.filter((t) => t.group === 'pay').length > 0 && <span className="badge badge-attention">페이 {tasks.filter((t) => t.group === 'pay').length}</span>}
+              {tasks.filter((t) => t.group === 'counsel').length > 0 && <span className="badge badge-accent">상담 {tasks.filter((t) => t.group === 'counsel').length}</span>}
+              {tasks.filter((t) => t.group === 'expense').length > 0 && <span className="badge badge-attention">지출 {tasks.filter((t) => t.group === 'expense').length}</span>}
+            </span>
+          }
+        >
+          <TaskList items={tasks} empty="처리할 대기 건이 없습니다. 모든 승인·지급·요청이 완료되었습니다 🎉" />
+        </SectionCard>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

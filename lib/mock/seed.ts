@@ -71,6 +71,12 @@ export const classSessions: ClassSession[] = [
   { id: 1, courseId: 10, instructorId: 1, sessionDate: '2026-06-24', startTime: '16:00', durationMinutes: 90, status: 'held', topic: 'Reading: 추론(Inference) 문제 전략' },
   { id: 2, courseId: 11, instructorId: 2, sessionDate: '2026-06-23', startTime: '18:00', durationMinutes: 90, status: 'held', topic: '적분 응용 (부분적분)' },
   { id: 3, courseId: 10, instructorId: 1, sessionDate: '2026-06-26', startTime: '16:00', durationMinutes: 90, status: 'scheduled', topic: 'Vocabulary in context' },
+  // 진행됐지만 리포트 미작성(강사 To-do) — 시수가 잡히려면 리포트 작성·승인 필요
+  { id: 6, courseId: 12, instructorId: 1, sessionDate: '2026-06-29', startTime: '18:00', durationMinutes: 90, status: 'held', topic: 'TOEFL Writing 통합형' },
+  // 오늘 수업(강사 To-do)
+  { id: 7, courseId: 10, instructorId: 1, sessionDate: '2026-06-30', startTime: '16:00', durationMinutes: 90, status: 'scheduled', topic: 'Reading: 근거 문장 매칭' },
+  // 다가오는 수업
+  { id: 8, courseId: 12, instructorId: 1, sessionDate: '2026-07-01', startTime: '18:00', durationMinutes: 90, status: 'scheduled', topic: 'TOEFL Speaking Task 1-2' },
 ];
 
 // 수업1(코스10) 수강생: 학생 1,4 / 수업2(코스11) 수강생: 학생 2
@@ -119,6 +125,10 @@ export const expenses: Expense[] = [
 
 export const instructorPayouts: InstructorPayout[] = [
   { id: 1, instructorId: 1, periodStart: '2026-06-01', periodEnd: '2026-06-15', amount: 1850000, status: 'paid' },
+  // 승인 대기(관리자 To-do: 승인 필요)
+  { id: 2, instructorId: 2, periodStart: '2026-06-16', periodEnd: '2026-06-30', sessionCount: 8, totalMinutes: 720, amount: 1320000, status: 'pending' },
+  // 승인됨·지급 대기(관리자 To-do: 지급 필요)
+  { id: 3, instructorId: 1, periodStart: '2026-06-16', periodEnd: '2026-06-30', sessionCount: 7, totalMinutes: 660, amount: 1200000, status: 'confirmed' },
 ];
 
 // ── 상담 (counsel_form / counsel_rounds) ──

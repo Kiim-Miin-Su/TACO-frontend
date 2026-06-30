@@ -376,13 +376,22 @@ export function ScheduleCalendar() {
     }
   }
 
-  // 현재 뷰(캘린더/표)를 이미지로 저장
+  // 다운로드 파일명: {선택유저명+역할}_{YYMMDD}_{뷰}.ext  (예: 김민수강사_260630_weekly.png)
+  function downloadName(ext: string) {
+    const ROLE_SUFFIX: Record<string, string> = { instructor: "강사", student: "학생", room: "강의실" };
+    const who = selected ? `${selected.name}${ROLE_SUFFIX[selected.type] ?? ""}` : "전체스케줄";
+    const yymmdd = anchor.slice(2, 4) + anchor.slice(5, 7) + anchor.slice(8, 10);
+    const viewWord = view === "month" ? "monthly" : view === "week" ? "weekly" : view === "day" ? "daily" : "table";
+    const safe = (s: string) => s.replace(/[\\/:*?"<>|\s]+/g, ""); // 파일명 금지문자·공백 제거
+    return `${safe(who)}_${yymmdd}_${viewWord}.${ext}`;
+  }
+
+  // 현재 뷰(캘린더/표)를 이미지로 저장.
   async function saveImage(type: "png" | "jpeg") {
     if (!captureRef.current) return;
     setBusyImg(true);
     try {
-      const label = view === "month" ? anchor.slice(0, 7) : view === "day" ? anchor : `${dates[0]}_${dates[6]}`;
-      await exportNodeAsImage(captureRef.current, `schedule_${view}_${label}.${type === "jpeg" ? "jpg" : "png"}`, type);
+      await exportNodeAsImage(captureRef.current, downloadName(type === "jpeg" ? "jpg" : "png"), type);
     } catch {
       setMsg("이미지 내보내기 실패");
     } finally {
@@ -551,7 +560,7 @@ export function ScheduleCalendar() {
             <button
               className="btn btn-sm btn-primary"
               disabled={!filtered.length}
-              onClick={() => exportScheduleXlsx(filtered, `timetable_${dates[0]}.xlsx`)}
+              onClick={() => exportScheduleXlsx(filtered, downloadName("xlsx"))}
             >
               엑셀
             </button>
