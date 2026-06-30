@@ -1,13 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { isPublicRoute } from "@/lib/auth-routes";
 
 // 비로그인 강제 가드: token 쿠키가 없으면 /login으로 리다이렉트.
 // (데모 수준 — 존재 여부만 확인. 서명 검증은 백엔드 /auth/me 책임.)
-const PUBLIC = ["/login", "/signup", "/verify-email"];
-
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get("token")?.value;
-  const isPublic = PUBLIC.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  const isPublic = isPublicRoute(pathname);
 
   if (!token && !isPublic) {
     const url = req.nextUrl.clone();

@@ -4,22 +4,25 @@ import { useEffect } from "react";
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 import { currentClaims } from "@/lib/auth";
+import { isPublicRoute } from "@/lib/auth-routes";
 import { useTacoStore } from "@/lib/store";
 import type { AccountRole } from "@/types";
 
-// 로그인 페이지는 앱 크롬(사이드바/탑바) 없이 전체화면. 그 외에는 크롬 + 토큰→역할 동기화.
+// 공개(인증) 경로는 앱 크롬(사이드바/탑바) 없이 전체화면. 그 외에는 크롬 + 토큰→역할 동기화.
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const setCurrentRole = useTacoStore((s) => s.setCurrentRole);
+  const publicRoute = isPublicRoute(pathname);
 
-  // 토큰이 있으면 로그인된 역할을 앱 전역 currentRole에 반영(사이드바 신원·캘린더 권한 등).
+  // 로그인된 경우에만 역할을 앱 전역 currentRole에 반영(공개 경로에선 동기화하지 않음).
   useEffect(() => {
+    if (publicRoute) return;
     const claims = currentClaims();
     const role = claims?.roles?.[0];
     if (role) setCurrentRole(role as AccountRole);
-  }, [pathname, setCurrentRole]);
+  }, [pathname, publicRoute, setCurrentRole]);
 
-  if (pathname === "/login") return <>{children}</>;
+  if (publicRoute) return <>{children}</>;
 
   return (
     <div className="flex h-screen overflow-hidden">
