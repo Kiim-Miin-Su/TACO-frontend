@@ -7,8 +7,8 @@ import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin as toMinD } fro
 import { exportScheduleXlsx, exportNodeAsImage } from "@/lib/export";
 import { useTacoStore } from "@/lib/store";
 import { isAdmin } from "@/lib/roles";
-import { ResourceRail } from "./ResourceRail";
-import { ResourceFilterPanel } from "./ResourceFilterPanel";
+import { StudentMatchPanel } from "./StudentMatchPanel";
+import { ResourcePanel } from "./ResourcePanel";
 import { AvailabilityPanel } from "./AvailabilityPanel";
 import { TableView } from "./TableView";
 
@@ -80,7 +80,11 @@ export function ScheduleCalendar() {
 
   // 관리자(데모 역할) — 스케줄 직접 추가
   const role = useTacoStore((s) => s.currentRole);
-  const canManage = isAdmin(role);
+  const canManage = isAdmin(role); // 대표/매니저/관리자 — 모든 스케줄 추가
+  const isInstructor = role === "instructor"; // 강사 — 본인 스케줄만 추가
+  // 데모 본인 강사 식별(실제로는 JWT sub) — 사이드바와 동일하게 첫 강사를 '나'로 간주
+  const myInstructorId = isInstructor ? resources?.instructors[0]?.id : undefined;
+  const canAdd = canManage || (isInstructor && myInstructorId != null);
   const [creating, setCreating] = useState<{ date: string } | null>(null);
 
   // ── 필터(Lantiv형) ──
@@ -262,10 +266,11 @@ export function ScheduleCalendar() {
     else applyPatch(r.id, patch);
   }
 
-  // 관리자 세션 생성(추가). 충돌 시 확인 후 force.
+  // 세션 생성(추가). 강사는 본인(myInstructorId)으로 강제 — 권한 게이팅(데모; 실제는 백엔드 가드).
   async function createSession(body: ScheduleCreateBody) {
+    const safe: ScheduleCreateBody = isInstructor && myInstructorId != null ? { ...body, instructorId: myInstructorId } : body;
     try {
-      await api.schedule.create(body);
+      await api.schedule.create(safe);
       setCreating(null);
       await load();
     } catch (e) {
@@ -273,7 +278,7 @@ export function ScheduleCalendar() {
       if (err.response?.status === 409) {
         const cs = err.response.data?.conflicts ?? [];
         if (confirm(`충돌 ${cs.length}건. 그래도 추가할까요?`)) {
-          await api.schedule.create({ ...body, force: true });
+          await api.schedule.create({ ...safe, force: true });
           setCreating(null);
           await load();
         }
@@ -419,12 +424,12 @@ export function ScheduleCalendar() {
           {view === "day" && (
             <input type="date" className="input h-7 w-36" value={anchor} onChange={(e) => setAnchor(e.target.value)} />
           )}
-          {canManage && resources && (
+          {canAdd && resources && (
             <button
               className="btn btn-sm btn-primary"
               onClick={() => setCreating({ date: view === "day" ? anchor : (dates.find((d) => d === todayISO()) ?? dates[0]) })}
             >
-              + 스케줄 추가
+              + 스케줄 추가{isInstructor ? " (내 수업)" : ""}
             </button>
           )}
           {view === "table" && (
@@ -451,8 +456,16 @@ export function ScheduleCalendar() {
       </div>
 
       <div className="flex gap-4 items-start">
-        {/* 좌측 자원 레일 */}
-        <ResourceRail resources={resources} selected={selected} onSelect={setSelected} />
+        {/* 좌측: 학생 → 강사 추천(오른쪽에서 고른 학생 기준) */}
+        {resources && (
+          <StudentMatchPanel
+            resources={resources}
+            weekStart={weekStart}
+            sessions={rows}
+            selected={selected}
+            onAssign={() => setShowAvail(true)}
+          />
+        )}
 
         {/* 본문 */}
         <div className="flex-1 min-w-0 space-y-4">
@@ -489,7 +502,6 @@ export function ScheduleCalendar() {
                   필터 초기화
                 </button>
               ) : null}
-              <span className="text-[12px] text-fg-subtle ml-auto">자원별 필터는 오른쪽 패널 →</span>
             </div>
           </div>
 
@@ -521,7 +533,7 @@ export function ScheduleCalendar() {
                 <div className="flex" style={{ minWidth: GUTTER_W + columns.length * COL_MIN }}>
                   {/* 시간 거터 */}
                   <div className="shrink-0 sticky left-0 z-10 bg-canvas" style={{ width: GUTTER_W }}>
-                    <div className="border-b" style={{ height: HEADER_H, borderColor: "var(--color-line)" }} />
+                    <div style={{ height: HEADER_H }} />
                     <div className="relative" style={{ height: GRID_H }}>
                       {Array.from({ length: END_H - START_H + 1 }, (_, i) => (
                         <span
@@ -659,22 +671,8 @@ export function ScheduleCalendar() {
           )}
         </div>
 
-        {/* 우측 자원 필터 패널(검색·페이지네이션) */}
-        {resources && (
-          <ResourceFilterPanel
-            resources={resources}
-            fInstructors={fInstructors}
-            onToggleInstructor={(id) => setFInstructors(toggle(fInstructors, id))}
-            fStudents={fStudents}
-            onToggleStudent={(id) => setFStudents(toggle(fStudents, id))}
-            fRooms={fRooms}
-            onToggleRoom={(id) => setFRooms(toggle(fRooms, id))}
-            fSubjects={fSubjects}
-            onToggleSubject={(name) => setFSubjects(toggle(fSubjects, name))}
-            onClear={clearFilters}
-            anyFilter={!!anyFilter}
-          />
-        )}
+        {/* 우측 접이식: 유저별 스케줄(강사/학생/강의실 선택 → 개인 스케줄). 선택 학생은 좌측 추천의 기준. */}
+        {resources && <ResourcePanel resources={resources} selected={selected} onSelect={setSelected} />}
       </div>
 
       {editing && (
@@ -728,6 +726,7 @@ export function ScheduleCalendar() {
           resources={resources}
           rooms={rooms}
           defaultDate={creating.date}
+          lockInstructorId={isInstructor ? myInstructorId : undefined}
           onClose={() => setCreating(null)}
           onCreate={createSession}
         />
@@ -736,11 +735,6 @@ export function ScheduleCalendar() {
   );
 }
 
-function toggle<T>(set: Set<T>, key: T): Set<T> {
-  const next = new Set(set);
-  next.has(key) ? next.delete(key) : next.add(key);
-  return next;
-}
 
 // ── 월간 그리드 ──
 function MonthGrid({
@@ -1015,57 +1009,70 @@ function CreateModal({
   resources,
   rooms,
   defaultDate,
+  lockInstructorId,
   onClose,
   onCreate,
 }: {
   resources: ScheduleResources;
   rooms: Room[];
   defaultDate: string;
+  lockInstructorId?: number; // 강사 본인만 추가 가능할 때 — 본인 ID로 고정
   onClose: () => void;
   onCreate: (body: ScheduleCreateBody) => void;
 }) {
-  const [courseId, setCourseId] = useState<number>(resources.courses[0]?.id ?? 0);
+  // 강사 잠금 시 본인 코스만 노출
+  const myCourses = lockInstructorId != null ? resources.courses.filter((c) => c.instructorId === lockInstructorId) : resources.courses;
+  const [courseId, setCourseId] = useState<number>(myCourses[0]?.id ?? 0);
   const course = resources.courses.find((c) => c.id === courseId);
-  const [instructorId, setInstructorId] = useState<number | "">(course?.instructorId ?? "");
+  const [instructorId, setInstructorId] = useState<number | "">(lockInstructorId ?? course?.instructorId ?? "");
   const [roomId, setRoomId] = useState<number | "">("");
   const [date, setDate] = useState(defaultDate);
   const [start, setStart] = useState("16:00");
   const [end, setEnd] = useState("17:30");
+  const lockedInstructorName = lockInstructorId != null ? resources.instructors.find((i) => i.id === lockInstructorId)?.name : undefined;
 
-  // 코스 변경 시 기본 강사 동기화
+  // 코스 변경 시 기본 강사 동기화(잠금 시엔 고정)
   function pickCourse(id: number) {
     setCourseId(id);
-    const c = resources.courses.find((x) => x.id === id);
-    if (c) setInstructorId(c.instructorId);
+    if (lockInstructorId == null) {
+      const c = resources.courses.find((x) => x.id === id);
+      if (c) setInstructorId(c.instructorId);
+    }
   }
   const valid = courseId && date && start < end;
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center" style={{ background: "rgba(0,0,0,.35)" }} onClick={onClose}>
       <div className="card card-pad w-[440px] space-y-3" onClick={(e) => e.stopPropagation()}>
-        <div className="font-semibold">스케줄 추가</div>
+        <div className="font-semibold">스케줄 추가{lockedInstructorName ? ` · ${lockedInstructorName} (내 수업)` : ""}</div>
         <Field label="코스">
           <select className="input" value={courseId} onChange={(e) => pickCourse(Number(e.target.value))}>
-            {resources.courses.map((c) => (
+            {myCourses.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name} · {c.subjectName}
               </option>
             ))}
           </select>
         </Field>
-        <Field label="강사">
-          <select
-            className="input"
-            value={instructorId}
-            onChange={(e) => setInstructorId(e.target.value ? Number(e.target.value) : "")}
-          >
-            {resources.instructors.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
-        </Field>
+        {lockInstructorId == null ? (
+          <Field label="강사">
+            <select
+              className="input"
+              value={instructorId}
+              onChange={(e) => setInstructorId(e.target.value ? Number(e.target.value) : "")}
+            >
+              {resources.instructors.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : (
+          <Field label="강사">
+            <input className="input" value={lockedInstructorName ?? "본인"} disabled readOnly />
+          </Field>
+        )}
         <Field label="강의실">
           <select className="input" value={roomId} onChange={(e) => setRoomId(e.target.value ? Number(e.target.value) : "")}>
             <option value="">미지정</option>
@@ -1097,7 +1104,7 @@ function CreateModal({
             onClick={() =>
               onCreate({
                 courseId,
-                instructorId: instructorId || undefined,
+                instructorId: lockInstructorId ?? (instructorId || undefined),
                 roomId: roomId || undefined,
                 sessionDate: date,
                 startTime: start,

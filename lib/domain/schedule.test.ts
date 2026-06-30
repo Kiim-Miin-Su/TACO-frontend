@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ClassSession, AvailabilityBlock } from '@/types';
-import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, ownerWindows } from './schedule';
+import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, recommendInstructorsForStudent, ownerWindows } from './schedule';
 
 const ablock = (p: Partial<AvailabilityBlock>): AvailabilityBlock => ({
   id: 1, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '09:00', endTime: '12:00', ...p,
@@ -303,5 +303,35 @@ describe('ownerWindows', () => {
     ];
     const w = ownerWindows(blocks, 'instructor', 1, 'available');
     expect(w).toEqual([{ weekday: 1, start: 540, end: 720 }]);
+  });
+});
+
+describe('recommendInstructorsForStudent (학생 → 적합 강사)', () => {
+  it('학생과 가용이 겹치는 강사만 슬롯수 순으로 추천', () => {
+    const blocks = [
+      ablock({ id: 1, ownerType: 'student', ownerId: 2, kind: 'available', weekday: 1, startTime: '16:00', endTime: '18:00' }),
+      ablock({ id: 2, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '16:00', endTime: '18:00' }), // 겹침 → 추천
+      ablock({ id: 3, ownerType: 'instructor', ownerId: 2, kind: 'available', weekday: 1, startTime: '09:00', endTime: '11:00' }), // 안겹침 → 제외
+    ];
+    const out = recommendInstructorsForStudent(
+      { weekStart: MON, weekdays: [1], durationMinutes: 60, stepMin: 30, studentId: 2,
+        instructors: [{ id: 1, name: '박지훈' }, { id: 2, name: '정유진' }] },
+      { sessions: [], blocks },
+    );
+    expect(out.map((m) => m.instructorId)).toEqual([1]);
+    expect(out[0].freeSlots).toBeGreaterThan(0);
+  });
+
+  it('강사 불가시간이 교집합을 가리면 추천 제외', () => {
+    const blocks = [
+      ablock({ id: 1, ownerType: 'student', ownerId: 2, kind: 'available', weekday: 1, startTime: '16:00', endTime: '17:00' }),
+      ablock({ id: 2, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '16:00', endTime: '17:00' }),
+      ablock({ id: 3, ownerType: 'instructor', ownerId: 1, kind: 'unavailable', weekday: 1, startTime: '16:00', endTime: '17:00' }),
+    ];
+    const out = recommendInstructorsForStudent(
+      { weekStart: MON, weekdays: [1], durationMinutes: 60, stepMin: 30, studentId: 2, instructors: [{ id: 1, name: '박지훈' }] },
+      { sessions: [], blocks },
+    );
+    expect(out).toHaveLength(0);
   });
 });

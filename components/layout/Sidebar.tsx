@@ -1,6 +1,10 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useTacoStore } from "@/lib/store";
+import { roleLabel } from "@/lib/roles";
+import { api } from "@/lib/api";
 import {
   IconHome,
   IconUsers,
@@ -53,6 +57,23 @@ export default function Sidebar() {
   const pathname = usePathname();
   const isActive = (href: string) => href !== "#" && (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
+  // 현재 역할(데모 컨텍스트 — Topbar에서 전환) → 좌측 유저 표시 단일 소스
+  const role = useTacoStore((s) => s.currentRole);
+  // 강사/학생 역할은 백엔드 자원에서 대표 인물명을 가져와 표시(참조 무결성: 역할↔표시 일치)
+  const [people, setPeople] = useState<{ instructor?: string; student?: string }>({});
+  useEffect(() => {
+    api.schedule
+      .resources()
+      .then((r) => setPeople({ instructor: r.instructors[0]?.name, student: r.students[0]?.name }))
+      .catch(() => {});
+  }, []);
+  const identity =
+    role === "instructor" ? { name: people.instructor ?? "강사" }
+      : role === "student" ? { name: people.student ?? "학생" }
+        : role === "parent" ? { name: "학부모" }
+          : role === "manager" ? { name: "매니저" }
+            : { name: "교수실장" };
+
   return (
     <aside className="w-60 shrink-0 border-r flex flex-col bg-canvas">
       <div className="h-14 flex items-center gap-2.5 px-4 border-b">
@@ -94,12 +115,11 @@ export default function Sidebar() {
 
       <div className="border-t p-3 flex items-center gap-2.5">
         <div className="w-7 h-7 rounded-full bg-neutral-subtle grid place-items-center text-[12px] font-semibold text-fg-muted">
-          교
+          {identity.name.slice(0, 1)}
         </div>
         <div className="leading-tight flex-1">
-          {/* FIXME: fetch to server */}
-          <div className="text-[13px] font-medium">교수실장</div>
-          <div className="text-[11px] text-fg-subtle">super_admin</div>
+          <div className="text-[13px] font-medium">{identity.name}</div>
+          <div className="text-[11px] text-fg-subtle">{roleLabel[role]}</div>
         </div>
       </div>
     </aside>

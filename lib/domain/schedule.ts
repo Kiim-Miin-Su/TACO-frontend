@@ -371,6 +371,45 @@ export function recommendForStudent(input: StudentRecoInput, ctx: StudentRecoCtx
   return out.slice(0, limit);
 }
 
+// ── 학생 → 적합 강사 추천(좌측 패널): 학생가용 ∧ 강사가용 교집합이 있는(블록 비충돌) 강사 ──
+export type InstructorMatch = {
+  instructorId: ID;
+  instructorName?: string;
+  subjectName?: string;
+  color?: string;
+  freeSlots: number; // 학생과 함께 비는 후보 슬롯 수(많을수록 적합)
+  sample: SlotCandidate[]; // 상위 후보 미리보기
+};
+export type InstructorMatchInput = {
+  weekStart: string;
+  weekdays?: number[];
+  workStart?: string;
+  workEnd?: string;
+  durationMinutes: number;
+  stepMin?: number;
+  studentId: ID;
+  instructors: { id: ID; name?: string; subjectName?: string; color?: string }[]; // 후보(과목 필터는 호출측에서)
+};
+/** 각 후보 강사에 대해 학생과의 가용 교집합 슬롯을 구해, 1개 이상인 강사만 적합도순으로 추천. */
+export function recommendInstructorsForStudent(
+  input: InstructorMatchInput,
+  ctx: { sessions: (ClassSession & { studentIds?: ID[] })[]; blocks: AvailabilityBlock[] },
+): InstructorMatch[] {
+  return input.instructors
+    .map((ins) => {
+      const slots = suggestPairSlots(
+        {
+          weekStart: input.weekStart, weekdays: input.weekdays, workStart: input.workStart, workEnd: input.workEnd,
+          durationMinutes: input.durationMinutes, stepMin: input.stepMin, instructorId: ins.id, studentId: input.studentId,
+        },
+        { sessions: ctx.sessions, blocks: ctx.blocks, limit: 50 },
+      );
+      return { instructorId: ins.id, instructorName: ins.name, subjectName: ins.subjectName, color: ins.color, freeSlots: slots.length, sample: slots.slice(0, 3) };
+    })
+    .filter((m) => m.freeSlots > 0)
+    .sort((a, b) => b.freeSlots - a.freeSlots);
+}
+
 // ── 겹치는 일정 나란히 배치(구글 캘린더식 레인) ──
 // 같은 컬럼(요일/강의실)에서 시간이 겹치는 이벤트를 열로 나눠 lane/lanes 부여.
 export type LaneItem = { id: number; start: number; end: number };
