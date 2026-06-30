@@ -134,20 +134,25 @@ export function DashboardView() {
         </div>
       </div>
 
-      {/* 관리자/매니저 할 일 — 페이 미지급·승인, 상담/등록 요청, 지출 승인 */}
+      {/* 관리자/매니저 할 일 — 회계상 분리: 결제·수납(입금) / 강사 페이·지출(출금) / 상담 */}
       <div className="mb-6">
-        <SectionCard
-          title={`할 일 · 처리 대기 (${taskCount})`}
-          action={
-            <span className="flex items-center gap-1.5 text-[11px] text-fg-subtle">
-              {tasks.filter((t) => t.group === 'pay').length > 0 && <span className="badge badge-attention">페이 {tasks.filter((t) => t.group === 'pay').length}</span>}
-              {tasks.filter((t) => t.group === 'counsel').length > 0 && <span className="badge badge-accent">상담 {tasks.filter((t) => t.group === 'counsel').length}</span>}
-              {tasks.filter((t) => t.group === 'expense').length > 0 && <span className="badge badge-attention">지출 {tasks.filter((t) => t.group === 'expense').length}</span>}
-            </span>
-          }
-        >
-          <TaskList items={tasks} empty="처리할 대기 건이 없습니다. 모든 승인·지급·요청이 완료되었습니다 🎉" />
-        </SectionCard>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-[15px] font-semibold">할 일 · 처리 대기 <span className="text-fg-subtle font-normal">({taskCount})</span></h2>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <SectionCard title={`결제 · 수납 (${tasks.filter((t) => t.group === 'payment').length})`} action={<a href="/payments" className="btn btn-sm">결제 관리</a>}>
+            <TaskList items={tasks.filter((t) => t.group === 'payment')} empty="재결제 임박·미수 건이 없습니다." />
+          </SectionCard>
+          <SectionCard title={`강사 페이 (${tasks.filter((t) => t.group === 'pay').length})`} action={<a href="/payouts" className="btn btn-sm">강사 페이</a>}>
+            <TaskList items={tasks.filter((t) => t.group === 'pay')} empty="승인·지급 대기 정산이 없습니다." />
+          </SectionCard>
+          <SectionCard title={`지출 승인 (${tasks.filter((t) => t.group === 'expense').length})`} action={<a href="/admin/approvals" className="btn btn-sm">승인 센터</a>}>
+            <TaskList items={tasks.filter((t) => t.group === 'expense')} empty="승인 대기 지출이 없습니다." />
+          </SectionCard>
+          <SectionCard title={`상담 배정 (${tasks.filter((t) => t.group === 'counsel').length})`} action={<a href="/counsel" className="btn btn-sm">상담</a>}>
+            <TaskList items={tasks.filter((t) => t.group === 'counsel')} empty="배정 대기(날짜 미정) 상담이 없습니다." />
+          </SectionCard>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

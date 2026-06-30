@@ -30,6 +30,11 @@ export function PayoutsView() {
   const [end, setEnd] = useState('2026-06-30');
   const [preview, setPreview] = useState<MeasureResult | null>(null);
 
+  // 필터 — 정산 목록(강사·상태) / 적격 수업 내역(수업)
+  const [fInstructor, setFInstructor] = useState('');
+  const [fStatus, setFStatus] = useState('');
+  const [fCourse, setFCourse] = useState('');
+
   const instructorName = useCallback(
     (id: number) => instructors.find((i) => i.id === id)?.name ?? `강사 ${id}`,
     [instructors],
@@ -150,14 +155,26 @@ export function PayoutsView() {
         </form>
       </SectionCard>
 
-      {preview && preview.sessionCount > 0 && (
-        <SectionCard title={`적격 수업 내역 (${preview.lines.length}건)`}>
+      {preview && preview.sessionCount > 0 && (() => {
+        const courseOpts = Array.from(new Map(preview.lines.map((l) => [l.courseId, l.courseName])).entries());
+        const lines = fCourse ? preview.lines.filter((l) => String(l.courseId) === fCourse) : preview.lines;
+        const subTotal = lines.reduce((a, l) => a + l.amount, 0);
+        return (
+        <SectionCard
+          title={`적격 수업 내역 (${lines.length}건)`}
+          action={
+            <select className="input h-8 w-40" value={fCourse} onChange={(e) => setFCourse(e.target.value)}>
+              <option value="">전체 수업</option>
+              {courseOpts.map(([id, name]) => (<option key={id} value={id}>{name}</option>))}
+            </select>
+          }
+        >
           <table className="table">
             <thead>
               <tr><th>날짜</th><th>코스</th><th className="text-right">시수</th><th className="text-right">시급</th><th className="text-right">페이</th></tr>
             </thead>
             <tbody>
-              {preview.lines.map((r) => (
+              {lines.map((r) => (
                 <tr key={r.sessionId}>
                   <td className="mono">{r.sessionDate}</td>
                   <td className="font-medium">{r.courseName}</td>
@@ -167,11 +184,41 @@ export function PayoutsView() {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={4} className="text-right text-[12px] text-fg-muted">소계{fCourse ? ' (필터)' : ''}</td>
+                <td className="text-right mono font-semibold">{won(subTotal)}</td>
+              </tr>
+            </tfoot>
           </table>
         </SectionCard>
-      )}
+        );
+      })()}
 
-      <SectionCard title="정산 목록">
+      {(() => {
+        const filtered = payouts.filter((p) =>
+          (fInstructor ? p.instructorId === Number(fInstructor) : true) &&
+          (fStatus ? p.status === fStatus : true),
+        );
+        return (
+        <SectionCard
+          title={`정산 목록 (${filtered.length})`}
+          action={
+            <div className="flex gap-1.5">
+              <select className="input h-8 w-28" value={fInstructor} onChange={(e) => setFInstructor(e.target.value)}>
+                <option value="">전체 강사</option>
+                {instructors.map((i) => (<option key={i.id} value={i.id}>{i.name}</option>))}
+              </select>
+              <select className="input h-8 w-28" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+                <option value="">전체 상태</option>
+                <option value="pending">승인대기</option>
+                <option value="confirmed">승인됨</option>
+                <option value="paid">지급완료</option>
+                <option value="rejected">반려</option>
+              </select>
+            </div>
+          }
+        >
         <table className="table">
           <thead>
             <tr>
@@ -179,10 +226,10 @@ export function PayoutsView() {
             </tr>
           </thead>
           <tbody>
-            {payouts.length === 0 && (
-              <tr><td colSpan={6} className="p-4 text-[13px] text-fg-subtle">정산서가 없습니다. 위에서 강사·기간을 선택해 생성하세요.</td></tr>
+            {filtered.length === 0 && (
+              <tr><td colSpan={6} className="p-4 text-[13px] text-fg-subtle">조건에 맞는 정산서가 없습니다.</td></tr>
             )}
-            {payouts.map((p) => (
+            {filtered.map((p) => (
               <tr key={p.id}>
                 <td className="font-medium">{instructorName(p.instructorId)}</td>
                 <td className="mono text-fg-muted">{p.periodStart} ~ {p.periodEnd}</td>
@@ -226,7 +273,9 @@ export function PayoutsView() {
             ))}
           </tbody>
         </table>
-      </SectionCard>
+        </SectionCard>
+        );
+      })()}
       <p className="text-[12px] text-fg-subtle">
         시수는 <b>진행 완료(held) + 보고서 승인</b>분만 채워지며, 세션은 한 정산서에만 연결됩니다(이중 계상 방지).
         지급 시 출금 거래 원장과 대시보드에 반영됩니다.

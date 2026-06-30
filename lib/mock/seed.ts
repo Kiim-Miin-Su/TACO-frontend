@@ -61,8 +61,9 @@ export const parentStudents: ParentStudent[] = [
 ];
 
 export const enrollments: Enrollment[] = [
-  { id: 1, studentId: 1, courseId: 10, status: 'active', totalSessions: 16, completedSessions: 6, enrolledAt: '2026-06-24' },
-  { id: 2, studentId: 2, courseId: 11, status: 'active', totalSessions: 20, completedSessions: 8, enrolledAt: '2026-06-23' },
+  // 월 8회 주기 기준 7회 진행 → 재결제 1회 남음(알림 트리거)
+  { id: 1, studentId: 1, courseId: 10, status: 'active', totalSessions: 16, completedSessions: 7, enrolledAt: '2026-06-24' },
+  { id: 2, studentId: 2, courseId: 11, status: 'active', totalSessions: 20, completedSessions: 6, enrolledAt: '2026-06-23' },
   { id: 3, studentId: 4, courseId: 10, status: 'active', totalSessions: 16, completedSessions: 6, enrolledAt: '2026-06-20' },
   { id: 4, studentId: 1, courseId: 12, status: 'active', totalSessions: 12, completedSessions: 2, enrolledAt: '2026-06-18' },
 ];

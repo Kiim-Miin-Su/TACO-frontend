@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTacoStore } from "@/lib/store";
 import { roleLabel } from "@/lib/roles";
-import { decodeToken } from "@/lib/auth";
+import { decodeToken, getToken } from "@/lib/auth";
 import { api } from "@/lib/api";
 import {
   IconHome,
@@ -65,7 +65,7 @@ export default function Sidebar() {
   // 강사/학생 역할은 백엔드 자원에서 대표 인물명을 가져와 표시(참조 무결성: 역할↔표시 일치)
   const [people, setPeople] = useState<{ instructor?: string; student?: string }>({});
   useEffect(() => {
-    const t = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+    const t = getToken();
     if (t) setTokenName(decodeToken(t)?.name ?? null);
     api.schedule
       .resources()

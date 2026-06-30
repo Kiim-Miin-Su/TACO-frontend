@@ -1,10 +1,74 @@
 'use client';
-import { Badge, SectionCard } from '@/components/ui';
+import { useCallback, useEffect, useState } from 'react';
+import { SectionCard } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
 import { won } from '@/lib/format';
 import { roleLabel } from '@/lib/roles';
 import { AdminHeader } from './AdminShell';
 import { categoryLabel } from '@/features/expenses/labels';
+import { api, type PendingAccount } from '@/lib/api';
+import { getToken } from '@/lib/auth';
+import type { AccountRole } from '@/types';
+
+const ROLE_OPTS: AccountRole[] = ['instructor', 'manager', 'admin', 'super_admin'];
+
+// 가입 승인 대기(백엔드 계정) — 이메일 인증 완료 후 대표가 승인하면 로그인 가능.
+function MemberApprovals() {
+  const [rows, setRows] = useState<PendingAccount[]>([]);
+  const [roleSel, setRoleSel] = useState<Record<number, string>>({});
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const token = getToken();
+    if (!token) return;
+    try { setRows(await api.auth.pending(token)); } catch { setMsg('목록을 불러오지 못했습니다. (대표 권한 필요)'); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function decide(id: number, action: 'approve' | 'reject') {
+    const token = getToken();
+    if (!token) return;
+    try {
+      if (action === 'approve') await api.auth.approve(token, id, roleSel[id]);
+      else await api.auth.reject(token, id);
+      setMsg(action === 'approve' ? '승인했습니다.' : '반려했습니다.');
+      await load();
+    } catch { setMsg('처리 실패'); }
+  }
+
+  return (
+    <SectionCard title={`가입 승인 대기 (${rows.length})`}>
+      {msg && <div className="px-4 pt-3 text-[12px] text-accent">{msg}</div>}
+      {rows.length === 0 ? (
+        <div className="p-4 text-[13px] text-fg-subtle">승인 대기 중인 가입 신청이 없습니다.</div>
+      ) : (
+        <table className="table">
+          <thead><tr><th>아이디</th><th>이름</th><th>이메일</th><th>이메일 인증</th><th>역할 지정</th><th className="text-right"></th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id}>
+                <td className="font-medium">{r.webId}</td>
+                <td>{r.name}</td>
+                <td className="text-fg-muted">{r.email}</td>
+                <td>{r.emailVerified ? <span className="text-success">완료</span> : <span className="text-fg-subtle">미완료</span>}</td>
+                <td>
+                  <select className="input h-8 w-28" value={roleSel[r.id] ?? r.role}
+                    onChange={(e) => setRoleSel((s) => ({ ...s, [r.id]: e.target.value }))}>
+                    {ROLE_OPTS.map((ro) => <option key={ro} value={ro}>{roleLabel[ro]}</option>)}
+                  </select>
+                </td>
+                <td className="text-right whitespace-nowrap">
+                  <button className="btn btn-sm btn-primary mr-1.5" disabled={!r.emailVerified} onClick={() => decide(r.id, 'approve')} title={r.emailVerified ? '' : '이메일 인증 후 승인 가능'}>승인</button>
+                  <button className="btn btn-sm btn-danger" onClick={() => decide(r.id, 'reject')}>반려</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </SectionCard>
+  );
+}
 
 // 승인은 대표(super_admin) 전용
 export function ApprovalsView() {
@@ -29,6 +93,8 @@ export function ApprovalsView() {
   return (
     <div className="p-6 max-w-[1100px] mx-auto space-y-6">
       <AdminHeader />
+
+      <MemberApprovals />
 
       <SectionCard title={`지출 승인 대기 (${pendingExpenses.length})`}>
         {pendingExpenses.length === 0 ? (

@@ -1,13 +1,16 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { IconSearch, IconBell } from '../ui/icons';
 import { useTacoStore } from '@/lib/store';
 import { ROLES, roleLabel } from '@/lib/roles';
 import { buildTasks } from '@/lib/tasks';
+import { currentClaims, clearToken } from '@/lib/auth';
 import type { AccountRole } from '@/types';
 
 export default function Topbar() {
+  const router = useRouter();
   const currentRole = useTacoStore((s) => s.currentRole);
   const setCurrentRole = useTacoStore((s) => s.setCurrentRole);
   const store = useTacoStore();
@@ -15,6 +18,11 @@ export default function Topbar() {
   const { items, count } = buildTasks(store, currentRole);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  // 로그인 여부(토큰 존재) — 클라이언트에서만 판단(SSR 불일치 방지).
+  const [loggedIn, setLoggedIn] = useState(false);
+  useEffect(() => { setLoggedIn(!!currentClaims()); }, []);
+  const logout = () => { clearToken(); router.replace('/login'); };
 
   // 바깥 클릭 시 팝오버 닫기
   useEffect(() => {
@@ -32,17 +40,21 @@ export default function Topbar() {
         <input className="input pl-8" placeholder="학생, 등록, 결제 검색…" aria-label="검색" />
       </div>
       <div className="flex-1" />
-      {/* 데모: 역할 전환 (권한별 화면 확인용) */}
-      <label className="flex items-center gap-1.5 text-[12px] text-fg-muted">
-        역할
-        <select
-          className="input w-32 h-8"
-          value={currentRole}
-          onChange={(e) => setCurrentRole(e.target.value as AccountRole)}
-        >
-          {ROLES.map((r) => (<option key={r} value={r}>{roleLabel[r]}</option>))}
-        </select>
-      </label>
+      {/* 로그인 상태면 역할 전환(데모) 숨기고 로그아웃 노출, 비로그인(데모)면 역할 전환 노출 */}
+      {loggedIn ? (
+        <button className="btn btn-sm" onClick={logout} title="로그아웃">로그아웃</button>
+      ) : (
+        <label className="flex items-center gap-1.5 text-[12px] text-fg-muted">
+          역할
+          <select
+            className="input w-32 h-8"
+            value={currentRole}
+            onChange={(e) => setCurrentRole(e.target.value as AccountRole)}
+          >
+            {ROLES.map((r) => (<option key={r} value={r}>{roleLabel[r]}</option>))}
+          </select>
+        </label>
+      )}
 
       {/* 알림 — 앱 알림식 빨간 원 배지(대기 task 수) + 클릭 시 목록 팝오버 */}
       <div className="relative" ref={ref}>

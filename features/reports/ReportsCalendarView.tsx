@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
 import { Badge, SectionCard, type Tone } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
 import type { AttendanceStatus, ReportStatus } from '@/types';
@@ -45,9 +46,12 @@ export function ReportsCalendarView() {
 
   return (
     <div className="p-6 max-w-[1100px] mx-auto space-y-6">
-      <div>
-        <h1 className="text-[20px] font-semibold">수업 보고서</h1>
-        <p className="text-[13px] text-fg-muted mt-0.5">캘린더에서 수업을 선택하면 학생별 피드백을 확인합니다.</p>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-[20px] font-semibold">수업 보고서</h1>
+          <p className="text-[13px] text-fg-muted mt-0.5">캘린더·리스트에서 수업을 선택해 확인하거나, 한 페이지에서 바로 작성하세요.</p>
+        </div>
+        <Link href="/reports/write" className="btn btn-primary">리포트 작성하기</Link>
       </div>
 
       <SectionCard
@@ -100,6 +104,42 @@ export function ReportsCalendarView() {
           })}
         </div>
       </SectionCard>
+
+      {/* 수업 리스트 — 캘린더와 별도 컴포넌트(리포트 진행률·바로 작성) */}
+      {(() => {
+        const monthSessions = store.classSessions
+          .filter((cs) => cs.sessionDate.startsWith(monthStr))
+          .sort((a, b) => (a.sessionDate + (a.startTime ?? '')).localeCompare(b.sessionDate + (b.startTime ?? '')));
+        return (
+          <SectionCard title={`수업 리스트 (${monthSessions.length})`}>
+            {monthSessions.length === 0 ? (
+              <div className="p-4 text-[13px] text-fg-subtle">이 달 수업이 없습니다.</div>
+            ) : (
+              <table className="table">
+                <thead><tr><th>날짜</th><th>수업</th><th>강사</th><th className="text-right">리포트</th><th></th></tr></thead>
+                <tbody>
+                  {monthSessions.map((s) => {
+                    const ids = store.enrollments.filter((e) => e.courseId === s.courseId).map((e) => e.studentId);
+                    const done = store.sessionReports.filter((r) => r.sessionId === s.id && ids.includes(r.studentId) && r.status !== 'draft').length;
+                    return (
+                      <tr key={s.id} className={s.id === selected ? 'bg-accent-subtle' : ''}>
+                        <td className="mono text-fg-muted">{s.sessionDate} {s.startTime ?? ''}</td>
+                        <td className="font-medium">{courseName(s.courseId)}</td>
+                        <td className="text-fg-muted">{instructorName(s.instructorId)}</td>
+                        <td className="text-right mono">{done}/{ids.length}</td>
+                        <td className="text-right whitespace-nowrap">
+                          <button className="btn btn-sm mr-1" onClick={() => setSelected(s.id)}>보기</button>
+                          <Link href="/reports/write" className="btn btn-sm btn-primary">작성</Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </SectionCard>
+        );
+      })()}
 
       {session && (
         <SectionCard

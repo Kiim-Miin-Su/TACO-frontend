@@ -1,12 +1,13 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, AvailabilityBlock } from "@/types";
+import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, AvailabilityBlock, AccountRole } from "@/types";
 import { api, type SchedulePatchBody, type ScheduleCreateBody, type AvailabilityUpsertBody } from "@/lib/api";
 import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin as toMinD } from "@/lib/domain/schedule";
 import { exportScheduleXlsx, exportNodeAsImage } from "@/lib/export";
 import { useTacoStore } from "@/lib/store";
-import { isAdmin } from "@/lib/roles";
+import { isAdmin, roleLabel } from "@/lib/roles";
+import { currentClaims } from "@/lib/auth";
 import { StudentMatchPanel } from "./StudentMatchPanel";
 import { ResourcePanel } from "./ResourcePanel";
 import { TableView } from "./TableView";
@@ -377,9 +378,16 @@ export function ScheduleCalendar() {
   }
 
   // 다운로드 파일명: {선택유저명+역할}_{YYMMDD}_{뷰}.ext  (예: 김민수강사_260630_weekly.png)
+  // 우측 패널에서 자원을 고르면 그 자원, 아니면 로그인한 본인(토큰), 그것도 없으면 전체스케줄.
   function downloadName(ext: string) {
     const ROLE_SUFFIX: Record<string, string> = { instructor: "강사", student: "학생", room: "강의실" };
-    const who = selected ? `${selected.name}${ROLE_SUFFIX[selected.type] ?? ""}` : "전체스케줄";
+    let who = "전체스케줄";
+    if (selected) {
+      who = `${selected.name}${ROLE_SUFFIX[selected.type] ?? ""}`;
+    } else {
+      const claims = currentClaims();
+      if (claims) who = `${claims.name}${roleLabel[(claims.roles?.[0] ?? "") as AccountRole] ?? ""}`;
+    }
     const yymmdd = anchor.slice(2, 4) + anchor.slice(5, 7) + anchor.slice(8, 10);
     const viewWord = view === "month" ? "monthly" : view === "week" ? "weekly" : view === "day" ? "daily" : "table";
     const safe = (s: string) => s.replace(/[\\/:*?"<>|\s]+/g, ""); // 파일명 금지문자·공백 제거

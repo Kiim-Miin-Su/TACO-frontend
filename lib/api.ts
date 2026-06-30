@@ -78,8 +78,34 @@ export const http = axios.create({
   timeout: 10000,
 });
 
+export type LoginBody = { webId: string; password?: string };
+export type LoginResult = { accessToken: string; account: { id: number; name: string; role: string } };
+export type SignupBody = { webId: string; name: string; email: string; password: string; role?: string };
+export type SignupResult = { ok: boolean; message: string; account: { id: number; webId: string; name: string; role: string; status: string }; devVerifyLink?: string };
+export type PendingAccount = { id: number; webId: string; name: string; email: string; role: string; status: string; emailVerified: boolean; createdAt: string };
+
+const authHeader = (token: string) => ({ headers: { Authorization: `Bearer ${token}` } });
+
 export const api = {
   health: () => http.get<{ status: string; service: string; ts: string }>("/health").then((r) => r.data),
+  auth: {
+    // 로그인 — webId+비밀번호(해시 검증) → 토큰 발급
+    login: (body: LoginBody) => http.post<LoginResult>("/auth/login", body).then((r) => r.data),
+    // 가입 신청(대표 승인 대기) → 인증 메일 발송
+    signup: (body: SignupBody) => http.post<SignupResult>("/auth/signup", body).then((r) => r.data),
+    // 이메일 인증(메일 링크 token)
+    verifyEmail: (token: string) =>
+      http.get<{ ok: boolean; message: string }>("/auth/verify-email", { params: { token } }).then((r) => r.data),
+    // 토큰 검증(서버에서 claims 반환)
+    me: (token: string) =>
+      http.get<{ sub: number; name: string; roles: string[] }>("/auth/me", authHeader(token)).then((r) => r.data),
+    // 대표(super_admin) 전용 — 승인 대기 목록·승인·반려
+    pending: (token: string) => http.get<PendingAccount[]>("/auth/pending", authHeader(token)).then((r) => r.data),
+    approve: (token: string, id: number, role?: string) =>
+      http.post<PendingAccount>(`/auth/approve/${id}`, { role }, authHeader(token)).then((r) => r.data),
+    reject: (token: string, id: number) =>
+      http.post<PendingAccount>(`/auth/reject/${id}`, {}, authHeader(token)).then((r) => r.data),
+  },
   students: {
     list: () => http.get<Student[]>("/students").then((r) => r.data),
     get: (id: number) => http.get<Student>(`/students/${id}`).then((r) => r.data),
