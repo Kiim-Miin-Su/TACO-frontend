@@ -2,9 +2,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, AvailabilityBlock } from "@/types";
-import { api, type SchedulePatchBody } from "@/lib/api";
+import { api, type SchedulePatchBody, type ScheduleCreateBody } from "@/lib/api";
 import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin as toMinD } from "@/lib/domain/schedule";
 import { exportScheduleXlsx, exportNodeAsImage } from "@/lib/export";
+import { useTacoStore } from "@/lib/store";
+import { isAdmin } from "@/lib/roles";
 import { ResourceRail } from "./ResourceRail";
 import { AvailabilityPanel } from "./AvailabilityPanel";
 import { TableView } from "./TableView";
@@ -60,6 +62,11 @@ export function ScheduleCalendar() {
   const captureRef = useRef<HTMLDivElement>(null);
   const [busyImg, setBusyImg] = useState(false);
 
+  // 관리자(데모 역할) — 스케줄 직접 추가
+  const role = useTacoStore((s) => s.currentRole);
+  const canManage = isAdmin(role);
+  const [creating, setCreating] = useState<{ date: string } | null>(null);
+
   // ── 필터(Lantiv형) ──
   const [q, setQ] = useState("");
   const [colorBy, setColorBy] = useState<ColorBy>("subject");
@@ -67,7 +74,6 @@ export function ScheduleCalendar() {
   const [fSubjects, setFSubjects] = useState<Set<string>>(new Set());
   const [fRooms, setFRooms] = useState<Set<number>>(new Set());
   const [fStudents, setFStudents] = useState<Set<number>>(new Set());
-  const [fStatuses, setFStatuses] = useState<Set<string>>(new Set());
 
   const grabOffsetRef = useRef(0);
   const resizingRef = useRef<Resizing | null>(null);
@@ -160,17 +166,16 @@ export function ScheduleCalendar() {
       if (fSubjects.size && !fSubjects.has(r.subjectName)) return false;
       if (fRooms.size && !(r.roomId != null && fRooms.has(r.roomId))) return false;
       if (fStudents.size && !(r.studentIds ?? []).some((id) => fStudents.has(id))) return false;
-      if (fStatuses.size && !fStatuses.has(r.status)) return false;
       if (needle) {
         const hay = `${r.courseName} ${r.subjectName} ${r.instructorName} ${r.roomName ?? ""} ${(r.studentNames ?? []).join(" ")} ${r.topic ?? ""}`.toLowerCase();
         if (!hay.includes(needle)) return false;
       }
       return true;
     });
-  }, [rows, q, fInstructors, fSubjects, fRooms, fStudents, fStatuses]);
+  }, [rows, q, fInstructors, fSubjects, fRooms, fStudents]);
 
-  const anyFilter = q.trim() !== "" || fInstructors.size || fSubjects.size || fRooms.size || fStudents.size || fStatuses.size;
-  const clearFilters = () => { setQ(""); setFInstructors(new Set()); setFSubjects(new Set()); setFRooms(new Set()); setFStudents(new Set()); setFStatuses(new Set()); };
+  const anyFilter = q.trim() !== "" || fInstructors.size || fSubjects.size || fRooms.size || fStudents.size;
+  const clearFilters = () => { setQ(""); setFInstructors(new Set()); setFSubjects(new Set()); setFRooms(new Set()); setFStudents(new Set()); };
 
   const hrs = teachingHours(filtered);
 
@@ -221,6 +226,25 @@ export function ScheduleCalendar() {
   function requestChange(r: ScheduleRow, patch: SchedulePatchBody, label: string) {
     if (r.seriesId != null) setPending({ row: r, patch, label });
     else applyPatch(r.id, patch);
+  }
+
+  // 관리자 세션 생성(추가). 충돌 시 확인 후 force.
+  async function createSession(body: ScheduleCreateBody) {
+    try {
+      await api.schedule.create(body);
+      setCreating(null);
+      await load();
+    } catch (e) {
+      const err = e as { response?: { status?: number; data?: { conflicts?: Conflict[] } } };
+      if (err.response?.status === 409) {
+        const cs = err.response.data?.conflicts ?? [];
+        if (confirm(`충돌 ${cs.length}건. 그래도 추가할까요?`)) {
+          await api.schedule.create({ ...body, force: true });
+          setCreating(null);
+          await load();
+        }
+      } else setMsg("스케줄 추가 실패");
+    }
   }
 
   // 현재 뷰(캘린더/표)를 이미지로 저장
@@ -328,6 +352,9 @@ export function ScheduleCalendar() {
           {view === "day" && (
             <input type="date" className="input h-7 w-36" value={anchor} onChange={(e) => setAnchor(e.target.value)} />
           )}
+          {canManage && resources && (
+            <button className="btn btn-sm btn-primary" onClick={() => setCreating({ date: view === "day" ? anchor : (dates.find((d) => d === todayISO()) ?? dates[0]) })}>+ 스케줄 추가</button>
+          )}
           {view === "table" && (
             <button className="btn btn-sm btn-primary" disabled={!filtered.length}
               onClick={() => exportScheduleXlsx(filtered, `timetable_${dates[0]}.xlsx`)}>엑셀</button>
@@ -373,8 +400,6 @@ export function ScheduleCalendar() {
               onToggle={(k) => setFStudents(toggle(fStudents, k as number))} />
             <ChipRow label="강의실" items={rooms.map((r) => ({ key: r.id, label: r.name, color: r.color, on: fRooms.has(r.id) }))}
               onToggle={(k) => setFRooms(toggle(fRooms, k as number))} />
-            <ChipRow label="상태" items={Object.keys(STATUS_LABEL).map((s) => ({ key: s, label: STATUS_LABEL[s], on: fStatuses.has(s) }))}
-              onToggle={(k) => setFStatuses(toggle(fStatuses, k as string))} />
           </div>
 
           {msg && <div className="text-[12px] text-danger">{msg}</div>}
@@ -441,7 +466,7 @@ export function ScheduleCalendar() {
                                 style={{ top, height: h, left: `calc(${ln.lane * wPct}% + 1px)`, width: `calc(${wPct}% - 2px)`, background: colorOf(r) }}
                               >
                                 <div onPointerDown={(e) => onResizeDown(e, r, "top")} className="absolute left-0 right-0 top-0 h-1.5 cursor-ns-resize" />
-                                <div className="font-semibold truncate">{fromMin(s)} {labelOf(r)}</div>
+                                <div className="font-semibold truncate">{fromMin(s)}–{fromMin(en)} {labelOf(r)}</div>
                                 <div className="opacity-90 truncate">{view === "week" ? (r.roomName ?? "") : r.instructorName}</div>
                                 <div onPointerDown={(e) => onResizeDown(e, r, "bottom")} className="absolute left-0 right-0 bottom-0 h-1.5 cursor-ns-resize" />
                               </div>
@@ -488,6 +513,16 @@ export function ScheduleCalendar() {
           sessions={rows}
           onClose={() => setShowAvail(false)}
           onChanged={() => { load(); if (selected) api.availability.list(selected.type, selected.id).then(setSelBlocks).catch(() => {}); }}
+        />
+      )}
+
+      {creating && resources && (
+        <CreateModal
+          resources={resources}
+          rooms={rooms}
+          defaultDate={creating.date}
+          onClose={() => setCreating(null)}
+          onCreate={createSession}
         />
       )}
     </div>
@@ -565,8 +600,8 @@ function MonthGrid({ anchor, rows, colorOf, onPick, onPickDay }: {
               {(date ? byDay.get(date) ?? [] : []).slice(0, 4).map((r) => (
                 <button key={r.id} onClick={() => onPick(r)}
                   className="block w-full text-left rounded px-1.5 py-0.5 text-[11px] text-white truncate"
-                  style={{ background: colorOf(r) }} title={`${r.startTime ?? ""} ${r.courseName} · ${r.instructorName}`}>
-                  <span className="mono">{r.startTime ?? ""}</span> {r.courseName}
+                  style={{ background: colorOf(r) }} title={`${r.startTime ?? ""}–${r.endTime ?? ""} ${r.courseName} · ${r.instructorName}`}>
+                  <span className="mono">{r.startTime ?? ""}–{r.endTime ?? ""}</span> {r.courseName}
                 </button>
               ))}
               {date && (byDay.get(date)?.length ?? 0) > 4 && (
@@ -682,6 +717,64 @@ function RecurrencePrompt({ label, onPick, onCancel }: {
           <button className="btn" onClick={() => onPick("all")}>시리즈 전체</button>
         </div>
         <div className="flex justify-end pt-1"><button className="btn btn-sm" onClick={onCancel}>취소</button></div>
+      </div>
+    </div>
+  );
+}
+
+// ── 관리자: 스케줄 추가 모달 ──
+function CreateModal({ resources, rooms, defaultDate, onClose, onCreate }: {
+  resources: ScheduleResources; rooms: Room[]; defaultDate: string;
+  onClose: () => void; onCreate: (body: ScheduleCreateBody) => void;
+}) {
+  const [courseId, setCourseId] = useState<number>(resources.courses[0]?.id ?? 0);
+  const course = resources.courses.find((c) => c.id === courseId);
+  const [instructorId, setInstructorId] = useState<number | "">(course?.instructorId ?? "");
+  const [roomId, setRoomId] = useState<number | "">("");
+  const [date, setDate] = useState(defaultDate);
+  const [start, setStart] = useState("16:00");
+  const [end, setEnd] = useState("17:30");
+
+  // 코스 변경 시 기본 강사 동기화
+  function pickCourse(id: number) {
+    setCourseId(id);
+    const c = resources.courses.find((x) => x.id === id);
+    if (c) setInstructorId(c.instructorId);
+  }
+  const valid = courseId && date && start < end;
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center" style={{ background: "rgba(0,0,0,.35)" }} onClick={onClose}>
+      <div className="card card-pad w-[440px] space-y-3" onClick={(e) => e.stopPropagation()}>
+        <div className="font-semibold">스케줄 추가</div>
+        <Field label="코스">
+          <select className="input" value={courseId} onChange={(e) => pickCourse(Number(e.target.value))}>
+            {resources.courses.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.subjectName}</option>)}
+          </select>
+        </Field>
+        <Field label="강사">
+          <select className="input" value={instructorId} onChange={(e) => setInstructorId(e.target.value ? Number(e.target.value) : "")}>
+            {resources.instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+        </Field>
+        <Field label="강의실">
+          <select className="input" value={roomId} onChange={(e) => setRoomId(e.target.value ? Number(e.target.value) : "")}>
+            <option value="">미지정</option>
+            {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </Field>
+        <Field label="날짜"><input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="시작"><input type="time" step={900} className="input" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
+          <Field label="종료"><input type="time" step={900} className="input" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <button className="btn" onClick={onClose}>취소</button>
+          <button className="btn btn-primary" disabled={!valid}
+            onClick={() => onCreate({ courseId, instructorId: instructorId || undefined, roomId: roomId || undefined, sessionDate: date, startTime: start, endTime: end })}>
+            추가
+          </button>
+        </div>
       </div>
     </div>
   );
