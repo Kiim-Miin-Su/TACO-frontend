@@ -78,6 +78,15 @@ export function ApprovalsView() {
 
   const pendingExpenses = store.expenses.filter((e) => e.status === 'requested');
   const pendingPayouts = store.instructorPayouts.filter((p) => p.status === 'pending');
+  // 작성완료(submitted)·미승인 리포트 — 승인 시 시수 적격으로 편입
+  const pendingReports = store.sessionReports.filter((r) => (r.status === 'submitted' || r.approvalStatus === 'submitted') && r.approvalStatus !== 'approved');
+  const studentName = (id: number) => store.students.find((s) => s.id === id)?.name ?? '—';
+  const sessionInfo = (sid: number) => {
+    const s = store.classSessions.find((x) => x.id === sid);
+    if (!s) return '';
+    const c = store.courses.find((x) => x.id === s.courseId)?.name ?? '수업';
+    return `${c} · ${s.sessionDate} ${s.startTime ?? ''}`;
+  };
 
   if (!isSuper) {
     return (
@@ -95,6 +104,30 @@ export function ApprovalsView() {
       <AdminHeader />
 
       <MemberApprovals />
+
+      <SectionCard title={`수업 보고서 승인 대기 (${pendingReports.length})`}>
+        {pendingReports.length === 0 ? (
+          <div className="p-4 text-[13px] text-fg-subtle">승인 대기 중인 보고서가 없습니다. <span className="text-fg-subtle">승인 시 해당 수업이 시수로 집계됩니다.</span></div>
+        ) : (
+          <table className="table">
+            <thead><tr><th>강사</th><th>학생</th><th>수업</th><th>내용</th><th className="text-right"></th></tr></thead>
+            <tbody>
+              {pendingReports.map((r) => (
+                <tr key={r.id}>
+                  <td className="font-medium">{instructorName(r.instructorId)}</td>
+                  <td>{studentName(r.studentId)}</td>
+                  <td className="text-fg-muted">{sessionInfo(r.sessionId)}</td>
+                  <td className="text-fg-muted max-w-[280px] truncate" title={r.content}>{r.content || '—'}</td>
+                  <td className="text-right whitespace-nowrap">
+                    <button className="btn btn-sm btn-primary mr-1.5" onClick={() => store.approveReport(r.id)}>승인</button>
+                    <button className="btn btn-sm btn-danger" onClick={() => store.rejectReport(r.id)}>반려</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </SectionCard>
 
       <SectionCard title={`지출 승인 대기 (${pendingExpenses.length})`}>
         {pendingExpenses.length === 0 ? (

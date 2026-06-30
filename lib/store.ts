@@ -57,6 +57,9 @@ export type RegisterStudentCommand = {
   courseId?: number;
 };
 
+// 리포트 템플릿(클라이언트 보관) — 강사가 자주 쓰는 내용/숙제를 저장해 빠르게 적용.
+export type ReportTemplate = { id: number; name: string; content: string; homework?: string };
+
 type TacoState = {
   // collections (in-memory mock DB)
   students: Student[];
@@ -115,6 +118,13 @@ type TacoState = {
     patch: { content?: string; homework?: string },
   ) => void;
   submitReport: (sessionId: number, studentId: number) => void;
+  // 관리자/대표: 리포트 승인·반려(승인 시 시수 적격으로 편입)
+  approveReport: (reportId: number, approvedBy?: number) => void;
+  rejectReport: (reportId: number, reason?: string) => void;
+  // 리포트 템플릿
+  reportTemplates: ReportTemplate[];
+  addReportTemplate: (name: string, content: string, homework?: string) => void;
+  deleteReportTemplate: (id: number) => void;
 };
 
 export const useTacoStore = create<TacoState>((set) => ({
@@ -128,6 +138,10 @@ export const useTacoStore = create<TacoState>((set) => ({
   classSessions: [...seed.classSessions],
   attendance: [...seed.attendance],
   sessionReports: [...seed.sessionReports],
+  reportTemplates: [
+    { id: 1, name: '정규 수업(기본)', content: '오늘 학습 내용: \n이해도: 상/중/하\n특이사항: ', homework: '교재 p.   ~   풀이' },
+    { id: 2, name: '시험 대비', content: '대비 범위: \n취약 단원: \n보강 권장: ', homework: '오답노트 정리' },
+  ],
   payments: [...seed.payments],
   transactions: [...seed.transactions],
   expenses: [...seed.expenses],
@@ -258,10 +272,37 @@ export const useTacoStore = create<TacoState>((set) => ({
     set((s) => ({
       sessionReports: s.sessionReports.map((r) =>
         r.sessionId === sessionId && r.studentId === studentId
-          ? { ...r, status: 'submitted' }
+          ? { ...r, status: 'submitted', approvalStatus: 'submitted' }
           : r,
       ),
     })),
+
+  // 승인 → approvalStatus='approved'(시수 적격), status='sent'(발송됨 표기)
+  approveReport: (reportId, approvedBy) =>
+    set((s) => ({
+      sessionReports: s.sessionReports.map((r) =>
+        r.id === reportId
+          ? { ...r, approvalStatus: 'approved', status: 'sent', approvedBy, approvedAt: today(), rejectedReason: undefined }
+          : r,
+      ),
+    })),
+
+  rejectReport: (reportId, reason) =>
+    set((s) => ({
+      sessionReports: s.sessionReports.map((r) =>
+        r.id === reportId
+          ? { ...r, approvalStatus: 'rejected', rejectedReason: reason ?? '사유 미기재' }
+          : r,
+      ),
+    })),
+
+  addReportTemplate: (name, content, homework) =>
+    set((s) => ({
+      reportTemplates: [...s.reportTemplates, { id: nextId(s.reportTemplates), name, content, homework }],
+    })),
+
+  deleteReportTemplate: (id) =>
+    set((s) => ({ reportTemplates: s.reportTemplates.filter((t) => t.id !== id) })),
 
   // 상담 신청 (학생/학부모 자가 작성 또는 상담실장 작성) → status=requested
   addCounselForm: (input) => {

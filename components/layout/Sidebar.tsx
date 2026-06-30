@@ -3,7 +3,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTacoStore } from "@/lib/store";
-import { roleLabel } from "@/lib/roles";
+import { roleLabel, isAdmin } from "@/lib/roles";
+import { DEMO_INSTRUCTOR_ID } from "@/lib/tasks";
 import { decodeToken, getToken } from "@/lib/auth";
 import { api } from "@/lib/api";
 import {
@@ -60,6 +61,17 @@ export default function Sidebar() {
 
   // 현재 역할(데모 컨텍스트 — Topbar에서 전환) → 좌측 유저 표시 단일 소스
   const role = useTacoStore((s) => s.currentRole);
+  // 리포트 미작성/승인대기 배지(빨간 점) — 역할별. 선택자 구독으로 불필요 리렌더 최소화.
+  const sessionReports = useTacoStore((s) => s.sessionReports);
+  const classSessions = useTacoStore((s) => s.classSessions);
+  const reportBadge = (() => {
+    if (role === "instructor") {
+      const reported = new Set(sessionReports.map((r) => r.sessionId));
+      return classSessions.filter((s) => s.instructorId === DEMO_INSTRUCTOR_ID && s.status === "held" && !reported.has(s.id)).length;
+    }
+    if (isAdmin(role)) return sessionReports.filter((r) => (r.status === "submitted" || r.approvalStatus === "submitted") && r.approvalStatus !== "approved").length;
+    return 0;
+  })();
   // 로그인 토큰이 있으면 디코딩해 실제 이름을 사용(직책 대신). 없으면 데모 이름.
   const [tokenName, setTokenName] = useState<string | null>(null);
   // 강사/학생 역할은 백엔드 자원에서 대표 인물명을 가져와 표시(참조 무결성: 역할↔표시 일치)
@@ -134,6 +146,13 @@ export default function Sidebar() {
                   <Icon className="text-fg-subtle" />
                   {!collapsed && <span className="flex-1">{it.label}</span>}
                   {!collapsed && it.badge && <span className="badge badge-accent">{it.badge}</span>}
+                  {/* 리포트 미작성/승인대기 빨간 배지 */}
+                  {it.href === "/reports" && reportBadge > 0 && (
+                    <span className="min-w-[16px] h-[16px] px-1 rounded-full grid place-items-center text-[10px] font-bold text-white leading-none"
+                      style={{ background: "var(--color-danger)" }} title={collapsed ? `리포트 ${reportBadge}건` : undefined}>
+                      {collapsed ? "" : reportBadge}
+                    </span>
+                  )}
                 </Link>
               );
             })}

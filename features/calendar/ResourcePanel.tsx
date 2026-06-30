@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import type { ScheduleResources, ScheduleResource } from "@/types";
 
 type RType = "instructor" | "student" | "room";
@@ -12,7 +12,9 @@ const PAGE = 8;
 
 // 우측 접이식 패널: 유저별 스케줄 — 강사/학생/강의실을 골라 개인 스케줄로 보기(단일 선택).
 // 선택한 학생은 좌측 "학생 → 강사 추천"의 기준이 된다.
-export function ResourcePanel({
+// React.memo — 부모(ScheduleCalendar)가 드래그 중 자주 리렌더돼도 props(resources/selected/onSelect)가
+// 바뀌지 않으면 이 패널은 리렌더하지 않음(주간 뷰 드래그 성능).
+function ResourcePanelImpl({
   resources, selected, onSelect,
 }: {
   resources: ScheduleResources;
@@ -110,3 +112,5 @@ export function ResourcePanel({
     </aside>
   );
 }
+
+export const ResourcePanel = memo(ResourcePanelImpl);

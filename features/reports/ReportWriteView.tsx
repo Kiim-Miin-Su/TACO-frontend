@@ -122,6 +122,19 @@ function StudentReportRow({ session, student }: { session: ClassSession; student
   const [homework, setHomework] = useState(report?.homework ?? '');
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const status: ReportStatus = report?.status ?? 'draft';
+  const templates = store.reportTemplates;
+
+  const applyTemplate = (id: number) => {
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    setContent((c) => (c.trim() ? c + '\n' + t.content : t.content));
+    if (t.homework) setHomework((h) => h || t.homework!);
+  };
+  const saveAsTemplate = () => {
+    if (!content.trim()) return;
+    const name = window.prompt('템플릿 이름');
+    if (name?.trim()) store.addReportTemplate(name.trim(), content, homework || undefined);
+  };
 
   const save = (submit: boolean) => {
     store.upsertReport(session.id, student.id, session.instructorId, { content, homework });
@@ -135,7 +148,20 @@ function StudentReportRow({ session, student }: { session: ClassSession; student
         <span className="font-medium">{student.name}</span>
         {student.englishName && <span className="text-[12px] text-fg-subtle">{student.englishName}</span>}
         <Badge tone={reportTone[status]}>{reportLabel[status]}</Badge>
+        {report?.approvalStatus === 'approved' && <Badge tone="success">승인됨 · 시수 반영</Badge>}
+        {report?.approvalStatus === 'rejected' && <Badge tone="danger">반려</Badge>}
         {savedAt && <span className="text-[11px] text-fg-subtle ml-auto">저장됨 {savedAt}</span>}
+      </div>
+      {report?.approvalStatus === 'rejected' && report.rejectedReason && (
+        <div className="mb-2 text-[12px] text-danger">반려 사유: {report.rejectedReason}</div>
+      )}
+      {/* 템플릿 적용/저장 */}
+      <div className="flex items-center gap-2 mb-2">
+        <select className="input h-8 w-44 text-[12px]" value="" onChange={(e) => e.target.value && applyTemplate(Number(e.target.value))}>
+          <option value="">템플릿 적용…</option>
+          {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <button type="button" className="btn btn-sm" onClick={saveAsTemplate} disabled={!content.trim()}>현재 내용을 템플릿으로</button>
       </div>
       <textarea
         className="input h-24 py-2 leading-relaxed"
