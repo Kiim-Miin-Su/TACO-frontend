@@ -64,6 +64,7 @@ export function ScheduleCalendar() {
   const [rows, setRows] = useState<ScheduleRow[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [editing, setEditing] = useState<ScheduleRow | null>(null);
+  const [selEvent, setSelEvent] = useState<number | null>(null); // 단일 클릭 선택(애플식 — 리사이즈 핸들 노출)
   const [pending, setPending] = useState<Pending | null>(null);
   const [preview, setPreview] = useState<{ id: number; start: number; end: number } | null>(null);
   const [msg, setMsg] = useState("");
@@ -672,6 +673,7 @@ export function ScheduleCalendar() {
                             onDragOver={(e) => e.preventDefault()}
                             onDrop={(e) => onColumnDrop(e, c)}
                             onPointerDown={(e) => bDownNew(e, c)}
+                            onClick={(e) => { if (e.target === e.currentTarget) setSelEvent(null); }}
                           >
                             {/* 가용(초록)/불가(회색) 밴드 — 클릭 삭제 / 편집모드에서 끝 드래그로 시간 조절 */}
                             {bands.map((b) => (
@@ -732,32 +734,33 @@ export function ScheduleCalendar() {
                                   key={r.id}
                                   draggable
                                   onDragStart={(e) => onDragStart(e, r)}
-                                  onClick={() => setEditing(r)}
-                                  title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${r.studentNames?.length ? " · " + r.studentNames.join(", ") : ""}`}
-                                  className="absolute rounded-lg text-white text-[11px] leading-tight px-1.5 py-1 cursor-grab overflow-hidden ring-1 ring-black/5 shadow-sm hover:brightness-105 transition"
+                                  onClick={(e) => { e.stopPropagation(); setSelEvent(r.id); }}
+                                  onDoubleClick={(e) => { e.stopPropagation(); setEditing(r); }}
+                                  title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 더블클릭=상세`}
+                                  className={`absolute rounded-lg text-white text-[11px] leading-tight px-1.5 py-1 cursor-grab overflow-hidden shadow-sm hover:brightness-105 transition ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
                                   style={{
                                     top: top + 1,
                                     height: h - 2,
                                     left: `calc(${ln.lane * wPct}% + 2px)`,
                                     width: `calc(${wPct}% - 4px)`,
                                     background: colorOf(r),
+                                    outline: selEvent === r.id ? "2px solid var(--color-accent)" : undefined,
+                                    outlineOffset: selEvent === r.id ? "1px" : undefined,
                                   }}
                                 >
-                                  <div
-                                    onPointerDown={(e) => onResizeDown(e, r, "top")}
-                                    className="absolute left-0 right-0 top-0 h-2 cursor-ns-resize"
-                                  />
+                                  {selEvent === r.id && (
+                                    <div onPointerDown={(e) => onResizeDown(e, r, "top")} className="absolute left-1/2 -translate-x-1/2 top-0 w-6 h-2 rounded-b bg-white/90 cursor-ns-resize" />
+                                  )}
                                   <div className="font-semibold truncate">{labelOf(r)}</div>
                                   <div className="opacity-90 mono truncate">
                                     {fromMin(s)}–{fromMin(en)}
                                   </div>
                                   <div className="opacity-80 truncate">
-                                    {view === "week" ? (r.roomName ?? "") : r.instructorName}
+                                    {r.memo ? r.memo : view === "week" ? (r.roomName ?? "") : r.instructorName}
                                   </div>
-                                  <div
-                                    onPointerDown={(e) => onResizeDown(e, r, "bottom")}
-                                    className="absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize"
-                                  />
+                                  {selEvent === r.id && (
+                                    <div onPointerDown={(e) => onResizeDown(e, r, "bottom")} className="absolute left-1/2 -translate-x-1/2 bottom-0 w-6 h-2 rounded-t bg-white/90 cursor-ns-resize" />
+                                  )}
                                 </div>
                               );
                             })}
@@ -948,6 +951,7 @@ function DetailModal({
   const [end, setEnd] = useState(row.endTime ?? fromMin(toMin(row.startTime ?? "16:00") + row.durationMinutes));
   const [roomId, setRoomId] = useState<number | "">(row.roomId ?? "");
   const [status, setStatus] = useState(row.status);
+  const [memo, setMemo] = useState(row.memo ?? "");
   const [scope, setScope] = useState<"this" | "this_and_following" | "all">("this");
   const isSeries = row.seriesId != null;
 
@@ -989,6 +993,8 @@ function DetailModal({
                   <dd>{row.topic}</dd>
                 </>
               )}
+              <Dt>메모</Dt>
+              <dd className="whitespace-pre-wrap">{row.memo ? row.memo : <span className="text-fg-subtle">—</span>}</dd>
             </dl>
             <div className="flex justify-between gap-2 pt-1">
               <Link href={`/sessions/${row.id}`} className="btn btn-sm">
@@ -1040,6 +1046,10 @@ function DetailModal({
                 ))}
               </select>
             </Field>
+            <Field label="메모">
+              <textarea className="input min-h-[64px] py-1.5" rows={3} placeholder="자유 메모 (학생 특이사항·준비물 등)"
+                value={memo} onChange={(e) => setMemo(e.target.value)} />
+            </Field>
             {isSeries && (
               <Field label="반복 적용 범위">
                 <select className="input" value={scope} onChange={(e) => setScope(e.target.value as typeof scope)}>
@@ -1062,6 +1072,7 @@ function DetailModal({
                     endTime: end,
                     roomId: roomId || undefined,
                     status,
+                    memo,
                     scope: isSeries ? scope : undefined,
                   })
                 }
@@ -1143,6 +1154,7 @@ function CreateModal({
   const [date, setDate] = useState(defaultDate);
   const [start, setStart] = useState("16:00");
   const [end, setEnd] = useState("17:30");
+  const [memo, setMemo] = useState("");
   const lockedInstructorName = lockInstructorId != null ? resources.instructors.find((i) => i.id === lockInstructorId)?.name : undefined;
   function pickCourse(id: number) {
     setCourseId(id);
@@ -1200,10 +1212,11 @@ function CreateModal({
               <Field label="시작"><input type="time" step={900} className="input" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
               <Field label="종료"><input type="time" step={900} className="input" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
             </div>
+            <Field label="메모"><textarea className="input min-h-[52px] py-1.5" rows={2} placeholder="선택 — 메모" value={memo} onChange={(e) => setMemo(e.target.value)} /></Field>
             <div className="flex justify-end gap-2 pt-1">
               <button className="btn" onClick={onClose}>취소</button>
               <button className="btn btn-primary" disabled={!sessionValid}
-                onClick={() => onCreate({ courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: date, startTime: start, endTime: end })}>
+                onClick={() => onCreate({ courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: date, startTime: start, endTime: end, memo: memo || undefined })}>
                 수업 추가
               </button>
             </div>
