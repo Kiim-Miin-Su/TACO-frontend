@@ -93,6 +93,10 @@ export function StudentMatchPanel({
       .sort((a, b) => b.freeSlots - a.freeSlots);
   }, [studentId, subject, weekStart, sessions, blocks, resources, reasonFor]);
 
+  // #3: 학생∧강사 가용이 겹치는(배정 가능한) 수업만 노출. 겹치지 않는 건 리스트에서 숨김.
+  const fit = useMemo(() => matches.filter((m) => m.freeSlots > 0), [matches]);
+  const hiddenCount = matches.length - fit.length;
+
   return (
     <aside className="w-60 shrink-0 card overflow-hidden self-start sticky top-4">
       <div className="px-3 h-10 flex items-center border-b" style={{ borderColor: "var(--color-line)" }}>
@@ -113,11 +117,14 @@ export function StudentMatchPanel({
             {subjects.map((sname) => <option key={sname} value={sname}>{sname}</option>)}
           </select>
 
-          {matches.length === 0 ? (
-            <p className="text-[12px] text-fg-subtle text-center py-4">후보 수업이 없습니다.</p>
+          {fit.length === 0 ? (
+            <p className="text-[12px] text-fg-subtle text-center py-4">
+              가용 시간이 겹치는 수업이 없습니다.<br />
+              <span className="text-[11px]">강사·학생 가용 시간을 확인해 주세요.</span>
+            </p>
           ) : (
             <div className="space-y-1">
-              {matches.map((m) => {
+              {fit.map((m) => {
                 const ok = m.freeSlots > 0;
                 return (
                   <div key={m.courseId} className="rounded border" style={{ borderColor: "var(--color-line)" }}>
@@ -154,6 +161,9 @@ export function StudentMatchPanel({
                 );
               })}
             </div>
+          )}
+          {hiddenCount > 0 && (
+            <p className="text-[11px] text-fg-subtle px-1 pt-1">가용 시간이 겹치지 않는 수업 {hiddenCount}개는 숨김</p>
           )}
         </div>
       )}

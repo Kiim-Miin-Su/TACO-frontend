@@ -219,15 +219,19 @@ export function ownerWindows(
     .map((b) => ({ weekday: b.weekday, start: toMin(b.startTime), end: toMin(b.endTime) }));
 }
 
-/** 한 요일에 대한 두 가용 윈도우 집합의 교집합. 한쪽이 비면(=가용 제약 없음) 다른 쪽을 그대로(없으면 full). */
-function dayIntersect(a: DayWindow[], b: DayWindow[], wd: number, full: [number, number]): [number, number][] {
-  const av = a.filter((w) => w.weekday === wd).map((w) => [w.start, w.end] as [number, number]);
-  const bv = b.filter((w) => w.weekday === wd).map((w) => [w.start, w.end] as [number, number]);
-  const A = av.length ? av : [full];
-  const B = bv.length ? bv : [full];
+/**
+ * 한 요일의 강사·학생 가용 교집합.
+ * - 강사(inst)는 **명시 가용이 필수**(없으면 추천 안 함) → 학생 가용 변경이 강사 시간표로 전이되는 무결성 문제 방지.
+ * - 학생(stud)은 미선언 시 근무시간(full)로 간주(학생은 유연). 선언했으면 그 구간으로 제한(겹치는 구간만).
+ */
+function dayPairWindows(instWins: DayWindow[], studWins: DayWindow[], wd: number, full: [number, number]): [number, number][] {
+  const inst = instWins.filter((w) => w.weekday === wd).map((w) => [w.start, w.end] as [number, number]);
+  if (!inst.length) return []; // 그 요일 강사 가용 없음 → 후보 없음
+  const studForDay = studWins.filter((w) => w.weekday === wd).map((w) => [w.start, w.end] as [number, number]);
+  const stud = studForDay.length ? studForDay : [full]; // 학생 미선언 → full
   const out: [number, number][] = [];
-  for (const [as, ae] of A) for (const [bs, be] of B) {
-    const s = Math.max(as, bs, full[0]); const e = Math.min(ae, be, full[1]);
+  for (const [is, ie] of inst) for (const [ss, se] of stud) {
+    const s = Math.max(is, ss, full[0]); const e = Math.min(ie, se, full[1]);
     if (s < e) out.push([s, e]);
   }
   return out.sort((x, y) => x[0] - y[0]);
@@ -258,6 +262,8 @@ export function suggestPairSlots(input: PairSuggestInput, ctx: PairSuggestCtx): 
   const dur = input.durationMinutes;
   const limit = ctx.limit ?? 24;
   const instAvail = ownerWindows(ctx.blocks, 'instructor', input.instructorId, 'available');
+  // 강사가 가용 시간을 선언하지 않았으면 추천 대상에서 제외(무결성: 학생 일정에 끌려가지 않음).
+  if (instAvail.length === 0) return [];
   const studAvail = input.studentId != null ? ownerWindows(ctx.blocks, 'student', input.studentId, 'available') : [];
 
   const blockedBy = (wd: number, s: number, e: number): boolean =>
@@ -281,7 +287,7 @@ export function suggestPairSlots(input: PairSuggestInput, ctx: PairSuggestCtx): 
   for (const date of weekDates(input.weekStart)) {
     const wd = weekdayOf(date);
     if (!wds.includes(wd)) continue;
-    for (const [ws, we] of dayIntersect(instAvail, studAvail, wd, full)) {
+    for (const [ws, we] of dayPairWindows(instAvail, studAvail, wd, full)) {
       for (let s = ws; s + dur <= we; s += step) {
         if (blockedBy(wd, s, s + dur) || busy(date, s, s + dur)) continue;
         out.push({ date, weekday: wd, startTime: fromMinLocal(s), endTime: fromMinLocal(s + dur) });

@@ -268,6 +268,34 @@ describe('suggestPairSlots (학생가용 ∧ 강사가용)', () => {
     );
     expect(out.map((s) => s.startTime)).toEqual(['11:00']); // 10:00·10:30은 점유와 겹쳐 제외
   });
+
+  it('강사 가용 미선언 → 후보 없음(무결성: 학생 일정에 끌려가지 않음)', () => {
+    // 강사 가용 블록 없음, 학생만 가용 → 추천 안 됨
+    const blocks = [
+      ablock({ id: 1, ownerType: 'student', ownerId: 2, kind: 'available', weekday: 1, startTime: '10:00', endTime: '12:00' }),
+    ];
+    const out = suggestPairSlots(
+      { weekStart: MON, weekdays: [1], durationMinutes: 60, stepMin: 30, instructorId: 1, studentId: 2 },
+      { sessions: [], blocks },
+    );
+    expect(out).toHaveLength(0);
+  });
+
+  it('학생 가용 변경은 강사 가용 구간 안의 교집합만 바꿈(강사 시간표 불변)', () => {
+    const inst = [ablock({ id: 1, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '14:00', endTime: '18:00' })];
+    // 학생이 월 오전(10–11)만 가용 → 강사 오후(14–18)와 안 겹침 → 후보 0
+    const am = suggestPairSlots(
+      { weekStart: MON, weekdays: [1], durationMinutes: 60, stepMin: 30, instructorId: 1, studentId: 2 },
+      { sessions: [], blocks: [...inst, ablock({ id: 2, ownerType: 'student', ownerId: 2, kind: 'available', weekday: 1, startTime: '10:00', endTime: '11:00' })] },
+    );
+    expect(am).toHaveLength(0);
+    // 학생이 월 오후(15–17)로 바꾸면 강사 구간(14–18)과 겹쳐 그 교집합만 후보
+    const pm = suggestPairSlots(
+      { weekStart: MON, weekdays: [1], durationMinutes: 60, stepMin: 30, instructorId: 1, studentId: 2 },
+      { sessions: [], blocks: [...inst, ablock({ id: 2, ownerType: 'student', ownerId: 2, kind: 'available', weekday: 1, startTime: '15:00', endTime: '17:00' })] },
+    );
+    expect(pm.map((s) => s.startTime)).toEqual(['15:00', '15:30', '16:00']); // 15–17 안에서만
+  });
 });
 
 describe('recommendForStudent (학생 중심 수업·강사 추천)', () => {

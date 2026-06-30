@@ -316,23 +316,51 @@ export function ScheduleCalendar() {
       .join("\n");
   }
 
-  // ── PATCH 적용(충돌 시 확인 후 force) ──
+  // ── 낙관적 업데이트(렌더 레이턴시 해소) ──
+  // 프론트에서 먼저 화면을 반영하고, 백엔드 응답으로 확정(load)하거나 실패 시 스냅샷으로 롤백.
+  function applyRowPatch(r: ScheduleRow, patch: SchedulePatchBody): ScheduleRow {
+    const next: ScheduleRow = { ...r };
+    if (patch.sessionDate) { next.sessionDate = patch.sessionDate; next.weekday = weekdayOf(patch.sessionDate); }
+    if (patch.startTime) next.startTime = patch.startTime;
+    if (patch.endTime) next.endTime = patch.endTime;
+    if (patch.startTime || patch.endTime) {
+      const s = toMinD(next.startTime ?? "00:00");
+      const e = next.endTime ? toMinD(next.endTime) : s + next.durationMinutes;
+      next.durationMinutes = Math.max(1, e - s);
+    }
+    if (patch.durationMinutes != null) {
+      next.durationMinutes = patch.durationMinutes;
+      if (next.startTime && !patch.endTime) next.endTime = fromMin(toMinD(next.startTime) + patch.durationMinutes);
+    }
+    if (patch.roomId !== undefined) next.roomId = patch.roomId;
+    if (patch.instructorId !== undefined) next.instructorId = patch.instructorId;
+    if (patch.status) next.status = patch.status as ScheduleRow["status"];
+    if (patch.color !== undefined) next.color = patch.color;
+    if (patch.memo !== undefined) next.memo = patch.memo;
+    return next;
+  }
+
+  // ── PATCH 적용(낙관적 + 충돌 시 확인 후 force) ──
   async function applyPatch(id: number, patch: SchedulePatchBody) {
+    const snapshot = rows;
+    setRows((rs) => rs.map((r) => (r.id === id ? applyRowPatch(r, patch) : r))); // 즉시 반영
     try {
       const res = await api.schedule.update(id, patch);
       if (res.updated > 1) setMsg(`반복 일정 ${res.updated}건 함께 수정되었습니다.`);
-      await load();
+      await load(); // 서버 확정으로 reconcile
     } catch (e) {
       const err = e as { response?: { status?: number; data?: { conflicts?: Conflict[] } } };
       if (err.response?.status === 409) {
         const cs = err.response.data?.conflicts ?? [];
         if (confirm(`충돌 ${cs.length}건:\n${describeConflicts(cs)}\n\n그래도 적용할까요?`)) {
           await api.schedule.update(id, { ...patch, force: true });
+          await load();
+        } else {
+          setRows(snapshot); // 취소 → 롤백
         }
-        await load();
       } else {
+        setRows(snapshot); // 실패 → 롤백
         setMsg("수정 실패");
-        await load();
       }
     }
   }
@@ -342,12 +370,31 @@ export function ScheduleCalendar() {
     else applyPatch(r.id, patch);
   }
 
-  // 세션 생성(추가). 강사는 본인(myInstructorId)으로 강제 — 권한 게이팅(데모; 실제는 백엔드 가드).
+  // 낙관적 생성용 임시 행(음수 id) — resources에서 라벨 파생. load()로 곧 서버 행으로 교체됨.
+  function optimisticRow(body: ScheduleCreateBody): ScheduleRow {
+    const c = resources?.courses.find((x) => x.id === body.courseId);
+    const start = body.startTime;
+    const end = body.endTime ?? fromMin(toMinD(start) + (body.durationMinutes ?? c?.durationMinutes ?? 60));
+    return {
+      id: -Date.now(), courseId: body.courseId,
+      instructorId: body.instructorId ?? c?.instructorId ?? 0, roomId: body.roomId,
+      sessionDate: body.sessionDate, weekday: weekdayOf(body.sessionDate),
+      startTime: start, endTime: end, durationMinutes: Math.max(1, toMinD(end) - toMinD(start)),
+      status: (body.status as ScheduleRow["status"]) ?? "scheduled", color: body.color, memo: body.memo,
+      courseName: c?.name ?? "수업", subjectName: c?.subjectName ?? "",
+      instructorName: c?.instructorName ?? "", roomName: rooms.find((r) => r.id === body.roomId)?.name,
+      studentIds: [], studentNames: [],
+    } as ScheduleRow;
+  }
+
+  // 세션 생성(추가, 낙관적). 강사는 본인(myInstructorId)으로 강제 — 권한 게이팅(데모; 실제는 백엔드 가드).
   async function createSession(body: ScheduleCreateBody) {
     const safe: ScheduleCreateBody = isInstructor && myInstructorId != null ? { ...body, instructorId: myInstructorId } : body;
+    const snapshot = rows;
+    setRows((rs) => [...rs, optimisticRow(safe)]); // 즉시 반영
+    setCreating(null);
     try {
       await api.schedule.create(safe);
-      setCreating(null);
       await load();
     } catch (e) {
       const err = e as { response?: { status?: number; data?: { conflicts?: Conflict[] } } };
@@ -355,25 +402,57 @@ export function ScheduleCalendar() {
         const cs = err.response.data?.conflicts ?? [];
         if (confirm(`충돌 ${cs.length}건:\n${describeConflicts(cs)}\n\n그래도 추가할까요?`)) {
           await api.schedule.create({ ...safe, force: true });
-          setCreating(null);
           await load();
+        } else {
+          setRows(snapshot); // 취소 → 롤백
         }
-      } else setMsg("스케줄 추가 실패");
+      } else {
+        setRows(snapshot);
+        setMsg("스케줄 추가 실패");
+      }
     }
   }
 
-  // 세션 삭제(상세 모달). 확인 후 DELETE → 재조회.
+  // 반복 일정 생성(낙관적, 일괄). 같은 seriesId로 묶어 한 번에 생성 — 충돌은 자동 force(개별 확인 생략).
+  async function createSeries(bodies: ScheduleCreateBody[]) {
+    if (bodies.length === 0) return;
+    if (bodies.length === 1) return createSession(bodies[0]);
+    const safe = bodies.map((b) => (isInstructor && myInstructorId != null ? { ...b, instructorId: myInstructorId } : b));
+    const snapshot = rows;
+    setRows((rs) => [...rs, ...safe.map(optimisticRow)]); // 즉시 반영
+    setCreating(null);
+    try {
+      for (const b of safe) {
+        try { await api.schedule.create(b); }
+        catch (e) {
+          const err = e as { response?: { status?: number } };
+          if (err.response?.status === 409) await api.schedule.create({ ...b, force: true });
+          else throw e;
+        }
+      }
+      setMsg(`반복 일정 ${safe.length}건을 추가했습니다.`);
+      await load();
+    } catch {
+      setRows(snapshot);
+      setMsg("반복 일정 추가 실패");
+      await load();
+    }
+  }
+
+  // 세션 삭제(낙관적). 확인 후 즉시 제거 → 실패 시 롤백.
   async function deleteSession(id: number) {
     if (!confirm("이 스케줄을 삭제할까요? 되돌릴 수 없습니다.")) return;
+    const snapshot = rows;
+    setRows((rs) => rs.filter((r) => r.id !== id)); // 즉시 반영
+    setEditing(null);
+    setSelEvent(null);
     try {
       await api.schedule.remove(id);
-      setEditing(null);
-      setSelEvent(null);
       setMsg("스케줄을 삭제했습니다.");
       await load();
     } catch {
+      setRows(snapshot); // 실패 → 롤백
       setMsg("삭제 실패");
-      await load();
     }
   }
 
@@ -888,6 +967,7 @@ export function ScheduleCalendar() {
           defaultOwner={selected}
           onClose={() => setCreating(null)}
           onCreate={createSession}
+          onCreateSeries={createSeries}
           onCreateBlock={createBlock}
         />
       )}
@@ -1211,6 +1291,7 @@ function CreateModal({
   defaultOwner,
   onClose,
   onCreate,
+  onCreateSeries,
   onCreateBlock,
 }: {
   resources: ScheduleResources;
@@ -1220,6 +1301,7 @@ function CreateModal({
   defaultOwner?: ScheduleResource | null;
   onClose: () => void;
   onCreate: (body: ScheduleCreateBody) => void;
+  onCreateSeries: (bodies: ScheduleCreateBody[]) => void;
   onCreateBlock: (body: AvailabilityUpsertBody) => void;
 }) {
   const [tab, setTab] = useState<"session" | "block">("session");
@@ -1239,6 +1321,23 @@ function CreateModal({
   // 색상 라벨: 생성 시 기본값은 개설 때 고른 코스 색(미지정 시 비움 → 백엔드가 코스/과목 색 폴백)
   const [color, setColor] = useState<string | undefined>(myCourses[0]?.color);
   const [status, setStatus] = useState<string>("scheduled");
+  // ── 반복(그날만/매주/커스텀) + 종료일 ──
+  const [repeat, setRepeat] = useState<"none" | "weekly" | "custom">("none");
+  const [untilDate, setUntilDate] = useState(addDaysISO(defaultDate, 28));
+  const [customWds, setCustomWds] = useState<number[]>([weekdayOf(defaultDate)]);
+  const toggleWd = (d: number) => setCustomWds((ws) => (ws.includes(d) ? ws.filter((x) => x !== d) : [...ws, d].sort()));
+  // 시작일~종료일 사이에서 반복 규칙에 맞는 날짜들(안전 상한 60).
+  function occurrences(): string[] {
+    if (repeat === "none") return [date];
+    const wds = repeat === "weekly" ? [weekdayOf(date)] : customWds;
+    if (!wds.length) return [];
+    const out: string[] = [];
+    for (let cur = date; cur <= untilDate; cur = addDaysISO(cur, 1)) {
+      if (wds.includes(weekdayOf(cur))) out.push(cur);
+      if (out.length >= 60) break;
+    }
+    return out;
+  }
   const lockedInstructorName = lockInstructorId != null ? resources.instructors.find((i) => i.id === lockInstructorId)?.name : undefined;
   function pickCourse(id: number) {
     setCourseId(id);
@@ -1315,11 +1414,42 @@ function CreateModal({
               <Field label="색상"><ColorPicker value={color} onChange={setColor} /></Field>
             </div>
             <Field label="메모"><textarea className="input min-h-[52px] py-1.5" rows={2} placeholder="선택 — 메모" value={memo} onChange={(e) => setMemo(e.target.value)} /></Field>
+            {/* 반복 설정 */}
+            <Field label="반복">
+              <div className="flex rounded-md overflow-hidden border" style={{ borderColor: "var(--color-line)" }}>
+                {([["none", "그날만"], ["weekly", "매주"], ["custom", "커스텀"]] as const).map(([v, lbl]) => (
+                  <button key={v} type="button" onClick={() => setRepeat(v)}
+                    className={`btn btn-sm flex-1 rounded-none border-0 ${repeat === v ? "badge-accent" : ""}`}>{lbl}</button>
+                ))}
+              </div>
+            </Field>
+            {repeat === "custom" && (
+              <Field label="요일">
+                <div className="flex gap-1">
+                  {WD.map((w, d) => (
+                    <button key={d} type="button" onClick={() => toggleWd(d)}
+                      className={`w-8 h-8 rounded text-[12px] border ${customWds.includes(d) ? "badge-accent" : ""}`}
+                      style={{ borderColor: "var(--color-line)" }}>{w}</button>
+                  ))}
+                </div>
+              </Field>
+            )}
+            {repeat !== "none" && (
+              <Field label={`종료일 (${occurrences().length}회)`}>
+                <input type="date" className="input" value={untilDate} min={date} onChange={(e) => setUntilDate(e.target.value)} />
+              </Field>
+            )}
             <div className="flex justify-end gap-2 pt-1">
               <button className="btn" onClick={onClose}>취소</button>
-              <button className="btn btn-primary" disabled={!sessionValid}
-                onClick={() => onCreate({ courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: date, startTime: start, endTime: end, memo: memo || undefined, color, status })}>
-                수업 추가
+              <button className="btn btn-primary" disabled={!sessionValid || (repeat !== "none" && occurrences().length === 0)}
+                onClick={() => {
+                  const seriesId = repeat === "none" ? undefined : Date.now();
+                  const mk = (d: string): ScheduleCreateBody => ({ courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: d, startTime: start, endTime: end, memo: memo || undefined, color, status, seriesId });
+                  const days = occurrences();
+                  if (days.length <= 1) onCreate(mk(days[0] ?? date));
+                  else onCreateSeries(days.map(mk));
+                }}>
+                {repeat === "none" ? "수업 추가" : `반복 추가 (${occurrences().length}회)`}
               </button>
             </div>
           </>
