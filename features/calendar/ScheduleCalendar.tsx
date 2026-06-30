@@ -71,6 +71,12 @@ export function ScheduleCalendar() {
   const [pending, setPending] = useState<Pending | null>(null);
   const [preview, setPreview] = useState<{ id: number; start: number; end: number } | null>(null);
   const [msg, setMsg] = useState("");
+  // 토스트 자동 사라짐(성공·정보 알림이 화면에 계속 남지 않도록)
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(() => setMsg(""), 3500);
+    return () => clearTimeout(t);
+  }, [msg]);
 
   // ── 자원(레일)·가용 ──
   const [resources, setResources] = useState<ScheduleResources | null>(null);
@@ -714,7 +720,16 @@ export function ScheduleCalendar() {
             </div>
           </div>
 
-          {msg && <div className="text-[12px] text-danger">{msg}</div>}
+          {msg && (
+            <div
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg shadow-lg text-[13px] text-white flex items-center gap-2"
+              style={{ background: /(실패|없습니다|수 없|연결할 수|올바)/.test(msg) ? "var(--color-danger)" : "var(--color-success)" }}
+              role="status"
+            >
+              <span>{msg}</span>
+              <button onClick={() => setMsg("")} className="opacity-80 hover:opacity-100" aria-label="닫기">✕</button>
+            </div>
+          )}
 
           <div ref={captureRef} className="bg-canvas">
             {view === "month" ? (
