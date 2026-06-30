@@ -61,11 +61,11 @@ export const parentStudents: ParentStudent[] = [
 ];
 
 export const enrollments: Enrollment[] = [
-  // 월 8회 주기 기준 7회 진행 → 재결제 1회 남음(알림 트리거)
-  { id: 1, studentId: 1, courseId: 10, status: 'active', totalSessions: 16, completedSessions: 7, enrolledAt: '2026-06-24' },
-  { id: 2, studentId: 2, courseId: 11, status: 'active', totalSessions: 20, completedSessions: 6, enrolledAt: '2026-06-23' },
-  { id: 3, studentId: 4, courseId: 10, status: 'active', totalSessions: 16, completedSessions: 6, enrolledAt: '2026-06-20' },
-  { id: 4, studentId: 1, courseId: 12, status: 'active', totalSessions: 12, completedSessions: 2, enrolledAt: '2026-06-18' },
+  // completedSessions = 실제 진행완료(held·종료) 세션 수와 정합. 코스10/11/12 각 held 2회.
+  { id: 1, studentId: 1, courseId: 10, status: 'active', totalSessions: 16, completedSessions: 2, enrolledAt: '2026-06-17' },
+  { id: 2, studentId: 2, courseId: 11, status: 'active', totalSessions: 20, completedSessions: 2, enrolledAt: '2026-06-16' },
+  { id: 3, studentId: 4, courseId: 10, status: 'active', totalSessions: 16, completedSessions: 2, enrolledAt: '2026-06-17' },
+  { id: 4, studentId: 1, courseId: 12, status: 'active', totalSessions: 12, completedSessions: 2, enrolledAt: '2026-06-22' },
 ];
 
 export const classSessions: ClassSession[] = [
@@ -78,6 +78,10 @@ export const classSessions: ClassSession[] = [
   { id: 7, courseId: 10, instructorId: 1, sessionDate: '2026-06-30', startTime: '16:00', durationMinutes: 90, status: 'scheduled', topic: 'Reading: 근거 문장 매칭' },
   // 다가오는 수업
   { id: 8, courseId: 12, instructorId: 1, sessionDate: '2026-07-01', startTime: '18:00', durationMinutes: 90, status: 'scheduled', topic: 'TOEFL Speaking Task 1-2' },
+  // 지난 진행완료(held) 수업 — completedSessions(각 2회)와 정합. 코스별 held 2회 → 리포트 슬롯 8개.
+  { id: 20, courseId: 10, instructorId: 1, sessionDate: '2026-06-17', startTime: '16:00', durationMinutes: 90, status: 'held', topic: 'Reading: 주제·요지' },
+  { id: 21, courseId: 11, instructorId: 2, sessionDate: '2026-06-16', startTime: '18:00', durationMinutes: 90, status: 'held', topic: '미분 응용' },
+  { id: 22, courseId: 12, instructorId: 1, sessionDate: '2026-06-22', startTime: '18:00', durationMinutes: 90, status: 'held', topic: 'TOEFL Reading 스킬' },
 ];
 
 // 수업1(코스10) 수강생: 학생 1,4 / 수업2(코스11) 수강생: 학생 2
