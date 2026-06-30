@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTacoStore } from "@/lib/store";
 import { roleLabel } from "@/lib/roles";
+import { decodeToken } from "@/lib/auth";
 import { api } from "@/lib/api";
 import {
   IconHome,
@@ -59,20 +60,26 @@ export default function Sidebar() {
 
   // 현재 역할(데모 컨텍스트 — Topbar에서 전환) → 좌측 유저 표시 단일 소스
   const role = useTacoStore((s) => s.currentRole);
+  // 로그인 토큰이 있으면 디코딩해 실제 이름을 사용(직책 대신). 없으면 데모 이름.
+  const [tokenName, setTokenName] = useState<string | null>(null);
   // 강사/학생 역할은 백엔드 자원에서 대표 인물명을 가져와 표시(참조 무결성: 역할↔표시 일치)
   const [people, setPeople] = useState<{ instructor?: string; student?: string }>({});
   useEffect(() => {
+    const t = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+    if (t) setTokenName(decodeToken(t)?.name ?? null);
     api.schedule
       .resources()
       .then((r) => setPeople({ instructor: r.instructors[0]?.name, student: r.students[0]?.name }))
       .catch(() => {});
   }, []);
-  const identity =
-    role === "instructor" ? { name: people.instructor ?? "강사" }
-      : role === "student" ? { name: people.student ?? "학생" }
-        : role === "parent" ? { name: "학부모" }
-          : role === "manager" ? { name: "매니저" }
-            : { name: "교수실장" };
+  // 직책이 아니라 실제 이름. 토큰 우선 → 강사/학생은 백엔드 인물 → 데모 이름.
+  const demoName =
+    role === "instructor" ? people.instructor ?? "강사"
+      : role === "student" ? people.student ?? "학생"
+        : role === "parent" ? "최영희"
+          : role === "manager" ? "이지원"
+            : "김민수"; // super_admin / admin
+  const identity = { name: tokenName ?? demoName };
 
   return (
     <aside className="w-60 shrink-0 border-r flex flex-col bg-canvas">

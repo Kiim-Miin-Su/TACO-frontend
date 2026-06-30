@@ -9,7 +9,6 @@ import { useTacoStore } from "@/lib/store";
 import { isAdmin } from "@/lib/roles";
 import { StudentMatchPanel } from "./StudentMatchPanel";
 import { ResourcePanel } from "./ResourcePanel";
-import { AvailabilityPanel } from "./AvailabilityPanel";
 import { TableView } from "./TableView";
 
 // ── 그리드 상수 (애플/구글 캘린더 스타일: 넓고 시간 단위가 또렷하게) ──
@@ -73,7 +72,6 @@ export function ScheduleCalendar() {
   const [resources, setResources] = useState<ScheduleResources | null>(null);
   const [selected, setSelected] = useState<ScheduleResource | null>(null);
   const [selBlocks, setSelBlocks] = useState<AvailabilityBlock[]>([]); // 선택 자원의 불가시간(밴드 표시)
-  const [showAvail, setShowAvail] = useState(false);
 
   // 이미지(PNG/JPEG) 내보내기
   const captureRef = useRef<HTMLDivElement>(null);
@@ -96,7 +94,6 @@ export function ScheduleCalendar() {
   const [fRooms, setFRooms] = useState<Set<number>>(new Set());
   const [fStudents, setFStudents] = useState<Set<number>>(new Set());
 
-  const grabOffsetRef = useRef(0);
   const resizingRef = useRef<Resizing | null>(null);
   const previewRef = useRef<{ id: number; start: number; end: number } | null>(null);
 
@@ -257,50 +254,35 @@ export function ScheduleCalendar() {
     try { await api.availability.remove(id); reloadSelBlocks(); } catch { setMsg("삭제 실패"); }
   }
 
-  // ── 드래그 편집: 빈 영역 드래그=불가 생성, 밴드 끝 드래그=시작/끝 리사이즈 ──
-  const [blockMode, setBlockMode] = useState(false);
+  // ── 불가/가용 밴드를 스케줄처럼 관리: 클릭=선택 · 끝 드래그=리사이즈 · ✕=삭제 ──
+  const [selBand, setSelBand] = useState<number | null>(null);
   const [bDraft, setBDraft] = useState<{ colKey: string; start: number; end: number; kind: string } | null>(null);
   const bDragRef = useRef<{
-    colKey: string; date: string; kind: AvailabilityBlock["kind"]; id?: number;
-    mode: "new" | "resize"; edge?: "top" | "bottom";
-    topPx?: number; startClientY?: number; origStart?: number; origEnd?: number;
-    start: number; end: number;
+    colKey: string; date: string; kind: AvailabilityBlock["kind"]; id: number; edge: "top" | "bottom";
+    startClientY: number; origStart: number; origEnd: number; start: number; end: number;
   } | null>(null);
 
   const bMove = (e: PointerEvent) => {
     const d = bDragRef.current; if (!d) return;
-    if (d.mode === "new") {
-      const m = clampMin(snap(GRID_MIN + ((e.clientY - (d.topPx ?? 0)) / HOUR_H) * 60));
-      d.end = Math.max(d.start + SNAP, m);
-    } else {
-      const delta = snap(((e.clientY - (d.startClientY ?? 0)) / HOUR_H) * 60);
-      if (d.edge === "top") d.start = Math.min((d.origEnd ?? 0) - SNAP, clampMin((d.origStart ?? 0) + delta));
-      else d.end = Math.max((d.origStart ?? 0) + SNAP, clampMin((d.origEnd ?? 0) + delta));
-    }
+    const delta = snap(((e.clientY - d.startClientY) / HOUR_H) * 60);
+    if (d.edge === "top") d.start = Math.min(d.origEnd - SNAP, clampMin(d.origStart + delta));
+    else d.end = Math.max(d.origStart + SNAP, clampMin(d.origEnd + delta));
     setBDraft({ colKey: d.colKey, start: d.start, end: d.end, kind: d.kind });
   };
   const bUp = () => {
     window.removeEventListener("pointermove", bMove);
     const d = bDragRef.current; bDragRef.current = null; setBDraft(null);
     if (!d || !selected || d.end <= d.start) return;
+    if (d.start === d.origStart && d.end === d.origEnd) return;
     createBlock({
       id: d.id, ownerType: selected.type, ownerId: selected.id, kind: d.kind,
       weekday: weekdayOf(d.date), startTime: fromMin(d.start), endTime: fromMin(d.end),
     });
   };
-  const bDownNew = (e: React.PointerEvent, c: { key: string; date: string }) => {
-    if (!blockMode || !selected || e.target !== e.currentTarget) return;
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const s = clampMin(snap(GRID_MIN + ((e.clientY - rect.top) / HOUR_H) * 60));
-    bDragRef.current = { colKey: c.key, date: c.date, kind: "unavailable", mode: "new", topPx: rect.top, start: s, end: s + SNAP };
-    setBDraft({ colKey: c.key, start: s, end: s + SNAP, kind: "unavailable" });
-    window.addEventListener("pointermove", bMove);
-    window.addEventListener("pointerup", bUp, { once: true });
-  };
   const bDownResize = (e: React.PointerEvent, c: { key: string; date: string }, b: { id: number; kind: string; startMin: number; endMin: number }, edge: "top" | "bottom") => {
     e.stopPropagation();
     bDragRef.current = {
-      colKey: c.key, date: c.date, kind: b.kind as AvailabilityBlock["kind"], id: b.id, mode: "resize", edge,
+      colKey: c.key, date: c.date, kind: b.kind as AvailabilityBlock["kind"], id: b.id, edge,
       startClientY: e.clientY, origStart: b.startMin, origEnd: b.endMin, start: b.startMin, end: b.endMin,
     };
     setBDraft({ colKey: c.key, start: b.startMin, end: b.endMin, kind: b.kind });
@@ -369,31 +351,56 @@ export function ScheduleCalendar() {
     }
   }
 
-  // ── 드래그 이동 ──
-  const onDragStart = (e: React.DragEvent, r: ScheduleRow) => {
-    if (resizingRef.current) {
-      e.preventDefault();
-      return;
-    }
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    grabOffsetRef.current = ((e.clientY - rect.top) / HOUR_H) * 60;
-    e.dataTransfer.setData("text/plain", String(r.id));
-    e.dataTransfer.effectAllowed = "move";
+  // ── 드래그 이동(포인터 기반 라이브 프리뷰, 30분 스냅 — 구글/애플 캘린더식) ──
+  const SNAP_MOVE = 30;
+  const snapMove = (m: number) => Math.round(m / SNAP_MOVE) * SNAP_MOVE;
+  const [moveDrag, setMoveDrag] = useState<{ id: number; colKey: string; start: number; dur: number; color: string } | null>(null);
+  const moveRef = useRef<{
+    id: number; row: ScheduleRow; dur: number; grab: number; startClientY: number; moved: boolean;
+    colKey: string; date: string; roomId?: number; start: number;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
+
+  const onMovePointer = (e: PointerEvent) => {
+    const d = moveRef.current;
+    if (!d) return;
+    if (!d.moved && Math.abs(e.clientY - d.startClientY) < 4) return;
+    d.moved = true;
+    const cell = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>("[data-colcell]");
+    if (!cell) return;
+    const rect = cell.getBoundingClientRect();
+    const start = clampMin(snapMove(GRID_MIN + ((e.clientY - rect.top) / HOUR_H) * 60 - d.grab));
+    d.colKey = cell.dataset.colkey ?? d.colKey;
+    d.date = cell.dataset.date ?? d.date;
+    d.roomId = cell.dataset.roomid ? Number(cell.dataset.roomid) : undefined;
+    d.start = start;
+    setMoveDrag({ id: d.id, colKey: d.colKey, start, dur: d.dur, color: colorOf(d.row) });
   };
-  const onColumnDrop = (e: React.DragEvent, c: { date: string; roomId?: number }) => {
-    e.preventDefault();
-    const id = Number(e.dataTransfer.getData("text/plain"));
-    const r = rows.find((x) => x.id === id);
-    if (!r) return;
-    const colRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const relMin = ((e.clientY - colRect.top) / HOUR_H) * 60 - grabOffsetRef.current;
-    const newStart = clampMin(snap(GRID_MIN + relMin));
-    if (c.date === r.sessionDate && newStart === startMinOf(r) && (c.roomId ?? r.roomId) === r.roomId) return;
+  const onMoveUp = () => {
+    window.removeEventListener("pointermove", onMovePointer);
+    const d = moveRef.current;
+    moveRef.current = null;
+    setMoveDrag(null);
+    if (!d || !d.moved) return;
+    suppressClickRef.current = true;
+    const r = d.row;
+    const newRoom = d.roomId ?? r.roomId;
+    if (d.date === r.sessionDate && d.start === startMinOf(r) && newRoom === r.roomId) return;
     requestChange(
       r,
-      { sessionDate: c.date, startTime: fromMin(newStart), durationMinutes: r.durationMinutes, roomId: c.roomId ?? r.roomId },
-      `${fromMin(newStart)}로 이동`,
+      { sessionDate: d.date, startTime: fromMin(d.start), durationMinutes: d.dur, roomId: newRoom },
+      `${fromMin(d.start)}로 이동`,
     );
+  };
+  const onEventDown = (e: React.PointerEvent, r: ScheduleRow) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const grab = ((e.clientY - rect.top) / HOUR_H) * 60;
+    moveRef.current = {
+      id: r.id, row: r, dur: r.durationMinutes, grab, startClientY: e.clientY, moved: false,
+      colKey: "", date: r.sessionDate, roomId: r.roomId, start: startMinOf(r),
+    };
+    window.addEventListener("pointermove", onMovePointer);
+    window.addEventListener("pointerup", onMoveUp, { once: true });
   };
 
   // ── 리사이즈(시작/끝 핸들) ──
@@ -516,20 +523,6 @@ export function ScheduleCalendar() {
           <button className="btn btn-sm" disabled={busyImg} onClick={() => saveImage("jpeg")} title="현재 화면을 JPEG로 저장">
             JPEG
           </button>
-          {selected && (
-            <button className="btn btn-sm" onClick={() => setShowAvail(true)}>
-              가용 · 추천
-            </button>
-          )}
-          {selected && isGrid && (
-            <button
-              className={`btn btn-sm ${blockMode ? "btn-primary" : ""}`}
-              onClick={() => setBlockMode((v) => !v)}
-              title="드래그=불가 생성 · 밴드 끝 드래그=시간 조절 · 밴드 클릭=삭제"
-            >
-              {blockMode ? "불가시간 편집 ✓" : "불가시간 편집"}
-            </button>
-          )}
         </div>
       </div>
 
@@ -541,7 +534,7 @@ export function ScheduleCalendar() {
             weekStart={weekStart}
             sessions={rows}
             selected={selected}
-            onAssign={() => setShowAvail(true)}
+            onAssign={createSession}
           />
         )}
 
@@ -576,9 +569,7 @@ export function ScheduleCalendar() {
                   </span>
                 </span>
               )}
-              {blockMode
-                ? <span className="text-[12px] text-accent">드래그=불가 생성 · 밴드 끝 드래그=시간 조절</span>
-                : selected && selBlocks.length > 0 && <span className="text-[12px] text-fg-subtle">밴드 클릭=삭제 · ‘불가시간 편집’으로 드래그 생성/조절</span>}
+              {selected && selBlocks.length > 0 && <span className="text-[12px] text-fg-subtle">밴드 클릭=선택 · 끝 드래그=시간 조절 · ✕=삭제</span>}
               {anyFilter ? (
                 <button className="btn btn-sm" onClick={clearFilters}>
                   필터 초기화
@@ -666,51 +657,68 @@ export function ScheduleCalendar() {
                           </div>
                           <div
                             className="relative"
+                            data-colcell
+                            data-colkey={c.key}
+                            data-date={c.date}
+                            data-roomid={c.roomId ?? ""}
                             style={{
                               height: GRID_H,
                               backgroundImage: `repeating-linear-gradient(to bottom, var(--color-line) 0, var(--color-line) 1px, transparent 1px, transparent ${HOUR_H}px), repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_H / 2}px, var(--color-line-muted) ${HOUR_H / 2}px, var(--color-line-muted) ${HOUR_H / 2 + 1}px, transparent ${HOUR_H / 2 + 1}px, transparent ${HOUR_H}px)`,
                             }}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={(e) => onColumnDrop(e, c)}
-                            onPointerDown={(e) => bDownNew(e, c)}
-                            onClick={(e) => { if (e.target === e.currentTarget) setSelEvent(null); }}
+                            onClick={(e) => { if (e.target === e.currentTarget) { setSelEvent(null); setSelBand(null); } }}
                           >
-                            {/* 가용(초록)/불가(회색) 밴드 — 클릭 삭제 / 편집모드에서 끝 드래그로 시간 조절 */}
-                            {bands.map((b) => (
+                            {/* 가용(초록)/불가(회색) 밴드 — 클릭=선택 · 끝 드래그=시간 조절 · ✕=삭제 (스케줄처럼 관리) */}
+                            {bands.map((b) => {
+                              const on = selBand === b.id;
+                              return (
                               <div
                                 key={`b${b.id}`}
-                                onClick={(e) => { if (!blockMode && selected) { e.stopPropagation(); deleteBlock(b.id); } }}
-                                title={blockMode ? "끝을 끌어 시간 조절" : (selected ? "클릭 삭제" : "")}
-                                className={`absolute left-0 right-0 ${selected && !blockMode ? "cursor-pointer" : ""} ${blockMode ? "" : "pointer-events-none"}`}
+                                onClick={(e) => { if (selected) { e.stopPropagation(); setSelBand(on ? null : b.id); setSelEvent(null); } }}
+                                title={b.kind === "unavailable" ? "불가시간 — 클릭 선택" : "가용시간 — 클릭 선택"}
+                                className={`absolute left-0 right-0 ${selected ? "cursor-pointer" : "pointer-events-none"}`}
                                 style={
                                   b.kind === "unavailable"
                                     ? {
                                         top: b.top, height: b.h,
                                         background:
                                           "repeating-linear-gradient(45deg, rgba(110,118,129,.16) 0 6px, rgba(110,118,129,.28) 6px 12px)",
+                                        outline: on ? "2px solid var(--color-fg-muted)" : undefined,
                                       }
                                     : {
                                         top: b.top, height: b.h,
                                         background: "rgba(26,127,55,.10)",
                                         borderLeft: "2px solid var(--color-success)",
+                                        outline: on ? "2px solid var(--color-success)" : undefined,
                                       }
                                 }
                               >
-                                {blockMode && (
+                                {on && (
                                   <>
-                                    <div onPointerDown={(e) => bDownResize(e, c, b, "top")} className="absolute left-0 right-0 top-0 h-2 cursor-ns-resize" style={{ background: "rgba(110,118,129,.4)" }} />
-                                    <div onPointerDown={(e) => bDownResize(e, c, b, "bottom")} className="absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize" style={{ background: "rgba(110,118,129,.4)" }} />
+                                    <div onPointerDown={(e) => bDownResize(e, c, b, "top")} className="absolute left-1/2 -translate-x-1/2 top-0 w-6 h-2 rounded-b cursor-ns-resize" style={{ background: "var(--color-fg-muted)" }} />
+                                    <button onClick={(e) => { e.stopPropagation(); deleteBlock(b.id); }} className="absolute right-0.5 top-0.5 w-4 h-4 grid place-items-center rounded text-[10px] text-white" style={{ background: "var(--color-danger)" }} title="삭제">✕</button>
+                                    <div onPointerDown={(e) => bDownResize(e, c, b, "bottom")} className="absolute left-1/2 -translate-x-1/2 bottom-0 w-6 h-2 rounded-t cursor-ns-resize" style={{ background: "var(--color-fg-muted)" }} />
                                   </>
                                 )}
                               </div>
-                            ))}
-                            {/* 드래그 중 미리보기 밴드 */}
+                              );
+                            })}
+                            {/* 밴드 리사이즈 미리보기 */}
                             {bDraft && bDraft.colKey === c.key && (
                               <div className="absolute left-0 right-0 pointer-events-none" style={{
                                 top: ((bDraft.start - GRID_MIN) / 60) * HOUR_H,
                                 height: Math.max(2, ((bDraft.end - bDraft.start) / 60) * HOUR_H),
                                 background: "rgba(110,118,129,.30)", border: "1px dashed var(--color-fg-subtle)",
                               }} />
+                            )}
+                            {/* 이벤트 이동 라이브 고스트(30분 스냅) */}
+                            {moveDrag && moveDrag.colKey === c.key && (
+                              <div className="absolute left-0.5 right-0.5 z-30 pointer-events-none rounded-lg text-white text-[11px] px-1.5 py-1 ring-2 ring-white" style={{
+                                top: ((moveDrag.start - GRID_MIN) / 60) * HOUR_H + 1,
+                                height: Math.max(22, (moveDrag.dur / 60) * HOUR_H) - 2,
+                                background: moveDrag.color, opacity: 0.9,
+                              }}>
+                                <div className="font-semibold mono">{fromMin(moveDrag.start)}–{fromMin(moveDrag.start + moveDrag.dur)}</div>
+                              </div>
                             )}
                             {/* 현재 시각 인디케이터 */}
                             {showNow && isToday && (
@@ -732,11 +740,10 @@ export function ScheduleCalendar() {
                               return (
                                 <div
                                   key={r.id}
-                                  draggable
-                                  onDragStart={(e) => onDragStart(e, r)}
-                                  onClick={(e) => { e.stopPropagation(); setSelEvent(r.id); }}
+                                  onPointerDown={(e) => onEventDown(e, r)}
+                                  onClick={(e) => { e.stopPropagation(); if (suppressClickRef.current) { suppressClickRef.current = false; return; } setSelEvent(r.id); setSelBand(null); }}
                                   onDoubleClick={(e) => { e.stopPropagation(); setEditing(r); }}
-                                  title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 더블클릭=상세`}
+                                  title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 드래그=이동 · 더블클릭=상세`}
                                   className={`absolute rounded-lg text-white text-[11px] leading-tight px-1.5 py-1 cursor-grab overflow-hidden shadow-sm hover:brightness-105 transition ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
                                   style={{
                                     top: top + 1,
@@ -744,6 +751,7 @@ export function ScheduleCalendar() {
                                     left: `calc(${ln.lane * wPct}% + 2px)`,
                                     width: `calc(${wPct}% - 4px)`,
                                     background: colorOf(r),
+                                    opacity: moveDrag?.id === r.id ? 0.35 : 1,
                                     outline: selEvent === r.id ? "2px solid var(--color-accent)" : undefined,
                                     outlineOffset: selEvent === r.id ? "1px" : undefined,
                                   }}
@@ -808,24 +816,6 @@ export function ScheduleCalendar() {
             const p = pending;
             setPending(null);
             applyPatch(p.row.id, { ...p.patch, scope });
-          }}
-        />
-      )}
-
-      {showAvail && selected && resources && (
-        <AvailabilityPanel
-          selected={selected}
-          resources={resources}
-          weekStart={weekStart}
-          sessions={rows}
-          onClose={() => setShowAvail(false)}
-          onChanged={() => {
-            load();
-            if (selected)
-              api.availability
-                .list(selected.type, selected.id)
-                .then(setSelBlocks)
-                .catch(() => {});
           }}
         />
       )}
@@ -1153,15 +1143,22 @@ function CreateModal({
   const [roomId, setRoomId] = useState<number | "">("");
   const [date, setDate] = useState(defaultDate);
   const [start, setStart] = useState("16:00");
-  const [end, setEnd] = useState("17:30");
+  // 진행시간은 코스(실제 수업) 데이터에서 — 종료시각 자동 계산(편집 가능)
+  const courseDur = course?.durationMinutes ?? 90;
+  const [end, setEnd] = useState(fromMin(toMin("16:00") + (myCourses[0]?.durationMinutes ?? 90)));
   const [memo, setMemo] = useState("");
   const lockedInstructorName = lockInstructorId != null ? resources.instructors.find((i) => i.id === lockInstructorId)?.name : undefined;
   function pickCourse(id: number) {
     setCourseId(id);
-    if (lockInstructorId == null) {
-      const c = resources.courses.find((x) => x.id === id);
-      if (c) setInstructorId(c.instructorId);
+    const c = resources.courses.find((x) => x.id === id);
+    if (c) {
+      if (lockInstructorId == null) setInstructorId(c.instructorId);
+      setEnd(fromMin(toMin(start) + c.durationMinutes)); // 코스 진행시간으로 종료 자동
     }
+  }
+  function changeStart(v: string) {
+    setStart(v);
+    setEnd(fromMin(toMin(v) + courseDur)); // 진행시간 유지
   }
   const sessionValid = courseId && date && start < end;
 
@@ -1209,8 +1206,8 @@ function CreateModal({
             </Field>
             <Field label="날짜"><input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="시작"><input type="time" step={900} className="input" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
-              <Field label="종료"><input type="time" step={900} className="input" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
+              <Field label="시작"><input type="time" step={900} className="input" value={start} onChange={(e) => changeStart(e.target.value)} /></Field>
+              <Field label={`종료 (진행 ${courseDur}분)`}><input type="time" step={900} className="input" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
             </div>
             <Field label="메모"><textarea className="input min-h-[52px] py-1.5" rows={2} placeholder="선택 — 메모" value={memo} onChange={(e) => setMemo(e.target.value)} /></Field>
             <div className="flex justify-end gap-2 pt-1">
