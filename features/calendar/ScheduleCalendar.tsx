@@ -278,7 +278,8 @@ export function ScheduleCalendar() {
     const newPos = { ...owner, kind: c.kind, weekday: c.weekday, startTime: c.startTime, endTime: c.endTime };
     try {
       if (scope === "all" || !orig) {
-        await api.availability.upsert({ id: c.id, ...newPos });
+        // 전체: 시간/요일만 바꾸고 기존 기간(effectiveFrom/To)은 보존.
+        await api.availability.upsert({ id: c.id, ...newPos, effectiveFrom: orig?.effectiveFrom, effectiveTo: orig?.effectiveTo });
       } else if (scope === "this_and_following") {
         // 원본을 이번 주 직전까지로 제한 + 새 규칙을 이번 주부터.
         await api.availability.upsert({ id: c.id, ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: orig.effectiveFrom, effectiveTo: addDaysISO(c.origDate, -1) });
@@ -338,16 +339,18 @@ export function ScheduleCalendar() {
     if (!d || !selected || d.end <= d.start) return;
     // 시간·요일 모두 그대로면 변경 없음.
     if (d.start === d.origStart && d.end === d.origEnd && d.date === d.origDate) return;
-    // 이동(move)은 반복 범위를 물어봄(이번 주만/이 주부터/모든 주). 리사이즈는 규칙 자체 변경 → 모든 주.
-    if (d.edge === "move") {
-      setBlockScope({ id: d.id, kind: d.kind, origDate: d.origDate, newDate: d.date, weekday: weekdayOf(d.date), startTime: fromMin(d.start), endTime: fromMin(d.end) });
+    const orig = selBlocks.find((b) => b.id === d.id);
+    const singleWeek = !!(orig?.effectiveFrom && orig.effectiveFrom === orig.effectiveTo); // 1회(단일 주) 블록
+    // 단일 주 블록은 반복 범위를 물을 필요 없이 그 블록만 수정. 그 외(주간 반복)는 이동·리사이즈 모두 범위 물어봄.
+    if (singleWeek) {
+      createBlock({
+        id: d.id, ownerType: selected.type, ownerId: selected.id, kind: d.kind,
+        weekday: weekdayOf(d.date), startTime: fromMin(d.start), endTime: fromMin(d.end),
+        effectiveFrom: orig?.effectiveFrom, effectiveTo: orig?.effectiveTo,
+      });
       return;
     }
-    // 겹침(버그2)은 백엔드가 409로 거부 → createBlock가 메시지 노출, 밴드는 원위치 유지.
-    createBlock({
-      id: d.id, ownerType: selected.type, ownerId: selected.id, kind: d.kind,
-      weekday: weekdayOf(d.date), startTime: fromMin(d.start), endTime: fromMin(d.end),
-    });
+    setBlockScope({ id: d.id, kind: d.kind, origDate: d.origDate, newDate: d.date, weekday: weekdayOf(d.date), startTime: fromMin(d.start), endTime: fromMin(d.end) });
   };
   const bDown = (e: React.PointerEvent, c: { key: string; date: string }, b: { id: number; kind: string; startMin: number; endMin: number }, edge: "top" | "bottom" | "move") => {
     e.stopPropagation();
@@ -1066,7 +1069,7 @@ export function ScheduleCalendar() {
 
       {blockScope && (
         <RecurrencePrompt
-          label={`${blockScope.kind === "unavailable" ? "불가시간" : "가용시간"} 이동`}
+          label={`${blockScope.kind === "unavailable" ? "불가시간" : "가용시간"} 변경`}
           onPick={applyBlockScope}
           onCancel={() => { setBlockScope(null); reloadSelBlocks(); }}
         />
