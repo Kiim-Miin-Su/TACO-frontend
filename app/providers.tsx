@@ -1,3 +1,6 @@
+// [참조/처리] 전역 TanStack Query Provider(layout이 AppShell을 이 안에 래핑).
+//  - QueryClient 기본 옵션(staleTime 30s·retry 1·포커스 재패칭 off)을 여기서 1회 생성해 전 컴포넌트가 공유.
+//  - AppShell의 useQuery/useMutation, EventsView 발행 폼 등이 이 클라이언트로 캐시·무효화를 공유.
 "use client";
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

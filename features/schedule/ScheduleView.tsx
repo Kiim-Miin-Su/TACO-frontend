@@ -1,3 +1,7 @@
+// [참조/처리] 캘린더(월 뷰) — 세 레이어를 합성 렌더.
+//  - store.classSessions(수업), store.availabilityBlocks(가용/불가), store.academyEvents(학원 이벤트).
+//  - academyEvents는 FK 없는 독립 레이어: 날짜 구간으로 겹쳐 표시. eventScope로 '중요(high)만/전체/끔' 필터.
+//    강사 본인 뷰(myView) 기본은 'important'(학생/학부모 노출 규칙과 동일). 상호 참조 없음 → 삭제/충돌 전이 없음.
 'use client';
 import { useState } from 'react';
 import { MonthCalendar } from '@/components/ui';

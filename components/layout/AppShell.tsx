@@ -1,3 +1,8 @@
+// [참조/처리] 앱 크롬(사이드바/탑바) + 하이드레이션 허브.
+//  - 공개(인증) 경로는 크롬 없이 전체화면. 그 외에는 토큰→currentRole 동기화.
+//  - 로그인 상태에서 백엔드 각 리소스를 useQuery로 패칭 → 대응 setX 세터로 zustand store에 write-through.
+//    (payouts/schedule/reports/students/payments/expenses/enrollments/courses/subjects/counsel/transactions/events)
+//  - 실패(오프라인)면 쿼리는 에러로 두고 기존 seed 유지. 여기가 "백엔드=단일소스"를 구현하는 지점.
 "use client";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
@@ -42,6 +47,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const setCounselForms = useTacoStore((s) => s.setCounselForms);
   const setCounselRounds = useTacoStore((s) => s.setCounselRounds);
   const setTransactions = useTacoStore((s) => s.setTransactions);
+  const setAcademyEvents = useTacoStore((s) => s.setAcademyEvents);
   const publicRoute = isPublicRoute(pathname);
 
   // 로그인된 경우에만 역할을 앱 전역 currentRole에 반영(공개 경로에선 동기화하지 않음).
@@ -68,6 +74,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const counselFormsQ = useQuery({ queryKey: qk.counsel.forms(), queryFn: () => api.counsel.forms(), enabled });
   const counselRoundsQ = useQuery({ queryKey: qk.counsel.rounds(), queryFn: () => api.counsel.rounds(), enabled });
   const transactionsQ = useQuery({ queryKey: qk.transactions.list(), queryFn: () => api.transactions.list(), enabled });
+  const eventsQ = useQuery({ queryKey: qk.events.list(), queryFn: () => api.events.list(), enabled });
 
   useEffect(() => { if (payoutsQ.data) setInstructorPayouts(payoutsQ.data); }, [payoutsQ.data, setInstructorPayouts]);
   useEffect(() => { if (scheduleQ.data) setClassSessions(scheduleQ.data); }, [scheduleQ.data, setClassSessions]);
@@ -81,6 +88,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (counselFormsQ.data?.length) setCounselForms(counselFormsQ.data); }, [counselFormsQ.data, setCounselForms]);
   useEffect(() => { if (counselRoundsQ.data?.length) setCounselRounds(counselRoundsQ.data); }, [counselRoundsQ.data, setCounselRounds]);
   useEffect(() => { if (transactionsQ.data?.length) setTransactions(transactionsQ.data); }, [transactionsQ.data, setTransactions]);
+  useEffect(() => { if (eventsQ.data?.length) setAcademyEvents(eventsQ.data); }, [eventsQ.data, setAcademyEvents]);
 
   if (publicRoute) return <>{children}</>;
 

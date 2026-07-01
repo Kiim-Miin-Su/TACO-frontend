@@ -1,3 +1,8 @@
+// [참조/처리] 전역 zustand 스토어 = 백엔드 데이터의 클라이언트 캐시(단일 소스).
+//  - 초기값은 seed(오프라인/최초 렌더 폴백). 로그인 후 AppShell이 REST로 받아 setX 세터로 write-through 하이드레이트.
+//  - 화면(features/*)은 이 스토어를 구독해 렌더. 배지·대시보드 집계도 스토어 기준.
+//  - 쓰기는 원칙적으로 백엔드 POST 후 해당 쿼리 무효화→재패칭이 스토어를 갱신(예: academyEvents는 setAcademyEvents).
+//    add* 로컬 헬퍼는 아직 백엔드 미연동 도메인의 낙관적 갱신용.
 import { create } from 'zustand';
 import type {
   Student,
@@ -120,6 +125,7 @@ type TacoState = {
   setCounselForms: (rows: CounselForm[]) => void;
   setCounselRounds: (rows: CounselRound[]) => void;
   setTransactions: (rows: Transaction[]) => void;
+  setAcademyEvents: (rows: AcademyEvent[]) => void;
   addSubject: (input: CreateSubjectInput) => Subject;
   addCourse: (input: CreateCourseInput) => Course;
   addRoadmap: (input: CreateRoadmapInput) => Roadmap;
@@ -555,6 +561,7 @@ export const useTacoStore = create<TacoState>((set) => ({
   setCounselForms: (rows) => set({ counselForms: rows }),
   setCounselRounds: (rows) => set({ counselRounds: rows }),
   setTransactions: (rows) => set({ transactions: rows }),
+  setAcademyEvents: (rows) => set({ academyEvents: rows }),
 
   // 기간 + 요일 반복으로 수업 다건 생성 (캘린더 표시용)
   addRecurringClassSessions: (input) => {

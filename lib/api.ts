@@ -15,6 +15,8 @@ import type {
   CounselForm,
   CounselRound,
   Transaction,
+  AcademyEvent,
+  CreateEventInput,
   CreateStudentInput,
   CreateEnrollmentInput,
   WebIdCheckResult,
@@ -177,6 +179,10 @@ export const api = {
   },
   transactions: {
     list: () => http.get<Transaction[]>("/transactions").then((r) => r.data),
+  },
+  events: {
+    list: () => http.get<AcademyEvent[]>("/events").then((r) => r.data),
+    create: (input: CreateEventInput) => http.post<AcademyEvent>("/events", input).then((r) => r.data),
   },
   users: {
     // web id 존재 확인 (등록 폼 "확인하기")

@@ -1,7 +1,14 @@
+// [참조/처리] 관리자 학원 이벤트 발행/목록 화면.
+//  - 목록: store.academyEvents 구독(AppShell이 GET /events로 하이드레이트).
+//  - 발행: api.events.create(POST /events, 관리자 토큰 필요) 성공 시 qk.events 무효화 → 재패칭이 store 갱신.
+//    구간 무결성(종료일 ≥ 시작일)은 폼에서 선검증 + 서버 400 재검증. 다른 엔티티 참조(FK) 없음.
 'use client';
 import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Badge, SectionCard } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
+import { api } from '@/lib/api';
+import { qk } from '@/lib/queryKeys';
 import type { EventType, EventPriority } from '@/types';
 import { AdminGuard, AdminHeader, Field } from './AdminShell';
 import { eventLabel, eventTone, EVENT_TYPES, priorityLabel, EVENT_PRIORITIES } from './labels';
@@ -34,23 +41,32 @@ export function EventsView() {
 }
 
 function EventForm() {
-  const addAcademyEvent = useTacoStore((s) => s.addAcademyEvent);
+  const qc = useQueryClient();
   const [title, setTitle] = useState('');
   const [type, setType] = useState<EventType>('notice');
   const [priority, setPriority] = useState<EventPriority>('normal');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [memo, setMemo] = useState('');
+  const [error, setError] = useState('');
+
+  // 백엔드가 단일 소스 — POST 후 events 쿼리 무효화 → 재패칭이 store를 갱신(AppShell 하이드레이션).
+  const create = useMutation({
+    mutationFn: api.events.create,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.events.all });
+      setTitle(''); setType('notice'); setPriority('normal'); setStartDate(''); setEndDate(''); setMemo(''); setError('');
+    },
+    onError: () => setError('발행에 실패했습니다. 날짜 구간(종료일 ≥ 시작일)과 권한을 확인하세요.'),
+  });
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !startDate) return;
-    addAcademyEvent({
-      title: title.trim(), type, priority,
-      startDate, endDate: endDate || startDate,
-      memo: memo.trim() || undefined,
-    });
-    setTitle(''); setType('notice'); setPriority('normal'); setStartDate(''); setEndDate(''); setMemo('');
+    const end = endDate || startDate;
+    // 캘린더 구간 무결성: 클라이언트에서도 선검증(서버도 400으로 재검증).
+    if (end < startDate) { setError('종료일은 시작일 이후여야 합니다.'); return; }
+    create.mutate({ title: title.trim(), type, priority, startDate, endDate: end, memo: memo.trim() || undefined });
   };
 
   return (
@@ -69,7 +85,12 @@ function EventForm() {
       <Field label="시작일 *"><input type="date" className="input" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></Field>
       <Field label="종료일"><input type="date" className="input" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></Field>
       <Field label="메모"><input className="input" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="비고" /></Field>
-      <div className="lg:col-span-3 flex justify-end"><button type="submit" className="btn btn-primary">이벤트 발행</button></div>
+      <div className="lg:col-span-3 flex items-center justify-end gap-3">
+        {error && <span className="text-sm text-danger">{error}</span>}
+        <button type="submit" className="btn btn-primary" disabled={create.isPending}>
+          {create.isPending ? '발행 중…' : '이벤트 발행'}
+        </button>
+      </div>
     </form>
   );
 }
