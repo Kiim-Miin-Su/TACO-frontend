@@ -3,6 +3,7 @@
 // 배포(Vercel)는 NEXT_PUBLIC_API_URL을 백엔드 도메인으로 지정하면 직접 호출(백엔드 CORS 허용).
 import axios from "axios";
 import { logger } from "./log";
+import { getToken } from "./auth";
 import type {
   Student,
   Enrollment,
@@ -83,6 +84,9 @@ export const http = axios.create({
 // (브라우저 콘솔에서 [TACO:api] 로 필터. 끄려면 localStorage taco_debug="0")
 const apiLog = logger("api");
 http.interceptors.request.use((cfg) => {
+  // 로그인 토큰이 있으면 모든 요청에 Bearer로 첨부 → 백엔드 RBAC 가드 대비(권한 체크 일관).
+  const token = getToken();
+  if (token) cfg.headers.Authorization = `Bearer ${token}`;
   apiLog.debug(`→ ${cfg.method?.toUpperCase()} ${cfg.url}`, cfg.params ?? cfg.data ?? "");
   return cfg;
 });
