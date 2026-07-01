@@ -32,4 +32,5 @@ export const qk = {
     forms: () => ["counsel", "forms"] as const,
     rounds: (counselFormId?: number) => ["counsel", "rounds", counselFormId ?? null] as const,
   },
+  transactions: { all: ["transactions"] as const, list: () => ["transactions", "list"] as const },
 } as const;

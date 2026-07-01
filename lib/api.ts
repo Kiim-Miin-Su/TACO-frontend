@@ -14,6 +14,7 @@ import type {
   Subject,
   CounselForm,
   CounselRound,
+  Transaction,
   CreateStudentInput,
   CreateEnrollmentInput,
   WebIdCheckResult,
@@ -173,6 +174,9 @@ export const api = {
     forms: () => http.get<CounselForm[]>("/counsel").then((r) => r.data),
     rounds: (counselFormId?: number) =>
       http.get<CounselRound[]>("/counsel/rounds", { params: counselFormId ? { counselFormId } : undefined }).then((r) => r.data),
+  },
+  transactions: {
+    list: () => http.get<Transaction[]>("/transactions").then((r) => r.data),
   },
   users: {
     // web id 존재 확인 (등록 폼 "확인하기")

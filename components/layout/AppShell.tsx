@@ -41,6 +41,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const setSubjects = useTacoStore((s) => s.setSubjects);
   const setCounselForms = useTacoStore((s) => s.setCounselForms);
   const setCounselRounds = useTacoStore((s) => s.setCounselRounds);
+  const setTransactions = useTacoStore((s) => s.setTransactions);
   const publicRoute = isPublicRoute(pathname);
 
   // 로그인된 경우에만 역할을 앱 전역 currentRole에 반영(공개 경로에선 동기화하지 않음).
@@ -66,6 +67,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const subjectsQ = useQuery({ queryKey: qk.subjects.list(), queryFn: () => api.subjects.list(), enabled });
   const counselFormsQ = useQuery({ queryKey: qk.counsel.forms(), queryFn: () => api.counsel.forms(), enabled });
   const counselRoundsQ = useQuery({ queryKey: qk.counsel.rounds(), queryFn: () => api.counsel.rounds(), enabled });
+  const transactionsQ = useQuery({ queryKey: qk.transactions.list(), queryFn: () => api.transactions.list(), enabled });
 
   useEffect(() => { if (payoutsQ.data) setInstructorPayouts(payoutsQ.data); }, [payoutsQ.data, setInstructorPayouts]);
   useEffect(() => { if (scheduleQ.data) setClassSessions(scheduleQ.data); }, [scheduleQ.data, setClassSessions]);
@@ -78,6 +80,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (subjectsQ.data?.length) setSubjects(subjectsQ.data); }, [subjectsQ.data, setSubjects]);
   useEffect(() => { if (counselFormsQ.data?.length) setCounselForms(counselFormsQ.data); }, [counselFormsQ.data, setCounselForms]);
   useEffect(() => { if (counselRoundsQ.data?.length) setCounselRounds(counselRoundsQ.data); }, [counselRoundsQ.data, setCounselRounds]);
+  useEffect(() => { if (transactionsQ.data?.length) setTransactions(transactionsQ.data); }, [transactionsQ.data, setTransactions]);
 
   if (publicRoute) return <>{children}</>;
 
