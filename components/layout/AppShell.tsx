@@ -1,16 +1,15 @@
 "use client";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Sidebar from "@/components/layout/Sidebar";
 import Topbar from "@/components/layout/Topbar";
 import { currentClaims } from "@/lib/auth";
 import { isPublicRoute } from "@/lib/auth-routes";
 import { useTacoStore } from "@/lib/store";
 import { api, type SessionReport as ApiReport } from "@/lib/api";
-import { logger } from "@/lib/log";
+import { qk } from "@/lib/queryKeys";
 import type { AccountRole, SessionReport } from "@/types";
-
-const hydrateLog = logger("hydrate");
 
 // 백엔드 보고서(승인 라이프사이클: draft|submitted|approved|rejected)를 store 모델로 정규화.
 // 배지 계산은 'draft=미작성', 승인 대기는 approvalStatus로 판단하므로 실제 상태를 approvalStatus에 보존한다.
@@ -44,22 +43,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (role) setCurrentRole(role as AccountRole);
   }, [pathname, publicRoute, setCurrentRole]);
 
-  // 단일 소스화: 로그인 상태에서 백엔드(정산서·세션·보고서)를 store로 적재 → 배지/대시보드/리포트가 실제와 일치.
-  // 실패(오프라인)면 기존 시드 유지.
-  useEffect(() => {
-    if (publicRoute) return;
-    api.payouts.list()
-      .then((rows) => { setInstructorPayouts(rows); hydrateLog.info(`payouts ${rows.length}건 적재`); })
-      .catch((e) => hydrateLog.warn("payouts 적재 실패(오프라인?) — 시드 유지", e));
-    // 전체 세션(기간 필터 없이) → 캘린더(백엔드)에서 추가·held 처리한 세션이 배지/리포트에 반영됨.
-    api.schedule.list({})
-      .then((rows) => { setClassSessions(rows); hydrateLog.info(`sessions ${rows.length}건 적재`); })
-      .catch((e) => hydrateLog.warn("sessions 적재 실패(오프라인?) — 시드 유지", e));
-    // 전체 보고서 → 리포트 미작성 배지·승인 대기가 백엔드 기준으로 계산됨.
-    api.reports.list()
-      .then((rows) => { setSessionReports(rows.map(toStoreReport)); hydrateLog.info(`reports ${rows.length}건 적재`); })
-      .catch((e) => hydrateLog.warn("reports 적재 실패(오프라인?) — 시드 유지", e));
-  }, [publicRoute, setInstructorPayouts, setClassSessions, setSessionReports]);
+  // 단일 소스화: 백엔드(정산서·세션·보고서)를 TanStack Query로 패칭(캐시·재검증) → store로 write-through.
+  // 배지/대시보드는 store 기준이라, 캘린더 등에서 관련 쿼리를 invalidate하면 자동 재패칭→store 갱신됨.
+  // 실패(오프라인)면 쿼리는 에러로 두고 기존 시드를 유지(store 미변경).
+  const enabled = !publicRoute;
+  const payoutsQ = useQuery({ queryKey: qk.payouts.list(), queryFn: () => api.payouts.list(), enabled });
+  const scheduleQ = useQuery({ queryKey: qk.schedule.list({}), queryFn: () => api.schedule.list({}), enabled });
+  const reportsQ = useQuery({ queryKey: qk.reports.list(), queryFn: () => api.reports.list(), enabled });
+
+  useEffect(() => { if (payoutsQ.data) setInstructorPayouts(payoutsQ.data); }, [payoutsQ.data, setInstructorPayouts]);
+  useEffect(() => { if (scheduleQ.data) setClassSessions(scheduleQ.data); }, [scheduleQ.data, setClassSessions]);
+  useEffect(() => { if (reportsQ.data) setSessionReports(reportsQ.data.map(toStoreReport)); }, [reportsQ.data, setSessionReports]);
 
   if (publicRoute) return <>{children}</>;
 
