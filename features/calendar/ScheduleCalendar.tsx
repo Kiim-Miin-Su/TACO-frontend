@@ -237,7 +237,9 @@ export function ScheduleCalendar() {
     const wd = weekdayOf(c.date);
     return selBlocks
       .filter(
-        (b) => b.weekday === wd && (selected?.type !== "room" || c.roomId == null || c.roomId === selected.id),
+        (b) => b.weekday === wd && (selected?.type !== "room" || c.roomId == null || c.roomId === selected.id)
+          // 기간(effectiveFrom/effectiveTo) 밖의 주에는 밴드 표시 안 함(반복 규칙 반영).
+          && (!b.effectiveFrom || c.date >= b.effectiveFrom) && (!b.effectiveTo || c.date <= b.effectiveTo),
       )
       .map((b) => {
         const s = clampMin(toMinD(b.startTime)),
@@ -267,6 +269,33 @@ export function ScheduleCalendar() {
     if (!confirm("이 시간 블록을 삭제할까요?")) return;
     try { await api.availability.remove(id); reloadSelBlocks(); } catch { setMsg("삭제 실패"); }
   }
+  // 블록 이동 반복 범위 적용(주간 반복 규칙을 기간으로 분할). origDate=이번 주 원위치, newDate=드롭 위치.
+  async function applyBlockScope(scope: "this" | "this_and_following" | "all") {
+    const c = blockScope; setBlockScope(null);
+    if (!c || !selected) return;
+    const owner = { ownerType: selected.type, ownerId: selected.id } as const;
+    const orig = selBlocks.find((b) => b.id === c.id);
+    const newPos = { ...owner, kind: c.kind, weekday: c.weekday, startTime: c.startTime, endTime: c.endTime };
+    try {
+      if (scope === "all" || !orig) {
+        await api.availability.upsert({ id: c.id, ...newPos });
+      } else if (scope === "this_and_following") {
+        // 원본을 이번 주 직전까지로 제한 + 새 규칙을 이번 주부터.
+        await api.availability.upsert({ id: c.id, ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: orig.effectiveFrom, effectiveTo: addDaysISO(c.origDate, -1) });
+        await api.availability.upsert({ ...newPos, effectiveFrom: c.newDate, effectiveTo: orig.effectiveTo });
+      } else {
+        // 이번 주만: 원본 분할(이번 주 직전까지 + 다음 주부터 재개) + 이번 주 1회 새 위치.
+        await api.availability.upsert({ id: c.id, ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: orig.effectiveFrom, effectiveTo: addDaysISO(c.origDate, -1) });
+        await api.availability.upsert({ ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: addDaysISO(c.origDate, 7), effectiveTo: orig.effectiveTo });
+        await api.availability.upsert({ ...newPos, effectiveFrom: c.newDate, effectiveTo: c.newDate });
+      }
+      reloadSelBlocks();
+    } catch (e) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setMsg(err.response?.data?.message ?? "적용 실패");
+      reloadSelBlocks();
+    }
+  }
 
   // ── 불가/가용 밴드를 스케줄처럼 관리: 클릭=선택 · 끝 드래그=리사이즈 · 더블클릭=수정 · ✕=삭제 ──
   const [selBand, setSelBand] = useState<number | null>(null);
@@ -277,6 +306,10 @@ export function ScheduleCalendar() {
     startClientY: number; origStart: number; origEnd: number; start: number; end: number;
   } | null>(null);
   const bMovedRef = useRef(false); // 이동/리사이즈 드래그 발생 여부 — 직후 클릭(선택 토글) 억제용
+  // 블록 이동 후 반복 범위 물어보기(이번 주만/이 주부터/모든 주). origDate=원래 이번 주 날짜, newDate=드롭 날짜.
+  const [blockScope, setBlockScope] = useState<
+    null | { id: number; kind: AvailabilityBlock["kind"]; origDate: string; newDate: string; weekday: number; startTime: string; endTime: string }
+  >(null);
 
   const bMove = (e: PointerEvent) => {
     const d = bDragRef.current; if (!d) return;
@@ -305,6 +338,11 @@ export function ScheduleCalendar() {
     if (!d || !selected || d.end <= d.start) return;
     // 시간·요일 모두 그대로면 변경 없음.
     if (d.start === d.origStart && d.end === d.origEnd && d.date === d.origDate) return;
+    // 이동(move)은 반복 범위를 물어봄(이번 주만/이 주부터/모든 주). 리사이즈는 규칙 자체 변경 → 모든 주.
+    if (d.edge === "move") {
+      setBlockScope({ id: d.id, kind: d.kind, origDate: d.origDate, newDate: d.date, weekday: weekdayOf(d.date), startTime: fromMin(d.start), endTime: fromMin(d.end) });
+      return;
+    }
     // 겹침(버그2)은 백엔드가 409로 거부 → createBlock가 메시지 노출, 밴드는 원위치 유지.
     createBlock({
       id: d.id, ownerType: selected.type, ownerId: selected.id, kind: d.kind,
@@ -1025,6 +1063,14 @@ export function ScheduleCalendar() {
           onDelete={async () => { const id = editingBlock.id; setEditingBlock(null); await deleteBlock(id); }}
         />
       )}
+
+      {blockScope && (
+        <RecurrencePrompt
+          label={`${blockScope.kind === "unavailable" ? "불가시간" : "가용시간"} 이동`}
+          onPick={applyBlockScope}
+          onCancel={() => { setBlockScope(null); reloadSelBlocks(); }}
+        />
+      )}
     </div>
   );
 }
@@ -1042,7 +1088,10 @@ function BlockEditModal({
   const [weekday, setWeekday] = useState<number>(block.weekday);
   const [start, setStart] = useState(block.startTime);
   const [end, setEnd] = useState(block.endTime);
-  const valid = start < end;
+  const [from, setFrom] = useState(block.effectiveFrom ?? "");
+  const [to, setTo] = useState(block.effectiveTo ?? "");
+  const periodOk = !from || !to || from <= to;
+  const valid = start < end && periodOk;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center" style={{ background: "rgba(0,0,0,.35)" }} onClick={onClose}>
       <div className="card card-pad w-[380px] space-y-3" onClick={(e) => e.stopPropagation()}>
@@ -1062,12 +1111,18 @@ function BlockEditModal({
           <Field label="시작"><input type="time" step={900} className="input" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
           <Field label="종료"><input type="time" step={900} className="input" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="기간 시작 (선택)"><input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
+          <Field label="기간 종료 (선택)"><input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
+        </div>
+        <p className="text-[12px] text-fg-muted">매주 {WD[weekday]}요일 반복. 기간을 비우면 무기한, 지정하면 그 기간에만 적용.</p>
+        {!periodOk && <p className="text-[12px]" style={{ color: "var(--color-danger)" }}>기간 시작이 종료보다 늦을 수 없습니다.</p>}
         <div className="flex justify-between gap-2 pt-1">
           <button className="btn btn-sm" style={{ color: "var(--color-danger)" }} onClick={onDelete}>삭제</button>
           <div className="flex gap-2">
             <button className="btn" onClick={onClose}>취소</button>
             <button className="btn btn-primary" disabled={!valid}
-              onClick={() => onSave({ id: block.id, ownerType: block.ownerType, ownerId: block.ownerId, kind, weekday, startTime: start, endTime: end })}>
+              onClick={() => onSave({ id: block.id, ownerType: block.ownerType, ownerId: block.ownerId, kind, weekday, startTime: start, endTime: end, effectiveFrom: from || undefined, effectiveTo: to || undefined })}>
               저장
             </button>
           </div>
