@@ -17,6 +17,8 @@ import type {
   Transaction,
   AcademyEvent,
   CreateEventInput,
+  Attendance,
+  AttendanceStatus,
   CreateStudentInput,
   CreateEnrollmentInput,
   WebIdCheckResult,
@@ -183,6 +185,11 @@ export const api = {
   events: {
     list: () => http.get<AcademyEvent[]>("/events").then((r) => r.data),
     create: (input: CreateEventInput) => http.post<AcademyEvent>("/events", input).then((r) => r.data),
+  },
+  attendance: {
+    list: () => http.get<Attendance[]>("/attendance").then((r) => r.data),
+    upsert: (body: { sessionId: number; studentId: number; status: AttendanceStatus }) =>
+      http.put<Attendance>("/attendance", body).then((r) => r.data),
   },
   users: {
     // web id 존재 확인 (등록 폼 "확인하기")

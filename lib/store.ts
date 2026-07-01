@@ -131,6 +131,7 @@ type TacoState = {
   addRoadmap: (input: CreateRoadmapInput) => Roadmap;
   addAcademyEvent: (input: CreateEventInput) => AcademyEvent;
   setAttendance: (sessionId: number, studentId: number, status: AttendanceStatus) => void;
+  setAttendanceList: (rows: Attendance[]) => void;
   upsertReport: (
     sessionId: number,
     studentId: number,
@@ -241,6 +242,8 @@ export const useTacoStore = create<TacoState>((set) => ({
   dropStudent: (id) =>
     set((s) => dropStudentTx(s.students, s.enrollments, id)),
 
+  // 백엔드 하이드레이션(단일 소스). setAttendance는 낙관적 로컬 upsert(마킹 즉시 반영).
+  setAttendanceList: (rows) => set({ attendance: rows }),
   setAttendance: (sessionId, studentId, status) =>
     set((s) => {
       const existing = s.attendance.find(

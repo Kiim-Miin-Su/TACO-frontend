@@ -1,7 +1,13 @@
+// [참조/처리] 수업 상세 — 학생 출결·보고서 상태 표시/편집.
+//  - roster는 세션의 수강생, att=store.attendance(session×student 1행). 출결 마킹은 낙관적 로컬 반영 후
+//    PUT /attendance(백엔드 upsert=단일 소스)로 영속, 성공/실패 시 qk.attendance 무효화로 재동기화.
 "use client";
 import Link from "next/link";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge, SectionCard, type Tone } from "@/components/ui";
 import { useTacoStore } from "@/lib/store";
+import { api } from "@/lib/api";
+import { qk } from "@/lib/queryKeys";
 import type { AttendanceStatus, ReportStatus } from "@/types";
 import { shortDate } from "@/lib/format";
 
@@ -16,6 +22,16 @@ const reportLabel: Record<ReportStatus, string> = { draft: "작성중", submitte
 
 export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   const store = useTacoStore();
+  const qc = useQueryClient();
+  // 출결 마킹: 낙관적 로컬 upsert(store) 후 백엔드 PUT(단일 소스). 성공/실패 모두 서버와 재동기화.
+  const markAttendance = useMutation({
+    mutationFn: api.attendance.upsert,
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.attendance.all }),
+  });
+  const setAtt = (studentId: number, status: AttendanceStatus) => {
+    store.setAttendance(sessionId, studentId, status);
+    markAttendance.mutate({ sessionId, studentId, status });
+  };
   const session = store.classSessions.find((s) => s.id === sessionId);
 
   if (!session) {
@@ -68,7 +84,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                       <button
                         key={opt.value}
                         type="button"
-                        onClick={() => store.setAttendance(sessionId, student.id, opt.value)}
+                        onClick={() => setAtt(student.id, opt.value)}
                         className={`btn btn-sm ${active ? `badge-${opt.tone}` : ""}`}
                         style={active ? { borderColor: "transparent", fontWeight: 600 } : undefined}
                       >
