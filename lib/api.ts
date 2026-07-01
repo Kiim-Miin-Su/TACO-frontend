@@ -9,6 +9,9 @@ import type {
   Student,
   Enrollment,
   Payment,
+  Expense,
+  Course,
+  Subject,
   CreateStudentInput,
   CreateEnrollmentInput,
   WebIdCheckResult,
@@ -154,6 +157,15 @@ export const api = {
   },
   payments: {
     list: () => http.get<Payment[]>("/payments").then((r) => r.data),
+  },
+  expenses: {
+    list: () => http.get<Expense[]>("/expenses").then((r) => r.data),
+  },
+  courses: {
+    list: () => http.get<Course[]>("/courses").then((r) => r.data),
+  },
+  subjects: {
+    list: () => http.get<Subject[]>("/subjects").then((r) => r.data),
   },
   users: {
     // web id 존재 확인 (등록 폼 "확인하기")
