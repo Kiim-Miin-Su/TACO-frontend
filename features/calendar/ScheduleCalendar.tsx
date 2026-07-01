@@ -273,7 +273,7 @@ export function ScheduleCalendar() {
   const [editingBlock, setEditingBlock] = useState<AvailabilityBlock | null>(null);
   const [bDraft, setBDraft] = useState<{ colKey: string; start: number; end: number; kind: string } | null>(null);
   const bDragRef = useRef<{
-    colKey: string; date: string; kind: AvailabilityBlock["kind"]; id: number; edge: "top" | "bottom" | "move";
+    colKey: string; date: string; origDate: string; kind: AvailabilityBlock["kind"]; id: number; edge: "top" | "bottom" | "move";
     startClientY: number; origStart: number; origEnd: number; start: number; end: number;
   } | null>(null);
   const bMovedRef = useRef(false); // 이동/리사이즈 드래그 발생 여부 — 직후 클릭(선택 토글) 억제용
@@ -285,7 +285,13 @@ export function ScheduleCalendar() {
     if (d.edge === "top") d.start = Math.min(d.origEnd - SNAP, clampMin(d.origStart + delta));
     else if (d.edge === "bottom") d.end = Math.max(d.origStart + SNAP, clampMin(d.origEnd + delta));
     else {
-      // 본체 이동: 시작·종료를 함께 이동(길이 보존), 그리드 안에 유지.
+      // 본체 이동: 세로=시간, 가로=요일 컬럼(세션 이동과 동일한 컬럼 감지 재사용).
+      const cell = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>("[data-colcell]");
+      if (cell?.dataset.colkey) {
+        if (cell.dataset.colkey !== d.colKey) bMovedRef.current = true;
+        d.colKey = cell.dataset.colkey;
+        d.date = cell.dataset.date ?? d.date; // 다른 요일 컬럼이면 weekday가 바뀜(bUp에서 weekdayOf)
+      }
       const dur = d.origEnd - d.origStart;
       let ns = clampMin(d.origStart + delta);
       if (ns + dur > END_H * 60) ns = END_H * 60 - dur;
@@ -297,7 +303,8 @@ export function ScheduleCalendar() {
     window.removeEventListener("pointermove", bMove);
     const d = bDragRef.current; bDragRef.current = null; setBDraft(null);
     if (!d || !selected || d.end <= d.start) return;
-    if (d.start === d.origStart && d.end === d.origEnd) return;
+    // 시간·요일 모두 그대로면 변경 없음.
+    if (d.start === d.origStart && d.end === d.origEnd && d.date === d.origDate) return;
     // 겹침(버그2)은 백엔드가 409로 거부 → createBlock가 메시지 노출, 밴드는 원위치 유지.
     createBlock({
       id: d.id, ownerType: selected.type, ownerId: selected.id, kind: d.kind,
@@ -308,7 +315,7 @@ export function ScheduleCalendar() {
     e.stopPropagation();
     bMovedRef.current = false;
     bDragRef.current = {
-      colKey: c.key, date: c.date, kind: b.kind as AvailabilityBlock["kind"], id: b.id, edge,
+      colKey: c.key, date: c.date, origDate: c.date, kind: b.kind as AvailabilityBlock["kind"], id: b.id, edge,
       startClientY: e.clientY, origStart: b.startMin, origEnd: b.endMin, start: b.startMin, end: b.endMin,
     };
     setBDraft({ colKey: c.key, start: b.startMin, end: b.endMin, kind: b.kind });
@@ -1485,8 +1492,12 @@ function CreateModal({
   const toggleBWd = (d: number) => setBWeekdays((ws) => (ws.includes(d) ? ws.filter((x) => x !== d) : [...ws, d].sort()));
   const [bStart, setBStart] = useState("12:00");
   const [bEnd, setBEnd] = useState("13:00");
+  // 기간(선택): 지정하면 그 기간에만 적용, 비우면 매주 무기한 반복.
+  const [bFrom, setBFrom] = useState("");
+  const [bTo, setBTo] = useState("");
   const ownerList = bType === "instructor" ? resources.instructors : bType === "student" ? resources.students : rooms.map((r) => ({ id: r.id, name: r.name }));
-  const blockValid = bId !== "" && bStart < bEnd && bWeekdays.length > 0;
+  const periodValid = !bFrom || !bTo || bFrom <= bTo;
+  const blockValid = bId !== "" && bStart < bEnd && bWeekdays.length > 0 && periodValid;
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center" style={{ background: "rgba(0,0,0,.35)" }} onClick={onClose}>
@@ -1580,7 +1591,7 @@ function CreateModal({
           </>
         ) : (
           <>
-            <p className="text-[12px] text-fg-muted">주간 반복 가용/불가 시간을 설정합니다. (요일 단위)</p>
+            <p className="text-[12px] text-fg-muted">주간 반복 가용/불가 시간을 설정합니다. 요일 여러 개 선택 · 기간(선택) 지정 가능.</p>
             <div className="grid grid-cols-2 gap-3">
               <Field label="대상">
                 <select className="input" value={bType} disabled={lockOwner}
@@ -1618,10 +1629,15 @@ function CreateModal({
               <Field label="시작"><input type="time" step={900} className="input" value={bStart} onChange={(e) => setBStart(e.target.value)} /></Field>
               <Field label="종료"><input type="time" step={900} className="input" value={bEnd} onChange={(e) => setBEnd(e.target.value)} /></Field>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="기간 시작 (선택)"><input type="date" className="input" value={bFrom} onChange={(e) => setBFrom(e.target.value)} /></Field>
+              <Field label="기간 종료 (선택)"><input type="date" className="input" value={bTo} onChange={(e) => setBTo(e.target.value)} /></Field>
+            </div>
+            {!periodValid && <p className="text-[12px]" style={{ color: "var(--color-danger)" }}>기간 시작이 종료보다 늦을 수 없습니다.</p>}
             <div className="flex justify-end gap-2 pt-1">
               <button className="btn" onClick={onClose}>취소</button>
               <button className="btn btn-primary" disabled={!blockValid}
-                onClick={() => bWeekdays.forEach((wd) => onCreateBlock({ ownerType: bType, ownerId: Number(bId), kind: bKind, weekday: wd, startTime: bStart, endTime: bEnd }))}>
+                onClick={() => bWeekdays.forEach((wd) => onCreateBlock({ ownerType: bType, ownerId: Number(bId), kind: bKind, weekday: wd, startTime: bStart, endTime: bEnd, effectiveFrom: bFrom || undefined, effectiveTo: bTo || undefined }))}>
                 {bKind === "unavailable" ? "불가시간" : "가용시간"} 추가{bWeekdays.length > 1 ? ` (${bWeekdays.length}일)` : ""}
               </button>
             </div>
