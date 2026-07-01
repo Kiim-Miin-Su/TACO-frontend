@@ -33,6 +33,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const setInstructorPayouts = useTacoStore((s) => s.setInstructorPayouts);
   const setClassSessions = useTacoStore((s) => s.setClassSessions);
   const setSessionReports = useTacoStore((s) => s.setSessionReports);
+  const setStudents = useTacoStore((s) => s.setStudents);
   const publicRoute = isPublicRoute(pathname);
 
   // 로그인된 경우에만 역할을 앱 전역 currentRole에 반영(공개 경로에선 동기화하지 않음).
@@ -50,10 +51,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const payoutsQ = useQuery({ queryKey: qk.payouts.list(), queryFn: () => api.payouts.list(), enabled });
   const scheduleQ = useQuery({ queryKey: qk.schedule.list({}), queryFn: () => api.schedule.list({}), enabled });
   const reportsQ = useQuery({ queryKey: qk.reports.list(), queryFn: () => api.reports.list(), enabled });
+  const studentsQ = useQuery({ queryKey: qk.students.list(), queryFn: () => api.students.list(), enabled });
 
   useEffect(() => { if (payoutsQ.data) setInstructorPayouts(payoutsQ.data); }, [payoutsQ.data, setInstructorPayouts]);
   useEffect(() => { if (scheduleQ.data) setClassSessions(scheduleQ.data); }, [scheduleQ.data, setClassSessions]);
   useEffect(() => { if (reportsQ.data) setSessionReports(reportsQ.data.map(toStoreReport)); }, [reportsQ.data, setSessionReports]);
+  useEffect(() => { if (studentsQ.data?.length) setStudents(studentsQ.data); }, [studentsQ.data, setStudents]);
 
   if (publicRoute) return <>{children}</>;
 
