@@ -27,4 +27,9 @@ export const qk = {
   courses: { all: ["courses"] as const, list: () => ["courses", "list"] as const },
   subjects: { all: ["subjects"] as const, list: () => ["subjects", "list"] as const },
   enrollments: { all: ["enrollments"] as const, list: (studentId?: number) => ["enrollments", "list", studentId ?? null] as const },
+  counsel: {
+    all: ["counsel"] as const,
+    forms: () => ["counsel", "forms"] as const,
+    rounds: (counselFormId?: number) => ["counsel", "rounds", counselFormId ?? null] as const,
+  },
 } as const;

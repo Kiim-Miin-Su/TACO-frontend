@@ -39,6 +39,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const setEnrollments = useTacoStore((s) => s.setEnrollments);
   const setCourses = useTacoStore((s) => s.setCourses);
   const setSubjects = useTacoStore((s) => s.setSubjects);
+  const setCounselForms = useTacoStore((s) => s.setCounselForms);
+  const setCounselRounds = useTacoStore((s) => s.setCounselRounds);
   const publicRoute = isPublicRoute(pathname);
 
   // 로그인된 경우에만 역할을 앱 전역 currentRole에 반영(공개 경로에선 동기화하지 않음).
@@ -62,6 +64,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const enrollmentsQ = useQuery({ queryKey: qk.enrollments.list(), queryFn: () => api.enrollments.list(), enabled });
   const coursesQ = useQuery({ queryKey: qk.courses.list(), queryFn: () => api.courses.list(), enabled });
   const subjectsQ = useQuery({ queryKey: qk.subjects.list(), queryFn: () => api.subjects.list(), enabled });
+  const counselFormsQ = useQuery({ queryKey: qk.counsel.forms(), queryFn: () => api.counsel.forms(), enabled });
+  const counselRoundsQ = useQuery({ queryKey: qk.counsel.rounds(), queryFn: () => api.counsel.rounds(), enabled });
 
   useEffect(() => { if (payoutsQ.data) setInstructorPayouts(payoutsQ.data); }, [payoutsQ.data, setInstructorPayouts]);
   useEffect(() => { if (scheduleQ.data) setClassSessions(scheduleQ.data); }, [scheduleQ.data, setClassSessions]);
@@ -72,6 +76,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (enrollmentsQ.data?.length) setEnrollments(enrollmentsQ.data); }, [enrollmentsQ.data, setEnrollments]);
   useEffect(() => { if (coursesQ.data?.length) setCourses(coursesQ.data); }, [coursesQ.data, setCourses]);
   useEffect(() => { if (subjectsQ.data?.length) setSubjects(subjectsQ.data); }, [subjectsQ.data, setSubjects]);
+  useEffect(() => { if (counselFormsQ.data?.length) setCounselForms(counselFormsQ.data); }, [counselFormsQ.data, setCounselForms]);
+  useEffect(() => { if (counselRoundsQ.data?.length) setCounselRounds(counselRoundsQ.data); }, [counselRoundsQ.data, setCounselRounds]);
 
   if (publicRoute) return <>{children}</>;
 

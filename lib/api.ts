@@ -12,6 +12,8 @@ import type {
   Expense,
   Course,
   Subject,
+  CounselForm,
+  CounselRound,
   CreateStudentInput,
   CreateEnrollmentInput,
   WebIdCheckResult,
@@ -166,6 +168,11 @@ export const api = {
   },
   subjects: {
     list: () => http.get<Subject[]>("/subjects").then((r) => r.data),
+  },
+  counsel: {
+    forms: () => http.get<CounselForm[]>("/counsel").then((r) => r.data),
+    rounds: (counselFormId?: number) =>
+      http.get<CounselRound[]>("/counsel/rounds", { params: counselFormId ? { counselFormId } : undefined }).then((r) => r.data),
   },
   users: {
     // web id 존재 확인 (등록 폼 "확인하기")
