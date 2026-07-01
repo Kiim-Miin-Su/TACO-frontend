@@ -257,8 +257,10 @@ export function ScheduleCalendar() {
       await api.availability.upsert(body);
       setCreating(null);
       if (selected && selected.type === body.ownerType && selected.id === body.ownerId) reloadSelBlocks();
-    } catch {
-      setMsg("가용/불가 저장 실패");
+    } catch (e) {
+      // 겹침(409) 등 백엔드 메시지를 그대로 노출 — "이미 지정된 불가시간과 겹칩니다" 경고.
+      const err = e as { response?: { data?: { message?: string } } };
+      setMsg(err.response?.data?.message ?? "가용/불가 저장 실패");
     }
   }
   async function deleteBlock(id: number) {
@@ -316,8 +318,11 @@ export function ScheduleCalendar() {
       .map((c) => {
         const who = c.resource ? `${c.resource === "instructor" ? "강사" : c.resource === "room" ? "강의실" : "학생"} ${resourceName(c)}` : "";
         const what = CONFLICT_LABEL[c.type] ?? c.type;
+        // 상대 스케줄: 이중예약이면 해당 세션(과목·요일·시각·강사), 불가시간이면 백엔드 detail(겹친 불가 시각).
         const other = c.sessionId != null ? rows.find((r) => r.id === c.sessionId) : undefined;
-        const otherStr = other ? ` — ${other.courseName} (${WD[other.weekday]} ${other.startTime ?? ""}–${other.endTime ?? ""}, ${other.instructorName})` : "";
+        const otherStr = other
+          ? ` — ${other.courseName} (${WD[other.weekday]} ${other.startTime ?? ""}–${other.endTime ?? ""}, ${other.instructorName})`
+          : c.detail ? ` — ${c.detail}` : "";
         return `· ${who} ${what}${otherStr}`.replace(/\s+/g, " ").trim();
       })
       .join("\n");
