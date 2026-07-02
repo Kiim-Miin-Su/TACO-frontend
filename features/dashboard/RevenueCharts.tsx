@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { Chart, SectionCard } from '@/components/ui';
-import { usePayments, useEnrollments, useCourses, useSubjects, useStudents } from '@/lib/queries';
+import { useTacoStore } from '@/lib/store';
 import { won } from '@/lib/format';
 import type { ChartConfiguration } from 'chart.js';
 
@@ -9,11 +9,11 @@ const PALETTE = ['#0f766e', '#2563eb', '#e08a00', '#8250df', '#0f9d6b', '#cf222e
 const wonTick = (v: number | string) => `₩${Number(v).toLocaleString('ko-KR')}`;
 
 export function RevenueCharts() {
-  const { data: payments = [] } = usePayments();
-  const { data: enrollments = [] } = useEnrollments();
-  const { data: courses = [] } = useCourses();
-  const { data: subjects = [] } = useSubjects();
-  const { data: students = [] } = useStudents();
+  const payments = useTacoStore((s) => s.payments);
+  const enrollments = useTacoStore((s) => s.enrollments);
+  const courses = useTacoStore((s) => s.courses);
+  const subjects = useTacoStore((s) => s.subjects);
+  const students = useTacoStore((s) => s.students);
 
   const today = new Date().toISOString().slice(0, 10);
   const [start, setStart] = useState('2026-05-01');

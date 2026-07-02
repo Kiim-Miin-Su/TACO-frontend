@@ -3,14 +3,12 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Badge, SectionCard, MonthCalendar } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
-import { useExpenses } from '@/lib/queries';
 import { won } from '@/lib/format';
 import { categoryLabel, categoryTone, approvalLabel, approvalTone } from './labels';
 import { ReasonModal } from '@/components/ReasonModal';
 
 export function ExpensesView() {
-  // 지출 목록은 TanStack Query에서 가져오고, 반려 사유는 클라이언트 전용 store에 유지.
-  const { data: expenses = [] } = useExpenses();
+  const expenses = useTacoStore((s) => s.expenses);
   const rejectReasons = useTacoStore((s) => s.expenseRejectReasons);
   const [view, setView] = useState<'list' | 'calendar'>('list');
   const [viewReason, setViewReason] = useState<number | null>(null);

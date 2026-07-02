@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { SectionCard } from '@/components/ui';
-import { useCreateExpense } from '@/lib/queries';
+import { useTacoStore } from '@/lib/store';
 import type { ExpenseCategory } from '@/types';
 import { CATEGORIES, categoryLabel } from './labels';
 
@@ -11,7 +11,7 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 
 export function ExpenseFormView() {
   const router = useRouter();
-  const createExpense = useCreateExpense();
+  const addExpense = useTacoStore((s) => s.addExpense);
 
   const [category, setCategory] = useState<ExpenseCategory>('supplies');
   const [title, setTitle] = useState('');
@@ -31,7 +31,7 @@ export function ExpenseFormView() {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !amount) return;
-    createExpense.mutate({
+    addExpense({
       category,
       title: title.trim(),
       amount: Number(amount),
@@ -39,7 +39,8 @@ export function ExpenseFormView() {
       vendor: vendor.trim() || undefined,
       memo: memo.trim() || undefined,
       receiptUrl: receipt || undefined,
-    }, { onSuccess: () => router.push('/expenses') });
+    });
+    router.push('/expenses');
   };
 
   return (

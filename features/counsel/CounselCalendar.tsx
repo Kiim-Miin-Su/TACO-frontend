@@ -2,16 +2,15 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { SectionCard, toneBg, toneFg } from '@/components/ui';
-// 서버 상태(상담 폼·회차)는 TanStack Query 훅에서 구독한다(zustand store 대체).
-import { useCounselForms, useCounselRounds } from '@/lib/queries';
+import { useTacoStore } from '@/lib/store';
 import { statusLabel, statusTone } from './labels';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const pad = (n: number) => String(n).padStart(2, '0');
 
 export function CounselCalendar() {
-  const { data: forms = [] } = useCounselForms();
-  const { data: rounds = [] } = useCounselRounds();
+  const forms = useTacoStore((s) => s.counselForms);
+  const rounds = useTacoStore((s) => s.counselRounds);
   const [ym, setYm] = useState({ y: 2026, m: 5 });
 
   const startWeekday = new Date(ym.y, ym.m, 1).getDay();

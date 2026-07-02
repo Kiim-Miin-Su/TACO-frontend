@@ -1,19 +1,14 @@
-// [참조/처리] 관리자 코스/과목 카탈로그. 읽기=TanStack Query(useCourses·useSubjects·useInstructors),
-//  쓰기=api.courses/subjects.create → 성공 시 해당 queryKey invalidate로 목록 자동 갱신(단일 소스).
 'use client';
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { SectionCard } from '@/components/ui';
-import { api } from '@/lib/api';
-import { qk } from '@/lib/queryKeys';
-import { useCourses, useSubjects, useInstructors } from '@/lib/queries';
+import { useTacoStore } from '@/lib/store';
 import { won } from '@/lib/format';
 import { AdminGuard, AdminHeader, Field } from './AdminShell';
 
 export function CoursesView() {
-  const { data: subjects = [] } = useSubjects();
-  const { data: courses = [] } = useCourses();
-  const { data: instructors = [] } = useInstructors();
+  const subjects = useTacoStore((s) => s.subjects);
+  const courses = useTacoStore((s) => s.courses);
+  const instructors = useTacoStore((s) => s.instructors);
   const subjectName = (id: number) => subjects.find((x) => x.id === id)?.name ?? '—';
   const instructorName = (id: number) => instructors.find((x) => x.id === id)?.name ?? '—';
 
@@ -51,13 +46,9 @@ export function CoursesView() {
 const COURSE_PALETTE = ['#0969da', '#1a7f37', '#8250df', '#bf3989', '#9a6700', '#1b7c83'];
 
 function CourseForm() {
-  const qc = useQueryClient();
-  const { data: subjects = [] } = useSubjects();
-  const { data: instructors = [] } = useInstructors();
-  const addCourse = useMutation({
-    mutationFn: api.courses.create,
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.courses.all }),
-  });
+  const subjects = useTacoStore((s) => s.subjects);
+  const instructors = useTacoStore((s) => s.instructors);
+  const addCourse = useTacoStore((s) => s.addCourse);
   const [name, setName] = useState('');
   const [subjectId, setSubjectId] = useState('');
   const [instructorId, setInstructorId] = useState('');
@@ -68,13 +59,11 @@ function CourseForm() {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !subjectId || !instructorId) return;
-    addCourse.mutate(
-      {
-        name: name.trim(), subjectId: Number(subjectId), instructorId: Number(instructorId),
-        price: Number(price) || 0, hourlyRate: Number(hourlyRate) || 0, color,
-      },
-      { onSuccess: () => { setName(''); setSubjectId(''); setInstructorId(''); setPrice(''); setHourlyRate(''); setColor(COURSE_PALETTE[0]); } },
-    );
+    addCourse({
+      name: name.trim(), subjectId: Number(subjectId), instructorId: Number(instructorId),
+      price: Number(price) || 0, hourlyRate: Number(hourlyRate) || 0, color,
+    });
+    setName(''); setSubjectId(''); setInstructorId(''); setPrice(''); setHourlyRate(''); setColor(COURSE_PALETTE[0]);
   };
 
   return (
@@ -109,17 +98,14 @@ function CourseForm() {
 }
 
 function SubjectForm() {
-  const qc = useQueryClient();
-  const addSubject = useMutation({
-    mutationFn: api.subjects.create,
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.subjects.all }),
-  });
+  const addSubject = useTacoStore((s) => s.addSubject);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!code.trim() || !name.trim()) return;
-    addSubject.mutate({ code: code.trim(), name: name.trim() }, { onSuccess: () => { setCode(''); setName(''); } });
+    addSubject({ code: code.trim(), name: name.trim() });
+    setCode(''); setName('');
   };
   return (
     <form onSubmit={submit} className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -3,8 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTacoStore } from "@/lib/store";
-import { useAppData } from "@/lib/queries";
-import { roleLabel, isCEO } from "@/lib/roles";
+import { roleLabel } from "@/lib/roles";
 import { navBadges } from "@/lib/tasks";
 import { decodeToken, getToken } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -60,11 +59,12 @@ export default function Sidebar() {
   const pathname = usePathname();
   const isActive = (href: string) => href !== "#" && (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
-  // 현재 역할(데모 컨텍스트 — Topbar에서 전환)은 zustand(클라 상태).
+  // 현재 역할(데모 컨텍스트 — Topbar에서 전환) → 좌측 유저 표시 단일 소스
   const role = useTacoStore((s) => s.currentRole);
-  // 탭별 알림 배지 — 서버 데이터는 TanStack Query(useAppData) 단일 소스에서 조립해 navBadges에 넘긴다.
-  //  처리(리포트 작성·승인 등) 시 관련 쿼리가 invalidate되면 배지도 함께 갱신됨.
-  const badges = navBadges({ ...useAppData(), currentRole: role }, role);
+  // 탭별 알림 배지 — buildTasks(역할별 이벤트 단일 소스)에서 탭별 개수를 집계.
+  // 권한에 맞는 이벤트만 잡히고, 처리(리포트 작성·승인 등) 시 store가 갱신돼 모든 탭 배지가 함께 갱신된다.
+  const store = useTacoStore();
+  const badges = navBadges(store, role);
   // 로그인 토큰이 있으면 디코딩해 실제 이름을 사용(직책 대신). 없으면 데모 이름.
   const [tokenName, setTokenName] = useState<string | null>(null);
   // 강사/학생 역할은 백엔드 자원에서 대표 인물명을 가져와 표시(참조 무결성: 역할↔표시 일치)
@@ -121,10 +121,7 @@ export default function Sidebar() {
       )}
 
       <nav className="flex-1 overflow-y-auto py-3">
-        {(isCEO(role)
-          ? [...groups, { title: "경영", items: [{ label: "경영 지표", icon: IconReceipt, href: "/insights" }] }]
-          : groups
-        ).map((g) => (
+        {groups.map((g) => (
           <div key={g.title} className={`mb-3 ${collapsed ? "px-1.5" : "px-3"}`}>
             {!collapsed && <div className="px-2 mb-1 text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">{g.title}</div>}
             {g.items.map((it) => {

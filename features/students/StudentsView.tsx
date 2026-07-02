@@ -1,8 +1,6 @@
 "use client";
-// 목록 데이터(students·enrollments·courses·parentStudents·parents)는 TanStack Query로 읽고,
-// 퇴원(소프트삭제)은 useRemoveStudent 훅(백엔드 DELETE /students/:id)으로 처리한다.
 import { Badge, SectionCard, StatusDot, type Tone } from "@/components/ui";
-import { useStudents, useEnrollments, useCourses, useParentStudents, useParents, useRemoveStudent } from "@/lib/queries";
+import { useTacoStore } from "@/lib/store";
 import { isActiveStudent } from "@/lib/domain/students";
 import type { StudentStatus } from "@/types";
 import { StudentForm } from "./StudentForm";
@@ -24,12 +22,12 @@ const label: Record<StudentStatus, string> = {
 };
 
 export function StudentsView() {
-  const { data: students = [] } = useStudents();
-  const { data: enrollments = [] } = useEnrollments();
-  const { data: courses = [] } = useCourses();
-  const { data: parentStudents = [] } = useParentStudents();
-  const { data: parents = [] } = useParents();
-  const removeStudent = useRemoveStudent();
+  const students = useTacoStore((s) => s.students);
+  const enrollments = useTacoStore((s) => s.enrollments);
+  const courses = useTacoStore((s) => s.courses);
+  const parentStudents = useTacoStore((s) => s.parentStudents);
+  const parents = useTacoStore((s) => s.parents);
+  const dropStudent = useTacoStore((s) => s.dropStudent);
   const [q, setQ] = useState("");
   const [showDropped, setShowDropped] = useState(false);
   const kw = q.trim().toLowerCase();
@@ -122,7 +120,7 @@ export function StudentsView() {
                                 `${s.name} 학생을 퇴원 처리할까요?\n상담·수업보고서·결제 등 이력은 보존되며, 활성 목록과 일정에서만 제외됩니다.`,
                               )
                             ) {
-                              removeStudent.mutate(s.id);
+                              dropStudent(s.id);
                             }
                           }}
                         >
