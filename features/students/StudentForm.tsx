@@ -3,12 +3,14 @@
 // 학부모 정보는 아직 백엔드 생성 엔드포인트가 없어 UI 전용이며 mutation에 포함되지 않는다.
 import { useState } from 'react';
 import { useCreateStudent, useCreateEnrollment, useCourses } from '@/lib/queries';
+import { COUNTRIES } from '@/lib/domain/tz'; // 국가(피드백 2026-07-02) — 해외 학생 시차 시간표 기준
 import { api } from '@/lib/api';
 
 type FormState = {
   name: string;
   englishName: string;
   grade: string;
+  country: string; // ISO alpha-2 — 기본 KR(국내)
   phone: string;
   webId: string;
   courseId: string;
@@ -21,7 +23,7 @@ type FormState = {
 type VerifyState = { state: 'idle' | 'checking' | 'valid' | 'invalid'; name?: string };
 
 const empty: FormState = {
-  name: '', englishName: '', grade: '', phone: '', webId: '', courseId: '',
+  name: '', englishName: '', grade: '', country: 'KR', phone: '', webId: '', courseId: '',
   parentName: '', parentPhone: '', parentWebId: '', relation: '모',
 };
 
@@ -63,6 +65,7 @@ export function StudentForm() {
       name: f.name.trim(),
       englishName: f.englishName.trim() || undefined,
       grade: f.grade ? Number(f.grade) : undefined,
+      country: f.country !== 'KR' ? f.country.split('-')[0] : undefined, // KR은 기본값 — 저장 생략(US-W→US)
       phone: f.phone.trim() || undefined,
       webId: f.webId.trim() || undefined,
     };
@@ -82,6 +85,11 @@ export function StudentForm() {
         <Field label="이름 *"><input className="input" value={f.name} onChange={(e) => set({ name: e.target.value })} placeholder="김서연" /></Field>
         <Field label="영문명"><input className="input" value={f.englishName} onChange={(e) => set({ englishName: e.target.value })} placeholder="Sophia" /></Field>
         <Field label="학년"><input className="input" type="number" min={1} max={12} value={f.grade} onChange={(e) => set({ grade: e.target.value })} placeholder="11" /></Field>
+        <Field label="국가">
+          <select className="input" value={f.country} onChange={(e) => set({ country: e.target.value })} title="해외 학생이면 국가 선택 — 캘린더에서 그 나라 시간 시간표 제공">
+            {COUNTRIES.map((c) => (<option key={c.code} value={c.code}>{c.flag} {c.name}</option>))}
+          </select>
+        </Field>
         <Field label="연락처"><input className="input" value={f.phone} onChange={(e) => set({ phone: e.target.value })} placeholder="010-0000-0000" /></Field>
         <WebIdField
           label="학생 Web ID (선택)"

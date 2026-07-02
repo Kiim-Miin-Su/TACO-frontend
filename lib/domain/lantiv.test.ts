@@ -14,6 +14,7 @@ import {
   sessionStates,
   sortByDateAsc,
   type StatusFilter,
+  resolvePasteCourseId,
 } from './lantiv';
 
 const row = (over: Partial<ScheduleRow> = {}): ScheduleRow =>
@@ -248,5 +249,28 @@ describe('rowInResource — 컬럼 소속 판정(참조 무결성: 학생=코호
     expect(rowInResource(r, 'student', 4)).toBe(true);
     expect(rowInResource(r, 'student', 9)).toBe(false);
     expect(rowInResource(row({ studentIds: undefined as unknown as number[] }), 'student', 1)).toBe(false);
+  });
+});
+
+describe('resolvePasteCourseId — 학생 컬럼 붙여넣기 코스 재배정(버그수정 2026-07-02)', () => {
+  const courses = [
+    { id: 10, subjectId: 1 }, // 원본(영어)
+    { id: 11, subjectId: 1 }, // 같은 과목 다른 코스
+    { id: 20, subjectId: 2 }, // 수학
+  ];
+  it('대상 학생이 원본 코스 수강 중이면 그대로 유지', () => {
+    expect(resolvePasteCourseId(10, 2, [{ studentId: 2, courseId: 10, status: 'active' }], courses)).toBe(10);
+  });
+  it('원본 코스 미수강 → 같은 과목의 활성 코스로 재배정(다른 과목보다 우선)', () => {
+    const enr = [
+      { studentId: 2, courseId: 20, status: 'active' },
+      { studentId: 2, courseId: 11, status: 'active' },
+    ];
+    expect(resolvePasteCourseId(10, 2, enr, courses)).toBe(11);
+  });
+  it('같은 과목 없으면 첫 활성 코스 · 활성 수강이 없으면 null(붙여넣기 중단)', () => {
+    expect(resolvePasteCourseId(10, 2, [{ studentId: 2, courseId: 20, status: 'active' }], courses)).toBe(20);
+    expect(resolvePasteCourseId(10, 2, [{ studentId: 2, courseId: 11, status: 'completed' }], courses)).toBeNull();
+    expect(resolvePasteCourseId(10, 2, [{ studentId: 9, courseId: 11, status: 'active' }], courses)).toBeNull();
   });
 });

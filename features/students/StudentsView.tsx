@@ -4,6 +4,7 @@
 import { Badge, SectionCard, StatusDot, type Tone } from "@/components/ui";
 import { useStudents, useEnrollments, useCourses, useParentStudents, useParents, useRemoveStudent } from "@/lib/queries";
 import { isActiveStudent } from "@/lib/domain/students";
+import { countryByCode } from "@/lib/domain/tz";
 import type { StudentStatus } from "@/types";
 import { StudentForm } from "./StudentForm";
 import { useState } from "react";
@@ -87,6 +88,7 @@ export function StudentsView() {
               <tr>
                 <th>이름</th>
                 <th>학년</th>
+                <th>국가</th>
                 <th>Web ID</th>
                 <th>등록 코스</th>
                 <th>학부모</th>
@@ -104,6 +106,17 @@ export function StudentsView() {
                       <div className="text-[12px] text-fg-subtle">{s.englishName ?? ""}</div>
                     </td>
                     <td className="mono">{s.grade ?? "—"}</td>
+                    {/* 국가(피드백 2026-07-02): 해외 학생 시차 시간표의 기준 — 미지정은 KR(국내) 간주 */}
+                    <td>
+                      {(() => {
+                        const c = countryByCode(s.country ?? "KR");
+                        return c ? (
+                          <span title={`${c.name} · ${c.tz}`}>{c.flag} <span className="text-[12px] text-fg-muted">{c.code}</span></span>
+                        ) : (
+                          <span className="mono text-fg-muted">{s.country}</span>
+                        );
+                      })()}
+                    </td>
                     <td className="mono text-fg-muted">{s.webId ?? <span className="text-fg-subtle">미가입</span>}</td>
                     <td className="text-fg-muted">{cs.length ? cs.join(", ") : "—"}</td>
                     <td className="text-fg-muted">{parentOf(s.id) ?? "—"}</td>

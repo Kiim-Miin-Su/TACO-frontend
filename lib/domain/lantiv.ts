@@ -250,6 +250,29 @@ export function cloneSessionBody(
   };
 }
 
+/**
+ * [버그수정 2026-07-02] 학생 컬럼 붙여넣기 — 대상 학생의 코스 결정(코호트=enrollment 파생 무결성 유지).
+ *  김서연 세션을 이도현 컬럼에 붙일 때, 이도현이 원본 코스 수강 중이면 그대로,
+ *  아니면 **같은 과목의 활성 수강 코스** 우선 → 없으면 첫 활성 코스로 재배정 → 활성 수강이 없으면 null(중단).
+ *  (임의 코스로 붙이면 세션 코호트에 대상 학생이 없어 유령 세션이 되므로 반드시 수강 기반으로만.)
+ */
+export function resolvePasteCourseId(
+  srcCourseId: number,
+  targetStudentId: number,
+  enrollments: { studentId: number | string; courseId: number | string; status?: string }[],
+  courses: { id: number | string; subjectId?: number | string }[],
+): number | null {
+  const active = enrollments.filter(
+    (e) => Number(e.studentId) === targetStudentId && (e.status ?? 'active') === 'active',
+  );
+  if (active.some((e) => Number(e.courseId) === srcCourseId)) return srcCourseId;
+  const subjectOf = new Map(courses.map((c) => [Number(c.id), c.subjectId != null ? Number(c.subjectId) : undefined]));
+  const srcSubject = subjectOf.get(srcCourseId);
+  const sameSubject = srcSubject != null ? active.find((e) => subjectOf.get(Number(e.courseId)) === srcSubject) : undefined;
+  const pick = sameSubject ?? active[0];
+  return pick ? Number(pick.courseId) : null;
+}
+
 /** 행이 컬럼 리소스에 속하는가 — 학생은 코호트(studentIds) 포함 여부(참조 무결성: enrollment 파생). */
 export function rowInResource(
   r: Pick<ScheduleRow, 'instructorId' | 'roomId' | 'studentIds'>,

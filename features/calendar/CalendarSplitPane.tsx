@@ -13,7 +13,7 @@ export type SplitPaneDef = { uid: number; dim: SplitDim; ids: number[] };
 const DIM_LABEL: Record<SplitDim, string> = { instructor: "강사", student: "학생", room: "강의실" };
 
 export function CalendarSplitPane({
-  pane, resources, rooms, onChange, onRemove, children, fixedDim,
+  pane, resources, rooms, onChange, onRemove, children, fixedDim, headerExtra,
 }: {
   pane: SplitPaneDef;
   fixedDim?: boolean; // 자동 스플릿 모드 — 차원은 필터에서 파생(변경 UI 숨김)
@@ -22,6 +22,7 @@ export function CalendarSplitPane({
   onChange: (patch: Partial<SplitPaneDef>) => void;
   onRemove: () => void;
   children: React.ReactNode; // 부모가 renderTimeGrid(colsFor(pane))로 주입한 그리드
+  headerExtra?: React.ReactNode; // 표별 국가(시차) 픽커 등 — 헤더 우측 슬롯(피드백 2026-07-02 #6)
 }) {
   const options =
     pane.dim === "instructor"
@@ -64,6 +65,7 @@ export function CalendarSplitPane({
         <span className="text-[12px] text-fg-muted truncate flex-1" title={names}>
           {names || `${DIM_LABEL[pane.dim]}을 선택하세요`}
         </span>
+        {headerExtra}
         <button className="btn btn-sm h-6 px-1.5" onClick={onRemove} title="이 표 닫기">✕</button>
       </div>
       {pane.ids.length === 0 ? (

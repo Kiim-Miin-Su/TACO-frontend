@@ -8,10 +8,13 @@ import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 
 import {
   PALETTE, STATUS_LABEL, MAX_SPLIT,
   matchesStatusFilter, matchesResourceFilter, isGroupSession, sortByDateAsc,
-  buildMixedSplitColumns, rowInResource, cloneSessionBody,
+  buildMixedSplitColumns, rowInResource, cloneSessionBody, resolvePasteCourseId,
   type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick,
 } from "@/lib/domain/lantiv";
-import { useAttendance } from "@/lib/queries";
+import { useAttendance, useStudents, useEnrollments, useCourses } from "@/lib/queries";
+// 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
+import { KST_TZ, shiftRowsToTz, tzOffsetFromKst, type CountryInfo } from "@/lib/domain/tz";
+import { CountryInput } from "./CountryInput";
 import { exportNodeAsImage } from "@/lib/export";
 import { useTacoStore } from "@/lib/store";
 import { isAdmin, roleLabel } from "@/lib/roles";
@@ -113,6 +116,27 @@ export function ScheduleCalendar() {
   // 커서 = 붙여넣기 대상(시작시각). 클립보드는 세션 스냅샷(로컬 상태 — OS 클립보드 아님).
   const [cursor, setCursor] = useState<PasteTarget & { colKey: string } | null>(null);
   const [clip, setClip] = useState<ScheduleRow | null>(null);
+
+  // ── 국가·시차 뷰(피드백 2026-07-02) ──
+  //  country: 전역 — 선택 시 ① 그 국가 학생 세션만 필터 ② 그리드를 그 국가 로컬 시간으로 표시(KST→변환).
+  //  paneCountry: 표(스플릿)별 override — 강사 표는 KST, 학생 표는 미국 시간처럼 표마다 다르게.
+  //  저장은 항상 KST(단일 진실원) — 비KST 표시는 읽기 전용(편집·드래그·복제 잠금).
+  const [country, setCountry] = useState<CountryInfo | null>(null);
+  const [paneCountry, setPaneCountry] = useState<Partial<Record<SplitDim, CountryInfo | null>>>({});
+  const paneTzOf = (dim: SplitDim) => (dim in paneCountry ? (paneCountry[dim] ?? null) : country);
+  // 학생 국가·수강·코스(붙여넣기 코스 재배정 + 국가 필터) — TanStack Query 캐시 공유.
+  const { data: allStudents = [] } = useStudents();
+  const { data: allEnrollments = [] } = useEnrollments();
+  const { data: allCourses = [] } = useCourses();
+  // 국가 필터 모집단: 그 국가 학생 id 집합(country 미지정 학생은 KR로 간주 — 국내 기본).
+  //  'US-W'(서부)는 학생 country 'US'와 매칭(대표 tz만 다른 동일 국가).
+  const countryStudentIds = useMemo(() => {
+    if (!country) return null;
+    const want = country.code.split("-")[0];
+    return new Set(
+      allStudents.filter((st) => ((st.country ?? "KR").toUpperCase() === want)).map((st) => Number(st.id)),
+    );
+  }, [country, allStudents]);
 
   // 학생 출결(GET /attendance) — 상태 필터(지각/결강)의 학생 축. 세션id → 출결행 조인.
   const { data: attendanceRows = [] } = useAttendance();
@@ -238,6 +262,8 @@ export function ScheduleCalendar() {
       // Lantiv 상태 필터(출석/지각/결강/보강) — 세션 status + 강사·학생 출결 조합(lib/domain/lantiv)
       if (!matchesStatusFilter(r, attBySession.get(Number(r.id)) ?? [], fStatuses)) return false;
       if (groupOnly && !isGroupSession(r)) return false;
+      // 국가 필터: 그 국가 학생이 코호트에 포함된 세션만(해외 학생에게 보낼 시간표 추출용)
+      if (countryStudentIds && !(r.studentIds ?? []).some((id) => countryStudentIds.has(Number(id)))) return false;
       if (needle) {
         const hay =
           `${r.courseName} ${r.subjectName} ${r.instructorName} ${r.roomName ?? ""} ${(r.studentNames ?? []).join(" ")} ${r.topic ?? ""}`.toLowerCase();
@@ -245,11 +271,11 @@ export function ScheduleCalendar() {
       }
       return true;
     });
-  }, [rows, q, fInstructors, fSubjects, fRooms, fStudents, fStatuses, groupOnly, attBySession]);
+  }, [rows, q, fInstructors, fSubjects, fRooms, fStudents, fStatuses, groupOnly, attBySession, countryStudentIds]);
 
   const anyFilter =
     q.trim() !== "" || fInstructors.size || fSubjects.size || fRooms.size || fStudents.size ||
-    fStatuses.size || groupOnly || period != null;
+    fStatuses.size || groupOnly || period != null || country != null;
   const clearFilters = () => {
     setQ("");
     setFInstructors(new Set());
@@ -259,6 +285,8 @@ export function ScheduleCalendar() {
     setFStatuses(new Set());
     setGroupOnly(false);
     setPeriod(null);
+    setCountry(null);
+    setPaneCountry({});
   };
 
   const hrs = teachingHours(filtered);
@@ -330,8 +358,8 @@ export function ScheduleCalendar() {
         ]
       : dates.map((d) => ({ key: d, label: WD[weekdayOf(d)], sub: d.slice(5), date: d }));
 
-  const rowsOfColumn = (c: Col) =>
-    filtered.filter(
+  const rowsOfColumn = (c: Col, src: ScheduleRow[] = filtered) =>
+    src.filter(
       (r) =>
         r.sessionDate === c.date &&
         (c.resType != null
@@ -677,8 +705,20 @@ export function ScheduleCalendar() {
 
   // 붙여넣기 — 커서 시각을 시작으로 복제 생성(cloneSessionBody: 단건·scheduled·출결/시리즈 미승계).
   //  충돌·FK·권한(강사=본인 강제)은 기존 createSession 경로 재사용(409 confirm force).
+  //  [버그수정 2026-07-02] 다른 학생 컬럼에 붙여넣기: 대상 학생의 활성 수강 기반으로 코스 재배정
+  //  (원본 코스 수강 중이면 유지 → 같은 과목 코스 → 첫 활성 코스, 없으면 중단 — 유령 세션 방지).
   function pasteAt(src: ScheduleRow, target: PasteTarget) {
-    createSession(cloneSessionBody(src, target));
+    let body = cloneSessionBody(src, target);
+    if (target.resType === "student" && target.resId != null
+        && !(src.studentIds ?? []).map(Number).includes(Number(target.resId))) {
+      const cid = resolvePasteCourseId(Number(src.courseId), Number(target.resId), allEnrollments, allCourses);
+      if (cid == null) {
+        setMsg("대상 학생의 활성 수강이 없어 붙여넣을 수 없습니다 — 수강 등록 후 다시 시도하세요");
+        return;
+      }
+      if (cid !== Number(src.courseId)) body = { ...body, courseId: cid };
+    }
+    createSession(body);
   }
 
   // 키보드: Ctrl/⌘+C=선택 수업 복사 · Ctrl/⌘+V=커서 위치 붙여넣기 · Esc=커서·선택 해제.
@@ -722,7 +762,8 @@ export function ScheduleCalendar() {
     const yymmdd = anchor.slice(2, 4) + anchor.slice(5, 7) + anchor.slice(8, 10);
     const viewWord = view === "month" ? "monthly" : view === "week" ? "weekly" : "daily";
     const safe = (s: string) => s.replace(/[\\/:*?"<>|\s]+/g, ""); // 파일명 금지문자·공백 제거
-    return `${safe(who)}_${yymmdd}_${viewWord}.${ext}`;
+    const tzTag = country && country.tz !== KST_TZ ? `_${country.code}` : ""; // 예: _US — 시차 뷰 캡처 구분
+    return `${safe(who)}_${yymmdd}_${viewWord}${tzTag}.${ext}`;
   }
 
   // 현재 뷰(캘린더/표)를 이미지로 저장.
@@ -881,7 +922,15 @@ export function ScheduleCalendar() {
   // ── 타임그리드 렌더(공용) — 단일/스플릿 표가 같은 상호작용(드래그·커서·밴드·복제)을 공유 ──
   //  열폭: 컨테이너를 균등 분할(flex-1). estColW(실측 기반 추정)로 텍스트 모드 결정,
   //  minCol(스플릿 44px) 미만으로 좁아질 상황이면 가로 스크롤 발동(minWidth).
-  const renderTimeGrid = (cols: Col[]) => {
+  // tzc: 이 그리드의 국가(시차 뷰). 비KST면 ① 행을 그 나라 로컬로 변환(표시 전용) ② 시간축 0~24h
+  //  ③ 편집·드래그·복제·밴드 잠금(저장은 KST 단일 진실원 — 무결성). 표(스플릿)마다 다르게 지정 가능.
+  const renderTimeGrid = (cols: Col[], tzc?: CountryInfo | null) => {
+    const tzActive = !!tzc && tzc.tz !== KST_TZ;
+    const startH = tzActive ? 0 : START_H, endH = tzActive ? 24 : END_H; // 시차로 새벽·심야 이동 대비 전일 축
+    const gridMin = startH * 60, gridH = (endH - startH) * HOUR_H;
+    const viewRows = tzActive ? shiftRowsToTz(filtered, tzc.tz) : filtered; // 날짜·시각·요일 재계산
+    const offMin = tzActive ? tzOffsetFromKst(tzc.tz, cols[0]?.date ?? todayISO()) : 0;
+    const offLabel = `${offMin >= 0 ? "+" : "-"}${Math.floor(Math.abs(offMin) / 60)}${Math.abs(offMin) % 60 ? ":" + pad(Math.abs(offMin) % 60) : ""}h`;
     const isSplitGrid = cols[0]?.resType != null;
     // 데일리 스플릿(피드백 최종): **요일 열 폭은 주간과 동일(COL_MIN 고정)**, 그 안을 인원수로
     //  서브분할(같은 크기 요일 열을 늘리는 게 아님 — 컴팩트). 일수가 적으면 flex로 화면을 채움.
@@ -894,18 +943,26 @@ export function ScheduleCalendar() {
     const minCol = subW;
     return (
               <div className="card overflow-x-auto">
+                {tzActive && tzc && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 border-b text-[12px]" style={{ borderColor: "var(--color-line)", background: "var(--color-canvas-subtle)" }}>
+                    <span>{tzc.flag}</span>
+                    <span className="font-semibold">{tzc.name} 시간</span>
+                    <span className="text-fg-subtle mono">KST{offLabel}</span>
+                    <span className="badge text-[10px]" title="저장 시간은 항상 한국 시간(KST) — 시차 표시는 변환본입니다">보기 전용 · 편집은 한국 시간에서</span>
+                  </div>
+                )}
                 <div className="flex" style={{ minWidth: GUTTER_W + (isSplitGrid ? dayCount * COL_MIN : cols.length * COL_MIN) }}>
                   {/* 시간 거터 */}
                   <div className="shrink-0 sticky left-0 z-10 bg-canvas" style={{ width: GUTTER_W }}>
                     <div style={{ height: HEADER_H }} />
-                    <div className="relative" style={{ height: GRID_H }}>
-                      {Array.from({ length: END_H - START_H + 1 }, (_, i) => (
+                    <div className="relative" style={{ height: gridH }}>
+                      {Array.from({ length: endH - startH + 1 }, (_, i) => (
                         <span
                           key={i}
                           className="absolute right-2 text-[11px] text-fg-subtle mono"
                           style={{ top: i * HOUR_H - 7 }}
                         >
-                          {i < END_H - START_H ? `${pad(START_H + i)}:00` : ""}
+                          {i < endH - startH ? `${pad(startH + i)}:00` : ""}
                         </span>
                       ))}
                     </div>
@@ -913,11 +970,11 @@ export function ScheduleCalendar() {
                   {/* 컬럼들 */}
                   <div className="flex-1 flex">
                     {cols.map((c) => {
-                      const colRows = rowsOfColumn(c);
+                      const colRows = rowsOfColumn(c, viewRows);
                       const sOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.start : startMinOf(r));
                       const eOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.end : endMinOf(r));
                       const lanes = layoutLanes(colRows.map((r) => ({ id: r.id, start: sOf(r), end: eOf(r) })));
-                      const bands = bandsOfColumn(c);
+                      const bands = tzActive ? [] : bandsOfColumn(c); // 시차 뷰: KST 좌표 밴드 숨김
                       const isToday = c.date === todayISO();
                       return (
                         <div
@@ -971,22 +1028,23 @@ export function ScheduleCalendar() {
                             data-restype={c.resType ?? ""}
                             data-resid={c.resId ?? ""}
                             style={{
-                              height: GRID_H,
+                              height: gridH,
                               backgroundImage: `repeating-linear-gradient(to bottom, var(--color-line) 0, var(--color-line) 1px, transparent 1px, transparent ${HOUR_H}px), repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_H / 2}px, var(--color-line-muted) ${HOUR_H / 2}px, var(--color-line-muted) ${HOUR_H / 2 + 1}px, transparent ${HOUR_H / 2 + 1}px, transparent ${HOUR_H}px)`,
                             }}
                             onClick={(e) => {
                               if (e.target !== e.currentTarget) return;
                               setSelEvent(null); setSelBand(null);
+                              if (tzActive) { setMsg(`${tzc!.name} 시간 보기 중 — 편집·복제는 한국 시간에서 하세요`); return; }
                               // 빈 공간 클릭 = 커서 셀(Lantiv): 클릭 시각(30분 스냅) 표시 + 붙여넣기 대상.
                               const rect = e.currentTarget.getBoundingClientRect();
-                              const min = clampMin(snapMove(GRID_MIN + ((e.clientY - rect.top) / HOUR_H) * 60));
+                              const min = clampMin(snapMove(gridMin + ((e.clientY - rect.top) / HOUR_H) * 60));
                               setCursor({ colKey: c.key, date: c.date, startMin: min, resType: c.resType, resId: c.resId, roomId: c.roomId });
                             }}
                             onDoubleClick={(e) => {
                               // 빈 공간 더블클릭 = 그 시각으로 스케줄 추가(피드백 2026-07-02 #4).
-                              if (e.target !== e.currentTarget || !canAdd) return;
+                              if (e.target !== e.currentTarget || !canAdd || tzActive) return;
                               const rect = e.currentTarget.getBoundingClientRect();
-                              const min = clampMin(snapMove(GRID_MIN + ((e.clientY - rect.top) / HOUR_H) * 60));
+                              const min = clampMin(snapMove(gridMin + ((e.clientY - rect.top) / HOUR_H) * 60));
                               setCreating({ date: c.date, start: fromMin(min) });
                             }}
                           >
@@ -1033,14 +1091,14 @@ export function ScheduleCalendar() {
                             {/* 밴드 리사이즈 미리보기 */}
                             {bDraft && bDraft.colKey === c.key && (
                               <div className="absolute left-0 right-0 pointer-events-none" style={{
-                                top: ((bDraft.start - GRID_MIN) / 60) * HOUR_H,
+                                top: ((bDraft.start - gridMin) / 60) * HOUR_H,
                                 height: Math.max(2, ((bDraft.end - bDraft.start) / 60) * HOUR_H),
                                 background: "rgba(110,118,129,.30)", border: "1px dashed var(--color-fg-subtle)",
                               }} />
                             )}
                             {/* 커서 셀(빈 공간 클릭): 시각 배지 + (클립보드 있으면) 붙여넣기 미리보기 고스트 */}
                             {cursor && cursor.colKey === c.key && (
-                              <div className="absolute left-0 right-0 z-10 pointer-events-none" style={{ top: ((cursor.startMin - GRID_MIN) / 60) * HOUR_H }}>
+                              <div className="absolute left-0 right-0 z-10 pointer-events-none" style={{ top: ((cursor.startMin - gridMin) / 60) * HOUR_H }}>
                                 <div className="h-0.5" style={{ background: "var(--color-accent)" }} />
                                 <span className="absolute left-1 -top-2.5 px-1 rounded text-[10px] text-white mono" style={{ background: "var(--color-accent)" }}>
                                   {fromMin(cursor.startMin)}{clip ? " · Ctrl+V" : ""}
@@ -1059,7 +1117,7 @@ export function ScheduleCalendar() {
                             {/* 이벤트 이동 라이브 고스트(30분 스냅) */}
                             {moveDrag && moveDrag.colKey === c.key && (
                               <div className="absolute left-0.5 right-0.5 z-30 pointer-events-none rounded-lg text-white text-[11px] px-1.5 py-1 ring-2 ring-white" style={{
-                                top: ((moveDrag.start - GRID_MIN) / 60) * HOUR_H + 1,
+                                top: ((moveDrag.start - gridMin) / 60) * HOUR_H + 1,
                                 height: Math.max(22, (moveDrag.dur / 60) * HOUR_H) - 2,
                                 background: moveDrag.color, opacity: 0.9,
                               }}>
@@ -1067,7 +1125,7 @@ export function ScheduleCalendar() {
                               </div>
                             )}
                             {/* 현재 시각 인디케이터 */}
-                            {showNow && isToday && (
+                            {!tzActive && showNow && isToday && (
                               <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: nowTop }}>
                                 <div className="h-px" style={{ background: "var(--color-danger)" }} />
                                 <div
@@ -1079,18 +1137,18 @@ export function ScheduleCalendar() {
                             {colRows.map((r) => {
                               const s = sOf(r),
                                 en = eOf(r);
-                              const top = ((s - GRID_MIN) / 60) * HOUR_H;
+                              const top = ((s - gridMin) / 60) * HOUR_H;
                               const h = Math.max(22, ((en - s) / 60) * HOUR_H);
                               const ln = lanes[r.id] ?? { lane: 0, lanes: 1 };
                               const wPct = 100 / ln.lanes;
                               return (
                                 <div
                                   key={r.id}
-                                  onPointerDown={(e) => onEventDown(e, r)}
+                                  onPointerDown={tzActive ? undefined : (e) => onEventDown(e, r)}
                                   onClick={(e) => { e.stopPropagation(); if (suppressClickRef.current) { suppressClickRef.current = false; return; } setSelEvent(r.id); setSelBand(null); setDetailId(r.id); }}
-                                  onDoubleClick={(e) => { e.stopPropagation(); setEditing(r); }}
+                                  onDoubleClick={(e) => { e.stopPropagation(); if (tzActive) { setDetailId(r.id); return; } setEditing(r); }}
                                   title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 드래그=이동 · 더블클릭=상세`}
-                                  className={`absolute rounded-lg text-white text-[11px] leading-tight px-1.5 py-1 cursor-grab overflow-hidden shadow-sm hover:brightness-105 transition ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
+                                  className={`absolute rounded-lg text-white text-[11px] leading-tight px-1.5 py-1 ${tzActive ? "cursor-pointer" : "cursor-grab"} overflow-hidden shadow-sm hover:brightness-105 transition ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
                                   style={{
                                     top: top + 1,
                                     height: h - 2,
@@ -1104,7 +1162,7 @@ export function ScheduleCalendar() {
                                     outlineOffset: selEvent === r.id ? "1px" : undefined,
                                   }}
                                 >
-                                  {selEvent === r.id && (
+                                  {!tzActive && selEvent === r.id && (
                                     <div onPointerDown={(e) => onResizeDown(e, r, "top")} className="absolute left-1/2 -translate-x-1/2 top-0 w-6 h-2 rounded-b bg-white/90 cursor-ns-resize" />
                                   )}
                                   {/* 텍스트 3단계: full/title=가로 · vtitle=세로 글씨 · color=색상만 */}
@@ -1135,7 +1193,7 @@ export function ScheduleCalendar() {
                                       {labelOf(r)}
                                     </div>
                                   )}
-                                  {selEvent === r.id && (
+                                  {!tzActive && selEvent === r.id && (
                                     <div onPointerDown={(e) => onResizeDown(e, r, "bottom")} className="absolute left-1/2 -translate-x-1/2 bottom-0 w-6 h-2 rounded-t bg-white/90 cursor-ns-resize" />
                                   )}
                                 </div>
@@ -1205,7 +1263,9 @@ export function ScheduleCalendar() {
               + 스케줄 추가{isInstructor ? " (내 수업)" : ""}
             </button>
           )}
-          <button className="btn btn-sm" disabled={busyImg} onClick={() => saveImage("png")} title="현재 화면을 PNG로 저장">
+          {/* 국가 시차 뷰(전역): 선택 시 그 국가 학생 세션 필터 + 그리드가 그 나라 시간으로 — PNG로 그대로 추출 */}
+          <CountryInput value={country} onSelect={setCountry} />
+          <button className="btn btn-sm" disabled={busyImg} onClick={() => saveImage("png")} title="현재 화면을 PNG로 저장(시차 뷰면 그 국가 시간 기준)">
             PNG
           </button>
           <button className="btn btn-sm" disabled={busyImg} onClick={() => saveImage("jpeg")} title="현재 화면을 JPEG로 저장">
@@ -1309,13 +1369,21 @@ export function ScheduleCalendar() {
                       setter(new Set(patch.ids)); // 표의 픽커 = 상단 필터와 단일 상태(양방향 동기화)
                     }}
                     onRemove={() => setClosedPanes((prev) => new Set(prev).add(g.dim))}
+                    headerExtra={
+                      <CountryInput
+                        compact
+                        value={paneTzOf(g.dim)}
+                        onSelect={(c) => setPaneCountry((prev) => ({ ...prev, [g.dim]: c }))}
+                        placeholder="🌐 국가"
+                      />
+                    }
                   >
-                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`))}
+                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`), paneTzOf(g.dim))}
                   </CalendarSplitPane>
                 ))}
               </div>
             ) : (
-              renderTimeGrid(columns)
+              renderTimeGrid(columns, country)
             )}
           </div>
           {isGrid && selected?.type === "instructor" && (
