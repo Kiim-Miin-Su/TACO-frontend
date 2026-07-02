@@ -159,16 +159,18 @@ export function ScheduleCalendar() {
   }, [selected]);
 
   // 기간 필터가 설정되면 뷰 파생 기간 대신 사용(우측 리스트가 기간 전체를 봄).
-  const effRange = period ?? range;
+  // [L3] 월간 뷰는 월 그리드가 기준 — 기간 override를 무시(그리드-데이터 불일치 방지)
+  const effRange = view === "month" ? range : (period ?? range);
 
+  const roomsLoadedRef = useRef(false); // [L2] 클로저가 초기 rooms를 봐서 매번 재요청하던 문제
   const load = useCallback(async () => {
     try {
       const [sc, rm] = await Promise.all([
         api.schedule.list({ ...effRange, ...selQuery }),
-        rooms.length ? Promise.resolve(rooms) : api.rooms.list(),
+        roomsLoadedRef.current ? Promise.resolve(null) : api.rooms.list(),
       ]);
       setRows(sc);
-      if (!rooms.length) setRooms(rm);
+      if (rm) { setRooms(rm); roomsLoadedRef.current = true; }
       setMsg("");
     } catch {
       setMsg("백엔드 API에 연결할 수 없습니다. 서버 상태와 API 주소(NEXT_PUBLIC_API_URL) 설정을 확인하세요.");
@@ -310,6 +312,7 @@ export function ScheduleCalendar() {
   // 컬럼: 데일리 스플릿=(날짜×리소스, 표별 prefix로 key 유일) · week=날짜 · day=강의실
   type Col = {
     key: string; label: string; sub?: string; date: string; roomId?: number;
+    noRoom?: boolean; // 일간 '미지정' 컬럼(강의실 없는 세션)
     resType?: SplitDim; resId?: number; firstOfDate?: boolean;
   };
   const colsFor = (picks: MixedPick[], prefix = ""): Col[] =>
@@ -321,23 +324,33 @@ export function ScheduleCalendar() {
   const columns: Col[] = singleSplitPicks.length >= 2
     ? colsFor(singleSplitPicks)
     : view === "day"
-      ? rooms.map((r) => ({ key: `r${r.id}`, label: r.name, date: anchor, roomId: r.id }))
+      ? [
+          ...rooms.map((r) => ({ key: `r${r.id}`, label: r.name, date: anchor, roomId: r.id }) as Col),
+          { key: "r-none", label: "미지정", date: anchor, noRoom: true } as Col, // [L1] 강의실 없는 세션도 보이게
+        ]
       : dates.map((d) => ({ key: d, label: WD[weekdayOf(d)], sub: d.slice(5), date: d }));
 
   const rowsOfColumn = (c: Col) =>
     filtered.filter(
       (r) =>
         r.sessionDate === c.date &&
-        (c.resType != null ? rowInResource(r, c.resType, c.resId!) : c.roomId == null || r.roomId === c.roomId),
+        (c.resType != null
+          ? rowInResource(r, c.resType, c.resId!)
+          : c.noRoom
+            ? r.roomId == null // [L1] 미지정 컬럼 = 강의실 없는 세션만
+            : c.roomId == null || r.roomId === c.roomId),
     );
 
   // 가용/불가(Block) 밴드 — 선택 자원 기준. week=요일 매칭 모든 컬럼, day=룸이면 해당 컬럼만/그 외 전체.
-  const bandsOfColumn = (c: { date: string; roomId?: number }): { id: number; kind: string; startMin: number; endMin: number; top: number; h: number }[] => {
+  const bandsOfColumn = (c: { date: string; roomId?: number; resType?: SplitDim; resId?: number }): { id: number; kind: string; startMin: number; endMin: number; top: number; h: number }[] => {
     if (!selBlocks.length) return [];
     const wd = weekdayOf(c.date);
     return selBlocks
       .filter(
-        (b) => b.weekday === wd && (selected?.type !== "room" || c.roomId == null || c.roomId === selected.id)
+        (b) => b.weekday === wd
+          && (selected?.type !== "room" || c.roomId == null || c.roomId === selected.id)
+          // [L5] 스플릿 서브컬럼에선 선택 자원의 컬럼에만 밴드 표시(동료 컬럼 오표시 방지)
+          && (c.resType == null || (selected != null && c.resType === selected.type && c.resId === Number(selected.id)))
           // 기간(effectiveFrom/effectiveTo) 밖의 주에는 밴드 표시 안 함(반복 규칙 반영).
           && (!b.effectiveFrom || c.date >= b.effectiveFrom) && (!b.effectiveTo || c.date <= b.effectiveTo),
       )
@@ -553,8 +566,9 @@ export function ScheduleCalendar() {
       if (err.response?.status === 409) {
         const cs = err.response.data?.conflicts ?? [];
         if (confirm(`충돌 ${cs.length}건:\n${describeConflicts(cs)}\n\n그래도 적용할까요?`)) {
-          await api.schedule.update(id, { ...patch, force: true });
-          await load();
+          // [M4] force 재시도도 실패할 수 있음(네트워크·400) — 미처리 거부/유령 낙관 상태 방지
+          try { await api.schedule.update(id, { ...patch, force: true }); await load(); }
+          catch { setRows(snapshot); setMsg("수정 실패"); }
         } else {
           setRows(snapshot); // 취소 → 롤백
         }
@@ -566,7 +580,8 @@ export function ScheduleCalendar() {
   }
 
   function requestChange(r: ScheduleRow, patch: SchedulePatchBody, label: string) {
-    if (r.seriesId != null) setPending({ row: r, patch, label });
+    // [M5] SessionEditFields가 이미 scope를 골라 보냈으면 RecurrencePrompt 재질문 생략(이중 질문 방지)
+    if (r.seriesId != null && !("scope" in patch)) setPending({ row: r, patch, label });
     else applyPatch(r.id, patch);
   }
 
@@ -601,8 +616,9 @@ export function ScheduleCalendar() {
       if (err.response?.status === 409) {
         const cs = err.response.data?.conflicts ?? [];
         if (confirm(`충돌 ${cs.length}건:\n${describeConflicts(cs)}\n\n그래도 추가할까요?`)) {
-          await api.schedule.create({ ...safe, force: true });
-          await load();
+          // [M4] force 재시도 실패 시에도 롤백(미처리 거부 방지)
+          try { await api.schedule.create({ ...safe, force: true }); await load(); }
+          catch { setRows(snapshot); setMsg("스케줄 추가 실패"); }
         } else {
           setRows(snapshot); // 취소 → 롤백
         }
@@ -621,20 +637,23 @@ export function ScheduleCalendar() {
     const snapshot = rows;
     setRows((rs) => [...rs, ...safe.map(optimisticRow)]); // 즉시 반영
     setCreating(null);
+    const createdIds: number[] = []; // [M6] 중도 실패 시 보상 삭제용(반쪽 시리즈 잔존 방지)
     try {
       for (const b of safe) {
-        try { await api.schedule.create(b); }
+        try { const res = await api.schedule.create(b); createdIds.push(res.row.id); }
         catch (e) {
           const err = e as { response?: { status?: number } };
-          if (err.response?.status === 409) await api.schedule.create({ ...b, force: true });
+          if (err.response?.status === 409) { const res = await api.schedule.create({ ...b, force: true }); createdIds.push(res.row.id); }
           else throw e;
         }
       }
       setMsg(`반복 일정 ${safe.length}건을 추가했습니다.`);
       await load();
     } catch {
+      // 보상: 이미 생성된 세션 삭제(서버에 반쪽 시리즈가 남지 않게 — 벌크 API 전까지의 최소 조치)
+      await Promise.allSettled(createdIds.map((cid) => api.schedule.remove(cid)));
       setRows(snapshot);
-      setMsg("반복 일정 추가 실패");
+      setMsg("반복 일정 추가 실패 — 생성분을 되돌렸습니다");
       await load();
     }
   }
