@@ -4,7 +4,7 @@
 //  - 최근 검색: localStorage('taco.recentCountries', 최대 5) — 포커스 시 우선 노출.
 //  - 선택 결과는 CountryInfo(코드·IANA tz) 그대로 부모에 전달 — tz 계산은 lib/domain/tz 단일 소스.
 import { useEffect, useRef, useState } from "react";
-import { COUNTRIES, searchCountries, type CountryInfo } from "@/lib/domain/tz";
+import { COUNTRIES, countryByCode, searchCountries, type CountryInfo } from "@/lib/domain/tz";
 
 const RECENT_KEY = "taco.recentCountries";
 
@@ -21,6 +21,17 @@ function pushRecent(code: string) {
     const codes: string[] = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
     localStorage.setItem(RECENT_KEY, JSON.stringify([code, ...codes.filter((c) => c !== code)].slice(0, 5)));
   } catch { /* storage 불가 환경 무시 */ }
+}
+
+/** 국가 표시(국기+이름/코드) 공용 — 학생 테이블·필터 칩 등에서 재사용(감사 M9: 표시 로직 단일화). */
+export function CountryBadge({ code, showName }: { code?: string; showName?: boolean }) {
+  const c = countryByCode(code ?? "KR");
+  if (!c) return <span className="mono text-fg-muted">{code}</span>;
+  return (
+    <span title={`${c.name} · ${c.tz}`}>
+      {c.flag} <span className="text-[12px] text-fg-muted">{showName ? c.name : c.code}</span>
+    </span>
+  );
 }
 
 export function CountryInput({

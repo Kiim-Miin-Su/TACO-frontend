@@ -201,13 +201,12 @@ export function suggestSlots(input: SuggestInput, ctx: SuggestCtx): SlotCandidat
     if (!wds.includes(weekdayOf(date))) continue;
     for (let s = ws; s + dur <= we; s += step) {
       if (busy(date, s, s + dur)) continue;
-      out.push({ date, weekday: weekdayOf(date), startTime: fromMinLocal(s), endTime: fromMinLocal(s + dur) });
+      out.push({ date, weekday: weekdayOf(date), startTime: fromMin(s), endTime: fromMin(s + dur) });
       if (out.length >= limit) return out;
     }
   }
   return out;
 }
-const fromMinLocal = (mm: number) => `${String(Math.floor(mm / 60)).padStart(2, '0')}:${String(mm % 60).padStart(2, '0')}`;
 
 // ── 가용 교집합 추천(Lantiv #7): 학생가용 ∧ 강사가용 − 불가 − 점유 → 주별 후보 ──
 // 요일별 분 구간(가용 윈도우).
@@ -301,7 +300,7 @@ export function suggestPairSlots(input: PairSuggestInput, ctx: PairSuggestCtx): 
     for (const [ws, we] of dayPairWindows(instAvail, studAvail, wd, full)) {
       for (let s = ws; s + dur <= we; s += step) {
         if (blockedBy(wd, s, s + dur) || busy(date, s, s + dur)) continue;
-        out.push({ date, weekday: wd, startTime: fromMinLocal(s), endTime: fromMinLocal(s + dur) });
+        out.push({ date, weekday: wd, startTime: fromMin(s), endTime: fromMin(s + dur) });
         if (out.length >= limit) return out;
       }
     }
@@ -376,7 +375,7 @@ export function recommendForStudent(input: StudentRecoInput, ctx: StudentRecoCtx
             withinAvail(instAvailOf(c.instructorId), wd, s, e) &&
             (input.roomId == null || (!overlapsBlock('room', input.roomId, wd, s, e)));
           out.push({
-            date, weekday: wd, startTime: fromMinLocal(s), endTime: fromMinLocal(e),
+            date, weekday: wd, startTime: fromMin(s), endTime: fromMin(e),
             courseId: c.id, courseName: c.name, instructorId: c.instructorId, instructorName: c.instructorName, color: c.color,
             instructorFree: free, reason: free ? undefined : '강사 시간 조정 필요',
           });

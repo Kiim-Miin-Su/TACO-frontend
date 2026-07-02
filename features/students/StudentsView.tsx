@@ -4,7 +4,7 @@
 import { Badge, SectionCard, StatusDot, type Tone } from "@/components/ui";
 import { useStudents, useEnrollments, useCourses, useParentStudents, useParents, useRemoveStudent } from "@/lib/queries";
 import { isActiveStudent } from "@/lib/domain/students";
-import { countryByCode } from "@/lib/domain/tz";
+import { CountryBadge } from "@/features/calendar/CountryInput";
 import type { StudentStatus } from "@/types";
 import { StudentForm } from "./StudentForm";
 import { useState } from "react";
@@ -107,16 +107,7 @@ export function StudentsView() {
                     </td>
                     <td className="mono">{s.grade ?? "—"}</td>
                     {/* 국가(피드백 2026-07-02): 해외 학생 시차 시간표의 기준 — 미지정은 KR(국내) 간주 */}
-                    <td>
-                      {(() => {
-                        const c = countryByCode(s.country ?? "KR");
-                        return c ? (
-                          <span title={`${c.name} · ${c.tz}`}>{c.flag} <span className="text-[12px] text-fg-muted">{c.code}</span></span>
-                        ) : (
-                          <span className="mono text-fg-muted">{s.country}</span>
-                        );
-                      })()}
-                    </td>
+                    <td><CountryBadge code={s.country} /></td>
                     <td className="mono text-fg-muted">{s.webId ?? <span className="text-fg-subtle">미가입</span>}</td>
                     <td className="text-fg-muted">{cs.length ? cs.join(", ") : "—"}</td>
                     <td className="text-fg-muted">{parentOf(s.id) ?? "—"}</td>

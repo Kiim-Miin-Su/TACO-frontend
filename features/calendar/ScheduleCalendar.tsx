@@ -124,6 +124,8 @@ export function ScheduleCalendar() {
   const [country, setCountry] = useState<CountryInfo | null>(null);
   const [paneCountry, setPaneCountry] = useState<Partial<Record<SplitDim, CountryInfo | null>>>({});
   const paneTzOf = (dim: SplitDim) => (dim in paneCountry ? (paneCountry[dim] ?? null) : country);
+  const anyTzActive = (country != null && country.tz !== KST_TZ)
+    || Object.values(paneCountry).some((c) => c != null && c.tz !== KST_TZ);
   // 학생 국가·수강·코스(붙여넣기 코스 재배정 + 국가 필터) — TanStack Query 캐시 공유.
   const { data: allStudents = [] } = useStudents();
   const { data: allEnrollments = [] } = useEnrollments();
@@ -137,6 +139,9 @@ export function ScheduleCalendar() {
       allStudents.filter((st) => ((st.country ?? "KR").toUpperCase() === want)).map((st) => Number(st.id)),
     );
   }, [country, allStudents]);
+
+  // [감사 M4] 시차 변환 결과 캐시 — filtered가 바뀔 때만 초기화, 같은 렌더/리렌더에서 tz별 1회만 변환.
+  const tzRowsCacheRef = useRef<{ src: ScheduleRow[] | null; map: Map<string, ScheduleRow[]> }>({ src: null, map: new Map() });
 
   // 학생 출결(GET /attendance) — 상태 필터(지각/결강)의 학생 축. 세션id → 출결행 조인.
   const { data: attendanceRows = [] } = useAttendance();
@@ -327,13 +332,14 @@ export function ScheduleCalendar() {
   }, [instPicks, studPicks, closedPanes]);
   const twoPanes = panes.length === 2 && (view !== "month");
   // 단일 그리드 데일리 스플릿 대상(표 2개가 아닐 때): 남은 표 1개(≥2명) 또는 강의실 다중선택
-  const singleSplitPicks: MixedPick[] = !twoPanes
+  // [렌더 최적화] 파생 배열 메모화 — 매 렌더 새 배열로 columns 재계산·자식 리렌더 유발 방지
+  const singleSplitPicks: MixedPick[] = useMemo(() => !twoPanes
     ? (panes[0]?.picks.length ?? 0) >= 2
       ? panes[0].picks
       : roomPicks.length >= 2 && instPicks.length === 0 && studPicks.length === 0
         ? roomPicks.slice(0, MAX_SPLIT)
         : []
-    : [];
+    : [], [twoPanes, panes, roomPicks, instPicks.length, studPicks.length]);
   const isSplit = (twoPanes || singleSplitPicks.length >= 2) && view !== "month";
   const splitDim: SplitDim | null = twoPanes ? "instructor" : (singleSplitPicks[0]?.type ?? null);
 
@@ -349,14 +355,17 @@ export function ScheduleCalendar() {
       sub: view === "week" || period ? `${WD[weekdayOf(c.date)]} ${c.date.slice(5)}` : undefined,
       date: c.date, roomId: c.roomId, resType: c.resType, resId: c.resId, firstOfDate: c.firstOfDate,
     }));
-  const columns: Col[] = singleSplitPicks.length >= 2
+  // [렌더 최적화] 단일 그리드 컬럼 메모화(스플릿 곱·요일 파생 재계산 방지)
+  const columns: Col[] = useMemo(() => singleSplitPicks.length >= 2
     ? colsFor(singleSplitPicks)
     : view === "day"
       ? [
           ...rooms.map((r) => ({ key: `r${r.id}`, label: r.name, date: anchor, roomId: r.id }) as Col),
           { key: "r-none", label: "미지정", date: anchor, noRoom: true } as Col, // [L1] 강의실 없는 세션도 보이게
         ]
-      : dates.map((d) => ({ key: d, label: WD[weekdayOf(d)], sub: d.slice(5), date: d }));
+      : dates.map((d) => ({ key: d, label: WD[weekdayOf(d)], sub: d.slice(5), date: d })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- colsFor는 view/dates/period/anchor 클로저(아래 deps로 충분)
+    [singleSplitPicks, view, rooms, anchor, dates, period]);
 
   const rowsOfColumn = (c: Col, src: ScheduleRow[] = filtered) =>
     src.filter(
@@ -735,6 +744,7 @@ export function ScheduleCalendar() {
         setMsg(`복사됨 — ${r.courseName} (${r.durationMinutes}분) · 빈 시간을 클릭한 뒤 Ctrl+V`);
       } else if (mod && e.key.toLowerCase() === "v") {
         if (!canAdd) return;
+        if (anyTzActive) { setMsg("시차 보기 중에는 붙여넣기가 잠깁니다 — 한국 시간으로 돌아와 실행하세요"); return; }
         if (!clip) { setMsg("복사된 수업이 없습니다 — 수업을 클릭하고 Ctrl+C"); return; }
         if (!cursor) { setMsg("붙여넣을 빈 시간을 먼저 클릭하세요"); return; }
         e.preventDefault();
@@ -746,7 +756,10 @@ export function ScheduleCalendar() {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, selEvent, clip, cursor, canAdd]);
+  }, [rows, selEvent, clip, cursor, canAdd, anyTzActive]);
+
+  // [감사 M6] 국가(시차) 변경 시 stale 커서·선택 해제 — KST 좌표 커서가 tz 뷰에 남아 오배치되는 것 방지.
+  useEffect(() => { setCursor(null); setSelEvent(null); }, [country, paneCountry]);
 
   // 다운로드 파일명: {선택유저명+역할}_{YYMMDD}_{뷰}.ext  (예: 김민수강사_260630_weekly.png)
   // 우측 패널에서 자원을 고르면 그 자원, 아니면 로그인한 본인(토큰), 그것도 없으면 전체스케줄.
@@ -798,6 +811,7 @@ export function ScheduleCalendar() {
     d.moved = true;
     const cell = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>("[data-colcell]");
     if (!cell) return;
+    if (cell.dataset.tz === "1") return; // [감사 M7] 시차 그리드(0~24 축)로 드롭 금지 — KST 좌표계와 불일치
     const rect = cell.getBoundingClientRect();
     const start = clampMin(snapMove(GRID_MIN + ((e.clientY - rect.top) / HOUR_H) * 60 - d.grab));
     d.colKey = cell.dataset.colkey ?? d.colKey;
@@ -928,7 +942,15 @@ export function ScheduleCalendar() {
     const tzActive = !!tzc && tzc.tz !== KST_TZ;
     const startH = tzActive ? 0 : START_H, endH = tzActive ? 24 : END_H; // 시차로 새벽·심야 이동 대비 전일 축
     const gridMin = startH * 60, gridH = (endH - startH) * HOUR_H;
-    const viewRows = tzActive ? shiftRowsToTz(filtered, tzc.tz) : filtered; // 날짜·시각·요일 재계산
+    // 변환 캐시 조회(같은 filtered·tz면 재사용) — 표 2개/리렌더에서 O(n) 재변환 방지(감사 M4)
+    const cache = tzRowsCacheRef.current;
+    if (cache.src !== filtered) { cache.src = filtered; cache.map.clear(); }
+    let viewRows = filtered;
+    if (tzActive) {
+      const hit = cache.map.get(tzc.tz);
+      if (hit) viewRows = hit;
+      else { viewRows = shiftRowsToTz(filtered, tzc.tz); cache.map.set(tzc.tz, viewRows); }
+    }
     const offMin = tzActive ? tzOffsetFromKst(tzc.tz, cols[0]?.date ?? todayISO()) : 0;
     const offLabel = `${offMin >= 0 ? "+" : "-"}${Math.floor(Math.abs(offMin) / 60)}${Math.abs(offMin) % 60 ? ":" + pad(Math.abs(offMin) % 60) : ""}h`;
     const isSplitGrid = cols[0]?.resType != null;
@@ -1022,6 +1044,7 @@ export function ScheduleCalendar() {
                           <div
                             className="relative"
                             data-colcell
+                            data-tz={tzActive ? "1" : "0"}
                             data-colkey={c.key}
                             data-date={c.date}
                             data-roomid={c.roomId ?? ""}
@@ -1368,7 +1391,11 @@ export function ScheduleCalendar() {
                       const setter = g.dim === "instructor" ? setFInstructors : setFStudents;
                       setter(new Set(patch.ids)); // 표의 픽커 = 상단 필터와 단일 상태(양방향 동기화)
                     }}
-                    onRemove={() => setClosedPanes((prev) => new Set(prev).add(g.dim))}
+                    onRemove={() => {
+                      setClosedPanes((prev) => new Set(prev).add(g.dim));
+                      // [감사 M8] 닫힌 표의 국가 override 정리 — 다시 열면 전역 국가를 따름
+                      setPaneCountry((prev) => { const n = { ...prev }; delete n[g.dim]; return n; });
+                    }}
                     headerExtra={
                       <CountryInput
                         compact

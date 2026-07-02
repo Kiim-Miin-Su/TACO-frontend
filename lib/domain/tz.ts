@@ -8,6 +8,8 @@
 //  - country(ISO alpha-2) → 대표 IANA tz 매핑(미국처럼 다중 tz 국가는 대표 도시 1곳 — 필요 시 학생별 tz 확장).
 // ──────────────────────────────────────────────────────────────
 import type { ScheduleRow } from '@/types';
+// 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 M5 — 파일별 중복 pad/fromMin/weekday 금지 규칙과 통일)
+import { fromMin, weekdayOf } from './schedule';
 
 export type CountryInfo = { code: string; name: string; en: string; tz: string; flag: string };
 
@@ -63,29 +65,28 @@ function utcToTzParts(utcMs: number, tz: string): { date: string; minutes: numbe
   return { date: `${parts.year}-${parts.month}-${parts.day}`, minutes: hour * 60 + Number(parts.minute) };
 }
 
-const two = (n: number) => String(n).padStart(2, '0');
-const minToHHMM = (m: number) => `${two(Math.floor(m / 60))}:${two(m % 60)}`;
-const weekdayOfDate = (date: string) => new Date(date + 'T00:00:00Z').getUTCDay();
-
 /**
  * 세션 1건을 대상 tz의 로컬 시간표로 변환(표시 전용 사본).
  * 자정을 넘으면 날짜가 밀리며 시작/종료가 다른 날이 될 수 있음 — 이 경우 종료는 그날 24:00로
  * 클램프하고 다음날 잔여는 표시하지 않는다(단순화 — 시간표 인쇄 목적에 충분, durationMinutes 원본 유지).
+ * [감사 H 수정] endTime 없으면 UTC에서 duration을 더해 파생(항상 true 조건식·자정 모듈로 오염 제거).
  */
 export function shiftRowToTz(row: ScheduleRow, tz: string): ScheduleRow {
   if (!row.startTime || tz === KST_TZ) return row;
   const startUtc = kstToUtcMs(row.sessionDate, row.startTime);
-  const endHHMM = row.endTime ?? minToHHMM((Number(row.startTime.slice(0, 2)) * 60 + Number(row.startTime.slice(3, 5)) + row.durationMinutes) % (24 * 60));
-  const endUtc = row.endTime != null || true ? kstToUtcMs(row.sessionDate, row.endTime ?? endHHMM) : startUtc;
+  // 종료 UTC: endTime이 있으면 그대로, 없으면 시작+진행시간. KST 저장값에서 endTime<startTime은
+  // 자정 넘김(익일 종료) — duration 기반으로 보정(모듈로 래핑 없이 실제 시점 유지).
+  const rawEndUtc = row.endTime != null ? kstToUtcMs(row.sessionDate, row.endTime) : startUtc + row.durationMinutes * 60_000;
+  const endUtc = rawEndUtc <= startUtc ? startUtc + row.durationMinutes * 60_000 : rawEndUtc;
   const s = utcToTzParts(startUtc, tz);
-  const e = utcToTzParts(endUtc <= startUtc ? startUtc + row.durationMinutes * 60_000 : endUtc, tz);
+  const e = utcToTzParts(endUtc, tz);
   const sameDay = s.date === e.date;
   return {
     ...row,
     sessionDate: s.date,
-    weekday: weekdayOfDate(s.date),
-    startTime: minToHHMM(s.minutes),
-    endTime: sameDay ? minToHHMM(e.minutes) : '24:00', // 자정 넘김 클램프(표시용)
+    weekday: weekdayOf(s.date),
+    startTime: fromMin(s.minutes),
+    endTime: sameDay ? fromMin(e.minutes) : '24:00', // 자정 넘김 클램프(표시용)
   };
 }
 
