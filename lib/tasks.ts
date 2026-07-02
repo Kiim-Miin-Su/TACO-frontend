@@ -15,7 +15,7 @@ import type {
 } from '@/types';
 import type { Tone } from '@/components/ui';
 import { isAdmin } from '@/lib/roles';
-import { pendingReportSessions, pendingReportItemCount, type ReportSlice } from '@/lib/reports';
+import { pendingReportSessions, pendingReportSummary, type ReportSlice } from '@/lib/reports';
 import { makeupNeeds, makeupNeededCount, MAKEUP_REASON_LABEL } from '@/lib/makeup';
 
 // 회계상 분리: pay(강사 페이=출금) / expense(지출=출금) / payment(결제·수납=입금) / counsel(상담) / report·class(강사)
@@ -187,8 +187,9 @@ export function navBadges(s: StoreSlice, role: AccountRole = s.currentRole): Rec
   const put = (nav: string, n: number) => { if (n > 0) out[nav] = n; };
 
   // 강사: 본인 수업보고서 미작성(보고서 건수) + 취소·미진행 보강 필요(캘린더 탭)
+  // ⚠ 배지와 /reports 탭 리스트는 pendingReportSummary(같은 모집단)를 공유해야 한다(불일치 재발 방지).
   if (role === 'instructor') {
-    put('/reports', pendingReportItemCount(s, DEMO_INSTRUCTOR_ID));
+    put('/reports', pendingReportSummary(s, DEMO_INSTRUCTOR_ID).itemCount);
     put('/calendar', makeupNeededCount(s, DEMO_INSTRUCTOR_ID)); // 보강 필요 건수(캘린더 탭)
     return out;
   }
@@ -199,7 +200,7 @@ export function navBadges(s: StoreSlice, role: AccountRole = s.currentRole): Rec
   put('/payments', s.payments.filter((p) => p.status === 'pending').length); // 미수(미납)
   put('/payouts', s.instructorPayouts.filter((p) => p.status === 'pending' || p.status === 'confirmed').length); // 미정산(미지급)
   put('/expenses', s.expenses.filter((e) => e.status === 'requested').length); // 승인 대기
-  put('/reports', pendingReportItemCount(s)); // 미작성 보고서 건수(전체)
+  put('/reports', pendingReportSummary(s).itemCount); // 미작성 보고서 건수(전체) — 탭 리스트와 동일 모집단
 
   // 관리자(승인 센터): 미승인 모두 = 보고서 승인대기 + 지출 승인대기 + 강사페이 승인대기 (가입 승인은 백엔드 계정)
   const reportApprove = s.sessionReports.filter((r) => (r.status === 'submitted' || r.approvalStatus === 'submitted') && r.approvalStatus !== 'approved').length;

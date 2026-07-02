@@ -11,7 +11,7 @@ import {
   useCreateReport, useSubmitReport,
 } from '@/lib/queries';
 import { DEMO_INSTRUCTOR_ID } from '@/lib/tasks';
-import { sessionNeedsReport } from '@/lib/reports';
+import { pendingReportSummary, sessionNeedsReport } from '@/lib/reports';
 import type { ClassSession, ReportStatus, Student } from '@/types';
 
 const reportTone: Record<ReportStatus, Tone> = { draft: 'neutral', submitted: 'accent', sent: 'success' };
@@ -62,6 +62,11 @@ export function ReportWriteView() {
   // 배지와 동일 기준의 "작성 필요"(held·지난 수업·미작성) 목록. 기본은 이 목록만 노출(배지=리스트 일치).
   // 전체 보기로 전환하면 예정·완료 수업도 열어 편집 가능.
   const needSessions = useMemo(() => sessions.filter((s) => sessionNeedsReport(reportSlice, s)), [sessions, reportSlice]);
+  // 강사 배지와 같은 숫자(보고서 건수) — 같은 모집단(pendingReportSummary) 사용.
+  const needItemCount = useMemo(
+    () => pendingReportSummary(reportSlice, instructorId).itemCount,
+    [reportSlice, instructorId],
+  );
   const [needOnly, setNeedOnly] = useState(true);
   const listSessions = needOnly ? needSessions : sessions;
 
@@ -84,7 +89,7 @@ export function ReportWriteView() {
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 items-start">
         {/* 좌: 내 수업 목록 — 기본은 배지와 동일 기준(작성 필요)만 */}
         <SectionCard
-          title={needOnly ? `작성 필요 (${needSessions.length})` : `내 수업 (${sessions.length})`}
+          title={needOnly ? `작성 필요 — 수업 ${needSessions.length}개 · 보고서 ${needItemCount}건` : `내 수업 (${sessions.length})`}
           action={
             <button className="btn btn-sm" onClick={() => setNeedOnly((v) => !v)}>
               {needOnly ? '전체 보기' : '작성 필요만'}

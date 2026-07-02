@@ -5,6 +5,7 @@ import {
   pendingReportSessions,
   pendingReportCount,
   pendingReportItemCount,
+  pendingReportSummary,
   type ReportSlice,
 } from './reports';
 import type { ClassSession, Enrollment, SessionReport } from '@/types';
@@ -82,5 +83,48 @@ describe('단일 기준 함수 missingReportStudentIds ↔ 파생 일치', () =>
     const s2: ReportSlice = { ...slice, sessionReports: [] };
     expect(pendingReportCount(s2, undefined, NOW)).toBe(1);     // 수업은 1건
     expect(pendingReportItemCount(s2, undefined, NOW)).toBe(2); // 보고서 누락은 2건(수업 수보다 많음)
+  });
+});
+
+// 버그 회귀(2026-07-02): "탭 10건 vs 배지 4" — 배지와 탭이 서로 다른 스코프(월/강사)·단위(세션/보고서)로
+// 계산돼 불일치. 두 뷰 공용 pendingReportSummary가 배지(itemCount)·리스트(sessions)를 한 모집단에서 산출.
+describe('pendingReportSummary — 배지·탭 공용 모집단', () => {
+  // 강사1: 종료 세션 2건(미작성 1+2=3건) · 강사2: 종료 세션 1건(미작성 1건) · 진행중 1건(제외)
+  const slice: ReportSlice = {
+    classSessions: [
+      ses({ id: 1, sessionDate: '2026-06-29', instructorId: 1 }),
+      ses({ id: 2, sessionDate: '2026-06-28', instructorId: 1, courseId: 11 }),
+      ses({ id: 3, sessionDate: '2026-06-27', instructorId: 2 }),
+      ses({ id: 4, sessionDate: '2026-06-30', startTime: '16:00', instructorId: 1 }), // 진행 중 → 제외
+    ],
+    enrollments: [enr({ id: 1, studentId: 1 }), enr({ id: 2, studentId: 4 }), enr({ id: 3, studentId: 7, courseId: 11 })],
+    sessionReports: [{ id: 1, sessionId: 1, studentId: 1, instructorId: 1, content: 'x', status: 'submitted' } as SessionReport],
+  };
+  // 세션1(코스10, 수강 1·4): 학생1 작성 → 미작성 [4] = 1건
+  // 세션2(코스11, 수강 7): 미작성 1건 / 세션3(코스10): 미작성 2건(1·4)
+
+  it('itemCount = Σ missingReportStudentIds (배지 값), sessions = 리스트 모집단 — 항상 일치', () => {
+    const all = pendingReportSummary(slice, undefined, NOW);
+    expect(all.sessions.map((s) => s.id).sort()).toEqual([1, 2, 3]);
+    expect(all.sessionCount).toBe(3); // 탭 "수업 N개"
+    expect(all.itemCount).toBe(4); // 배지 "보고서 M건" = 1+1+2
+    // 불변식: itemCount == 모집단 세션들의 미작성 합 (탭·배지 불일치 원천 차단)
+    expect(all.itemCount).toBe(
+      all.sessions.reduce((n, s) => n + missingReportStudentIds(slice, s, NOW).length, 0),
+    );
+  });
+
+  it('강사 스코프: 배지(강사)와 리포트 작성 탭이 같은 숫자를 본다', () => {
+    const inst1 = pendingReportSummary(slice, 1, NOW);
+    expect(inst1.sessions.map((s) => s.id).sort()).toEqual([1, 2]);
+    expect(inst1.sessionCount).toBe(2);
+    expect(inst1.itemCount).toBe(2); // 세션1[4]=1 + 세션2[7]=1
+    expect(inst1.itemCount).toBe(pendingReportItemCount(slice, 1, NOW)); // 기존 배지 함수와 동치
+  });
+
+  it('전체 = 강사별 합(스코프 분해 정합)', () => {
+    const all = pendingReportSummary(slice, undefined, NOW);
+    const byInst = pendingReportSummary(slice, 1, NOW).itemCount + pendingReportSummary(slice, 2, NOW).itemCount;
+    expect(all.itemCount).toBe(byInst);
   });
 });

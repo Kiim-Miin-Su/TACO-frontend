@@ -74,3 +74,16 @@ export function pendingReportItemCount(s: ReportSlice, instructorId?: number, no
     0,
   );
 }
+
+// ▣ 배지·탭 공용 요약 — 같은 모집단(전체 기간 + 동일 역할 스코프)에서 세션 수와 보고서 건수를 함께.
+//  버그(2026-07-02) 재발 방지: 배지=보고서 건수(itemCount) vs 탭=세션 수(sessionCount)가 서로 다른
+//  스코프(월/강사)로 계산돼 "탭 10건 vs 배지 4" 불일치 발생 → 두 뷰 모두 이 함수 하나만 쓴다.
+export function pendingReportSummary(
+  s: ReportSlice,
+  instructorId?: number,
+  nowMs: number = Date.now(),
+): { sessions: ClassSession[]; sessionCount: number; itemCount: number } {
+  const sessions = pendingReportSessions(s, instructorId, nowMs);
+  const itemCount = sessions.reduce((n, ses) => n + missingReportStudentIds(s, ses, nowMs).length, 0);
+  return { sessions, sessionCount: sessions.length, itemCount };
+}

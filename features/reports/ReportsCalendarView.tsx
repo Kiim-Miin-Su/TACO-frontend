@@ -8,7 +8,9 @@ import { Badge, SectionCard, type Tone } from '@/components/ui';
 import {
   useSchedule, useCourses, useInstructors, useEnrollments, useStudents, useReports, useAttendance,
 } from '@/lib/queries';
-import { sessionNeedsReport } from '@/lib/reports';
+import { pendingReportSummary } from '@/lib/reports';
+import { useTacoStore } from '@/lib/store';
+import { DEMO_INSTRUCTOR_ID } from '@/lib/tasks';
 import type { AttendanceStatus, ReportStatus } from '@/types';
 
 const attLabel: Record<AttendanceStatus, string> = { present: '출석', late: '지각', absent: '결석', excused: '인정결석' };
@@ -26,9 +28,17 @@ export function ReportsCalendarView() {
   const { data: students = [] } = useStudents();
   const { data: sessionReports = [] } = useReports();
   const { data: attendance = [] } = useAttendance();
-  // sessionNeedsReport용 slice(단일 소스 조립)
+  // slice(단일 소스 조립) — 배지(navBadges)와 같은 pendingReportSummary 모집단을 쓴다.
   const reportSlice = { classSessions, enrollments, sessionReports };
-  const [ym, setYm] = useState({ y: 2026, m: 5 }); // 0-based: 2026-06
+  // 역할 스코프: 강사는 본인 수업만(배지와 동일). 관리자·매니저는 전체.
+  const role = useTacoStore((s) => s.currentRole);
+  const scopeInstructorId = role === 'instructor' ? DEMO_INSTRUCTOR_ID : undefined;
+  // 배지와 동일 모집단(전체 기간 + 역할 스코프): sessions=목록, itemCount=배지 숫자.
+  const pending = pendingReportSummary(reportSlice, scopeInstructorId);
+  const pendingIds = new Set(pending.sessions.map((s) => s.id));
+  // 초기 달 = 오늘(과거 하드코딩 금지 — 2026-06 고정으로 배지·리스트가 어긋나 보이던 원인 중 하나)
+  const now = new Date();
+  const [ym, setYm] = useState({ y: now.getFullYear(), m: now.getMonth() });
   const [selected, setSelected] = useState<number | null>(null);
   const [needOnly, setNeedOnly] = useState(true); // 기본: 배지와 동일 기준(작성 필요)만
 
@@ -107,8 +117,12 @@ export function ReportsCalendarView() {
                           backgroundColor: active ? 'var(--color-accent)' : 'var(--color-accent-subtle)',
                           color: active ? '#fff' : 'var(--color-accent)',
                         }}
-                        title={courseName(cs.courseId)}
+                        title={courseName(cs.courseId) + (pendingIds.has(cs.id) ? ' · 리포트 미작성' : '')}
                       >
+                        {/* 미작성(배지 모집단) 수업은 빨간 점으로 표시 — 리스트·배지와 같은 기준 */}
+                        {pendingIds.has(cs.id) && (
+                          <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ backgroundColor: 'var(--color-danger)' }} />
+                        )}
                         {courseName(cs.courseId)}
                       </button>
                     );
@@ -125,11 +139,18 @@ export function ReportsCalendarView() {
         const inMonth = classSessions
           .filter((cs) => cs.sessionDate.startsWith(monthStr))
           .sort((a, b) => (a.sessionDate + (a.startTime ?? '')).localeCompare(b.sessionDate + (b.startTime ?? '')));
-        // 기본은 배지와 동일 기준(작성 필요=held·지난·미작성)만. 전체 보기로 전환 가능.
-        const monthSessions = needOnly ? inMonth.filter((cs) => sessionNeedsReport(reportSlice, cs)) : inMonth;
+        // "작성 필요" = 배지와 완전히 같은 모집단(전체 기간·역할 스코프, 월 필터 없음) → 숫자 불일치 원천 차단.
+        //  전체 보기 = 선택한 달의 수업 리스트(기존 동작).
+        const monthSessions = needOnly
+          ? [...pending.sessions].sort((a, b) => (a.sessionDate + (a.startTime ?? '')).localeCompare(b.sessionDate + (b.startTime ?? '')))
+          : inMonth;
         return (
           <SectionCard
-            title={needOnly ? `작성 필요 (${monthSessions.length})` : `수업 리스트 (${monthSessions.length})`}
+            title={
+              needOnly
+                ? `작성 필요 — 수업 ${pending.sessionCount}개 · 보고서 ${pending.itemCount}건 (배지 기준)`
+                : `수업 리스트 (${monthSessions.length}) — ${ym.y}년 ${ym.m + 1}월`
+            }
             action={
               <button className="btn btn-sm" onClick={() => setNeedOnly((v) => !v)}>
                 {needOnly ? '전체 보기' : '작성 필요만'}
