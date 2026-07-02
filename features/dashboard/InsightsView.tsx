@@ -1,17 +1,19 @@
 'use client';
 // [참조/처리] 경영 지표(수입·지출) 상세 — 대시보드에서 분리(CEO 전용).
-//  - store.transactions(입·출금 원장)에서 입금 합/출금 합, store.payments에서 미수금 파생.
-//  - 매출 시각화(RevenueCharts) + 입·출금 원장 리스트. 비-CEO 접근 시 안내만.
+//  - transactions(입·출금 원장)에서 입금 합/출금 합, payments에서 미수금 파생 — TanStack Query.
+//  - 매출 시각화(RevenueCharts) + 입·출금 원장 리스트. 비-CEO 접근 시 안내만. role만 zustand(클라 상태).
 import Link from 'next/link';
 import { StatCard, SectionCard, IconArrowDown, IconArrowUp, IconReceipt } from '@/components/ui';
 import { won, shortDate } from '@/lib/format';
 import { useTacoStore } from '@/lib/store';
+import { useTransactions, usePayments } from '@/lib/queries';
 import { isCEO, roleLabel } from '@/lib/roles';
 import { RevenueCharts } from './RevenueCharts';
 
 export function InsightsView() {
-  const store = useTacoStore();
-  const role = store.currentRole;
+  const role = useTacoStore((s) => s.currentRole);
+  const { data: transactions = [] } = useTransactions();
+  const { data: payments = [] } = usePayments();
 
   if (!isCEO(role)) {
     return (
@@ -23,9 +25,9 @@ export function InsightsView() {
     );
   }
 
-  const inbound = store.transactions.filter((t) => t.direction === 'in').reduce((a, t) => a + t.amount, 0);
-  const outbound = store.transactions.filter((t) => t.direction === 'out').reduce((a, t) => a + t.amount, 0);
-  const unpaid = store.payments.filter((p) => p.status === 'pending').reduce((a, p) => a + p.amount, 0);
+  const inbound = transactions.filter((t) => t.direction === 'in').reduce((a, t) => a + t.amount, 0);
+  const outbound = transactions.filter((t) => t.direction === 'out').reduce((a, t) => a + t.amount, 0);
+  const unpaid = payments.filter((p) => p.status === 'pending').reduce((a, p) => a + p.amount, 0);
 
   return (
     <div className="p-6 max-w-[1200px] mx-auto space-y-6">
@@ -40,14 +42,14 @@ export function InsightsView() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard label="이번 달 입금" value={won(inbound)} tone="success" icon={<IconArrowDown />} sub="신규·재수강" />
         <StatCard label="이번 달 출금" value={won(outbound)} tone="attention" icon={<IconArrowUp />} sub="강사 페이 · 지출" />
-        <StatCard label="미수금" value={won(unpaid)} tone="danger" icon={<IconReceipt />} sub={`청구 ${store.payments.filter((p) => p.status === 'pending').length}건 대기`} />
+        <StatCard label="미수금" value={won(unpaid)} tone="danger" icon={<IconReceipt />} sub={`청구 ${payments.filter((p) => p.status === 'pending').length}건 대기`} />
       </div>
 
       <RevenueCharts />
 
       <SectionCard title="입·출금 원장">
         <ul className="divide-y" style={{ borderColor: 'var(--color-line-muted)' }}>
-          {store.transactions.map((t) => {
+          {transactions.map((t) => {
             const isIn = t.direction === 'in';
             return (
               <li key={t.id} className="flex items-center gap-3 px-4 py-3">

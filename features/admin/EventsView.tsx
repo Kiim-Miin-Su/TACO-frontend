@@ -1,20 +1,20 @@
 // [참조/처리] 관리자 학원 이벤트 발행/목록 화면.
-//  - 목록: store.academyEvents 구독(AppShell이 GET /events로 하이드레이트).
-//  - 발행: api.events.create(POST /events, 관리자 토큰 필요) 성공 시 qk.events 무효화 → 재패칭이 store 갱신.
+//  - 목록: useAcademyEvents()(TanStack Query 단일 소스, GET /events).
+//  - 발행: api.events.create(POST /events, 관리자 토큰 필요) 성공 시 qk.events 무효화 → 목록 자동 재패칭.
 //    구간 무결성(종료일 ≥ 시작일)은 폼에서 선검증 + 서버 400 재검증. 다른 엔티티 참조(FK) 없음.
 'use client';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Badge, SectionCard } from '@/components/ui';
-import { useTacoStore } from '@/lib/store';
 import { api } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
+import { useAcademyEvents } from '@/lib/queries';
 import type { EventType, EventPriority } from '@/types';
 import { AdminGuard, AdminHeader, Field } from './AdminShell';
 import { eventLabel, eventTone, EVENT_TYPES, priorityLabel, EVENT_PRIORITIES } from './labels';
 
 export function EventsView() {
-  const events = useTacoStore((s) => s.academyEvents);
+  const { data: events = [] } = useAcademyEvents();
   return (
     <AdminGuard>
       <div className="p-6 max-w-[1100px] mx-auto space-y-6">

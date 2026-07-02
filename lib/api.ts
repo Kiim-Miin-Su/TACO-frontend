@@ -24,6 +24,8 @@ import type {
   CreateRoadmapInput,
   Parent,
   ParentStudent,
+  CreateCourseInput,
+  CreateSubjectInput,
   CreateStudentInput,
   CreateEnrollmentInput,
   WebIdCheckResult,
@@ -175,9 +177,11 @@ export const api = {
   },
   courses: {
     list: () => http.get<Course[]>("/courses").then((r) => r.data),
+    create: (input: CreateCourseInput) => http.post<Course>("/courses", input).then((r) => r.data),
   },
   subjects: {
     list: () => http.get<Subject[]>("/subjects").then((r) => r.data),
+    create: (input: CreateSubjectInput) => http.post<Subject>("/subjects", input).then((r) => r.data),
   },
   counsel: {
     forms: () => http.get<CounselForm[]>("/counsel").then((r) => r.data),
