@@ -13,9 +13,10 @@ export type SplitPaneDef = { uid: number; dim: SplitDim; ids: number[] };
 const DIM_LABEL: Record<SplitDim, string> = { instructor: "강사", student: "학생", room: "강의실" };
 
 export function CalendarSplitPane({
-  pane, resources, rooms, onChange, onRemove, children,
+  pane, resources, rooms, onChange, onRemove, children, fixedDim,
 }: {
   pane: SplitPaneDef;
+  fixedDim?: boolean; // 자동 스플릿 모드 — 차원은 필터에서 파생(변경 UI 숨김)
   resources: ScheduleResources | null;
   rooms: Room[];
   onChange: (patch: Partial<SplitPaneDef>) => void;
@@ -37,16 +38,20 @@ export function CalendarSplitPane({
     <div className="flex-1 min-w-[320px]">
       {/* 표 헤더: 차원 선택 + 리소스 다중 체크(표별 독립 필터) + 제거 */}
       <div className="flex items-center gap-1.5 mb-1 px-0.5">
-        <select
-          className="input h-7 w-[76px] text-[12px]"
-          value={pane.dim}
-          onChange={(e) => onChange({ dim: e.target.value as SplitDim, ids: [] })}
-          title="이 표의 기준(강사/학생/강의실)"
-        >
-          {(Object.keys(DIM_LABEL) as SplitDim[]).map((d) => (
-            <option key={d} value={d}>{DIM_LABEL[d]}</option>
-          ))}
-        </select>
+        {fixedDim ? (
+          <span className="text-[12px] font-semibold text-fg-muted px-1">{DIM_LABEL[pane.dim]}</span>
+        ) : (
+          <select
+            className="input h-7 w-[76px] text-[12px]"
+            value={pane.dim}
+            onChange={(e) => onChange({ dim: e.target.value as SplitDim, ids: [] })}
+            title="이 표의 기준(강사/학생/강의실)"
+          >
+            {(Object.keys(DIM_LABEL) as SplitDim[]).map((d) => (
+              <option key={d} value={d}>{DIM_LABEL[d]}</option>
+            ))}
+          </select>
+        )}
         <MultiPick
           dim={pane.dim as FilterDim}
           options={options}

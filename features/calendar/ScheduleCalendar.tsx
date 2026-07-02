@@ -131,7 +131,13 @@ export function ScheduleCalendar() {
   const previewRef = useRef<{ id: number; start: number; end: number } | null>(null);
 
   const weekStart = useMemo(() => mondayOf(anchor), [anchor]);
-  const dates = useMemo(() => weekDates(weekStart), [weekStart]);
+  // 기간(period)을 지정하면 **뷰 자체가 그 날짜들로 재구성**(피드백: 4일 선택=4일만 표시). 상한 14일.
+  const dates = useMemo(() => {
+    if (!period) return weekDates(weekStart);
+    const out: string[] = [];
+    for (let d = period.from; d <= period.to && out.length < 14; d = addDaysISO(d, 1)) out.push(d);
+    return out.length ? out : [period.from];
+  }, [period, weekStart]);
 
   // 조회 기간(월/주/일/표). 표는 주간 기준.
   const range = useMemo(() => {
@@ -141,7 +147,7 @@ export function ScheduleCalendar() {
       return { from: `${ym}-01`, to: `${ym}-${pad(last)}` };
     }
     if (view === "day") return { from: anchor, to: anchor };
-    return { from: dates[0], to: dates[6] };
+    return { from: dates[0], to: dates[dates.length - 1] };
   }, [view, anchor, dates]);
 
   // 선택 자원 → 서버 필터(개인 스케줄)
@@ -255,36 +261,66 @@ export function ScheduleCalendar() {
 
   const hrs = teachingHours(filtered);
 
-  // ── 스플릿(재설계 2026-07-02, Lantiv 창 분할): 표 = 독립 컴포넌트(CalendarSplitPane) ──
-  //  표마다 자체 차원(강사/학생/강의실)+리소스 다중선택. "+ 표" 로 추가, ✕로 삭제(최대 3개).
-  //  상단 필터바의 리소스 선택은 이제 **필터(OR)** 역할만 — 스플릿은 표가 담당(역할 분리).
-  const [panes, setPanes] = useState<SplitPaneDef[]>([]);
-  const paneSeq = useRef(1);
-  const addPane = (dim: SplitDim = "instructor") =>
-    setPanes((ps) => (ps.length >= 3 ? ps : [...ps, { uid: paneSeq.current++, dim, ids: [] }]));
-  const updatePane = (uid: number, patch: Partial<SplitPaneDef>) =>
-    setPanes((ps) => ps.map((p) => (p.uid === uid ? { ...p, ...patch, ids: (patch.ids ?? p.ids).slice(0, MAX_SPLIT) } : p)));
-  const removePane = (uid: number) => setPanes((ps) => ps.filter((p) => p.uid !== uid));
-  const isSplit = panes.length > 0 && (view === "week" || view === "day");
+  // ── 스플릿(피드백 2026-07-02 최종, Lantiv): 필터 선택에서 **자동 파생** ──
+  //  · 강사+학생 둘 다 선택 → 표 2개(강사 표 | 학생 표), 각 표 = (날짜 × 그 차원 선택) 데일리 스플릿
+  //  · 한 차원만 2명 이상 → 단일 그리드 데일리 스플릿(월요일 열 안에 사람별 서브컬럼)
+  //  · 표 ✕ 닫기 → 남은 화면은 원래(단일 그리드) 렌더, 필터 선택은 그대로 유지(상태 저장)
+  const instPicks: MixedPick[] = useMemo(
+    () => (resources?.instructors ?? []).filter((r) => fInstructors.has(Number(r.id))).map((r) => ({ id: Number(r.id), name: r.name, type: "instructor" as const })),
+    [resources, fInstructors],
+  );
+  const studPicks: MixedPick[] = useMemo(
+    () => (resources?.students ?? []).filter((r) => fStudents.has(Number(r.id))).map((r) => ({ id: Number(r.id), name: r.name, type: "student" as const })),
+    [resources, fStudents],
+  );
+  const roomPicks: MixedPick[] = useMemo(
+    () => rooms.filter((r) => fRooms.has(Number(r.id))).map((r) => ({ id: Number(r.id), name: r.name, type: "room" as const })),
+    [rooms, fRooms],
+  );
+  // ✕로 닫은 표(차원) — 필터는 유지한 채 표만 접음. 해당 차원 선택이 비면 자동 해제.
+  const [closedPanes, setClosedPanes] = useState<Set<SplitDim>>(new Set());
+  useEffect(() => {
+    setClosedPanes((prev) => {
+      const n = new Set(prev);
+      if (instPicks.length === 0) n.delete("instructor");
+      if (studPicks.length === 0) n.delete("student");
+      return n;
+    });
+  }, [instPicks.length, studPicks.length]);
+  const panes = useMemo(() => {
+    const out: { dim: SplitDim; title: string; picks: MixedPick[] }[] = [];
+    if (instPicks.length && !closedPanes.has("instructor"))
+      out.push({ dim: "instructor", title: `강사 시간표 (${Math.min(instPicks.length, MAX_SPLIT)})`, picks: instPicks.slice(0, MAX_SPLIT) });
+    if (studPicks.length && !closedPanes.has("student"))
+      out.push({ dim: "student", title: `학생 시간표 (${Math.min(studPicks.length, MAX_SPLIT)})`, picks: studPicks.slice(0, MAX_SPLIT) });
+    return out;
+  }, [instPicks, studPicks, closedPanes]);
+  const twoPanes = panes.length === 2 && (view !== "month");
+  // 단일 그리드 데일리 스플릿 대상(표 2개가 아닐 때): 남은 표 1개(≥2명) 또는 강의실 다중선택
+  const singleSplitPicks: MixedPick[] = !twoPanes
+    ? (panes[0]?.picks.length ?? 0) >= 2
+      ? panes[0].picks
+      : roomPicks.length >= 2 && instPicks.length === 0 && studPicks.length === 0
+        ? roomPicks.slice(0, MAX_SPLIT)
+        : []
+    : [];
+  const isSplit = (twoPanes || singleSplitPicks.length >= 2) && view !== "month";
+  const splitDim: SplitDim | null = twoPanes ? "instructor" : (singleSplitPicks[0]?.type ?? null);
 
-  // 컬럼: 표(pane)=(날짜×선택 리소스, key는 표별 prefix로 유일) · week=날짜 · day=강의실
+  // 컬럼: 데일리 스플릿=(날짜×리소스, 표별 prefix로 key 유일) · week=날짜 · day=강의실
   type Col = {
     key: string; label: string; sub?: string; date: string; roomId?: number;
     resType?: SplitDim; resId?: number; firstOfDate?: boolean;
   };
-  const paneNameOf = (dim: SplitDim, id: number): string =>
-    (dim === "room"
-      ? rooms.find((r) => Number(r.id) === id)?.name
-      : (dim === "instructor" ? resources?.instructors : resources?.students)?.find((r) => Number(r.id) === id)?.name) ?? `#${id}`;
   const colsFor = (picks: MixedPick[], prefix = ""): Col[] =>
     buildMixedSplitColumns(view === "day" ? [anchor] : dates, picks).map((c) => ({
       key: prefix + c.key, label: c.label,
-      sub: view === "week" ? `${WD[weekdayOf(c.date)]} ${c.date.slice(5)}` : undefined,
+      sub: view === "week" || period ? `${WD[weekdayOf(c.date)]} ${c.date.slice(5)}` : undefined,
       date: c.date, roomId: c.roomId, resType: c.resType, resId: c.resId, firstOfDate: c.firstOfDate,
     }));
-  const paneCols = (p: SplitPaneDef): Col[] =>
-    colsFor(p.ids.map((id) => ({ id, name: paneNameOf(p.dim, id), type: p.dim })), `p${p.uid}|`);
-  const columns: Col[] = view === "day"
+  const columns: Col[] = singleSplitPicks.length >= 2
+    ? colsFor(singleSplitPicks)
+    : view === "day"
       ? rooms.map((r) => ({ key: `r${r.id}`, label: r.name, date: anchor, roomId: r.id }))
       : dates.map((d) => ({ key: d, label: WD[weekdayOf(d)], sub: d.slice(5), date: d }));
 
@@ -795,6 +831,9 @@ export function ScheduleCalendar() {
     if (view === "month") {
       const d = new Date(Date.UTC(Number(anchor.slice(0, 4)), Number(anchor.slice(5, 7)) - 1 + dir, 1));
       setAnchor(d.toISOString().slice(0, 10));
+    } else if (period) {
+      const len = dates.length;
+      setPeriod({ from: addDaysISO(period.from, len * dir), to: addDaysISO(period.to, len * dir) });
     } else setAnchor(addDaysISO(anchor, (view === "day" ? 1 : 7) * dir));
   };
   const periodLabel =
@@ -802,7 +841,7 @@ export function ScheduleCalendar() {
       ? `${anchor.slice(0, 4)}년 ${Number(anchor.slice(5, 7))}월`
       : view === "day"
         ? anchor
-        : `${dates[0]} ~ ${dates[6]}`;
+        : `${dates[0]} ~ ${dates[dates.length - 1]}${period ? ` (기간 ${dates.length}일)` : ""}`;
   const isGrid = view === "week" || view === "day";
   // 현재 시각 인디케이터(빨간 선)용 — 오늘 컬럼에 표시
   const _now = new Date();
@@ -825,13 +864,18 @@ export function ScheduleCalendar() {
   //  minCol(스플릿 44px) 미만으로 좁아질 상황이면 가로 스크롤 발동(minWidth).
   const renderTimeGrid = (cols: Col[]) => {
     const isSplitGrid = cols[0]?.resType != null;
-    // 스플릿 표: 열폭 **고정 110px**(Lantiv식) — 사람이 많으면 표 안에서 가로 스크롤.
-    //  텍스트는 항상 제목+시간 표시(색상만 모드는 사용 안 함 — 가독성 피드백).
-    const textMode = (isSplitGrid ? "title" : "full") as "full" | "title" | "color";
-    const minCol = isSplitGrid ? 110 : COL_MIN;
+    // 데일리 스플릿(피드백 최종): **요일 열 폭은 주간과 동일(COL_MIN 고정)**, 그 안을 인원수로
+    //  서브분할(같은 크기 요일 열을 늘리는 게 아님 — 컴팩트). 일수가 적으면 flex로 화면을 채움.
+    const dayCount = isSplitGrid ? new Set(cols.map((c) => c.date)).size : cols.length;
+    const perDay = isSplitGrid ? Math.max(1, Math.round(cols.length / Math.max(1, dayCount))) : 1;
+    const subW = isSplitGrid ? Math.floor(COL_MIN / perDay) : COL_MIN;
+    // 텍스트 3단계(서브열 폭 기준): 가로(제목+시간) → 세로 제목(vtitle) → 색상만(결강·보강=회색)
+    const textMode: "full" | "title" | "vtitle" | "color" =
+      !isSplitGrid || subW >= 80 ? "full" : subW >= 46 ? "title" : subW >= 24 ? "vtitle" : "color";
+    const minCol = subW;
     return (
               <div className="card overflow-x-auto">
-                <div className="flex" style={{ minWidth: GUTTER_W + cols.length * minCol }}>
+                <div className="flex" style={{ minWidth: GUTTER_W + (isSplitGrid ? dayCount * COL_MIN : cols.length * COL_MIN) }}>
                   {/* 시간 거터 */}
                   <div className="shrink-0 sticky left-0 z-10 bg-canvas" style={{ width: GUTTER_W }}>
                     <div style={{ height: HEADER_H }} />
@@ -864,7 +908,7 @@ export function ScheduleCalendar() {
                             borderColor: c.resType && c.firstOfDate ? "var(--color-line)" : "var(--color-line-muted)",
                             borderLeftWidth: c.resType && c.firstOfDate ? 2 : undefined,
                             minWidth: minCol,
-                            flex: c.resType ? `0 0 ${minCol}px` : undefined, // 스플릿=고정폭(스크롤), 일반=균등(flex-1)
+                            flex: `1 0 ${minCol}px`, // 비율 유지 + 남는 폭은 균등 확장(화면 채움 — 피드백)
                           }}
                         >
                           {/* 헤더: 스플릿=날짜+리소스명 · 주간=요일+날짜(오늘 강조) · 일간=강의실 */}
@@ -1033,7 +1077,8 @@ export function ScheduleCalendar() {
                                     height: h - 2,
                                     left: `calc(${ln.lane * wPct}% + 2px)`,
                                     width: `calc(${wPct}% - 4px)`,
-                                    background: colorOf(r),
+                                    // 색상만 단계에선 결강·보강 모두 회색(피드백) — makeup 포함
+                                    background: textMode === "color" && r.status === "makeup" ? CANCELED_GRAY : colorOf(r),
                                     // 이동 중엔 원본을 흐리게, Ctrl+복제 중엔 원본 유지(복제임을 시각화)
                                     opacity: moveDrag?.id === r.id && !moveDrag.copy ? 0.35 : 1,
                                     outline: selEvent === r.id ? "2px solid var(--color-accent)" : undefined,
@@ -1043,23 +1088,32 @@ export function ScheduleCalendar() {
                                   {selEvent === r.id && (
                                     <div onPointerDown={(e) => onResizeDown(e, r, "top")} className="absolute left-1/2 -translate-x-1/2 top-0 w-6 h-2 rounded-b bg-white/90 cursor-ns-resize" />
                                   )}
-                                  {/* 텍스트 모드(실제 열폭 기준): full=3줄 · title=제목 1줄 · color=색상만(아주 좁을 때) */}
-                                  {textMode !== "color" && (
-                                    <div
-                                      className={`font-semibold truncate ${isCanceledStatus(r.status) ? "line-through opacity-90" : ""}`}
-                                      style={textMode === "title" ? { fontSize: 10 } : undefined}
-                                    >
-                                      {labelOf(r)}{isCanceledStatus(r.status) ? ` (${STATUS_LABEL[r.status]})` : ""}
-                                    </div>
-                                  )}
-                                  {textMode !== "color" && (
-                                    <div className="opacity-90 mono truncate" style={textMode === "title" ? { fontSize: 9.5 } : undefined}>
-                                      {fromMin(s)}–{fromMin(en)}
-                                    </div>
+                                  {/* 텍스트 3단계: full/title=가로 · vtitle=세로 글씨 · color=색상만 */}
+                                  {(textMode === "full" || textMode === "title") && (
+                                    <>
+                                      <div
+                                        className={`font-semibold truncate ${isCanceledStatus(r.status) ? "line-through opacity-90" : ""}`}
+                                        style={textMode === "title" ? { fontSize: 10 } : undefined}
+                                      >
+                                        {labelOf(r)}{isCanceledStatus(r.status) ? ` (${STATUS_LABEL[r.status]})` : ""}
+                                      </div>
+                                      <div className="opacity-90 mono truncate" style={textMode === "title" ? { fontSize: 9.5 } : undefined}>
+                                        {fromMin(s)}–{fromMin(en)}
+                                      </div>
+                                    </>
                                   )}
                                   {textMode === "full" && (
                                     <div className="opacity-80 truncate">
                                       {r.memo ? r.memo : view === "week" ? (r.roomName ?? "") : r.instructorName}
+                                    </div>
+                                  )}
+                                  {textMode === "vtitle" && (
+                                    <div
+                                      className="font-semibold overflow-hidden"
+                                      style={{ writingMode: "vertical-rl", fontSize: 9, lineHeight: 1.1, maxHeight: h - 6 }}
+                                      title={`${labelOf(r)} ${fromMin(s)}–${fromMin(en)}`}
+                                    >
+                                      {labelOf(r)}
                                     </div>
                                   )}
                                   {selEvent === r.id && (
@@ -1092,7 +1146,9 @@ export function ScheduleCalendar() {
             {selected && <span className="text-accent"> · {selected.name} 개인 스케줄</span>}
             {isSplit && (
               <span className="text-accent">
-                {" "}· 표 분할 {panes.length}개({panes.map((p) => `${p.dim === "instructor" ? "강사" : p.dim === "student" ? "학생" : "강의실"} ${p.ids.length}`).join(" | ")})
+                {" "}· {twoPanes
+                  ? `표 2개(강사 ${panes[0].picks.length} | 학생 ${panes[1].picks.length})`
+                  : `데일리 스플릿(${splitDim === "instructor" ? "강사" : splitDim === "student" ? "학생" : "강의실"} ${singleSplitPicks.length})`}
               </span>
             )}
           </p>
@@ -1121,13 +1177,7 @@ export function ScheduleCalendar() {
           {view === "day" && (
             <input type="date" className="input h-7 w-36" value={anchor} onChange={(e) => setAnchor(e.target.value)} />
           )}
-          <button
-            className={`btn btn-sm ${panes.length ? "badge-accent" : ""}`}
-            onClick={() => (panes.length ? setPanes([]) : (addPane("instructor"), addPane("student")))}
-            title="표 분할 — 표마다 강사/학생을 따로 선택해 나란히 비교(Lantiv). 다시 누르면 해제"
-          >
-            ⊞ 표 분할{panes.length ? ` ${panes.length}` : ""}
-          </button>
+          {/* 표 분할은 필터 선택에서 자동(강사+학생 동시 선택 → 표 2개) — 수동 버튼 제거(피드백) */}
           {canAdd && resources && (
             <button
               className="btn btn-sm btn-primary"
@@ -1224,26 +1274,26 @@ export function ScheduleCalendar() {
                 }}
                 onCreateDay={(d) => canAdd && setCreating({ date: d })}
               />
-            ) : isSplit ? (
-              /* 표 분할(Lantiv) — 표마다 독립 선택(CalendarSplitPane). 그리드 로직은 renderTimeGrid 공유 */
+            ) : twoPanes ? (
+              /* 강사+학생 동시 필터 → 표 2개 자동(각 표 = 날짜×선택 데일리 스플릿). ✕=표 닫기(필터 유지) */
               <div className="flex gap-3 items-start overflow-x-auto pb-1">
-                {panes.map((p) => (
+                {panes.map((g) => (
                   <CalendarSplitPane
-                    key={p.uid}
-                    pane={p}
+                    key={g.dim}
+                    pane={{ uid: g.dim === "instructor" ? 1 : 2, dim: g.dim, ids: g.picks.map((x) => x.id) }}
+                    fixedDim
                     resources={resources}
                     rooms={rooms}
-                    onChange={(patch) => updatePane(p.uid, patch)}
-                    onRemove={() => removePane(p.uid)}
+                    onChange={(patch) => {
+                      if (!patch.ids) return;
+                      const setter = g.dim === "instructor" ? setFInstructors : setFStudents;
+                      setter(new Set(patch.ids)); // 표의 픽커 = 상단 필터와 단일 상태(양방향 동기화)
+                    }}
+                    onRemove={() => setClosedPanes((prev) => new Set(prev).add(g.dim))}
                   >
-                    {renderTimeGrid(paneCols(p))}
+                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`))}
                   </CalendarSplitPane>
                 ))}
-                {panes.length < 3 && (
-                  <button className="btn btn-sm shrink-0 mt-8" onClick={() => addPane(panes[0]?.dim === "instructor" ? "student" : "instructor")} title="표 추가(최대 3개)">
-                    + 표
-                  </button>
-                )}
               </div>
             ) : (
               renderTimeGrid(columns)
