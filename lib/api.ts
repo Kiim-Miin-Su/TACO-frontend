@@ -3,11 +3,35 @@
 // 배포(Vercel)는 NEXT_PUBLIC_API_URL을 백엔드 도메인으로 지정하면 직접 호출(백엔드 CORS 허용).
 import axios from "axios";
 import { logger } from "./log";
-import { getToken } from "./auth";
+import { getToken, clearToken } from "./auth";
+import { isPublicRoute } from "./auth-routes";
 import type {
   Student,
   Enrollment,
   Payment,
+  Expense,
+  Course,
+  Subject,
+  CounselForm,
+  CounselRound,
+  Transaction,
+  AcademyEvent,
+  CreateEventInput,
+  Attendance,
+  AttendanceStatus,
+  Roadmap,
+  RoadmapCourse,
+  CreateRoadmapInput,
+  Parent,
+  ParentStudent,
+  CreateCourseInput,
+  CreateSubjectInput,
+  CreatePaymentInput,
+  UpdatePaymentInput,
+  CreateExpenseInput,
+  CreateCounselInput,
+  UpdateCounselInput,
+  CreateCounselRoundInput,
   CreateStudentInput,
   CreateEnrollmentInput,
   WebIdCheckResult,
@@ -98,6 +122,17 @@ http.interceptors.response.use(
   (err) => {
     const status = err?.response?.status ?? "ERR";
     apiLog.error(`✗ ${status} ${err?.config?.method?.toUpperCase() ?? ""} ${err?.config?.url ?? ""}`, err?.response?.data ?? err?.message);
+    // 401(토큰 없음/만료): 조용히 실패하지 않고 로그인으로 유도 — 세션이 끊긴 걸 사용자에게 알림.
+    // 단, 로그인 시도 자체의 401(잘못된 자격)이나 공개 경로에선 리다이렉트하지 않음.
+    if (
+      status === 401 &&
+      typeof window !== "undefined" &&
+      !isPublicRoute(window.location.pathname) &&
+      !String(err?.config?.url ?? "").includes("/auth/login")
+    ) {
+      clearToken();
+      window.location.href = "/login?expired=1";
+    }
     return Promise.reject(err);
   },
 );
@@ -134,6 +169,7 @@ export const api = {
     list: () => http.get<Student[]>("/students").then((r) => r.data),
     get: (id: number) => http.get<Student>(`/students/${id}`).then((r) => r.data),
     create: (body: CreateStudentInput) => http.post<Student>("/students", body).then((r) => r.data),
+    remove: (id: number) => http.delete<Student>(`/students/${id}`).then((r) => r.data),
   },
   enrollments: {
     list: (studentId?: number) =>
@@ -142,6 +178,53 @@ export const api = {
   },
   payments: {
     list: () => http.get<Payment[]>("/payments").then((r) => r.data),
+    create: (input: CreatePaymentInput) => http.post<Payment>("/payments", input).then((r) => r.data),
+    update: (id: number, patch: UpdatePaymentInput) => http.patch<Payment>(`/payments/${id}`, patch).then((r) => r.data),
+    markPaid: (id: number) => http.post<Payment>(`/payments/${id}/pay`, {}).then((r) => r.data),
+  },
+  expenses: {
+    list: () => http.get<Expense[]>("/expenses").then((r) => r.data),
+    create: (input: CreateExpenseInput) => http.post<Expense>("/expenses", input).then((r) => r.data),
+    approve: (id: number) => http.post<Expense>(`/expenses/${id}/approve`, {}).then((r) => r.data),
+    reject: (id: number) => http.post<Expense>(`/expenses/${id}/reject`, {}).then((r) => r.data),
+  },
+  courses: {
+    list: () => http.get<Course[]>("/courses").then((r) => r.data),
+    create: (input: CreateCourseInput) => http.post<Course>("/courses", input).then((r) => r.data),
+  },
+  subjects: {
+    list: () => http.get<Subject[]>("/subjects").then((r) => r.data),
+    create: (input: CreateSubjectInput) => http.post<Subject>("/subjects", input).then((r) => r.data),
+  },
+  counsel: {
+    forms: () => http.get<CounselForm[]>("/counsel").then((r) => r.data),
+    rounds: (counselFormId?: number) =>
+      http.get<CounselRound[]>("/counsel/rounds", { params: counselFormId ? { counselFormId } : undefined }).then((r) => r.data),
+    create: (input: CreateCounselInput) => http.post<CounselForm>("/counsel", input).then((r) => r.data),
+    update: (id: number, patch: UpdateCounselInput) => http.patch<CounselForm>(`/counsel/${id}`, patch).then((r) => r.data),
+    createRound: (formId: number, input: CreateCounselRoundInput) =>
+      http.post<CounselRound>(`/counsel/${formId}/rounds`, input).then((r) => r.data),
+  },
+  transactions: {
+    list: () => http.get<Transaction[]>("/transactions").then((r) => r.data),
+  },
+  events: {
+    list: () => http.get<AcademyEvent[]>("/events").then((r) => r.data),
+    create: (input: CreateEventInput) => http.post<AcademyEvent>("/events", input).then((r) => r.data),
+  },
+  attendance: {
+    list: () => http.get<Attendance[]>("/attendance").then((r) => r.data),
+    upsert: (body: { sessionId: number; studentId: number; status: AttendanceStatus }) =>
+      http.put<Attendance>("/attendance", body).then((r) => r.data),
+  },
+  roadmaps: {
+    list: () => http.get<Roadmap[]>("/roadmaps").then((r) => r.data),
+    courses: () => http.get<RoadmapCourse[]>("/roadmaps/courses").then((r) => r.data),
+    create: (input: CreateRoadmapInput) => http.post<Roadmap>("/roadmaps", input).then((r) => r.data),
+  },
+  parents: {
+    list: () => http.get<Parent[]>("/parents").then((r) => r.data),
+    relations: () => http.get<ParentStudent[]>("/parents/relations").then((r) => r.data),
   },
   users: {
     // web id 존재 확인 (등록 폼 "확인하기")
