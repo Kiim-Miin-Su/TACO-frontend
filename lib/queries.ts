@@ -6,6 +6,8 @@
 import { useQuery, useMutation, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { api, type SessionReport as ApiReport } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+import { useTacoStore } from "@/lib/store";
+import { isAdmin } from "@/lib/roles";
 import type { Instructor, SessionReport } from "@/types";
 
 // 백엔드 보고서(draft|submitted|approved|rejected)를 store 모델로 정규화.
@@ -37,7 +39,11 @@ export const useAttendance = () => useQuery({ queryKey: qk.attendance.list(), qu
 export const usePayments = () => useQuery({ queryKey: qk.payments.list(), queryFn: () => api.payments.list() });
 export const useTransactions = () => useQuery({ queryKey: qk.transactions.list(), queryFn: () => api.transactions.list() });
 export const useExpenses = () => useQuery({ queryKey: qk.expenses.list(), queryFn: () => api.expenses.list() });
-export const usePayouts = () => useQuery({ queryKey: qk.payouts.list(), queryFn: () => api.payouts.list() });
+// [코드리뷰 2026-07-03 M1] 정산 조회는 백엔드 관리자 전용(403) — 비관리자는 fetch 비활성(빈 배열 유지, 403 재시도 노이즈 방지)
+export const usePayouts = () => {
+  const role = useTacoStore((s) => s.currentRole);
+  return useQuery({ queryKey: qk.payouts.list(), queryFn: () => api.payouts.list(), enabled: isAdmin(role) });
+};
 export const useCounselForms = () => useQuery({ queryKey: qk.counsel.forms(), queryFn: () => api.counsel.forms() });
 export const useCounselRounds = () => useQuery({ queryKey: qk.counsel.rounds(), queryFn: () => api.counsel.rounds() });
 export const useAcademyEvents = () => useQuery({ queryKey: qk.events.list(), queryFn: () => api.events.list() });

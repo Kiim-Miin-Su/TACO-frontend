@@ -64,7 +64,9 @@ export function PayoutsView() {
   }, []);
 
   // 초기 로드 — 자원(강사)·정산 목록 + 연결 상태
+  // [코드리뷰 2026-07-03 M1] 정산 API 관리자 전용 — 비관리자는 호출 자체를 생략(403→offline 오표시 방지)
   useEffect(() => {
+    if (!admin) return;
     (async () => {
       try {
         const res = await api.schedule.resources();
@@ -75,7 +77,7 @@ export function PayoutsView() {
         setConn('offline');
       }
     })();
-  }, [loadPayouts]);
+  }, [admin, loadPayouts]);
 
   // 강사·기간 변경 시 산정 미리보기(읽기전용)
   useEffect(() => {
@@ -127,6 +129,18 @@ export function PayoutsView() {
   };
   // 반려 사유 모달(입력/보기)
   const [reasonModal, setReasonModal] = useState<{ mode: 'input' | 'view'; payout: PayoutRow } | null>(null);
+
+  // [코드리뷰 2026-07-03 M1] 비관리자 접근 안내 — 백엔드 403과 일치하는 프론트 게이트(메뉴는 Sidebar에서 숨김, 직접 URL 접근 대비)
+  if (!admin) {
+    return (
+      <div className="p-6 max-w-[1000px] mx-auto">
+        <h1 className="text-[20px] font-semibold">강사 페이</h1>
+        <div className="mt-4 p-4 rounded-lg border text-[13px] text-fg-muted" style={{ borderColor: 'var(--color-line-muted)' }}>
+          정산 정보는 관리자 전용입니다. 본인 정산 조회 기능은 준비 중입니다.
+        </div>
+      </div>
+    );
+  }
 
   if (conn === 'offline') {
     return (

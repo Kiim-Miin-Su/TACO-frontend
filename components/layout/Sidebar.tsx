@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTacoStore } from "@/lib/store";
 import { useAppData } from "@/lib/queries";
-import { roleLabel, isCEO } from "@/lib/roles";
+import { roleLabel, isCEO, isAdmin } from "@/lib/roles";
 import { navBadges } from "@/lib/tasks";
 import { decodeToken, getToken } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -22,7 +22,7 @@ import {
   IconCalendar,
 } from "../ui/icons";
 
-type Item = { label: string; icon: React.FC<any>; href: string };
+type Item = { label: string; icon: React.FC<any>; href: string; adminOnly?: boolean };
 
 const groups: { title: string; items: Item[] }[] = [
   {
@@ -42,7 +42,8 @@ const groups: { title: string; items: Item[] }[] = [
   {
     title: "출금",
     items: [
-      { label: "강사 페이", icon: IconWallet, href: "/payouts" },
+      // [코드리뷰 2026-07-03 M1] 정산 API 관리자 전용 상향 → 메뉴도 관리자만 노출(강사 403 오프라인 오표시 방지)
+      { label: "강사 페이", icon: IconWallet, href: "/payouts", adminOnly: true },
       { label: "지출 · 비품", icon: IconReceipt, href: "/expenses" },
     ],
   },
@@ -125,7 +126,11 @@ export default function Sidebar() {
         {(isCEO(role)
           ? [...groups, { title: "경영", items: [{ label: "경영 지표", icon: IconReceipt, href: "/insights" }] }]
           : groups
-        ).map((g) => (
+        )
+          // adminOnly 항목은 관리자 역할에게만 노출(M1). 항목이 비면 그룹째 숨김.
+          .map((g) => ({ ...g, items: g.items.filter((it: Item) => !it.adminOnly || isAdmin(role)) }))
+          .filter((g) => g.items.length > 0)
+          .map((g) => (
           <div key={g.title} className={`mb-3 ${collapsed ? "px-1.5" : "px-3"}`}>
             {!collapsed && <div className="px-2 mb-1 text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">{g.title}</div>}
             {g.items.map((it) => {
