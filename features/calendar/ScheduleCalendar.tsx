@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, AvailabilityBlock, AccountRole, Attendance } from "@/types";
 import { api, type SchedulePatchBody, type ScheduleCreateBody, type AvailabilityUpsertBody } from "@/lib/api";
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 D — 파일별 중복 toMin/fromMin/pad/WD 제거)
-import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, ownerWindows } from "@/lib/domain/schedule";
+import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, ownerWindows, blocksOnDate } from "@/lib/domain/schedule";
 import {
   PALETTE, STATUS_LABEL, MAX_SPLIT,
   matchesStatusFilter, matchesResourceFilter, isGroupSession, sortByDateAsc,
@@ -91,6 +91,12 @@ export function ScheduleCalendar() {
   //  "지금 무엇으로 걸러져 있는지"가 한 곳에 보인다. 우측 패널 클릭 = 그 차원 필터를 1명으로 세팅.
   // (selected 정의는 필터 상태 아래 — 파생 useMemo)
   const [selBlocks, setSelBlocks] = useState<AvailabilityBlock[]>([]); // 선택 자원의 불가시간(밴드 표시)
+  // [피드백 2026-07-03] 스플릿 컬럼별 가용·불가 시각화 — 전체 availability(단일 소스, 컬럼 유저 매칭)
+  const [allBlocks, setAllBlocks] = useState<AvailabilityBlock[]>([]);
+  const reloadAllBlocks = useCallback(() => {
+    api.availability.all().then(setAllBlocks).catch(() => {});
+  }, []);
+  useEffect(() => { reloadAllBlocks(); }, [reloadAllBlocks]);
 
   // 이미지(PNG/JPEG) 내보내기
   const captureRef = useRef<HTMLDivElement>(null);
@@ -481,29 +487,34 @@ export function ScheduleCalendar() {
     );
 
   // 가용/불가(Block) 밴드 — 선택 자원 기준. week=요일 매칭 모든 컬럼, day=룸이면 해당 컬럼만/그 외 전체.
-  const bandsOfColumn = (c: { date: string; roomId?: number; resType?: SplitDim; resId?: number }): { id: number; kind: string; startMin: number; endMin: number; top: number; h: number }[] => {
+  type Band = { id: number; kind: string; startMin: number; endMin: number; top: number; h: number; editable: boolean };
+  // gridMin: 렌더 그리드의 시작 분(개별 시차로 축이 0~24h일 때 top 정합 — renderTimeGrid가 전달)
+  const bandsOfColumn = (c: { date: string; roomId?: number; resType?: SplitDim; resId?: number }, gridMin: number = GRID_MIN): Band[] => {
+    // 날짜·소유자 매칭은 blocksOnDate 단일 소스(lib/domain/schedule) — 두 경로가 같은 규칙 공유
+    const toBand = (b: AvailabilityBlock, editable: boolean): Band => {
+      const bs = clampMin(toMin(b.startTime)),
+        be = clampMin(toMin(b.endTime));
+      return { id: b.id, kind: b.kind, startMin: bs, endMin: be, top: ((bs - gridMin) / 60) * HOUR_H, h: Math.max(6, ((be - bs) / 60) * HOUR_H), editable };
+    };
+    // [피드백 2026-07-03] 스플릿 서브컬럼 = **그 컬럼 유저(강사/학생/강의실)의 가용·불가**를 항상 표시.
+    //  전체 availability(blocks)에서 컬럼 리소스 매칭 — 표시 전용(편집은 개인 필터의 선택 유저 밴드만).
+    if (c.resType != null && c.resId != null) {
+      const own = selected != null && c.resType === selected.type && c.resId === Number(selected.id);
+      return blocksOnDate(allBlocks, c.date, { type: c.resType, id: c.resId })
+        .map((b) => toBand(b, own)); // 선택 유저의 컬럼이면 기존처럼 편집 가능
+    }
+    // 비스플릿: 기존 — 선택 유저(selBlocks)의 밴드(편집 가능)
     if (!selBlocks.length) return [];
-    const wd = weekdayOf(c.date);
-    return selBlocks
-      .filter(
-        (b) => b.weekday === wd
-          && (selected?.type !== "room" || c.roomId == null || c.roomId === selected.id)
-          // [L5] 스플릿 서브컬럼에선 선택 자원의 컬럼에만 밴드 표시(동료 컬럼 오표시 방지)
-          && (c.resType == null || (selected != null && c.resType === selected.type && c.resId === Number(selected.id)))
-          // 기간(effectiveFrom/effectiveTo) 밖의 주에는 밴드 표시 안 함(반복 규칙 반영).
-          && (!b.effectiveFrom || c.date >= b.effectiveFrom) && (!b.effectiveTo || c.date <= b.effectiveTo),
-      )
-      .map((b) => {
-        const s = clampMin(toMin(b.startTime)),
-          e = clampMin(toMin(b.endTime));
-        return { id: b.id, kind: b.kind, startMin: s, endMin: e, top: ((s - GRID_MIN) / 60) * HOUR_H, h: Math.max(6, ((e - s) / 60) * HOUR_H) };
-      });
+    return blocksOnDate(selBlocks, c.date)
+      .filter((b) => selected?.type !== "room" || c.roomId == null || c.roomId === selected.id)
+      .map((b) => toBand(b, true));
   };
 
   // ── 가용/불가(Block) — 밴드 표시 + 클릭 삭제. 생성은 "스케줄 추가" 모달의 '가용·불가' 탭에서. ──
   const reloadSelBlocks = useCallback(() => {
     if (selected) api.availability.list(selected.type, selected.id).then(setSelBlocks).catch(() => {});
-  }, [selected]);
+    reloadAllBlocks(); // 스플릿 컬럼 밴드(전체 소스)도 동기화
+  }, [selected, reloadAllBlocks]);
 
   // 가용/불가 블록 생성(모달에서 호출)
   async function createBlock(body: AvailabilityUpsertBody) {
@@ -1114,7 +1125,7 @@ export function ScheduleCalendar() {
                       const sOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.start : startMinOf(r));
                       const eOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.end : endMinOf(r));
                       const lanes = layoutLanes(colRows.map((r) => ({ id: r.id, start: sOf(r), end: eOf(r) })));
-                      const bands = colTz ? [] : bandsOfColumn(c); // 시차 컬럼: KST 좌표 밴드 숨김
+                      const bands = colTz ? [] : bandsOfColumn(c, gridMin); // 시차 컬럼: KST 좌표 밴드 숨김
                       const isToday = c.date === todayISO();
                       return (
                         <div
@@ -1247,11 +1258,11 @@ export function ScheduleCalendar() {
                                 onPointerDown={on ? (e) => { if (e.target === e.currentTarget) bDown(e, c, b, "move"); } : undefined}
                                 onClick={(e) => {
                                   if (bMovedRef.current) { bMovedRef.current = false; return; } // 드래그 직후 클릭 무시(선택 유지)
-                                  if (selected) { e.stopPropagation(); setSelBand(on ? null : b.id); setSelEvent(null); }
+                                  if (b.editable && selected) { e.stopPropagation(); setSelBand(on ? null : b.id); setSelEvent(null); }
                                 }}
                                 onDoubleClick={(e) => { e.stopPropagation(); const blk = selBlocks.find((x) => x.id === b.id); if (blk) setEditingBlock(blk); }}
                                 title={b.kind === "unavailable" ? "불가시간 — 클릭 선택 · 드래그 이동 · 끝 드래그 시간조절 · 더블클릭 수정" : "가용시간 — 클릭 선택 · 드래그 이동 · 더블클릭 수정"}
-                                className={`absolute left-0 right-0 ${!selected ? "pointer-events-none" : on ? "cursor-move" : "cursor-pointer"}`}
+                                className={`absolute left-0 right-0 ${!(b.editable && selected) ? "pointer-events-none" : on ? "cursor-move" : "cursor-pointer"}`}
                                 style={
                                   b.kind === "unavailable"
                                     ? {

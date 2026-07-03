@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ClassSession, AvailabilityBlock } from '@/types';
-import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, recommendInstructorsForStudent, ownerWindows } from './schedule';
+import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, recommendInstructorsForStudent, ownerWindows, blocksOnDate } from './schedule';
 
 const ablock = (p: Partial<AvailabilityBlock>): AvailabilityBlock => ({
   id: 1, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '09:00', endTime: '12:00', ...p,
@@ -387,5 +387,24 @@ describe('recommendInstructorsForStudent (학생 → 적합 강사)', () => {
       { sessions: [], blocks },
     );
     expect(out).toHaveLength(0);
+  });
+});
+
+describe('blocksOnDate — 밴드·추천 공통 규칙(주기·적용기간·소유자)', () => {
+  const blocks = [
+    { id: 1, ownerType: 'instructor', ownerId: 1, weekday: 3, startTime: '12:00', endTime: '13:00' },
+    { id: 2, ownerType: 'instructor', ownerId: 2, weekday: 3, startTime: '10:00', endTime: '11:00' },
+    { id: 3, ownerType: 'student', ownerId: 1, weekday: 3, startTime: '09:00', endTime: '10:00', effectiveFrom: '2026-07-10' },
+    { id: 4, ownerType: 'instructor', ownerId: 1, weekday: 4, startTime: '12:00', endTime: '13:00' },
+  ];
+  it('요일 매칭 + 소유자 필터(스플릿 컬럼 경로)', () => {
+    // 2026-07-01 = 수(3)
+    expect(blocksOnDate(blocks, '2026-07-01', { type: 'instructor', id: 1 }).map((b) => b.id)).toEqual([1]);
+    expect(blocksOnDate(blocks, '2026-07-01', { type: 'instructor', id: 2 }).map((b) => b.id)).toEqual([2]);
+  });
+  it('적용기간(effectiveFrom) 이전 날짜엔 미노출, 소유자 미지정=전체(선택 유저 경로)', () => {
+    expect(blocksOnDate(blocks, '2026-07-01', { type: 'student', id: 1 })).toHaveLength(0);
+    expect(blocksOnDate(blocks, '2026-07-15', { type: 'student', id: 1 }).map((b) => b.id)).toEqual([3]);
+    expect(blocksOnDate(blocks, '2026-07-01').map((b) => b.id)).toEqual([1, 2]);
   });
 });

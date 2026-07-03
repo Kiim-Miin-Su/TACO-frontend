@@ -23,6 +23,23 @@ export const addMinutes = (hhmm: string, mins: number): string => {
 export const weekdayOf = (dateStr: string): number =>
   new Date(dateStr + 'T00:00:00Z').getUTCDay();
 
+/**
+ * 특정 날짜에 유효한 가용/불가 블록 — 주기(weekday)+적용기간(effectiveFrom/To)+(선택)소유자 매칭.
+ * [단일 소스 2026-07-03] 캘린더 밴드(선택 유저·스플릿 컬럼별)와 추천 엔진이 같은 규칙을 쓰도록 추출.
+ */
+export function blocksOnDate<
+  T extends { weekday: number; effectiveFrom?: string; effectiveTo?: string; ownerType?: string; ownerId?: number | string },
+>(blocks: T[], date: string, owner?: { type: string; id: number }): T[] {
+  const wd = weekdayOf(date);
+  return blocks.filter(
+    (b) =>
+      b.weekday === wd &&
+      (!b.effectiveFrom || date >= b.effectiveFrom) &&
+      (!b.effectiveTo || date <= b.effectiveTo) &&
+      (!owner || (b.ownerType === owner.type && Number(b.ownerId) === owner.id)),
+  );
+}
+
 /** 두 시간 구간이 겹치는가(맞닿음은 비겹침). */
 export const overlaps = (aStart: string, aEnd: string, bStart: string, bEnd: string): boolean =>
   toMin(aStart) < toMin(bEnd) && toMin(bStart) < toMin(aEnd);
