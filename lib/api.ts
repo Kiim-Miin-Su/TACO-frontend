@@ -6,6 +6,9 @@ import { logger } from "./log";
 import { getToken, clearToken } from "./auth";
 import { isPublicRoute } from "./auth-routes";
 import type {
+  CalendarViewPreset,
+  CreateViewPresetInput,
+  ReportTemplate,
   Student,
   Enrollment,
   Payment,
@@ -181,12 +184,28 @@ export const api = {
     create: (input: CreatePaymentInput) => http.post<Payment>("/payments", input).then((r) => r.data),
     update: (id: number, patch: UpdatePaymentInput) => http.patch<Payment>(`/payments/${id}`, patch).then((r) => r.data),
     markPaid: (id: number) => http.post<Payment>(`/payments/${id}/pay`, {}).then((r) => r.data),
+    // 환불(원장 완결성 2026-07-03): paid → refunded + 원장 출금 1줄(paymentId 역참조). 멱등은 백엔드 400.
+    refund: (id: number) => http.post<Payment>(`/payments/${id}/refund`, {}).then((r) => r.data),
   },
   expenses: {
     list: () => http.get<Expense[]>("/expenses").then((r) => r.data),
     create: (input: CreateExpenseInput) => http.post<Expense>("/expenses", input).then((r) => r.data),
     approve: (id: number) => http.post<Expense>(`/expenses/${id}/approve`, {}).then((r) => r.data),
-    reject: (id: number) => http.post<Expense>(`/expenses/${id}/reject`, {}).then((r) => r.data),
+    // 반려 사유는 서버 저장(v0.1.12 Expense.rejectedReason) — 이전 zustand 휘발분 자산화.
+    reject: (id: number, reason?: string) => http.post<Expense>(`/expenses/${id}/reject`, { reason }).then((r) => r.data),
+  },
+  // 캘린더 뷰 프리셋(TBO-12 P1) — 직원 공용 자산(DB 컬렉션, localStorage 대체).
+  viewPresets: {
+    list: () => http.get<CalendarViewPreset[]>("/view-presets").then((r) => r.data),
+    create: (input: CreateViewPresetInput) => http.post<CalendarViewPreset>("/view-presets", input).then((r) => r.data),
+    remove: (id: number) => http.delete<CalendarViewPreset>(`/view-presets/${id}`).then((r) => r.data),
+  },
+  // 리포트 템플릿(자산화) — zustand → DB 컬렉션.
+  reportTemplates: {
+    list: () => http.get<ReportTemplate[]>("/report-templates").then((r) => r.data),
+    create: (input: { name: string; content: string; homework?: string }) =>
+      http.post<ReportTemplate>("/report-templates", input).then((r) => r.data),
+    remove: (id: number) => http.delete<ReportTemplate>(`/report-templates/${id}`).then((r) => r.data),
   },
   courses: {
     list: () => http.get<Course[]>("/courses").then((r) => r.data),

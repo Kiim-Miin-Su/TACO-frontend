@@ -11,10 +11,13 @@ import {
   buildMixedSplitColumns, rowInResource, cloneSessionBody, resolvePasteCourseId,
   type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick,
 } from "@/lib/domain/lantiv";
-import { useAttendance, useStudents, useEnrollments, useCourses } from "@/lib/queries";
+import { useAttendance, useStudents, useEnrollments, useCourses, useCreateViewPreset } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
 import { KST_TZ, shiftRowsToTz, tzOffsetFromKst, type CountryInfo, type TzShiftedRow } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
+import { CalendarViewTabs } from "./CalendarViewTabs";
+import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
+import type { CalendarViewPreset } from "@/types";
 import { exportNodeAsImage } from "@/lib/export";
 import { useTacoStore } from "@/lib/store";
 import { isAdmin, roleLabel } from "@/lib/roles";
@@ -124,6 +127,25 @@ export function ScheduleCalendar() {
   const [country, setCountry] = useState<CountryInfo | null>(null);
   const [paneCountry, setPaneCountry] = useState<Partial<Record<SplitDim, CountryInfo | null>>>({});
   const paneTzOf = (dim: SplitDim) => (dim in paneCountry ? (paneCountry[dim] ?? null) : country);
+  // ── 뷰 프리셋(TBO-12 P1) — DB 자산(calendar_view_presets). 직렬화는 lib/domain/presets 단일 소스 ──
+  const [activePresetId, setActivePresetId] = useState<number | null>(null);
+  const createViewPreset = useCreateViewPreset();
+  const applyPreset = (p: CalendarViewPreset) => {
+    const st = presetToState(p);
+    setView(st.view); setPeriod(st.period); setQ(st.q); setColorBy(st.colorBy as ColorBy);
+    setFInstructors(st.fInstructors); setFStudents(st.fStudents); setFRooms(st.fRooms);
+    setFSubjects(st.fSubjects); setFStatuses(st.fStatuses); setGroupOnly(st.groupOnly);
+    setCountry(st.country); setPaneCountry(st.paneCountry);
+    setClosedPanes(new Set()); // 표 닫힘 상태 초기화 — 프리셋의 스플릿 구성을 그대로 복원
+    setActivePresetId(Number(p.id));
+    setMsg(`프리셋 적용 — ${p.name}`);
+  };
+  const saveCurrentPreset = async (name: string) => {
+    await createViewPreset.mutateAsync(serializeViewPreset(name, {
+      view, period, q, colorBy, fInstructors, fStudents, fRooms, fSubjects, fStatuses,
+      groupOnly, country, paneCountry,
+    }));
+  };
   const anyTzActive = (country != null && country.tz !== KST_TZ)
     || Object.values(paneCountry).some((c) => c != null && c.tz !== KST_TZ);
   // 학생 국가·수강·코스(붙여넣기 코스 재배정 + 국가 필터) — TanStack Query 캐시 공유.
@@ -300,6 +322,7 @@ export function ScheduleCalendar() {
     setPeriod(null);
     setCountry(null);
     setPaneCountry({});
+    setActivePresetId(null);
   };
 
   // [TBO-12 P0] tz 확장 조회분(±1일)은 그리드 변환 표시 전용 — KST 기준 리스트·시수·건수는 원래 기간만.
@@ -1320,6 +1343,13 @@ export function ScheduleCalendar() {
         {/* 좌측 추천 패널 제거(피드백 2026-07-02 #5) — 스플릿뷰로 강사·학생 스케줄을 직접 비교·배치. */}
         {/* 본문 */}
         <div className="flex-1 min-w-0 space-y-4">
+          {/* ── 뷰 프리셋 탭(TBO-12 P1): 필터·기간·국가 조합 저장/적용 — DB 자산(직원 공용) ── */}
+          <CalendarViewTabs
+            activeId={activePresetId}
+            onApply={applyPreset}
+            onSaveCurrent={saveCurrentPreset}
+            onMsg={setMsg}
+          />
           {/* ── Lantiv형 필터 바: 리소스 다중선택(스플릿) + 상태/그룹/기간 + 검색/색 기준 ── */}
           <CalendarFilterBar
             resources={resources}

@@ -8,7 +8,7 @@ import { Badge, SectionCard, type Tone } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
 import {
   useSchedule, useCourses, useInstructors, useEnrollments, useStudents, useReports,
-  useCreateReport, useSubmitReport,
+  useCreateReport, useSubmitReport, useReportTemplates, useCreateReportTemplate,
 } from '@/lib/queries';
 import { DEMO_INSTRUCTOR_ID } from '@/lib/tasks';
 import { pendingReportSummary, rosterStudentIds, sessionNeedsReport } from '@/lib/reports';
@@ -157,9 +157,9 @@ export function ReportWriteView() {
 // 학생 1명 인라인 작성 행 — 페이지 이동 없이 저장/제출.
 function StudentReportRow({ session, student }: { session: ClassSession; student: Student }) {
   const { data: sessionReports = [] } = useReports();
-  // 템플릿(reportTemplates·addReportTemplate)은 클라이언트 상태 → store 유지.
-  const templates = useTacoStore((s) => s.reportTemplates);
-  const addReportTemplate = useTacoStore((s) => s.addReportTemplate);
+  // [자산화 2차 2026-07-03] 템플릿은 DB 컬렉션(report_templates) — 강사 공용 자산(브라우저 휘발 제거).
+  const { data: templates = [] } = useReportTemplates();
+  const createTemplate = useCreateReportTemplate();
   const createReport = useCreateReport();
   const submitReport = useSubmitReport();
   const report = sessionReports.find((r) => r.sessionId === session.id && r.studentId === student.id);
@@ -177,7 +177,7 @@ function StudentReportRow({ session, student }: { session: ClassSession; student
   const saveAsTemplate = () => {
     if (!content.trim()) return;
     const name = window.prompt('템플릿 이름');
-    if (name?.trim()) addReportTemplate(name.trim(), content, homework || undefined);
+    if (name?.trim()) createTemplate.mutate({ name: name.trim(), content, homework: homework || undefined });
   };
 
   const save = (submit: boolean) => {

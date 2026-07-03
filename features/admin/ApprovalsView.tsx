@@ -209,7 +209,7 @@ export function ApprovalsView() {
           mode="input"
           title="지출 반려"
           onClose={() => setExpenseReject(null)}
-          onSubmit={() => { rejectExpense.mutate(expenseReject); setExpenseReject(null); }}
+          onSubmit={(reason) => { rejectExpense.mutate({ id: expenseReject, reason }); setExpenseReject(null); }}
         />
       )}
     </div>

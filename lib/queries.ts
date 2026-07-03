@@ -115,7 +115,21 @@ export const useMarkPaymentPaid = () => useMutation({ mutationFn: api.payments.m
 // 지출(승인 워크플로우)
 export const useCreateExpense = () => useMutation({ mutationFn: api.expenses.create, onSuccess: useInvalidator([qk.expenses.all]) });
 export const useApproveExpense = () => useMutation({ mutationFn: api.expenses.approve, onSuccess: useInvalidator([qk.expenses.all, qk.transactions.all]) });
-export const useRejectExpense = () => useMutation({ mutationFn: api.expenses.reject, onSuccess: useInvalidator([qk.expenses.all]) });
+export const useRejectExpense = () =>
+  useMutation({
+    // 반려 사유 동반(자산화 — 서버 Expense.rejectedReason 저장)
+    mutationFn: (v: { id: number; reason?: string }) => api.expenses.reject(v.id, v.reason),
+    onSuccess: useInvalidator([qk.expenses.all]),
+  });
+export const useRefundPayment = () => useMutation({ mutationFn: api.payments.refund, onSuccess: useInvalidator([qk.payments.all, qk.transactions.all]) });
+
+// ── 자산화 2차(2026-07-03): 뷰 프리셋·리포트 템플릿 — 클라 휘발 → DB 컬렉션 ──
+export const useViewPresets = () => useQuery({ queryKey: qk.viewPresets.list(), queryFn: () => api.viewPresets.list(), staleTime: CATALOG_STALE });
+export const useCreateViewPreset = () => useMutation({ mutationFn: api.viewPresets.create, onSuccess: useInvalidator([qk.viewPresets.all]) });
+export const useRemoveViewPreset = () => useMutation({ mutationFn: api.viewPresets.remove, onSuccess: useInvalidator([qk.viewPresets.all]) });
+export const useReportTemplates = () => useQuery({ queryKey: qk.reportTemplates.list(), queryFn: () => api.reportTemplates.list(), staleTime: CATALOG_STALE });
+export const useCreateReportTemplate = () => useMutation({ mutationFn: api.reportTemplates.create, onSuccess: useInvalidator([qk.reportTemplates.all]) });
+export const useRemoveReportTemplate = () => useMutation({ mutationFn: api.reportTemplates.remove, onSuccess: useInvalidator([qk.reportTemplates.all]) });
 
 // 상담
 export const useCreateCounsel = () => useMutation({ mutationFn: api.counsel.create, onSuccess: useInvalidator([qk.counsel.all]) });

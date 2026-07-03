@@ -11,7 +11,6 @@ import { ReasonModal } from '@/components/ReasonModal';
 export function ExpensesView() {
   // 지출 목록은 TanStack Query에서 가져오고, 반려 사유는 클라이언트 전용 store에 유지.
   const { data: expenses = [] } = useExpenses();
-  const rejectReasons = useTacoStore((s) => s.expenseRejectReasons);
   const [view, setView] = useState<'list' | 'calendar'>('list');
   const [viewReason, setViewReason] = useState<number | null>(null);
 
@@ -88,7 +87,7 @@ export function ExpensesView() {
       )}
 
       {viewReason != null && (
-        <ReasonModal mode="view" title="지출 반려 사유" initial={rejectReasons[viewReason] ?? ''} onClose={() => setViewReason(null)} />
+        <ReasonModal mode="view" title="지출 반려 사유" initial={expenses.find((x) => x.id === viewReason)?.rejectedReason ?? ''} onClose={() => setViewReason(null)} />
       )}
     </div>
   );

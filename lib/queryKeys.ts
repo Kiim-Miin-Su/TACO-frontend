@@ -33,6 +33,8 @@ export const qk = {
     rounds: (counselFormId?: number) => ["counsel", "rounds", counselFormId ?? null] as const,
   },
   transactions: { all: ["transactions"] as const, list: () => ["transactions", "list"] as const },
+  viewPresets: { all: ["viewPresets"] as const, list: () => ["viewPresets", "list"] as const },
+  reportTemplates: { all: ["reportTemplates"] as const, list: () => ["reportTemplates", "list"] as const },
   events: { all: ["events"] as const, list: () => ["events", "list"] as const },
   attendance: { all: ["attendance"] as const, list: () => ["attendance", "list"] as const },
   roadmaps: {
