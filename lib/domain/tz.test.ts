@@ -55,8 +55,11 @@ describe('shiftRowToTz — KST 수업을 학생 국가 로컬 시간표로', () 
     expect(r.sessionDate).toBe('2026-06-30'); // 수 → 화(전날)
     expect(r.weekday).toBe(2);
     expect(r.startTime).toBe('23:30');
-    expect(r.endTime).toBe('24:00'); // 익일 잔여(00:00~01:00)는 표시 생략 — durationMinutes는 원본 보존
+    expect(r.endTime).toBe('24:00'); // 그리드는 24:00까지 — 익일 잔여는 tzOverflowEnd 배지로
+    expect(r.tzOverflowEnd).toBe('01:00'); // "+1일 ~01:00" 잔여 배지(TBO-12 P0)
     expect(r.durationMinutes).toBe(90);
+    // 자정을 안 넘는 변환에는 tzOverflowEnd 없음
+    expect(shiftRowToTz(row(), 'Asia/Ho_Chi_Minh').tzOverflowEnd).toBeUndefined();
   });
 
   it('[자정 크로스] endTime 누락 시 UTC에서 duration 가산 — 모듈로 래핑 없이 동일 결과', () => {

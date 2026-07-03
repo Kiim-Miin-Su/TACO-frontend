@@ -13,7 +13,7 @@ import {
 } from "@/lib/domain/lantiv";
 import { useAttendance, useStudents, useEnrollments, useCourses } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
-import { KST_TZ, shiftRowsToTz, tzOffsetFromKst, type CountryInfo } from "@/lib/domain/tz";
+import { KST_TZ, shiftRowsToTz, tzOffsetFromKst, type CountryInfo, type TzShiftedRow } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
 import { exportNodeAsImage } from "@/lib/export";
 import { useTacoStore } from "@/lib/store";
@@ -190,12 +190,20 @@ export function ScheduleCalendar() {
   // 기간 필터가 설정되면 뷰 파생 기간 대신 사용(우측 리스트가 기간 전체를 봄).
   // [L3] 월간 뷰는 월 그리드가 기준 — 기간 override를 무시(그리드-데이터 불일치 방지)
   const effRange = view === "month" ? range : (period ?? range);
+  // [TBO-12 P0] 시차 뷰 조회 확장: 변환으로 날짜가 ±1일 밀린 세션(예: 월 12:30 KST = 일 23:30 ET,
+  //  일 오전 KST = 토 심야 ET)이 그리드 날짜 축 밖 데이터라 미표시되던 한계 → 조회만 ±1일 넓힌다.
+  //  KST 리스트·시수·건수는 아래 inRange로 원래 기간을 유지(오염 방지), 그리드는 변환 후
+  //  컬럼 날짜 매칭이 표시 범위를 자연 결정.
+
+  const fetchRange = anyTzActive
+    ? { from: addDaysISO(effRange.from, -1), to: addDaysISO(effRange.to, 1) }
+    : effRange;
 
   const roomsLoadedRef = useRef(false); // [L2] 클로저가 초기 rooms를 봐서 매번 재요청하던 문제
   const load = useCallback(async () => {
     try {
       const [sc, rm] = await Promise.all([
-        api.schedule.list({ ...effRange, ...selQuery }),
+        api.schedule.list({ ...fetchRange, ...selQuery }),
         roomsLoadedRef.current ? Promise.resolve(null) : api.rooms.list(),
       ]);
       setRows(sc);
@@ -205,7 +213,7 @@ export function ScheduleCalendar() {
       setMsg("백엔드 API에 연결할 수 없습니다. 서버 상태와 API 주소(NEXT_PUBLIC_API_URL) 설정을 확인하세요.");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effRange.from, effRange.to, selQuery]);
+  }, [fetchRange.from, fetchRange.to, selQuery]);
 
   useEffect(() => {
     load();
@@ -294,7 +302,12 @@ export function ScheduleCalendar() {
     setPaneCountry({});
   };
 
-  const hrs = teachingHours(filtered);
+  // [TBO-12 P0] tz 확장 조회분(±1일)은 그리드 변환 표시 전용 — KST 기준 리스트·시수·건수는 원래 기간만.
+  const inRange = useMemo(
+    () => (anyTzActive ? filtered.filter((r) => r.sessionDate >= effRange.from && r.sessionDate <= effRange.to) : filtered),
+    [filtered, anyTzActive, effRange.from, effRange.to],
+  );
+  const hrs = teachingHours(inRange);
 
   // ── 스플릿(피드백 2026-07-02 최종, Lantiv): 필터 선택에서 **자동 파생** ──
   //  · 강사+학생 둘 다 선택 → 표 2개(강사 표 | 학생 표), 각 표 = (날짜 × 그 차원 선택) 데일리 스플릿
@@ -924,7 +937,7 @@ export function ScheduleCalendar() {
   const showNow = nowMin >= GRID_MIN && nowMin <= END_H * 60;
 
   // ── 우측 패널 데이터: 위=필터 결과 리스트(날짜 오름차순) · 아래=클릭 세션 상세(ScheduleRow DTO) ──
-  const listRows = useMemo(() => sortByDateAsc(filtered), [filtered]);
+  const listRows = useMemo(() => sortByDateAsc(inRange), [inRange]);
   // 그룹 토글 차원: 학생 선택 시 학생별(스펙), 그 외 강의실 > 강사 순 폴백
   const listGroupDim: Exclude<ListGroupBy, "none"> = fStudents.size ? "student" : fRooms.size ? "room" : "instructor";
   const detailRow = detailId != null ? (rows.find((r) => r.id === detailId) ?? null) : null;
@@ -1170,7 +1183,7 @@ export function ScheduleCalendar() {
                                   onPointerDown={tzActive ? undefined : (e) => onEventDown(e, r)}
                                   onClick={(e) => { e.stopPropagation(); if (suppressClickRef.current) { suppressClickRef.current = false; return; } setSelEvent(r.id); setSelBand(null); setDetailId(r.id); }}
                                   onDoubleClick={(e) => { e.stopPropagation(); if (tzActive) { setDetailId(r.id); return; } setEditing(r); }}
-                                  title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 드래그=이동 · 더블클릭=상세`}
+                                  title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${(r as TzShiftedRow).tzOverflowEnd ? ` · 자정 넘김(+1일 ~${(r as TzShiftedRow).tzOverflowEnd})` : ""}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 드래그=이동 · 더블클릭=상세`}
                                   className={`absolute rounded-lg text-white text-[11px] leading-tight px-1.5 py-1 ${tzActive ? "cursor-pointer" : "cursor-grab"} overflow-hidden shadow-sm hover:brightness-105 transition ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
                                   style={{
                                     top: top + 1,
@@ -1199,6 +1212,12 @@ export function ScheduleCalendar() {
                                       </div>
                                       <div className="opacity-90 mono truncate" style={textMode === "title" ? { fontSize: 9.5 } : undefined}>
                                         {fromMin(s)}–{fromMin(en)}
+                                        {(r as TzShiftedRow).tzOverflowEnd && (
+                                          /* 자정 크로스 잔여(TBO-12 P0): 이 수업은 다음날 이 시각까지 이어짐 */
+                                          <span className="ml-1 px-1 rounded bg-white/25 text-[9px] font-semibold not-italic">
+                                            +1일 ~{(r as TzShiftedRow).tzOverflowEnd}
+                                          </span>
+                                        )}
                                       </div>
                                     </>
                                   )}
@@ -1211,7 +1230,7 @@ export function ScheduleCalendar() {
                                     <div
                                       className="font-semibold overflow-hidden"
                                       style={{ writingMode: "vertical-rl", fontSize: 9, lineHeight: 1.1, maxHeight: h - 6 }}
-                                      title={`${labelOf(r)} ${fromMin(s)}–${fromMin(en)}`}
+                                      title={`${labelOf(r)} ${fromMin(s)}–${fromMin(en)}${(r as TzShiftedRow).tzOverflowEnd ? ` (+1일 ~${(r as TzShiftedRow).tzOverflowEnd})` : ""}`}
                                     >
                                       {labelOf(r)}
                                     </div>
@@ -1241,7 +1260,7 @@ export function ScheduleCalendar() {
             드래그 이동 · Ctrl+드래그 복제 · Ctrl+C/V 복사·붙여넣기 · 빈 시간 클릭=커서 · {periodLabel}
             <span className="text-fg-subtle">
               {" "}
-              · {filtered.length}건{anyFilter ? ` / 전체 ${rows.length}` : ""} · 시수 {hrs.hours}h
+              · {inRange.length}건{anyFilter ? ` / 전체 ${rows.length}` : ""} · 시수 {hrs.hours}h
             </span>
             {selected && <span className="text-accent"> · {selected.name} 개인 스케줄</span>}
             {isSplit && (
@@ -1415,7 +1434,7 @@ export function ScheduleCalendar() {
           </div>
           {isGrid && selected?.type === "instructor" && (
             <p className="text-[12px] text-fg-subtle">
-              개인 스케줄: {selected.name} · {filtered.length}개 수업 · 시수 {hrs.hours}h
+              개인 스케줄: {selected.name} · {inRange.length}개 수업 · 시수 {hrs.hours}h
             </p>
           )}
         </div>

@@ -65,13 +65,17 @@ function utcToTzParts(utcMs: number, tz: string): { date: string; minutes: numbe
   return { date: `${parts.year}-${parts.month}-${parts.day}`, minutes: hour * 60 + Number(parts.minute) };
 }
 
+/** 변환 결과 행 — 자정 크로스 시 익일 실제 종료 시각을 tzOverflowEnd('HH:mm')로 보존(잔여 배지용, TBO-12 P0). */
+export type TzShiftedRow = ScheduleRow & { tzOverflowEnd?: string };
+
 /**
  * 세션 1건을 대상 tz의 로컬 시간표로 변환(표시 전용 사본).
  * 자정을 넘으면 날짜가 밀리며 시작/종료가 다른 날이 될 수 있음 — 이 경우 종료는 그날 24:00로
- * 클램프하고 다음날 잔여는 표시하지 않는다(단순화 — 시간표 인쇄 목적에 충분, durationMinutes 원본 유지).
+ * 클램프하고 익일 실제 종료는 tzOverflowEnd에 보존한다(그리드가 "+1일 ~HH:mm" 배지로 표시 — 오독 방지).
+ * durationMinutes는 원본 유지(시수 불변).
  * [감사 H 수정] endTime 없으면 UTC에서 duration을 더해 파생(항상 true 조건식·자정 모듈로 오염 제거).
  */
-export function shiftRowToTz(row: ScheduleRow, tz: string): ScheduleRow {
+export function shiftRowToTz(row: ScheduleRow, tz: string): TzShiftedRow {
   if (!row.startTime || tz === KST_TZ) return row;
   const startUtc = kstToUtcMs(row.sessionDate, row.startTime);
   // 종료 UTC: endTime이 있으면 그대로, 없으면 시작+진행시간. KST 저장값에서 endTime<startTime은
@@ -87,11 +91,12 @@ export function shiftRowToTz(row: ScheduleRow, tz: string): ScheduleRow {
     weekday: weekdayOf(s.date),
     startTime: fromMin(s.minutes),
     endTime: sameDay ? fromMin(e.minutes) : '24:00', // 자정 넘김 클램프(표시용)
+    ...(sameDay ? {} : { tzOverflowEnd: fromMin(e.minutes) }), // 익일 실제 종료(잔여 배지)
   };
 }
 
 /** 목록 일괄 변환 — KST면 원본 그대로(참조 동일성 유지로 리렌더 최소화). */
-export function shiftRowsToTz(rows: ScheduleRow[], tz: string): ScheduleRow[] {
+export function shiftRowsToTz(rows: ScheduleRow[], tz: string): TzShiftedRow[] {
   if (tz === KST_TZ) return rows;
   return rows.map((r) => shiftRowToTz(r, tz));
 }
