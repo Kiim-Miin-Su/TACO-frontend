@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, AvailabilityBlock, AccountRole, Attendance } from "@/types";
 import { api, type SchedulePatchBody, type ScheduleCreateBody, type AvailabilityUpsertBody } from "@/lib/api";
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 D — 파일별 중복 toMin/fromMin/pad/WD 제거)
-import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, ownerWindows, blocksOnDate } from "@/lib/domain/schedule";
+import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, ownerWindows } from "@/lib/domain/schedule";
 import {
   PALETTE, STATUS_LABEL, MAX_SPLIT,
   matchesStatusFilter, matchesResourceFilter, isGroupSession, sortByDateAsc,
@@ -13,7 +13,7 @@ import {
 } from "@/lib/domain/lantiv";
 import { useAttendance, useStudents, useEnrollments, useCourses, useCreateViewPreset } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
-import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, type CountryInfo, type TzShiftedRow } from "@/lib/domain/tz";
+import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, type CountryInfo, type TzShiftedRow } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
 import { CalendarViewTabs } from "./CalendarViewTabs";
 import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
@@ -508,25 +508,30 @@ export function ScheduleCalendar() {
   // 가용/불가(Block) 밴드 — 선택 자원 기준. week=요일 매칭 모든 컬럼, day=룸이면 해당 컬럼만/그 외 전체.
   type Band = { id: number; kind: string; startMin: number; endMin: number; top: number; h: number; editable: boolean };
   // gridMin: 렌더 그리드의 시작 분(개별 시차로 축이 0~24h일 때 top 정합 — renderTimeGrid가 전달)
-  const bandsOfColumn = (c: { date: string; roomId?: number; resType?: SplitDim; resId?: number }, gridMin: number = GRID_MIN): Band[] => {
-    // 날짜·소유자 매칭은 blocksOnDate 단일 소스(lib/domain/schedule) — 두 경로가 같은 규칙 공유
-    const toBand = (b: AvailabilityBlock, editable: boolean): Band => {
-      const bs = clampMin(toMin(b.startTime)),
-        be = clampMin(toMin(b.endTime));
-      return { id: b.id, kind: b.kind, startMin: bs, endMin: be, top: ((bs - gridMin) / 60) * HOUR_H, h: Math.max(6, ((be - bs) / 60) * HOUR_H), editable };
+  // tz: 컬럼이 비KST(해외 학생 등)면 그 tz — KST 블록을 그 나라 로컬로 변환해 표시(이슈1). KST·tz 모두
+  //  kstBlockToTzWindow 단일 함수로 매칭·변환(세션 엔진 재사용·단위테스트 — 이슈3).
+  const bandsOfColumn = (c: { date: string; roomId?: number; resType?: SplitDim; resId?: number }, gridMin: number = GRID_MIN, tz?: string | null): Band[] => {
+    const isTz = !!tz && tz !== KST_TZ;
+    const axisClamp = isTz ? (mm: number) => Math.max(0, Math.min(24 * 60, mm)) : clampMin;
+    // 블록 1건 → 밴드(그 컬럼 날짜에 안 걸리면 null). tz면 표시 전용(editable=false — 드래그는 KST 좌표라).
+    const toBand = (b: AvailabilityBlock, editable: boolean): Band | null => {
+      const w = kstBlockToTzWindow(b, c.date, tz ?? KST_TZ);
+      if (!w) return null;
+      const sMin = axisClamp(w.startMin), eMin = axisClamp(w.endMin);
+      if (eMin <= sMin) return null;
+      return { id: b.id, kind: b.kind, startMin: sMin, endMin: eMin, top: ((sMin - gridMin) / 60) * HOUR_H, h: Math.max(6, ((eMin - sMin) / 60) * HOUR_H), editable: editable && !isTz };
     };
-    // [피드백 2026-07-03] 스플릿 서브컬럼 = **그 컬럼 유저(강사/학생/강의실)의 가용·불가**를 항상 표시.
-    //  전체 availability(blocks)에서 컬럼 리소스 매칭 — 표시 전용(편집은 개인 필터의 선택 유저 밴드만).
+    const nonNull = (x: Band | null): x is Band => x != null;
+    // 스플릿 서브컬럼 = 그 컬럼 유저의 가용·불가 · 비스플릿 = 선택 유저(selBlocks).
     if (c.resType != null && c.resId != null) {
-      // [스플릿 자체 편집] 컬럼 유저의 밴드는 그 자리에서 클릭·드래그·삭제 가능(owner=블록 자신)
-      return blocksOnDate(allBlocks, c.date, { type: c.resType, id: c.resId })
-        .map((b) => toBand(b, true));
+      return allBlocks
+        .filter((b) => b.ownerType === c.resType && Number(b.ownerId) === c.resId)
+        .map((b) => toBand(b, true)).filter(nonNull);
     }
-    // 비스플릿: 기존 — 선택 유저(selBlocks)의 밴드(편집 가능)
     if (!selBlocks.length) return [];
-    return blocksOnDate(selBlocks, c.date)
+    return selBlocks
       .filter((b) => selected?.type !== "room" || c.roomId == null || c.roomId === selected.id)
-      .map((b) => toBand(b, true));
+      .map((b) => toBand(b, true)).filter(nonNull);
   };
 
   // ── 가용/불가(Block) — 밴드 표시 + 클릭 삭제. 생성은 "스케줄 추가" 모달의 '가용·불가' 탭에서. ──
@@ -1153,7 +1158,7 @@ export function ScheduleCalendar() {
                       const sOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.start : startMinOf(r));
                       const eOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.end : endMinOf(r));
                       const lanes = layoutLanes(colRows.map((r) => ({ id: r.id, start: sOf(r), end: eOf(r) })));
-                      const bands = colTz ? [] : bandsOfColumn(c, gridMin); // 시차 컬럼: KST 좌표 밴드 숨김
+                      const bands = bandsOfColumn(c, gridMin, colTz ? colTzc.tz : null); // [이슈1] 시차 컬럼도 변환해 표시
                       const isToday = c.date === todayISO();
                       return (
                         <div
@@ -2113,6 +2118,72 @@ function RecurrencePrompt({
   );
 }
 
+// ── CreateModal 공용 폼 조각(수업·가용·불가 3탭 재사용 — 이슈3) ──
+const DUR_PRESETS = [30, 60, 90, 120, 150, 180] as const;
+const durLabel = (m: number) => (m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간${m % 60 ? "30분" : ""}`);
+
+function DateField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return <Field label="날짜"><input type="date" className="input" value={value} onChange={(e) => onChange(e.target.value)} /></Field>;
+}
+
+// 시작·종료 시각 + [이슈2] 토글형 빠른 진행시간(시작 기준 종료 자동) — 수업/가용/불가 공통.
+function TimeRangeField({ start, end, onStart, onEnd, endHint }: {
+  start: string; end: string; onStart: (v: string) => void; onEnd: (v: string) => void; endHint?: string;
+}) {
+  const dur = toMin(end) - toMin(start);
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="시작"><input type="time" step={900} className="input" value={start} onChange={(e) => onStart(e.target.value)} /></Field>
+        <Field label={`종료${endHint ? ` (${endHint})` : ""}`}><input type="time" step={900} className="input" value={end} onChange={(e) => onEnd(e.target.value)} /></Field>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        <span className="text-[11px] text-fg-subtle self-center mr-0.5">빠른 선택</span>
+        {DUR_PRESETS.map((m) => (
+          <button key={m} type="button" onClick={() => onEnd(fromMin(toMin(start) + m))}
+            className={`btn btn-sm ${dur === m ? "badge-accent" : ""}`}>{durLabel(m)}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 반복(none/weekly/custom) + 커스텀 요일 + 종료일 — 수업/가용/불가 공통. noneLabel만 탭별 상이.
+function RepeatField({ repeat, setRepeat, customWds, toggleWd, untilDate, setUntilDate, date, occurrencesCount, noneLabel }: {
+  repeat: "none" | "weekly" | "custom"; setRepeat: (v: "none" | "weekly" | "custom") => void;
+  customWds: number[]; toggleWd: (d: number) => void;
+  untilDate: string; setUntilDate: (v: string) => void; date: string; occurrencesCount: number; noneLabel: string;
+}) {
+  return (
+    <>
+      <Field label="반복">
+        <div className="flex rounded-md overflow-hidden border" style={{ borderColor: "var(--color-line)" }}>
+          {([["none", noneLabel], ["weekly", "매주"], ["custom", "커스텀"]] as const).map(([v, lbl]) => (
+            <button key={v} type="button" onClick={() => setRepeat(v)}
+              className={`btn btn-sm flex-1 rounded-none border-0 ${repeat === v ? "badge-accent" : ""}`}>{lbl}</button>
+          ))}
+        </div>
+      </Field>
+      {repeat === "custom" && (
+        <Field label="요일">
+          <div className="flex gap-1">
+            {WD.map((w, d) => (
+              <button key={d} type="button" onClick={() => toggleWd(d)}
+                className={`w-8 h-8 rounded text-[12px] border ${customWds.includes(d) ? "badge-accent" : ""}`}
+                style={{ borderColor: "var(--color-line)" }}>{w}</button>
+            ))}
+          </div>
+        </Field>
+      )}
+      {repeat !== "none" && (
+        <Field label={`종료일 (${occurrencesCount}회)`}>
+          <input type="date" className="input" value={untilDate} min={date} onChange={(e) => setUntilDate(e.target.value)} />
+        </Field>
+      )}
+    </>
+  );
+}
+
 // ── 관리자: 스케줄 추가 모달 ──
 function CreateModal({
   resources,
@@ -2342,11 +2413,8 @@ function CreateModal({
                 </div>
               )}
             </Field>
-            <Field label="날짜"><input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="시작"><input type="time" step={900} className="input" value={start} onChange={(e) => changeStart(e.target.value)} /></Field>
-              <Field label={`종료 (진행 ${courseDur}분)`}><input type="time" step={900} className="input" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
-            </div>
+            <DateField value={date} onChange={setDate} />
+            <TimeRangeField start={start} end={end} onStart={changeStart} onEnd={setEnd} endHint={`진행 ${courseDur}분`} />
             <div className="grid grid-cols-2 gap-3">
               <Field label="상태">
                 <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -2360,31 +2428,8 @@ function CreateModal({
               <Field label="색상"><ColorPicker value={color} onChange={setColor} /></Field>
             </div>
             <Field label="메모"><textarea className="input min-h-[52px] py-1.5" rows={2} placeholder="선택 — 메모" value={memo} onChange={(e) => setMemo(e.target.value)} /></Field>
-            {/* 반복 설정 */}
-            <Field label="반복">
-              <div className="flex rounded-md overflow-hidden border" style={{ borderColor: "var(--color-line)" }}>
-                {([["none", "그날만"], ["weekly", "매주"], ["custom", "커스텀"]] as const).map(([v, lbl]) => (
-                  <button key={v} type="button" onClick={() => setRepeat(v)}
-                    className={`btn btn-sm flex-1 rounded-none border-0 ${repeat === v ? "badge-accent" : ""}`}>{lbl}</button>
-                ))}
-              </div>
-            </Field>
-            {repeat === "custom" && (
-              <Field label="요일">
-                <div className="flex gap-1">
-                  {WD.map((w, d) => (
-                    <button key={d} type="button" onClick={() => toggleWd(d)}
-                      className={`w-8 h-8 rounded text-[12px] border ${customWds.includes(d) ? "badge-accent" : ""}`}
-                      style={{ borderColor: "var(--color-line)" }}>{w}</button>
-                  ))}
-                </div>
-              </Field>
-            )}
-            {repeat !== "none" && (
-              <Field label={`종료일 (${occurrences().length}회)`}>
-                <input type="date" className="input" value={untilDate} min={date} onChange={(e) => setUntilDate(e.target.value)} />
-              </Field>
-            )}
+            <RepeatField repeat={repeat} setRepeat={setRepeat} customWds={customWds} toggleWd={toggleWd}
+              untilDate={untilDate} setUntilDate={setUntilDate} date={date} occurrencesCount={occurrences().length} noneLabel="그날만" />
           </>
         ) : (
           <>
@@ -2405,36 +2450,10 @@ function CreateModal({
                 </select>
               </Field>
             </div>
-            <Field label="날짜"><input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="시작"><input type="time" step={900} className="input" value={start} onChange={(e) => changeStart(e.target.value)} /></Field>
-              <Field label="종료"><input type="time" step={900} className="input" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
-            </div>
-            {/* 반복: 일회성(기본)/매주/커스텀 — 수업과 동일 */}
-            <Field label="반복">
-              <div className="flex rounded-md overflow-hidden border" style={{ borderColor: "var(--color-line)" }}>
-                {([["none", "일회성"], ["weekly", "매주"], ["custom", "커스텀"]] as const).map(([v, lbl]) => (
-                  <button key={v} type="button" onClick={() => setRepeat(v)}
-                    className={`btn btn-sm flex-1 rounded-none border-0 ${repeat === v ? "badge-accent" : ""}`}>{lbl}</button>
-                ))}
-              </div>
-            </Field>
-            {repeat === "custom" && (
-              <Field label="요일">
-                <div className="flex gap-1">
-                  {WD.map((w, d) => (
-                    <button key={d} type="button" onClick={() => toggleWd(d)}
-                      className={`w-8 h-8 rounded text-[12px] border ${customWds.includes(d) ? "badge-accent" : ""}`}
-                      style={{ borderColor: "var(--color-line)" }}>{w}</button>
-                  ))}
-                </div>
-              </Field>
-            )}
-            {repeat !== "none" && (
-              <Field label="반복 종료일">
-                <input type="date" className="input" value={untilDate} min={date} onChange={(e) => setUntilDate(e.target.value)} />
-              </Field>
-            )}
+            <DateField value={date} onChange={setDate} />
+            <TimeRangeField start={start} end={end} onStart={changeStart} onEnd={setEnd} />
+            <RepeatField repeat={repeat} setRepeat={setRepeat} customWds={customWds} toggleWd={toggleWd}
+              untilDate={untilDate} setUntilDate={setUntilDate} date={date} occurrencesCount={occurrences().length} noneLabel="일회성" />
             <p className="text-[12px] text-fg-muted">{repeat === "none" ? "일회성 — 이 날짜에 한 번만 적용." : "매주 반복 — 이 날짜부터 종료일까지."}</p>
           </>
         )}

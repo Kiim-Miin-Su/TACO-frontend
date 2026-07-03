@@ -1,7 +1,7 @@
 // 국가·시간대 변환 엔진 테스트 — KST 단일 진실원 → 표시 전용 변환의 정확성.
 import { describe, expect, it } from 'vitest';
 import type { ScheduleRow } from '@/types';
-import { COUNTRIES, countryByCode, searchCountries, shiftRowToTz, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, KST_TZ } from './tz';
+import { COUNTRIES, countryByCode, searchCountries, shiftRowToTz, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, KST_TZ } from './tz';
 
 const row = (over: Partial<ScheduleRow> = {}): ScheduleRow =>
   ({
@@ -93,6 +93,37 @@ describe('tzLocalToKst — 해외 현지 입력을 KST 저장값으로 역변환
       const back = tzLocalToKst(shifted.sessionDate, shifted.startTime!, tz);
       expect(back).toEqual({ date: '2026-07-01', time: '16:00' });
     }
+  });
+});
+
+describe('kstBlockToTzWindow — 가용/불가 밴드 tz 변환(이슈1)', () => {
+  // KST 수요일(weekday=3) 16:00~17:30 블록
+  const wed = (over: Partial<{ startTime: string; endTime: string; effectiveFrom: string; effectiveTo: string }> = {}) =>
+    ({ weekday: 3, startTime: '16:00', endTime: '17:30', ...over });
+
+  it('KST: 요일 일치 → 그대로(분 좌표), 불일치 → null', () => {
+    expect(kstBlockToTzWindow(wed(), '2026-07-01', KST_TZ)).toEqual({ startMin: 960, endMin: 1050 }); // 수요일
+    expect(kstBlockToTzWindow(wed(), '2026-07-02', KST_TZ)).toBeNull(); // 목요일
+  });
+  it('KST: effective 범위 밖 → null', () => {
+    expect(kstBlockToTzWindow(wed({ effectiveFrom: '2026-07-08' }), '2026-07-01', KST_TZ)).toBeNull();
+    expect(kstBlockToTzWindow(wed({ effectiveTo: '2026-06-24' }), '2026-07-01', KST_TZ)).toBeNull();
+  });
+  it('뉴욕(KST−13h): KST 수 16:00~17:30 → 뉴욕 수 03:00~04:30', () => {
+    expect(kstBlockToTzWindow(wed(), '2026-07-01', 'America/New_York')).toEqual({ startMin: 180, endMin: 270 });
+  });
+  it('뉴욕: KST 수 08:00 블록은 뉴욕 화요일 컬럼(전날)에 19:00~20:00로 표시(±1일 후보 탐색)', () => {
+    const b = wed({ startTime: '08:00', endTime: '09:00' });
+    expect(kstBlockToTzWindow(b, '2026-06-30', 'America/New_York')).toEqual({ startMin: 1140, endMin: 1200 });
+    expect(kstBlockToTzWindow(b, '2026-07-01', 'America/New_York')).toBeNull(); // 뉴욕 수요일 컬럼엔 없음
+  });
+  it('자정 크로스: 종료가 다음 tz날로 넘어가면 endMin=1440 클램프', () => {
+    // KST 수 12:30~14:00 → 뉴욕 화 23:30~익일 01:00 → 화요일 컬럼엔 23:30~24:00
+    const b = wed({ startTime: '12:30', endTime: '14:00' });
+    expect(kstBlockToTzWindow(b, '2026-06-30', 'America/New_York')).toEqual({ startMin: 1410, endMin: 1440 });
+  });
+  it('베트남(KST−2h): 같은 날 16:00~17:30 → 14:00~15:30', () => {
+    expect(kstBlockToTzWindow(wed(), '2026-07-01', 'Asia/Ho_Chi_Minh')).toEqual({ startMin: 840, endMin: 930 });
   });
 });
 

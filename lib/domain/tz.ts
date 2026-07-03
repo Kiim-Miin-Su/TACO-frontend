@@ -9,7 +9,13 @@
 // ──────────────────────────────────────────────────────────────
 import type { ScheduleRow } from '@/types';
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 M5 — 파일별 중복 pad/fromMin/weekday 금지 규칙과 통일)
-import { fromMin, weekdayOf } from './schedule';
+import { fromMin, toMin, weekdayOf } from './schedule';
+
+const addDaysISO = (iso: string, n: number): string => {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
 
 export type CountryInfo = { code: string; name: string; en: string; tz: string; flag: string };
 
@@ -121,6 +127,35 @@ export function tzLocalToKst(dateLocal: string, hhmm: string, tz: string): { dat
   const utc = tzLocalToUtcMs(dateLocal, hhmm, tz);
   const k = utcToTzParts(utc, KST_TZ);
   return { date: k.date, time: fromMin(k.minutes) };
+}
+
+export type TzWindow = { startMin: number; endMin: number };
+export type WeeklyBlock = { weekday: number; startTime: string; endTime: string; effectiveFrom?: string; effectiveTo?: string };
+
+/**
+ * KST 주간 블록(가용/불가 — weekday·HH:mm~HH:mm·effective 범위)을 대상 tz의 특정 로컬 날짜 컬럼 좌표로 변환.
+ * 세션 변환과 동일 엔진(shiftRowToTz) 재사용(이슈3). 그 날짜에 안 걸리면 null.
+ *  - KST: weekday·effective 매칭만(직접 배치).
+ *  - 비KST: 후보 KST 날짜(±1일)에서 변환 결과 날짜가 colDateTz인 것 채택. 자정 넘김은 endMin=1440 클램프.
+ */
+export function kstBlockToTzWindow(b: WeeklyBlock, colDateTz: string, tz: string): TzWindow | null {
+  const inRange = (d: string) => (!b.effectiveFrom || d >= b.effectiveFrom) && (!b.effectiveTo || d <= b.effectiveTo);
+  if (!tz || tz === KST_TZ) {
+    if (b.weekday !== weekdayOf(colDateTz) || !inRange(colDateTz)) return null;
+    return { startMin: toMin(b.startTime), endMin: toMin(b.endTime) };
+  }
+  const dur = toMin(b.endTime) - toMin(b.startTime);
+  for (const dd of [-1, 0, 1]) {
+    const D = addDaysISO(colDateTz, dd);
+    if (weekdayOf(D) !== b.weekday || !inRange(D)) continue;
+    const sh = shiftRowToTz({ sessionDate: D, startTime: b.startTime, endTime: b.endTime, durationMinutes: dur } as ScheduleRow, tz);
+    if (sh.sessionDate !== colDateTz) continue;
+    const startMin = toMin(sh.startTime!);
+    const endMin = sh.endTime === '24:00' ? 1440 : toMin(sh.endTime!);
+    if (endMin <= startMin) continue;
+    return { startMin, endMin };
+  }
+  return null;
 }
 
 /** 특정 날짜의 KST 대비 시차(분) — 헤더 배지 "미국(동부) −13h" 표시용. */
