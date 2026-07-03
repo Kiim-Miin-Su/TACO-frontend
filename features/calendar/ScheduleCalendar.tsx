@@ -13,7 +13,7 @@ import {
 } from "@/lib/domain/lantiv";
 import { useAttendance, useStudents, useEnrollments, useCourses, useCreateViewPreset } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
-import { KST_TZ, shiftRowsToTz, tzOffsetFromKst, type CountryInfo, type TzShiftedRow } from "@/lib/domain/tz";
+import { KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, type CountryInfo, type TzShiftedRow } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
 import { CalendarViewTabs } from "./CalendarViewTabs";
 import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
@@ -23,6 +23,7 @@ import { useTacoStore } from "@/lib/store";
 import { isAdmin, roleLabel } from "@/lib/roles";
 import { currentClaims } from "@/lib/auth";
 import { ResourcePanel } from "./ResourcePanel";
+import { ResourceDetailCard } from "./ResourceDetailCard";
 import { SessionEditFields, ColorPicker, Field } from "./SessionEditFields";
 import { CalendarSplitPane, type SplitPaneDef } from "./CalendarSplitPane";
 import { CalendarFilterBar, type Period } from "./CalendarFilterBar";
@@ -124,6 +125,10 @@ export function ScheduleCalendar() {
   //  country: 전역 — 선택 시 ① 그 국가 학생 세션만 필터 ② 그리드를 그 국가 로컬 시간으로 표시(KST→변환).
   //  paneCountry: 표(스플릿)별 override — 강사 표는 KST, 학생 표는 미국 시간처럼 표마다 다르게.
   //  저장은 항상 KST(단일 진실원) — 비KST 표시는 읽기 전용(편집·드래그·복제 잠금).
+  // 학생 국가·수강·코스(붙여넣기 코스 재배정 + 국가 필터) — TanStack Query 캐시 공유.
+  const { data: allStudents = [] } = useStudents();
+  const { data: allEnrollments = [] } = useEnrollments();
+  const { data: allCourses = [] } = useCourses();
   const [country, setCountry] = useState<CountryInfo | null>(null);
   const [paneCountry, setPaneCountry] = useState<Partial<Record<SplitDim, CountryInfo | null>>>({});
   const paneTzOf = (dim: SplitDim) => (dim in paneCountry ? (paneCountry[dim] ?? null) : country);
@@ -146,12 +151,23 @@ export function ScheduleCalendar() {
       groupOnly, country, paneCountry,
     }));
   };
+  // 학생 개별 시차(피드백 2026-07-03 #1): 학생 스플릿 컬럼은 그 학생의 국가 시간으로 자동 표시.
+  //  전역/표별 국가를 명시 선택하면 그것이 우선(renderTimeGrid에서 그리드 tz가 컬럼 tz를 덮음).
+  const studentTzOf = (id?: number): CountryInfo | undefined => {
+    if (id == null) return undefined;
+    const st = allStudents.find((x) => Number(x.id) === id);
+    const c = st?.country ? countryByCode(st.country) : undefined;
+    return c && c.tz !== KST_TZ ? c : undefined;
+  };
+  // 학생 필터에 해외(비KR) 학생 포함 여부 — 개별 시차 컬럼도 조회 ±1일 확장이 필요(날짜 밀림).
+  const anyStudentColTz = useMemo(
+    () => [...fStudents].some((id) => studentTzOf(id) != null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- studentTzOf는 allStudents 파생
+    [fStudents, allStudents],
+  );
   const anyTzActive = (country != null && country.tz !== KST_TZ)
-    || Object.values(paneCountry).some((c) => c != null && c.tz !== KST_TZ);
-  // 학생 국가·수강·코스(붙여넣기 코스 재배정 + 국가 필터) — TanStack Query 캐시 공유.
-  const { data: allStudents = [] } = useStudents();
-  const { data: allEnrollments = [] } = useEnrollments();
-  const { data: allCourses = [] } = useCourses();
+    || Object.values(paneCountry).some((c) => c != null && c.tz !== KST_TZ)
+    || anyStudentColTz;
   // 국가 필터 모집단: 그 국가 학생 id 집합(country 미지정 학생은 KR로 간주 — 국내 기본).
   //  'US-W'(서부)는 학생 country 'US'와 매칭(대표 tz만 다른 동일 국가).
   const countryStudentIds = useMemo(() => {
@@ -384,12 +400,14 @@ export function ScheduleCalendar() {
     key: string; label: string; sub?: string; date: string; roomId?: number;
     noRoom?: boolean; // 일간 '미지정' 컬럼(강의실 없는 세션)
     resType?: SplitDim; resId?: number; firstOfDate?: boolean;
+    tzc?: CountryInfo; // 학생 개별 시차(country 파생 — 피드백 2026-07-03 #1)
   };
   const colsFor = (picks: MixedPick[], prefix = ""): Col[] =>
     buildMixedSplitColumns(view === "day" ? [anchor] : dates, picks).map((c) => ({
       key: prefix + c.key, label: c.label,
       sub: view === "week" || period ? `${WD[weekdayOf(c.date)]} ${c.date.slice(5)}` : undefined,
       date: c.date, roomId: c.roomId, resType: c.resType, resId: c.resId, firstOfDate: c.firstOfDate,
+      tzc: c.resType === "student" ? studentTzOf(c.resId) : undefined,
     }));
   // [렌더 최적화] 단일 그리드 컬럼 메모화(스플릿 곱·요일 파생 재계산 방지)
   const columns: Col[] = useMemo(() => singleSplitPicks.length >= 2
@@ -976,17 +994,23 @@ export function ScheduleCalendar() {
   //  ③ 편집·드래그·복제·밴드 잠금(저장은 KST 단일 진실원 — 무결성). 표(스플릿)마다 다르게 지정 가능.
   const renderTimeGrid = (cols: Col[], tzc?: CountryInfo | null) => {
     const tzActive = !!tzc && tzc.tz !== KST_TZ;
-    const startH = tzActive ? 0 : START_H, endH = tzActive ? 24 : END_H; // 시차로 새벽·심야 이동 대비 전일 축
+    // 학생 개별 시차(피드백 2026-07-03 #1): 그리드 tz(전역/표별 — 명시 선택)가 없을 때만
+    //  학생 컬럼의 country 파생 tz가 동작. 축은 컬럼 하나라도 tz면 0~24h(다른 나라 새벽 대비).
+    const anyColTz = !tzActive && cols.some((c) => c.tzc != null);
+    const axisTz = tzActive || anyColTz;
+    const startH = axisTz ? 0 : START_H, endH = axisTz ? 24 : END_H; // 시차로 새벽·심야 이동 대비 전일 축
     const gridMin = startH * 60, gridH = (endH - startH) * HOUR_H;
-    // 변환 캐시 조회(같은 filtered·tz면 재사용) — 표 2개/리렌더에서 O(n) 재변환 방지(감사 M4)
+    // 변환 캐시(같은 filtered·tz면 재사용) — 표 2개/컬럼별 tz/리렌더에서 tz별 1회만 O(n) 변환(감사 M4)
     const cache = tzRowsCacheRef.current;
     if (cache.src !== filtered) { cache.src = filtered; cache.map.clear(); }
-    let viewRows = filtered;
-    if (tzActive) {
-      const hit = cache.map.get(tzc.tz);
-      if (hit) viewRows = hit;
-      else { viewRows = shiftRowsToTz(filtered, tzc.tz); cache.map.set(tzc.tz, viewRows); }
-    }
+    const rowsForTz = (tz: string): ScheduleRow[] => {
+      if (tz === KST_TZ) return filtered;
+      const hit = cache.map.get(tz);
+      if (hit) return hit;
+      const shifted = shiftRowsToTz(filtered, tz);
+      cache.map.set(tz, shifted);
+      return shifted;
+    };
     const offMin = tzActive ? tzOffsetFromKst(tzc.tz, cols[0]?.date ?? todayISO()) : 0;
     const offLabel = `${offMin >= 0 ? "+" : "-"}${Math.floor(Math.abs(offMin) / 60)}${Math.abs(offMin) % 60 ? ":" + pad(Math.abs(offMin) % 60) : ""}h`;
     const isSplitGrid = cols[0]?.resType != null;
@@ -1001,6 +1025,13 @@ export function ScheduleCalendar() {
     const minCol = subW;
     return (
               <div className="card overflow-x-auto">
+                {anyColTz && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 border-b text-[12px]" style={{ borderColor: "var(--color-line)", background: "var(--color-canvas-subtle)" }}>
+                    <span>🌐</span>
+                    <span className="font-semibold">학생 국가별 시간 표시 중</span>
+                    <span className="badge text-[10px]" title="해외 학생 컬럼은 그 나라 시간으로 표시되며 보기 전용 — 편집은 한국(KST) 컬럼에서">국기 컬럼 = 그 나라 시간 · 보기 전용</span>
+                  </div>
+                )}
                 {tzActive && tzc && (
                   <div className="flex items-center gap-2 px-3 py-1.5 border-b text-[12px]" style={{ borderColor: "var(--color-line)", background: "var(--color-canvas-subtle)" }}>
                     <span>{tzc.flag}</span>
@@ -1028,11 +1059,14 @@ export function ScheduleCalendar() {
                   {/* 컬럼들 */}
                   <div className="flex-1 flex">
                     {cols.map((c) => {
-                      const colRows = rowsOfColumn(c, viewRows);
+                      // 컬럼 유효 tz: 그리드(전역/표별) > 학생 개별(country) > KST
+                      const colTzc = tzActive ? tzc : (c.tzc ?? null);
+                      const colTz = !!colTzc && colTzc.tz !== KST_TZ;
+                      const colRows = rowsOfColumn(c, colTz ? rowsForTz(colTzc.tz) : filtered);
                       const sOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.start : startMinOf(r));
                       const eOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.end : endMinOf(r));
                       const lanes = layoutLanes(colRows.map((r) => ({ id: r.id, start: sOf(r), end: eOf(r) })));
-                      const bands = tzActive ? [] : bandsOfColumn(c); // 시차 뷰: KST 좌표 밴드 숨김
+                      const bands = colTz ? [] : bandsOfColumn(c); // 시차 컬럼: KST 좌표 밴드 숨김
                       const isToday = c.date === todayISO();
                       return (
                         <div
@@ -1057,8 +1091,12 @@ export function ScheduleCalendar() {
                                     {c.sub}
                                   </span>
                                 )}
-                                <span className="text-[12px] font-semibold truncate max-w-full px-1" title={c.label}>
+                                <span
+                                  className="text-[12px] font-semibold truncate max-w-full px-1"
+                                  title={`${c.label}${!tzActive && c.tzc ? ` — ${c.tzc.name} 시간(개별 시차)` : ""}`}
+                                >
                                   {c.label}
+                                  {!tzActive && c.tzc && <span className="ml-0.5">{c.tzc.flag}</span>}
                                 </span>
                               </>
                             ) : view === "week" ? (
@@ -1080,7 +1118,7 @@ export function ScheduleCalendar() {
                           <div
                             className="relative"
                             data-colcell
-                            data-tz={tzActive ? "1" : "0"}
+                            data-tz={colTz ? "1" : "0"}
                             data-colkey={c.key}
                             data-date={c.date}
                             data-roomid={c.roomId ?? ""}
@@ -1093,7 +1131,7 @@ export function ScheduleCalendar() {
                             onClick={(e) => {
                               if (e.target !== e.currentTarget) return;
                               setSelEvent(null); setSelBand(null);
-                              if (tzActive) { setMsg(`${tzc!.name} 시간 보기 중 — 편집·복제는 한국 시간에서 하세요`); return; }
+                              if (colTz) { setMsg(`${colTzc.name} 시간 보기 중 — 편집·복제는 한국 시간에서 하세요`); return; }
                               // 빈 공간 클릭 = 커서 셀(Lantiv): 클릭 시각(30분 스냅) 표시 + 붙여넣기 대상.
                               const rect = e.currentTarget.getBoundingClientRect();
                               const min = clampMin(snapMove(gridMin + ((e.clientY - rect.top) / HOUR_H) * 60));
@@ -1101,7 +1139,7 @@ export function ScheduleCalendar() {
                             }}
                             onDoubleClick={(e) => {
                               // 빈 공간 더블클릭 = 그 시각으로 스케줄 추가(피드백 2026-07-02 #4).
-                              if (e.target !== e.currentTarget || !canAdd || tzActive) return;
+                              if (e.target !== e.currentTarget || !canAdd || colTz) return;
                               const rect = e.currentTarget.getBoundingClientRect();
                               const min = clampMin(snapMove(gridMin + ((e.clientY - rect.top) / HOUR_H) * 60));
                               setCreating({ date: c.date, start: fromMin(min) });
@@ -1184,7 +1222,7 @@ export function ScheduleCalendar() {
                               </div>
                             )}
                             {/* 현재 시각 인디케이터 */}
-                            {!tzActive && showNow && isToday && (
+                            {!colTz && showNow && isToday && (
                               <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: nowTop }}>
                                 <div className="h-px" style={{ background: "var(--color-danger)" }} />
                                 <div
@@ -1203,11 +1241,11 @@ export function ScheduleCalendar() {
                               return (
                                 <div
                                   key={r.id}
-                                  onPointerDown={tzActive ? undefined : (e) => onEventDown(e, r)}
+                                  onPointerDown={colTz ? undefined : (e) => onEventDown(e, r)}
                                   onClick={(e) => { e.stopPropagation(); if (suppressClickRef.current) { suppressClickRef.current = false; return; } setSelEvent(r.id); setSelBand(null); setDetailId(r.id); }}
-                                  onDoubleClick={(e) => { e.stopPropagation(); if (tzActive) { setDetailId(r.id); return; } setEditing(r); }}
+                                  onDoubleClick={(e) => { e.stopPropagation(); if (colTz) { setDetailId(r.id); return; } setEditing(r); }}
                                   title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${(r as TzShiftedRow).tzOverflowEnd ? ` · 자정 넘김(+1일 ~${(r as TzShiftedRow).tzOverflowEnd})` : ""}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 드래그=이동 · 더블클릭=상세`}
-                                  className={`absolute rounded-lg text-white text-[11px] leading-tight px-1.5 py-1 ${tzActive ? "cursor-pointer" : "cursor-grab"} overflow-hidden shadow-sm hover:brightness-105 transition ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
+                                  className={`absolute rounded-lg text-white text-[11px] leading-tight px-1.5 py-1 ${colTz ? "cursor-pointer" : "cursor-grab"} overflow-hidden shadow-sm hover:brightness-105 transition ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
                                   style={{
                                     top: top + 1,
                                     height: h - 2,
@@ -1221,7 +1259,7 @@ export function ScheduleCalendar() {
                                     outlineOffset: selEvent === r.id ? "1px" : undefined,
                                   }}
                                 >
-                                  {!tzActive && selEvent === r.id && (
+                                  {!colTz && selEvent === r.id && (
                                     <div onPointerDown={(e) => onResizeDown(e, r, "top")} className="absolute left-1/2 -translate-x-1/2 top-0 w-6 h-2 rounded-b bg-white/90 cursor-ns-resize" />
                                   )}
                                   {/* 텍스트 3단계: full/title=가로 · vtitle=세로 글씨 · color=색상만 */}
@@ -1258,7 +1296,7 @@ export function ScheduleCalendar() {
                                       {labelOf(r)}
                                     </div>
                                   )}
-                                  {!tzActive && selEvent === r.id && (
+                                  {!colTz && selEvent === r.id && (
                                     <div onPointerDown={(e) => onResizeDown(e, r, "bottom")} className="absolute left-1/2 -translate-x-1/2 bottom-0 w-6 h-2 rounded-t bg-white/90 cursor-ns-resize" />
                                   )}
                                 </div>
@@ -1472,6 +1510,8 @@ export function ScheduleCalendar() {
         {/* 우측 컬럼(Lantiv): 유저별 스케줄(단일 선택) + 수업 리스트(날짜순·그룹 토글) + 선택 수업 상세(DTO) */}
         <div className="w-64 shrink-0 space-y-3 self-start sticky top-4">
           {resources && <ResourcePanel resources={resources} selected={selected} onSelect={setSelected} />}
+          {/* 유저 상세·편집(피드백 2026-07-03 #2·#3): 선택 유저의 정보 확인 + 학생은 국가·상태 즉시 수정 */}
+          {selected && <ResourceDetailCard selected={selected} onMsg={setMsg} />}
           <SessionListPanel
             rows={listRows}
             groupBy={listGrouped ? listGroupDim : "none"}
@@ -1489,6 +1529,10 @@ export function ScheduleCalendar() {
           />
           <div ref={detailPanelRef}>
           <SessionDetailPanel
+            onPickStudent={(id, name) => {
+              const res = resources?.students.find((x) => Number(x.id) === id);
+              setSelected(res ?? ({ type: "student", id, name } as ScheduleResource));
+            }}
             row={detailRow}
             rooms={rooms}
             instructors={(resources?.instructors ?? []).map((i) => ({ id: Number(i.id), name: i.name }))}

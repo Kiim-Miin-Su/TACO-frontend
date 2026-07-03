@@ -17,6 +17,14 @@ export const INACTIVE_STUDENT_STATUSES: readonly StudentStatus[] = ['canceled'];
 export const isActiveStudent = (s: Student): boolean =>
   !INACTIVE_STUDENT_STATUSES.includes(s.status);
 
+/** 학생 상태 라벨·배지 톤 — 단일 소스(함수 통일 2026-07-03: StudentsView·캘린더 유저 카드 중복 제거). */
+export const STUDENT_STATUS_LABEL: Record<string, string> = {
+  lead: '신규접수', active: '수강중', paused: '일시정지', completed: '수료', canceled: '퇴원',
+};
+export const STUDENT_STATUS_TONE: Record<string, 'accent' | 'success' | 'attention' | 'done' | 'danger'> = {
+  lead: 'accent', active: 'success', paused: 'attention', completed: 'done', canceled: 'danger',
+};
+
 /** 활성 학생만 반환 (퇴원/비활성 제외) — 모든 운영 화면의 기본 스코프 */
 export const activeStudents = (list: Student[]): Student[] => list.filter(isActiveStudent);
 

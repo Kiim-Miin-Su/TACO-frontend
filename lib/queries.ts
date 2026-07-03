@@ -103,6 +103,12 @@ export const useCreateRoadmap = () => useMutation({ mutationFn: api.roadmaps.cre
 
 // 명단(학생·수강)
 export const useCreateStudent = () => useMutation({ mutationFn: api.students.create, onSuccess: useInvalidator([qk.students.all]) });
+export const useUpdateStudent = () =>
+  useMutation({
+    mutationFn: (v: { id: number; patch: Parameters<typeof api.students.update>[1] }) => api.students.update(v.id, v.patch),
+    // 국가 변경은 캘린더 시차 뷰·스케줄 코호트 표시에 영향 — schedule도 함께 무효화.
+    onSuccess: useInvalidator([qk.students.all, qk.schedule.all]),
+  });
 export const useRemoveStudent = () => useMutation({ mutationFn: api.students.remove, onSuccess: useInvalidator([qk.students.all, qk.enrollments.all]) });
 export const useCreateEnrollment = () => useMutation({ mutationFn: api.enrollments.create, onSuccess: useInvalidator([qk.enrollments.all, qk.students.all]) });
 

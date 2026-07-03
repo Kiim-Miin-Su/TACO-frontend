@@ -13,7 +13,7 @@ import { INSTRUCTOR_ATT_LABEL, STATUS_LABEL, isGroupSession } from "@/lib/domain
 import { SessionEditFields } from "./SessionEditFields";
 
 export function SessionDetailPanel({
-  row, rooms, instructors, canEdit, colorOf, onPatch, onOpenModal,
+  row, rooms, instructors, canEdit, colorOf, onPatch, onOpenModal, onPickStudent,
 }: {
   row: ScheduleRow | null;
   rooms: Room[];
@@ -22,6 +22,7 @@ export function SessionDetailPanel({
   colorOf: (r: ScheduleRow) => string;
   onPatch: (r: ScheduleRow, patch: SchedulePatchBody, label: string) => void;
   onOpenModal: (r: ScheduleRow) => void;
+  onPickStudent?: (id: number, name: string) => void; // 학생명 클릭 → 유저 상세·편집(피드백 2026-07-03 #2)
 }) {
   // 편집 모드(TBO-10 #3): DetailModal과 동일한 SessionEditFields 공통 폼 — 모든 input 편집 가능.
   const [editing, setEditing] = useState(false);
@@ -76,7 +77,19 @@ export function SessionDetailPanel({
           <dd>{row.instructorName}</dd>
           <dt className="text-fg-muted">학생</dt>
           <dd>
-            {row.studentNames?.length ? row.studentNames.join(", ") : "—"}
+            {/* 학생명 클릭 = 우측 유저 상세에서 국가(출국/입국)·상태(휴원 등) 즉시 수정(피드백 2026-07-03) */}
+            {row.studentNames?.length
+              ? row.studentNames.map((n, i) => (
+                  <button
+                    key={`${n}${i}`}
+                    className="text-accent hover:underline mr-1"
+                    title={`${n} 상세·정보 수정`}
+                    onClick={() => onPickStudent?.(Number((row.studentIds ?? [])[i]), n)}
+                  >
+                    {n}{i < (row.studentNames?.length ?? 0) - 1 ? "," : ""}
+                  </button>
+                ))
+              : "—"}
             {isGroupSession(row) && <span className="ml-1 text-[11px] text-fg-subtle">(그룹)</span>}
           </dd>
           <dt className="text-fg-muted">강사출결</dt>

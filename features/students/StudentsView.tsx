@@ -3,26 +3,12 @@
 // 퇴원(소프트삭제)은 useRemoveStudent 훅(백엔드 DELETE /students/:id)으로 처리한다.
 import { Badge, SectionCard, StatusDot, type Tone } from "@/components/ui";
 import { useStudents, useEnrollments, useCourses, useParentStudents, useParents, useRemoveStudent } from "@/lib/queries";
-import { isActiveStudent } from "@/lib/domain/students";
+import { isActiveStudent, STUDENT_STATUS_LABEL as label, STUDENT_STATUS_TONE } from "@/lib/domain/students";
 import { CountryBadge } from "@/features/calendar/CountryInput";
 import type { StudentStatus } from "@/types";
 import { StudentForm } from "./StudentForm";
 import { useState } from "react";
 
-const tone: Record<StudentStatus, Tone> = {
-  lead: "neutral",
-  active: "success",
-  paused: "attention",
-  completed: "done",
-  canceled: "danger",
-};
-const label: Record<StudentStatus, string> = {
-  lead: "신규접수",
-  active: "수강중",
-  paused: "일시정지",
-  completed: "수료",
-  canceled: "퇴원",
-};
 
 export function StudentsView() {
   const { data: students = [] } = useStudents();
@@ -112,8 +98,8 @@ export function StudentsView() {
                     <td className="text-fg-muted">{cs.length ? cs.join(", ") : "—"}</td>
                     <td className="text-fg-muted">{parentOf(s.id) ?? "—"}</td>
                     <td>
-                      <Badge tone={tone[s.status]}>
-                        <StatusDot tone={tone[s.status]} label={label[s.status]} />
+                      <Badge tone={(STUDENT_STATUS_TONE[s.status] as Tone)}>
+                        <StatusDot tone={(STUDENT_STATUS_TONE[s.status] as Tone)} label={label[s.status]} />
                       </Badge>
                     </td>
                     <td className="text-right">
