@@ -1663,6 +1663,17 @@ export function ScheduleCalendar() {
               onClearFocus={() => { selectResource(null); setInfoTarget(cardTarget); }}
               onMsg={setMsg}
               onSaved={load}
+              onAddSchedule={
+                canAdd
+                  ? () =>
+                      setCreating({
+                        // 기준일: 전역 추가 버튼과 동일 규칙(오늘이 뷰에 있으면 오늘, 아니면 첫 날)
+                        date: view === "day" ? anchor : (dates.find((d) => d === todayISO()) ?? dates[0]),
+                        owner: cardTarget,
+                        defaultInstructorId: cardTarget?.type === "instructor" ? Number(cardTarget.id) : undefined,
+                      })
+                  : undefined
+              }
             />
           )}
           <SessionListPanel

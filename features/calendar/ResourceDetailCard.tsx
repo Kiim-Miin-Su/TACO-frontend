@@ -13,7 +13,7 @@ import { STUDENT_STATUS_LABEL as STATUS_LABEL, activeCourseNamesOf } from "@/lib
 
 
 export function ResourceDetailCard({
-  selected, onMsg, onSaved, isFiltered, onFocusView, onClearFocus,
+  selected, onMsg, onSaved, isFiltered, onFocusView, onClearFocus, onAddSchedule,
 }: {
   selected: ScheduleResource;
   onMsg: (m: string) => void;
@@ -21,7 +21,14 @@ export function ResourceDetailCard({
   isFiltered?: boolean; // 현재 캘린더가 이 유저 개인 필터 중인지
   onFocusView?: () => void; // [A안 조정] 개인 필터는 이 명시 버튼으로만(유저 선택은 뷰 불변)
   onClearFocus?: () => void;
+  onAddSchedule?: () => void; // [피드백 2026-07-03] 스케줄 표를 보면서 이 유저의 수업·가용·불가 바로 추가
 }) {
+  // "이 유저 스케줄 추가" — 기존 유저별 추가 모달(owner·강사 프리필) 재사용(스플릿 ＋와 동일 경로)
+  const addBtn = onAddSchedule && (
+    <button className="btn btn-sm h-6 btn-primary" onClick={onAddSchedule} title={`${selected.name}에게 수업·가용·불가 추가(프리필)`}>
+      ＋ 스케줄
+    </button>
+  );
   // 개인 필터 토글 버튼(공용) — 유저 정보 보기와 뷰 필터링을 분리(피드백 2026-07-03: 선택 시 뷰가 바뀌면 안 됨)
   const focusBtn = isFiltered ? (
     <button className="btn btn-sm h-6" onClick={onClearFocus} title="개인 필터 해제 — 전체 스케줄로">
@@ -61,7 +68,7 @@ export function ResourceDetailCard({
         <div className="font-semibold text-[13px]">{selected.name}</div>
         <div className="flex items-center justify-between">
           <span className="text-fg-muted">{selected.type === "instructor" ? `강사${selected.sub ? ` · ${selected.sub}` : ""}` : "강의실"}</span>
-          {focusBtn}
+          <span className="inline-flex gap-1">{addBtn}{focusBtn}</span>
         </div>
         {isFiltered && <p className="text-[11.5px] text-fg-subtle">캘린더가 이 {selected.type === "instructor" ? "강사" : "강의실"} 스케줄로 필터링 중입니다.</p>}
       </div>
@@ -99,6 +106,7 @@ export function ResourceDetailCard({
         </div>
         {!editing && (
           <span className="inline-flex gap-1">
+            {addBtn}
             {focusBtn}
             <button className="btn btn-sm h-6" onClick={() => setEditing(true)} title="국가(출국/입국)·상태(휴원 등)·학년·연락처 수정">
               정보 수정
