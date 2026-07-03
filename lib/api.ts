@@ -51,6 +51,7 @@ export type ScheduleQuery = { from?: string; to?: string; instructorId?: number;
 export type ScheduleCreateBody = {
   courseId: number; instructorId?: number; roomId?: number; sessionDate: string;
   startTime: string; endTime?: string; durationMinutes?: number; topic?: string; memo?: string; color?: string;
+  studentIds?: number[]; // 명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원(단체=여러 명 선택)
   seriesId?: number; status?: string; force?: boolean;
 };
 export type AvailabilityUpsertBody = {

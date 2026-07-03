@@ -24,6 +24,7 @@ import { isAdmin, roleLabel } from "@/lib/roles";
 import { currentClaims } from "@/lib/auth";
 import { ResourcePanel } from "./ResourcePanel";
 import { ResourceDetailCard } from "./ResourceDetailCard";
+import { ParticipantsCard } from "./ParticipantsCard";
 import { SessionEditFields, ColorPicker, Field } from "./SessionEditFields";
 import { CalendarSplitPane, type SplitPaneDef } from "./CalendarSplitPane";
 import { CalendarFilterBar, type Period } from "./CalendarFilterBar";
@@ -1649,6 +1650,10 @@ export function ScheduleCalendar() {
         {/* 우측 컬럼(Lantiv): 유저별 스케줄(단일 선택) + 수업 리스트(날짜순·그룹 토글) + 선택 수업 상세(DTO) */}
         <div className="w-64 shrink-0 space-y-3 self-start sticky top-4">
           {resources && <ResourcePanel resources={resources} selected={cardTarget} onSelect={setInfoTarget} />}
+          {/* [피드백 2026-07-03] 스케줄 선택 → 포함 인원 리스트 → 한 명 클릭 → 바로 아래 유저 상세 카드 */}
+          {detailRow && (
+            <ParticipantsCard row={detailRow} picked={cardTarget} onPick={(r) => setInfoTarget(r)} />
+          )}
           {/* 유저 상세·편집(피드백 2026-07-03 #2·#3): 선택 유저의 정보 확인 + 학생은 국가·상태 즉시 수정 */}
           {cardTarget && (
             <ResourceDetailCard
@@ -2148,6 +2153,25 @@ function CreateModal({
     [resources.instructors, instAvailable],
   );
 
+  // ── [v0.1.13] 수업 학생 선택(단체) — 코스 활성 수강생 체크리스트(기본 전원 선택) ──
+  //  전원 선택 = studentIds 미전송(기존 코스 파생과 동일 — 하위 호환). 부분 선택 = 명시 코호트 저장.
+  //  수강생 산출은 캘린더와 동일 데이터(useEnrollments·useStudents 캐시 — 함수 통일: 활성 수강 기준).
+  const { data: mEnrollments = [] } = useEnrollments();
+  const { data: mStudents = [] } = useStudents();
+  const courseRoster = useMemo(
+    () =>
+      mEnrollments
+        .filter((en) => Number(en.courseId) === Number(courseId) && en.status === "active")
+        .map((en) => {
+          const st = mStudents.find((x) => Number(x.id) === Number(en.studentId));
+          return { id: Number(en.studentId), name: st?.name ?? `학생 ${en.studentId}` };
+        }),
+    [mEnrollments, mStudents, courseId],
+  );
+  const [pickedStudents, setPickedStudents] = useState<Set<number> | null>(null); // null=전원(기본)
+  useEffect(() => setPickedStudents(null), [courseId]); // 코스 변경 시 전원으로 리셋
+  const effPicked = pickedStudents ?? new Set(courseRoster.map((r) => r.id));
+
   // ── 가용/불가 대상(오너) — 시간·날짜·반복은 수업과 공유 ──
   const lockOwner = lockInstructorId != null;
   const [bType, setBType] = useState<"instructor" | "student" | "room">(lockOwner ? "instructor" : (defaultOwner?.type ?? "instructor"));
@@ -2169,7 +2193,10 @@ function CreateModal({
   }
   function submitSession() {
     const seriesId = repeat === "none" ? undefined : Date.now();
-    const mk = (d: string): ScheduleCreateBody => ({ courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: d, startTime: start, endTime: end, memo: memo || undefined, color, status, seriesId });
+    // 부분 선택 시에만 명시 코호트 전송(전원=미전송 — 코스 파생과 동일·하위 호환)
+    const studentIds =
+      pickedStudents != null && effPicked.size !== courseRoster.length ? [...effPicked] : undefined;
+    const mk = (d: string): ScheduleCreateBody => ({ courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: d, startTime: start, endTime: end, memo: memo || undefined, color, status, seriesId, studentIds });
     const days = occurrences();
     if (days.length <= 1) onCreate(mk(days[0] ?? date));
     else onCreateSeries(days.map(mk));
@@ -2214,6 +2241,34 @@ function CreateModal({
                 <option value="">미지정</option>
                 {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
+            </Field>
+            {/* [v0.1.13] 학생 선택(단체) — 코스 활성 수강생 체크리스트. 기본 전원(코스 파생과 동일),
+                일부 해제 시 그 학생들만의 명시 코호트로 저장(개별·소그룹 수업). */}
+            <Field label={`학생 (${effPicked.size}/${courseRoster.length}명 — 기본 전원)`}>
+              {courseRoster.length === 0 ? (
+                <p className="text-[12px] text-fg-subtle">이 코스의 활성 수강생이 없습니다 — 수강 등록 후 선택 가능</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {courseRoster.map((r) => {
+                    const on = effPicked.has(r.id);
+                    return (
+                      <label key={r.id} className={`inline-flex items-center gap-1 px-2 h-7 rounded-md border text-[12px] cursor-pointer ${on ? "badge-accent" : ""}`}
+                        style={{ borderColor: on ? "var(--color-accent)" : "var(--color-line)" }}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => {
+                            const n = new Set(effPicked);
+                            if (n.has(r.id)) n.delete(r.id); else n.add(r.id);
+                            setPickedStudents(n);
+                          }}
+                        />
+                        {r.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </Field>
             <Field label="날짜"><input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
             <div className="grid grid-cols-2 gap-3">
