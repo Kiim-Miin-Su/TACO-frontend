@@ -49,6 +49,22 @@ describe('shiftRowToTz — KST 수업을 학생 국가 로컬 시간표로', () 
     expect(cross.endTime).toBe('22:30');
   });
 
+  it('[자정 크로스 실증] KST 수 12:30–14:00 → 뉴욕 화 23:30~익일 01:00 = 23:30–24:00 클램프·요일 재계산', () => {
+    // 시드의 12:30 상담수업이 정확히 이 케이스 — 로컬에서 시작은 전날 심야, 종료는 자정 너머.
+    const r = shiftRowToTz(row({ startTime: '12:30', endTime: '14:00' }), 'America/New_York');
+    expect(r.sessionDate).toBe('2026-06-30'); // 수 → 화(전날)
+    expect(r.weekday).toBe(2);
+    expect(r.startTime).toBe('23:30');
+    expect(r.endTime).toBe('24:00'); // 익일 잔여(00:00~01:00)는 표시 생략 — durationMinutes는 원본 보존
+    expect(r.durationMinutes).toBe(90);
+  });
+
+  it('[자정 크로스] endTime 누락 시 UTC에서 duration 가산 — 모듈로 래핑 없이 동일 결과', () => {
+    const r = shiftRowToTz(row({ startTime: '12:30', endTime: undefined as unknown as string, durationMinutes: 90 }), 'America/New_York');
+    expect(r.startTime).toBe('23:30');
+    expect(r.endTime).toBe('24:00');
+  });
+
   it('KST 선택 시 원본 그대로(참조 동일 — 리렌더 최소화)', () => {
     const rows = [row()];
     expect(shiftRowsToTz(rows, KST_TZ)).toBe(rows);
