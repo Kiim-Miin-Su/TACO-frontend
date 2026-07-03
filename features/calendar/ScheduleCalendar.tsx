@@ -84,7 +84,12 @@ export function ScheduleCalendar() {
 
   // ── 자원(레일)·가용 ──
   const [resources, setResources] = useState<ScheduleResources | null>(null);
-  const [selected, setSelected] = useState<ScheduleResource | null>(null);
+  // [A안 통합 2026-07-03] "유저별 스케줄"과 상단 필터바 = **단일 선택 모델**.
+  //  이전엔 selected(서버 파라미터)와 필터바(클라 필터)가 독립이라 겹치면 암묵적 교집합이 됐음.
+  //  이제 selected는 별도 상태가 아니라 **필터에서 파생**: 리소스 선택 합계가 정확히 1명이면
+  //  그 유저 = 개인 모드(서버 파라미터 조회·가용밴드·상세 카드·PNG 이름). 필터바 칩에 항상 표시되어
+  //  "지금 무엇으로 걸러져 있는지"가 한 곳에 보인다. 우측 패널 클릭 = 그 차원 필터를 1명으로 세팅.
+  // (selected 정의는 필터 상태 아래 — 파생 useMemo)
   const [selBlocks, setSelBlocks] = useState<AvailabilityBlock[]>([]); // 선택 자원의 불가시간(밴드 표시)
 
   // 이미지(PNG/JPEG) 내보내기
@@ -217,7 +222,34 @@ export function ScheduleCalendar() {
     return { from: dates[0], to: dates[dates.length - 1] };
   }, [view, anchor, dates]);
 
-  // 선택 자원 → 서버 필터(개인 스케줄)
+  // [A안] 파생 selected: 리소스 필터 합계가 정확히 1명일 때 그 유저 = 개인 모드.
+  //  (필터바 어떤 경로로든 1명만 남으면 자동으로 개인 스케줄 혜택 — 밴드·상세 카드·서버 파라미터)
+  const selected: ScheduleResource | null = useMemo(() => {
+    const total = fInstructors.size + fStudents.size + fRooms.size;
+    if (total !== 1 || !resources) return null;
+    if (fInstructors.size === 1) {
+      const id = [...fInstructors][0];
+      return resources.instructors.find((r) => Number(r.id) === id) ?? null;
+    }
+    if (fStudents.size === 1) {
+      const id = [...fStudents][0];
+      return resources.students.find((r) => Number(r.id) === id) ?? null;
+    }
+    const id = [...fRooms][0];
+    return resources.rooms.find((r) => Number(r.id) === id) ?? null;
+  }, [fInstructors, fStudents, fRooms, resources]);
+
+  // [A안] 우측 패널/학생명 클릭 = 해당 차원 필터를 그 1명으로 세팅(다른 리소스 차원은 비움 — 개인 뷰 의도).
+  //  해제(null)는 리소스 필터만 클리어(상태·기간·국가 등 나머지 필터는 유지).
+  const selectResource = (r: ScheduleResource | null) => {
+    if (!r) { setFInstructors(new Set()); setFStudents(new Set()); setFRooms(new Set()); return; }
+    const id = Number(r.id);
+    setFInstructors(r.type === "instructor" ? new Set([id]) : new Set());
+    setFStudents(r.type === "student" ? new Set([id]) : new Set());
+    setFRooms(r.type === "room" ? new Set([id]) : new Set());
+  };
+
+  // 선택 자원 → 서버 필터(개인 스케줄) — 파생 selected 기반(필터와 항상 일치, 교집합 혼동 제거)
   const selQuery = useMemo(() => {
     if (!selected) return {};
     if (selected.type === "instructor") return { instructorId: selected.id };
@@ -1509,7 +1541,7 @@ export function ScheduleCalendar() {
 
         {/* 우측 컬럼(Lantiv): 유저별 스케줄(단일 선택) + 수업 리스트(날짜순·그룹 토글) + 선택 수업 상세(DTO) */}
         <div className="w-64 shrink-0 space-y-3 self-start sticky top-4">
-          {resources && <ResourcePanel resources={resources} selected={selected} onSelect={setSelected} />}
+          {resources && <ResourcePanel resources={resources} selected={selected} onSelect={selectResource} />}
           {/* 유저 상세·편집(피드백 2026-07-03 #2·#3): 선택 유저의 정보 확인 + 학생은 국가·상태 즉시 수정 */}
           {selected && <ResourceDetailCard selected={selected} onMsg={setMsg} onSaved={load} />}
           <SessionListPanel
@@ -1531,7 +1563,8 @@ export function ScheduleCalendar() {
           <SessionDetailPanel
             onPickStudent={(id, name) => {
               const res = resources?.students.find((x) => Number(x.id) === id);
-              setSelected(res ?? ({ type: "student", id, name } as ScheduleResource));
+              selectResource(res ?? ({ type: "student", id, name } as ScheduleResource));
+              setMsg(`${name} 개인 뷰로 전환 — 우측 카드에서 정보 수정`);
             }}
             row={detailRow}
             rooms={rooms}
