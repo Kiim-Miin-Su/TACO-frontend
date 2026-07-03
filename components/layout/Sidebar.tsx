@@ -49,6 +49,7 @@ const groups: { title: string; items: Item[] }[] = [
   {
     title: "기타",
     items: [
+      { label: "출석부", icon: IconReport, href: "/attendance" }, // LMS형 회차×학생 매트릭스(2026-07-03)
       { label: "수업 보고서", icon: IconReport, href: "/reports" },
       { label: "관리자", icon: IconGrid, href: "/admin" },
       { label: "설정", icon: IconSettings, href: "#" },
