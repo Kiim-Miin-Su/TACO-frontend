@@ -25,7 +25,7 @@ import { currentClaims } from "@/lib/auth";
 import { ResourcePanel } from "./ResourcePanel";
 import { ResourceDetailCard } from "./ResourceDetailCard";
 import { ParticipantsCard } from "./ParticipantsCard";
-import { SessionEditFields, ColorPicker, Field } from "./SessionEditFields";
+import { SessionEditFields, ColorPicker, Field, TimeSelect } from "./SessionEditFields";
 import { CalendarSplitPane, type SplitPaneDef } from "./CalendarSplitPane";
 import { CalendarFilterBar, type Period } from "./CalendarFilterBar";
 import { SessionListPanel } from "./SessionListPanel";
@@ -142,6 +142,8 @@ export function ScheduleCalendar() {
   const [fStatuses, setFStatuses] = useState<Set<StatusFilter>>(new Set());
   const [groupOnly, setGroupOnly] = useState(false);
   const [period, setPeriod] = useState<Period | null>(null);
+  // [이슈1] 표(패널)별 표시 일수 — 예: {instructor: 3, student: 5}. 미설정=전역 기간을 따름.
+  const [paneDays, setPaneDays] = useState<Partial<Record<SplitDim, number>>>({});
   // 우측 패널: 리스트에서 클릭한 세션(아래 상세) + 그룹 토글
   const [detailId, setDetailId] = useState<number | null>(null);
   const [listGrouped, setListGrouped] = useState(false);
@@ -304,9 +306,15 @@ export function ScheduleCalendar() {
   //  KST 리스트·시수·건수는 아래 inRange로 원래 기간을 유지(오염 방지), 그리드는 변환 후
   //  컬럼 날짜 매칭이 표시 범위를 자연 결정.
 
+  // [이슈1] 표별 일수가 전역 기간보다 길면 그만큼 조회 범위 확장(그 날짜 세션도 로드).
+  const maxPaneDays = Math.max(0, ...Object.values(paneDays).filter((n): n is number => !!n));
+  const spanTo = maxPaneDays > dates.length && dates[0]
+    ? (() => { const e = addDaysISO(dates[0], maxPaneDays - 1); return e > effRange.to ? e : effRange.to; })()
+    : effRange.to;
+  const baseRange = { from: effRange.from, to: spanTo };
   const fetchRange = anyTzActive
-    ? { from: addDaysISO(effRange.from, -1), to: addDaysISO(effRange.to, 1) }
-    : effRange;
+    ? { from: addDaysISO(baseRange.from, -1), to: addDaysISO(baseRange.to, 1) }
+    : baseRange;
 
   const roomsLoadedRef = useRef(false); // [L2] 클로저가 초기 rooms를 봐서 매번 재요청하던 문제
   const load = useCallback(async () => {
@@ -474,13 +482,22 @@ export function ScheduleCalendar() {
     resType?: SplitDim; resId?: number; firstOfDate?: boolean;
     tzc?: CountryInfo; // 학생 개별 시차(country 파생 — 피드백 2026-07-03 #1)
   };
-  const colsFor = (picks: MixedPick[], prefix = ""): Col[] =>
-    buildMixedSplitColumns(view === "day" ? [anchor] : dates, picks).map((c) => ({
+  // [이슈1 2026-07-03] paneDates: 표(패널)별 날짜 배열 — 왼쪽 3일·오른쪽 5일처럼 표마다 기간을 다르게.
+  //  미지정 시 전역 dates 사용(기존 동작).
+  const colsFor = (picks: MixedPick[], prefix = "", paneDates: string[] = dates): Col[] =>
+    buildMixedSplitColumns(view === "day" ? [anchor] : paneDates, picks).map((c) => ({
       key: prefix + c.key, label: c.label,
       sub: view === "week" || period ? `${WD[weekdayOf(c.date)]} ${c.date.slice(5)}` : undefined,
       date: c.date, roomId: c.roomId, resType: c.resType, resId: c.resId, firstOfDate: c.firstOfDate,
       tzc: c.resType === "student" ? studentTzOf(c.resId) : undefined,
     }));
+  // 표별 날짜 = 현재 시작일(dates[0])부터 그 표의 일수만큼(최대 14). 미설정이면 전역 dates.
+  const paneDatesOf = (dim: SplitDim): string[] => {
+    const n = paneDays[dim];
+    if (!n) return dates;
+    const start = dates[0] ?? weekStart;
+    return Array.from({ length: Math.min(n, 14) }, (_, i) => addDaysISO(start, i));
+  };
   // [렌더 최적화] 단일 그리드 컬럼 메모화(스플릿 곱·요일 파생 재계산 방지)
   const columns: Col[] = useMemo(() => singleSplitPicks.length >= 2
     ? colsFor(singleSplitPicks)
@@ -1647,15 +1664,28 @@ export function ScheduleCalendar() {
                       setPaneCountry((prev) => { const n = { ...prev }; delete n[g.dim]; return n; });
                     }}
                     headerExtra={
-                      <CountryInput
-                        compact
-                        value={paneTzOf(g.dim)}
-                        onSelect={(c) => setPaneCountry((prev) => ({ ...prev, [g.dim]: c }))}
-                        placeholder="🌐 국가"
-                      />
+                      <div className="flex items-center gap-1">
+                        {/* [이슈1] 이 표의 표시 일수 — 표마다 다르게(왼쪽 3일·오른쪽 5일 등). 시작일은 공통. */}
+                        <select
+                          className="input h-7 text-[11px] px-1 w-[62px]"
+                          value={paneDays[g.dim] ?? dates.length}
+                          onChange={(e) => setPaneDays((prev) => ({ ...prev, [g.dim]: Number(e.target.value) }))}
+                          title="이 표의 표시 일수"
+                        >
+                          {[...new Set([1, 2, 3, 5, 7, 10, 14, dates.length])].sort((a, b) => a - b).map((n) => (
+                            <option key={n} value={n}>{n}일</option>
+                          ))}
+                        </select>
+                        <CountryInput
+                          compact
+                          value={paneTzOf(g.dim)}
+                          onSelect={(c) => setPaneCountry((prev) => ({ ...prev, [g.dim]: c }))}
+                          placeholder="🌐 국가"
+                        />
+                      </div>
                     }
                   >
-                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`), paneTzOf(g.dim))}
+                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim))}
                   </CalendarSplitPane>
                 ))}
               </div>
@@ -2134,8 +2164,8 @@ function TimeRangeField({ start, end, onStart, onEnd, endHint }: {
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-3">
-        <Field label="시작"><input type="time" step={900} className="input" value={start} onChange={(e) => onStart(e.target.value)} /></Field>
-        <Field label={`종료${endHint ? ` (${endHint})` : ""}`}><input type="time" step={900} className="input" value={end} onChange={(e) => onEnd(e.target.value)} /></Field>
+        <Field label="시작"><TimeSelect value={start} onChange={onStart} /></Field>
+        <Field label={`종료${endHint ? ` (${endHint})` : ""}`}><TimeSelect value={end} onChange={onEnd} /></Field>
       </div>
       <div className="flex flex-wrap gap-1">
         <span className="text-[11px] text-fg-subtle self-center mr-0.5">빠른 선택</span>
