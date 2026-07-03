@@ -248,7 +248,12 @@ export function ScheduleCalendar() {
     return resources.rooms.find((r) => Number(r.id) === id) ?? null;
   }, [fInstructors, fStudents, fRooms, resources]);
 
-  // [A안] 우측 패널/학생명 클릭 = 해당 차원 필터를 그 1명으로 세팅(다른 리소스 차원은 비움 — 개인 뷰 의도).
+  // [A안 조정 2026-07-03] 유저 클릭 = **정보 카드만**(캘린더 뷰·필터 불변 — "뷰가 바뀌면 안 됨" 피드백).
+  //  개인 필터 적용은 카드의 "이 유저 스케줄만 보기" 버튼으로 명시적으로만.
+  const [infoTarget, setInfoTarget] = useState<ScheduleResource | null>(null);
+  const cardTarget = infoTarget ?? selected; // 카드 표시 대상: 명시 선택 > 파생 개인 모드(필터 1명)
+
+  // 개인 필터 적용(명시적) — 해당 차원 필터를 그 1명으로 세팅(다른 리소스 차원은 비움).
   //  해제(null)는 리소스 필터만 클리어(상태·기간·국가 등 나머지 필터는 유지).
   const selectResource = (r: ScheduleResource | null) => {
     if (!r) { setFInstructors(new Set()); setFStudents(new Set()); setFRooms(new Set()); return; }
@@ -1597,9 +1602,18 @@ export function ScheduleCalendar() {
 
         {/* 우측 컬럼(Lantiv): 유저별 스케줄(단일 선택) + 수업 리스트(날짜순·그룹 토글) + 선택 수업 상세(DTO) */}
         <div className="w-64 shrink-0 space-y-3 self-start sticky top-4">
-          {resources && <ResourcePanel resources={resources} selected={selected} onSelect={selectResource} />}
+          {resources && <ResourcePanel resources={resources} selected={cardTarget} onSelect={setInfoTarget} />}
           {/* 유저 상세·편집(피드백 2026-07-03 #2·#3): 선택 유저의 정보 확인 + 학생은 국가·상태 즉시 수정 */}
-          {selected && <ResourceDetailCard selected={selected} onMsg={setMsg} onSaved={load} />}
+          {cardTarget && (
+            <ResourceDetailCard
+              selected={cardTarget}
+              isFiltered={selected != null && selected.type === cardTarget.type && Number(selected.id) === Number(cardTarget.id)}
+              onFocusView={() => selectResource(cardTarget)}
+              onClearFocus={() => { selectResource(null); setInfoTarget(cardTarget); }}
+              onMsg={setMsg}
+              onSaved={load}
+            />
+          )}
           <SessionListPanel
             emptyHint={
               listRows.length ? undefined
@@ -1622,14 +1636,13 @@ export function ScheduleCalendar() {
           <div ref={detailPanelRef}>
           <SessionDetailPanel
             onPickStudent={(id, name) => {
+              // [A안 조정] 뷰는 그대로 — 우측에 정보 카드만(수정은 카드에서)
               const res = resources?.students.find((x) => Number(x.id) === id);
-              selectResource(res ?? ({ type: "student", id, name } as ScheduleResource));
-              setMsg(`${name} 개인 뷰로 전환 — 우측 카드에서 정보 수정`);
+              setInfoTarget(res ?? ({ type: "student", id, name } as ScheduleResource));
             }}
             onPickInstructor={(id, name) => {
               const res = resources?.instructors.find((x) => Number(x.id) === id);
-              selectResource(res ?? ({ type: "instructor", id, name } as ScheduleResource));
-              setMsg(`${name} 강사 개인 뷰로 전환`);
+              setInfoTarget(res ?? ({ type: "instructor", id, name } as ScheduleResource));
             }}
             row={detailRow}
             rooms={rooms}

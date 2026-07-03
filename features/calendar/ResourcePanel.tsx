@@ -60,7 +60,7 @@ function ResourcePanelImpl({
                 onClick={() => onSelect(null)}
                 className="w-full text-left px-2 h-7 rounded text-[12px] text-fg-muted hover:bg-canvas-subtle"
               >
-                ← 전체 보기
+                ← 선택 해제 (카드 닫기)
               </button>
             </div>
           )}

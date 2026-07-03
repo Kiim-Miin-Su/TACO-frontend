@@ -13,12 +13,25 @@ import { STUDENT_STATUS_LABEL as STATUS_LABEL, activeCourseNamesOf } from "@/lib
 
 
 export function ResourceDetailCard({
-  selected, onMsg, onSaved,
+  selected, onMsg, onSaved, isFiltered, onFocusView, onClearFocus,
 }: {
   selected: ScheduleResource;
   onMsg: (m: string) => void;
   onSaved?: () => void; // 캘린더 rows는 Query 훅이 아닌 자체 load()라 invalidate가 닿지 않음 — 부모 재조회 연결
+  isFiltered?: boolean; // 현재 캘린더가 이 유저 개인 필터 중인지
+  onFocusView?: () => void; // [A안 조정] 개인 필터는 이 명시 버튼으로만(유저 선택은 뷰 불변)
+  onClearFocus?: () => void;
 }) {
+  // 개인 필터 토글 버튼(공용) — 유저 정보 보기와 뷰 필터링을 분리(피드백 2026-07-03: 선택 시 뷰가 바뀌면 안 됨)
+  const focusBtn = isFiltered ? (
+    <button className="btn btn-sm h-6" onClick={onClearFocus} title="개인 필터 해제 — 전체 스케줄로">
+      전체 보기
+    </button>
+  ) : (
+    <button className="btn btn-sm h-6" onClick={onFocusView} title="캘린더를 이 유저의 스케줄만으로 필터링">
+      🔍 이 유저만
+    </button>
+  );
   const { data: students = [] } = useStudents();
   const { data: enrollments = [] } = useEnrollments();
   const { data: courses = [] } = useCourses();
@@ -46,8 +59,11 @@ export function ResourceDetailCard({
     return (
       <div className="card card-pad text-[12.5px] space-y-1">
         <div className="font-semibold text-[13px]">{selected.name}</div>
-        <div className="text-fg-muted">{selected.type === "instructor" ? `강사${selected.sub ? ` · ${selected.sub}` : ""}` : "강의실"}</div>
-        <p className="text-[11.5px] text-fg-subtle">위 캘린더가 이 {selected.type === "instructor" ? "강사" : "강의실"}의 개인 스케줄로 필터링됩니다.</p>
+        <div className="flex items-center justify-between">
+          <span className="text-fg-muted">{selected.type === "instructor" ? `강사${selected.sub ? ` · ${selected.sub}` : ""}` : "강의실"}</span>
+          {focusBtn}
+        </div>
+        {isFiltered && <p className="text-[11.5px] text-fg-subtle">캘린더가 이 {selected.type === "instructor" ? "강사" : "강의실"} 스케줄로 필터링 중입니다.</p>}
       </div>
     );
   }
@@ -82,9 +98,12 @@ export function ResourceDetailCard({
           {student.englishName && <span className="ml-1 text-fg-subtle text-[11px]">{student.englishName}</span>}
         </div>
         {!editing && (
-          <button className="btn btn-sm h-6" onClick={() => setEditing(true)} title="국가(출국/입국)·상태(휴원 등)·학년·연락처 수정">
-            정보 수정
-          </button>
+          <span className="inline-flex gap-1">
+            {focusBtn}
+            <button className="btn btn-sm h-6" onClick={() => setEditing(true)} title="국가(출국/입국)·상태(휴원 등)·학년·연락처 수정">
+              정보 수정
+            </button>
+          </span>
         )}
       </div>
       {!editing ? (
