@@ -110,7 +110,12 @@ export function ScheduleCalendar() {
   const myInstructorId = isInstructor ? resources?.instructors[0]?.id : undefined;
   const canAdd = canManage || (isInstructor && myInstructorId != null);
   // start가 있으면 그 시각으로 프리필(빈 곳 더블클릭 — 피드백 2026-07-02 #4).
-  const [creating, setCreating] = useState<{ date: string; start?: string } | null>(null);
+  // [유저별 추가 2026-07-03] 전역 "+ 스케줄 추가"(현행)와 별개로, 스플릿 컬럼(유저)에서 그 유저
+  //  프리필로 추가 — owner(가용/불가 소유자)·defaultInstructorId(세션 강사) 프리필.
+  const [creating, setCreating] = useState<{
+    date: string; start?: string;
+    owner?: ScheduleResource | null; defaultInstructorId?: number;
+  } | null>(null);
 
   // ── 필터(Lantiv형) ──
   const [q, setQ] = useState("");
@@ -499,9 +504,9 @@ export function ScheduleCalendar() {
     // [피드백 2026-07-03] 스플릿 서브컬럼 = **그 컬럼 유저(강사/학생/강의실)의 가용·불가**를 항상 표시.
     //  전체 availability(blocks)에서 컬럼 리소스 매칭 — 표시 전용(편집은 개인 필터의 선택 유저 밴드만).
     if (c.resType != null && c.resId != null) {
-      const own = selected != null && c.resType === selected.type && c.resId === Number(selected.id);
+      // [스플릿 자체 편집] 컬럼 유저의 밴드는 그 자리에서 클릭·드래그·삭제 가능(owner=블록 자신)
       return blocksOnDate(allBlocks, c.date, { type: c.resType, id: c.resId })
-        .map((b) => toBand(b, own)); // 선택 유저의 컬럼이면 기존처럼 편집 가능
+        .map((b) => toBand(b, true));
     }
     // 비스플릿: 기존 — 선택 유저(selBlocks)의 밴드(편집 가능)
     if (!selBlocks.length) return [];
@@ -528,9 +533,13 @@ export function ScheduleCalendar() {
       setMsg(err.response?.data?.message ?? "가용/불가 저장 실패");
     }
   }
+  // [스플릿 자체 편집 2026-07-03] 블록 조회는 전체(allBlocks) 우선 — 어느 컬럼의 밴드든 동일 편집 체인.
+  //  owner는 블록 자신(ownerType/ownerId)이 보유하므로 selected 의존 제거(일반화).
+  const findBlock = (id: number) => allBlocks.find((x) => x.id === id) ?? selBlocks.find((x) => x.id === id);
+
   // 반복 블록은 삭제 범위를 물어봄(단일 주 블록·범위 없으면 바로 삭제).
   async function deleteBlock(id: number, weekDate?: string) {
-    const b = selBlocks.find((x) => x.id === id);
+    const b = findBlock(id);
     const singleWeek = !!(b?.effectiveFrom && b.effectiveFrom === b.effectiveTo);
     if (b && weekDate && !singleWeek) { setBlockDelScope({ id, kind: b.kind, date: weekDate }); return; }
     if (!confirm("이 시간 블록을 삭제할까요?")) return;
@@ -539,9 +548,11 @@ export function ScheduleCalendar() {
   // 삭제 범위 적용: 전체=행 삭제 · 이후=이번 주 직전까지로 컷 · 이번 주만=원본 분할(이번 주만 제거).
   async function applyBlockDeleteScope(scope: "this" | "this_and_following" | "all") {
     const c = blockDelScope; setBlockDelScope(null);
-    if (!c || !selected) return;
-    const orig = selBlocks.find((b) => b.id === c.id);
-    const owner = { ownerType: selected.type, ownerId: selected.id } as const;
+    if (!c) return;
+    const orig = findBlock(c.id);
+    const owner = orig
+      ? ({ ownerType: orig.ownerType, ownerId: Number(orig.ownerId) } as const)
+      : ({ ownerType: "instructor", ownerId: 0 } as const); // orig 없으면 아래 remove 경로만 수행
     try {
       if (scope === "all" || !orig) {
         await api.availability.remove(c.id);
@@ -560,9 +571,10 @@ export function ScheduleCalendar() {
   // 블록 이동 반복 범위 적용(주간 반복 규칙을 기간으로 분할). origDate=이번 주 원위치, newDate=드롭 위치.
   async function applyBlockScope(scope: "this" | "this_and_following" | "all") {
     const c = blockScope; setBlockScope(null);
-    if (!c || !selected) return;
-    const owner = { ownerType: selected.type, ownerId: selected.id } as const;
-    const orig = selBlocks.find((b) => b.id === c.id);
+    if (!c) return;
+    const orig = findBlock(c.id);
+    if (!orig) return;
+    const owner = { ownerType: orig.ownerType, ownerId: Number(orig.ownerId) } as const;
     const newPos = { ...owner, kind: c.kind, weekday: c.weekday, startTime: c.startTime, endTime: c.endTime };
     try {
       if (scope === "all" || !orig) {
@@ -626,15 +638,15 @@ export function ScheduleCalendar() {
   const bUp = () => {
     window.removeEventListener("pointermove", bMove);
     const d = bDragRef.current; bDragRef.current = null; setBDraft(null);
-    if (!d || !selected || d.end <= d.start) return;
+    if (!d || d.end <= d.start) return;
     // 시간·요일 모두 그대로면 변경 없음.
     if (d.start === d.origStart && d.end === d.origEnd && d.date === d.origDate) return;
-    const orig = selBlocks.find((b) => b.id === d.id);
+    const orig = findBlock(d.id);
     const singleWeek = !!(orig?.effectiveFrom && orig.effectiveFrom === orig.effectiveTo); // 1회(단일 주) 블록
     // 단일 주 블록은 반복 범위를 물을 필요 없이 그 블록만 수정. 그 외(주간 반복)는 이동·리사이즈 모두 범위 물어봄.
-    if (singleWeek) {
+    if (singleWeek && orig) {
       createBlock({
-        id: d.id, ownerType: selected.type, ownerId: selected.id, kind: d.kind,
+        id: d.id, ownerType: orig.ownerType, ownerId: Number(orig.ownerId), kind: d.kind,
         weekday: weekdayOf(d.date), startTime: fromMin(d.start), endTime: fromMin(d.end),
         effectiveFrom: orig?.effectiveFrom, effectiveTo: orig?.effectiveTo,
       });
@@ -1158,6 +1170,22 @@ export function ScheduleCalendar() {
                                   >
                                     {c.label}
                                   </span>
+                                  {canAdd && c.resType != null && c.resId != null && (
+                                    <button
+                                      className="shrink-0 hover:opacity-70 text-[11px] leading-none px-0.5"
+                                      title={`${c.label}에게 추가 — 수업·가용·불가(유저 프리필)`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setCreating({
+                                          date: c.date,
+                                          owner: { type: c.resType!, id: c.resId!, name: c.label } as ScheduleResource,
+                                          defaultInstructorId: c.resType === "instructor" ? c.resId : undefined,
+                                        });
+                                      }}
+                                    >
+                                      ＋
+                                    </button>
+                                  )}
                                   {/* [피드백 #3] 학생 컬럼 시차 수동 변경 — 국기(현재 tz)/🌐(KST) 클릭 = 픽커 */}
                                   {!tzActive && c.resType === "student" && c.resId != null && (
                                     <button
@@ -1246,7 +1274,14 @@ export function ScheduleCalendar() {
                               if (e.target !== e.currentTarget || !canAdd || colTz) return;
                               const rect = e.currentTarget.getBoundingClientRect();
                               const min = clampMin(snapMove(gridMin + ((e.clientY - rect.top) / HOUR_H) * 60));
-                              setCreating({ date: c.date, start: fromMin(min) });
+                              setCreating({
+                                date: c.date, start: fromMin(min),
+                                // 스플릿 컬럼이면 그 유저 프리필(유저별 추가 — 가용/불가 owner·강사 세션)
+                                owner: c.resType && c.resId != null
+                                  ? ({ type: c.resType, id: c.resId, name: c.label } as ScheduleResource)
+                                  : undefined,
+                                defaultInstructorId: c.resType === "instructor" ? c.resId : undefined,
+                              });
                             }}
                           >
                             {/* 가용(초록)/불가(회색) 밴드 — 클릭=선택 · 끝 드래그=시간 조절 · ✕=삭제 (스케줄처럼 관리) */}
@@ -1258,11 +1293,11 @@ export function ScheduleCalendar() {
                                 onPointerDown={on ? (e) => { if (e.target === e.currentTarget) bDown(e, c, b, "move"); } : undefined}
                                 onClick={(e) => {
                                   if (bMovedRef.current) { bMovedRef.current = false; return; } // 드래그 직후 클릭 무시(선택 유지)
-                                  if (b.editable && selected) { e.stopPropagation(); setSelBand(on ? null : b.id); setSelEvent(null); }
+                                  if (b.editable) { e.stopPropagation(); setSelBand(on ? null : b.id); setSelEvent(null); }
                                 }}
-                                onDoubleClick={(e) => { e.stopPropagation(); const blk = selBlocks.find((x) => x.id === b.id); if (blk) setEditingBlock(blk); }}
+                                onDoubleClick={(e) => { e.stopPropagation(); const blk = findBlock(b.id); if (blk) setEditingBlock(blk); }}
                                 title={b.kind === "unavailable" ? "불가시간 — 클릭 선택 · 드래그 이동 · 끝 드래그 시간조절 · 더블클릭 수정" : "가용시간 — 클릭 선택 · 드래그 이동 · 더블클릭 수정"}
-                                className={`absolute left-0 right-0 ${!(b.editable && selected) ? "pointer-events-none" : on ? "cursor-move" : "cursor-pointer"}`}
+                                className={`absolute left-0 right-0 ${!b.editable ? "pointer-events-none" : on ? "cursor-move" : "cursor-pointer"}`}
                                 style={
                                   b.kind === "unavailable"
                                     ? {
@@ -1704,7 +1739,8 @@ export function ScheduleCalendar() {
           defaultDate={creating.date}
           defaultStart={creating.start}
           lockInstructorId={isInstructor ? myInstructorId : undefined}
-          defaultOwner={selected}
+          defaultInstructorId={creating.defaultInstructorId}
+          defaultOwner={creating.owner ?? selected}
           onClose={() => setCreating(null)}
           onCreate={createSession}
           onCreateSeries={createSeries}
@@ -2026,6 +2062,7 @@ function CreateModal({
   defaultDate,
   defaultStart,
   lockInstructorId,
+  defaultInstructorId,
   defaultOwner,
   onClose,
   onCreate,
@@ -2037,6 +2074,7 @@ function CreateModal({
   defaultDate: string;
   defaultStart?: string; // 빈 곳 더블클릭 시 그 시각으로 프리필
   lockInstructorId?: number; // 강사 본인만 추가 가능할 때 — 본인 ID로 고정
+  defaultInstructorId?: number; // 유저별 추가(스플릿 강사 컬럼) — 프리필(변경 가능)
   defaultOwner?: ScheduleResource | null;
   onClose: () => void;
   onCreate: (body: ScheduleCreateBody) => void;
@@ -2050,7 +2088,7 @@ function CreateModal({
   const myCourses = lockInstructorId != null ? resources.courses.filter((c) => c.instructorId === lockInstructorId) : resources.courses;
   const [courseId, setCourseId] = useState<number>(myCourses[0]?.id ?? 0);
   const course = resources.courses.find((c) => c.id === courseId);
-  const [instructorId, setInstructorId] = useState<number | "">(lockInstructorId ?? course?.instructorId ?? "");
+  const [instructorId, setInstructorId] = useState<number | "">(lockInstructorId ?? defaultInstructorId ?? course?.instructorId ?? "");
   const [roomId, setRoomId] = useState<number | "">("");
   const [date, setDate] = useState(defaultDate);
   const [start, setStart] = useState(defaultStart ?? "16:00");
