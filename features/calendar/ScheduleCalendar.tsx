@@ -13,7 +13,7 @@ import {
 } from "@/lib/domain/lantiv";
 import { useAttendance, useStudents, useEnrollments, useCourses, useCreateViewPreset } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
-import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, type CountryInfo, type TzShiftedRow } from "@/lib/domain/tz";
+import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, type CountryInfo, type TzShiftedRow } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
 import { CalendarViewTabs } from "./CalendarViewTabs";
 import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
@@ -47,6 +47,15 @@ const CANCELED_GRAY = "#8c959f";
 const isCanceledStatus = (s?: string) => s === "canceled" || s === "no_show";
 
 const snap = (mm: number) => Math.round(mm / SNAP) * SNAP;
+
+// [이슈1] 편집/생성 패치의 현지 시각(sessionDate·startTime·endTime)을 KST 저장값으로 역변환.
+//  시작 시각 기준으로 KST 날짜 확정 — 저장은 항상 KST 단일 진실원(무결성).
+function kstPatchTimes<T extends { sessionDate?: string; startTime?: string; endTime?: string }>(patch: T, tz: string): T {
+  if (tz === KST_TZ || !patch.sessionDate || !patch.startTime) return patch;
+  const ks = tzLocalToKst(patch.sessionDate, patch.startTime, tz);
+  const ke = patch.endTime ? tzLocalToKst(patch.sessionDate, patch.endTime, tz) : undefined;
+  return { ...patch, sessionDate: ks.date, startTime: ks.time, ...(ke ? { endTime: ke.time } : {}) };
+}
 const clampMin = (mm: number) => Math.max(GRID_MIN, Math.min(END_H * 60, mm));
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const addDaysISO = (iso: string, n: number) => {
@@ -72,6 +81,9 @@ export function ScheduleCalendar() {
   const [rows, setRows] = useState<ScheduleRow[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [editing, setEditing] = useState<ScheduleRow | null>(null);
+  // [이슈1] 편집 대상이 비KST 컬럼(현지 시각 표시)이면 그 tz — 저장 시 현지→KST 역변환 기준. KST면 null.
+  const [editingTz, setEditingTz] = useState<CountryInfo | null>(null);
+  const openEditor = useCallback((r: ScheduleRow, tz: CountryInfo | null = null) => { setEditing(r); setEditingTz(tz); }, []);
   const [selEvent, setSelEvent] = useState<number | null>(null); // 단일 클릭 선택(애플식 — 리사이즈 핸들 노출)
   const [pending, setPending] = useState<Pending | null>(null);
   const [preview, setPreview] = useState<{ id: number; start: number; end: number } | null>(null);
@@ -116,6 +128,7 @@ export function ScheduleCalendar() {
   const [creating, setCreating] = useState<{
     date: string; start?: string;
     owner?: ScheduleResource | null; defaultInstructorId?: number;
+    tz?: CountryInfo | null; // [이슈1] 비KST 컬럼에서 추가 시 — 입력은 현지 시각, 저장 시 KST 역변환
   } | null>(null);
 
   // ── 필터(Lantiv형) ──
@@ -527,7 +540,9 @@ export function ScheduleCalendar() {
     try {
       await api.availability.upsert(body);
       setCreating(null);
-      if (selected && selected.type === body.ownerType && selected.id === body.ownerId) reloadSelBlocks();
+      // [버그수정 2026-07-03 이슈3·4] 스플릿 컬럼 밴드는 allBlocks 소스라 항상 갱신해야 새 블록(학생 불가·
+      //  가용 초록)이 즉시 렌더됨. 기존엔 selected==owner일 때만 갱신 → 다른 유저 컬럼에 추가하면 미표시.
+      reloadSelBlocks(); // 내부에서 reloadAllBlocks(전체) + selBlocks(선택 유저) 동시 갱신
     } catch (e) {
       // 겹침(409) 등 백엔드 메시지를 그대로 노출 — "이미 지정된 불가시간과 겹칩니다" 경고.
       const err = e as { response?: { data?: { message?: string } } };
@@ -1181,6 +1196,7 @@ export function ScheduleCalendar() {
                                           date: c.date,
                                           owner: { type: c.resType!, id: c.resId!, name: c.label } as ScheduleResource,
                                           defaultInstructorId: c.resType === "instructor" ? c.resId : undefined,
+                                          tz: colTz ? colTzc : undefined, // [이슈1] 비KST 컬럼: 현지→KST 변환
                                         });
                                       }}
                                     >
@@ -1264,7 +1280,7 @@ export function ScheduleCalendar() {
                             onClick={(e) => {
                               if (e.target !== e.currentTarget) return;
                               setSelEvent(null); setSelBand(null);
-                              if (colTz) { setMsg(`${colTzc.name} 시간 보기 중 — 편집·복제는 한국 시간에서 하세요`); return; }
+                              if (colTz) { setMsg(`${colTzc.name} 현지 시간 뷰 — 추가·편집은 더블클릭(현지→KST 자동변환), 붙여넣기·드래그는 한국 시간에서`); return; }
                               // 빈 공간 클릭 = 커서 셀(Lantiv): 클릭 시각(30분 스냅) 표시 + 붙여넣기 대상.
                               const rect = e.currentTarget.getBoundingClientRect();
                               const min = clampMin(snapMove(gridMin + ((e.clientY - rect.top) / HOUR_H) * 60));
@@ -1272,7 +1288,8 @@ export function ScheduleCalendar() {
                             }}
                             onDoubleClick={(e) => {
                               // 빈 공간 더블클릭 = 그 시각으로 스케줄 추가(피드백 2026-07-02 #4).
-                              if (e.target !== e.currentTarget || !canAdd || colTz) return;
+                              // [이슈1] 비KST 컬럼도 추가 허용 — 입력은 현지 시각, 저장 시 KST 역변환(tz 전달).
+                              if (e.target !== e.currentTarget || !canAdd) return;
                               const rect = e.currentTarget.getBoundingClientRect();
                               const min = clampMin(snapMove(gridMin + ((e.clientY - rect.top) / HOUR_H) * 60));
                               setCreating({
@@ -1282,6 +1299,7 @@ export function ScheduleCalendar() {
                                   ? ({ type: c.resType, id: c.resId, name: c.label } as ScheduleResource)
                                   : undefined,
                                 defaultInstructorId: c.resType === "instructor" ? c.resId : undefined,
+                                tz: colTz ? colTzc : undefined, // 현지→KST 변환 기준
                               });
                             }}
                           >
@@ -1383,7 +1401,7 @@ export function ScheduleCalendar() {
                                   key={r.id}
                                   onPointerDown={colTz ? undefined : (e) => onEventDown(e, r)}
                                   onClick={(e) => { e.stopPropagation(); if (suppressClickRef.current) { suppressClickRef.current = false; return; } setSelEvent(r.id); setSelBand(null); setDetailId(r.id); }}
-                                  onDoubleClick={(e) => { e.stopPropagation(); if (colTz) { setDetailId(r.id); return; } setEditing(r); }}
+                                  onDoubleClick={(e) => { e.stopPropagation(); openEditor(r, colTz ? colTzc : null); }}
                                   title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${(r as TzShiftedRow).tzOverflowEnd ? ` · 자정 넘김(+1일 ~${(r as TzShiftedRow).tzOverflowEnd})` : ""}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 드래그=이동 · 더블클릭=상세`}
                                   className={`absolute rounded-lg text-white text-[11px] leading-tight px-1.5 py-1 ${colTz ? "cursor-pointer" : "cursor-grab"} overflow-hidden shadow-sm hover:brightness-105 transition ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
                                   style={{
@@ -1596,7 +1614,7 @@ export function ScheduleCalendar() {
                 anchor={anchor}
                 rows={filtered}
                 colorOf={colorOf}
-                onPick={(r) => setEditing(r)}
+                onPick={(r) => openEditor(r)}
                 onPickDay={(d) => {
                   setAnchor(d);
                   setView("day");
@@ -1649,7 +1667,16 @@ export function ScheduleCalendar() {
 
         {/* 우측 컬럼(Lantiv): 유저별 스케줄(단일 선택) + 수업 리스트(날짜순·그룹 토글) + 선택 수업 상세(DTO) */}
         <div className="w-64 shrink-0 space-y-3 self-start sticky top-4">
-          {resources && <ResourcePanel resources={resources} selected={cardTarget} onSelect={setInfoTarget} />}
+          {/* [피드백 2026-07-03] 우측 리스트 유저 클릭 = 그 유저 스케줄로 뷰 필터(A안 조정 번복).
+              selectResource가 해당 차원 필터(fStudents 등)를 그 1명으로 세팅 → 상단 체크박스와 자동 동기화.
+              카드도 함께 표시(setInfoTarget). 재클릭/해제(null)면 필터·카드 모두 해제. */}
+          {resources && (
+            <ResourcePanel
+              resources={resources}
+              selected={cardTarget}
+              onSelect={(r) => { selectResource(r); setInfoTarget(r); }}
+            />
+          )}
           {/* [피드백 2026-07-03] 스케줄 선택 → 포함 인원 리스트 → 한 명 클릭 → 바로 아래 유저 상세 카드 */}
           {detailRow && (
             <ParticipantsCard row={detailRow} picked={cardTarget} onPick={(r) => setInfoTarget(r)} />
@@ -1712,7 +1739,7 @@ export function ScheduleCalendar() {
             canEdit={!!canAdd}
             colorOf={colorOf}
             onPatch={(r, patch, label) => requestChange(r, patch, label)}
-            onOpenModal={(r) => setEditing(r)}
+            onOpenModal={(r) => openEditor(r)}
           />
           </div>
         </div>
@@ -1724,11 +1751,16 @@ export function ScheduleCalendar() {
           rooms={rooms}
           instructors={(resources?.instructors ?? []).map((i) => ({ id: Number(i.id), name: i.name }))}
           colorOf={colorOf}
-          onClose={() => setEditing(null)}
+          ownerTz={editingTz}
+          onClose={() => { setEditing(null); setEditingTz(null); }}
           onDelete={() => deleteSession(editing.id)}
           onSave={async (patch) => {
-            setEditing(null);
-            await applyPatch(editing.id, patch);
+            const id = editing.id;
+            // [이슈1] 비KST 편집: 폼에 입력한 현지 시각(sessionDate/start/end)을 KST 저장값으로 역변환.
+            //  종료가 KST에서 다음날로 넘어가면 자정 크로스 — 백엔드가 거부(무결성)하므로 그대로 전달.
+            const kst = editingTz ? kstPatchTimes(patch, editingTz.tz) : patch;
+            setEditing(null); setEditingTz(null);
+            await applyPatch(id, kst);
           }}
         />
       )}
@@ -1757,6 +1789,7 @@ export function ScheduleCalendar() {
           lockInstructorId={isInstructor ? myInstructorId : undefined}
           defaultInstructorId={creating.defaultInstructorId}
           defaultOwner={creating.owner ?? selected}
+          ownerTz={creating.tz ?? undefined}
           onClose={() => setCreating(null)}
           onCreate={createSession}
           onCreateSeries={createSeries}
@@ -1950,6 +1983,7 @@ function DetailModal({
   rooms,
   instructors,
   colorOf,
+  ownerTz,
   onClose,
   onSave,
   onDelete,
@@ -1958,6 +1992,7 @@ function DetailModal({
   rooms: Room[];
   instructors: { id: number; name: string }[];
   colorOf: (r: ScheduleRow) => string;
+  ownerTz?: CountryInfo | null; // [이슈1] 비KST 편집이면 이 tz(현지 시각 입력 → 저장 시 KST 변환)
   onClose: () => void;
   onSave: (patch: SchedulePatchBody) => void;
   onDelete: () => void;
@@ -2021,14 +2056,21 @@ function DetailModal({
             </div>
           </>
         ) : (
-          <SessionEditFields
-            row={row}
-            rooms={rooms}
-            instructors={instructors}
-            onSave={(patch) => onSave(patch)}
-            onCancel={() => setMode("detail")}
-            onDelete={onDelete}
-          />
+          <>
+            {ownerTz && ownerTz.tz !== KST_TZ && (
+              <p className="text-[12px] px-1" style={{ color: "var(--color-accent)" }}>
+                🌐 {ownerTz.name} 현지 시각으로 입력하세요 — 저장 시 한국 시간(KST)으로 변환됩니다.
+              </p>
+            )}
+            <SessionEditFields
+              row={row}
+              rooms={rooms}
+              instructors={instructors}
+              onSave={(patch) => onSave(patch)}
+              onCancel={() => setMode("detail")}
+              onDelete={onDelete}
+            />
+          </>
         )}
       </div>
     </div>
@@ -2080,6 +2122,7 @@ function CreateModal({
   lockInstructorId,
   defaultInstructorId,
   defaultOwner,
+  ownerTz,
   onClose,
   onCreate,
   onCreateSeries,
@@ -2092,11 +2135,15 @@ function CreateModal({
   lockInstructorId?: number; // 강사 본인만 추가 가능할 때 — 본인 ID로 고정
   defaultInstructorId?: number; // 유저별 추가(스플릿 강사 컬럼) — 프리필(변경 가능)
   defaultOwner?: ScheduleResource | null;
+  ownerTz?: CountryInfo | null; // [이슈1] 비KST 컬럼 추가 — 입력은 현지 시각, 저장 시 KST 역변환
   onClose: () => void;
   onCreate: (body: ScheduleCreateBody) => void;
   onCreateSeries: (bodies: ScheduleCreateBody[]) => void;
   onCreateBlock: (body: AvailabilityUpsertBody) => void;
 }) {
+  // [이슈1] 현지 tz의 (date, HH:mm) → KST 저장값. KST면 그대로. 저장은 항상 KST 단일 진실원.
+  const tzActive = !!ownerTz && ownerTz.tz !== KST_TZ;
+  const toKst = (dLocal: string, t: string) => (tzActive ? tzLocalToKst(dLocal, t, ownerTz!.tz) : { date: dLocal, time: t });
   // 유형: 수업 / 가용 / 불가 — 셋 다 같은 날짜·시간·반복(그날만=일회성 / 매주 / 커스텀) UX.
   const [type, setType] = useState<"session" | "available" | "unavailable">("session");
 
@@ -2194,12 +2241,17 @@ function CreateModal({
   //  - 매주/커스텀: 선택 요일마다 date부터 종료일(untilDate)까지 반복.
   function submitBlocks() {
     const kind = type === "unavailable" ? "unavailable" : "available";
-    const base = { ownerType: bType, ownerId: Number(bId), kind, startTime: start, endTime: end } as const;
+    // [이슈1] 비KST 입력: 현지 (date,시각)을 KST로 변환 후 요일·시각 확정. 반복은 KST 시각·요일 기준.
     if (repeat === "none") {
-      onCreateBlock({ ...base, weekday: weekdayOf(date), effectiveFrom: date, effectiveTo: date });
+      const ks = toKst(date, start), ke = toKst(date, end);
+      onCreateBlock({ ownerType: bType, ownerId: Number(bId), kind, startTime: ks.time, endTime: ke.time, weekday: weekdayOf(ks.date), effectiveFrom: ks.date, effectiveTo: ks.date });
     } else {
+      const ks = toKst(date, start), ke = toKst(date, end);
+      const base = { ownerType: bType, ownerId: Number(bId), kind, startTime: ks.time, endTime: ke.time } as const;
+      // 변환으로 요일이 밀리면 그만큼 보정(현지 요일 → KST 요일 델타)
+      const wdShift = tzActive ? (weekdayOf(ks.date) - weekdayOf(date) + 7) % 7 : 0;
       const wds = repeat === "weekly" ? [weekdayOf(date)] : customWds;
-      wds.forEach((wd) => onCreateBlock({ ...base, weekday: wd, effectiveFrom: date, effectiveTo: untilDate }));
+      wds.forEach((wd) => onCreateBlock({ ...base, weekday: (wd + wdShift) % 7, effectiveFrom: ks.date, effectiveTo: untilDate }));
     }
   }
   function submitSession() {
@@ -2207,7 +2259,11 @@ function CreateModal({
     // 부분 선택 시에만 명시 코호트 전송(전원=미전송 — 코스 파생과 동일·하위 호환)
     const studentIds =
       pickedStudents != null && effPicked.size !== courseRoster.length ? [...effPicked] : undefined;
-    const mk = (d: string): ScheduleCreateBody => ({ courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: d, startTime: start, endTime: end, memo: memo || undefined, color, status, seriesId, studentIds });
+    // [이슈1] 각 발생일(현지)을 KST로 변환해 저장 — 종료는 시작과 같은 현지날짜 기준으로 변환.
+    const mk = (dLocal: string): ScheduleCreateBody => {
+      const ks = toKst(dLocal, start), ke = toKst(dLocal, end);
+      return { courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: ks.date, startTime: ks.time, endTime: ke.time, memo: memo || undefined, color, status, seriesId, studentIds };
+    };
     const days = occurrences();
     if (days.length <= 1) onCreate(mk(days[0] ?? date));
     else onCreateSeries(days.map(mk));
@@ -2227,6 +2283,11 @@ function CreateModal({
             <button key={v} className={`btn btn-sm flex-1 rounded-none border-0 ${type === v ? "badge-accent" : ""}`} onClick={() => setType(v)}>{lbl}</button>
           ))}
         </div>
+        {tzActive && (
+          <p className="text-[12px] px-0.5" style={{ color: "var(--color-accent)" }}>
+            🌐 {ownerTz!.name} 현지 시각으로 입력하세요 — 저장은 한국 시간(KST)으로 변환됩니다.
+          </p>
+        )}
 
         {type === "session" ? (
           <>

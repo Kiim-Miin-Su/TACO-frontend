@@ -1,7 +1,7 @@
 // 국가·시간대 변환 엔진 테스트 — KST 단일 진실원 → 표시 전용 변환의 정확성.
 import { describe, expect, it } from 'vitest';
 import type { ScheduleRow } from '@/types';
-import { COUNTRIES, countryByCode, searchCountries, shiftRowToTz, shiftRowsToTz, tzOffsetFromKst, KST_TZ } from './tz';
+import { COUNTRIES, countryByCode, searchCountries, shiftRowToTz, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, KST_TZ } from './tz';
 
 const row = (over: Partial<ScheduleRow> = {}): ScheduleRow =>
   ({
@@ -71,6 +71,28 @@ describe('shiftRowToTz — KST 수업을 학생 국가 로컬 시간표로', () 
   it('KST 선택 시 원본 그대로(참조 동일 — 리렌더 최소화)', () => {
     const rows = [row()];
     expect(shiftRowsToTz(rows, KST_TZ)).toBe(rows);
+  });
+});
+
+describe('tzLocalToKst — 해외 현지 입력을 KST 저장값으로 역변환(이슈1)', () => {
+  it('KST는 입력 그대로', () => {
+    expect(tzLocalToKst('2026-07-01', '16:00', KST_TZ)).toEqual({ date: '2026-07-01', time: '16:00' });
+  });
+  it('뉴욕(EDT, KST−13h) 현지 03:00 = KST 같은날 16:00', () => {
+    expect(tzLocalToKst('2026-07-01', '03:00', 'America/New_York')).toEqual({ date: '2026-07-01', time: '16:00' });
+  });
+  it('뉴욕 현지 19:00(6/30) = KST 7/1 08:00 — 날짜가 다음날로', () => {
+    expect(tzLocalToKst('2026-06-30', '19:00', 'America/New_York')).toEqual({ date: '2026-07-01', time: '08:00' });
+  });
+  it('베트남(KST−2h) 현지 14:00 = KST 16:00', () => {
+    expect(tzLocalToKst('2026-07-01', '14:00', 'Asia/Ho_Chi_Minh')).toEqual({ date: '2026-07-01', time: '16:00' });
+  });
+  it('shiftRowToTz ↔ tzLocalToKst 왕복 일치(뉴욕·시드니·런던)', () => {
+    for (const tz of ['America/New_York', 'Australia/Sydney', 'Europe/London', 'Asia/Kolkata']) {
+      const shifted = shiftRowToTz(row(), tz); // KST 7/1 16:00 → 현지
+      const back = tzLocalToKst(shifted.sessionDate, shifted.startTime!, tz);
+      expect(back).toEqual({ date: '2026-07-01', time: '16:00' });
+    }
   });
 });
 

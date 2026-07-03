@@ -101,6 +101,28 @@ export function shiftRowsToTz(rows: ScheduleRow[], tz: string): TzShiftedRow[] {
   return rows.map((r) => shiftRowToTz(r, tz));
 }
 
+// 대상 tz의 로컬 벽시계(date, HH:mm)를 UTC epoch(ms)로 — 추정 후 오프셋 보정(DST 자동 반영).
+//  입력을 UTC로 가정한 뒤 그 순간의 tz 로컬과의 차이(오프셋)를 빼서 실제 UTC를 얻는다.
+function tzLocalToUtcMs(dateLocal: string, hhmm: string, tz: string): number {
+  const guessUtc = Date.parse(`${dateLocal}T${hhmm}:00Z`);
+  const p = utcToTzParts(guessUtc, tz);
+  const back = Date.parse(`${p.date}T${fromMin(p.minutes)}:00Z`);
+  const offset = back - guessUtc; // tz로컬 − UTC
+  return guessUtc - offset;
+}
+
+/**
+ * 대상 tz의 로컬 (date, HH:mm) → KST 로컬 (date, HH:mm). shiftRowToTz(KST→tz)의 역변환.
+ * 해외 학생 뷰에서 그 나라 현지 시각으로 입력한 값을 KST 저장값으로 되돌린다(무결성 — 저장은 항상 KST).
+ * KST면 입력 그대로. 결과 날짜가 KST에서 밀릴 수 있음(자정 크로스 — 호출부가 sessionDate/시각에 반영).
+ */
+export function tzLocalToKst(dateLocal: string, hhmm: string, tz: string): { date: string; time: string } {
+  if (!tz || tz === KST_TZ) return { date: dateLocal, time: hhmm };
+  const utc = tzLocalToUtcMs(dateLocal, hhmm, tz);
+  const k = utcToTzParts(utc, KST_TZ);
+  return { date: k.date, time: fromMin(k.minutes) };
+}
+
 /** 특정 날짜의 KST 대비 시차(분) — 헤더 배지 "미국(동부) −13h" 표시용. */
 export function tzOffsetFromKst(tz: string, dateISO: string): number {
   const utc = kstToUtcMs(dateISO, '12:00');
