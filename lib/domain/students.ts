@@ -25,6 +25,17 @@ export const STUDENT_STATUS_TONE: Record<string, 'accent' | 'success' | 'attenti
   lead: 'accent', active: 'success', paused: 'attention', completed: 'done', canceled: 'danger',
 };
 
+/** 학생의 활성 수강 코스명 — 통일 감사 2026-07-03: StudentsView·캘린더 유저 카드 중복 제거(단일 소스). */
+export function activeCourseNamesOf(
+  studentId: number,
+  enrollments: { studentId: number | string; courseId: number | string; status?: string }[],
+  courses: { id: number | string; name: string }[],
+): string[] {
+  return enrollments
+    .filter((e) => Number(e.studentId) === studentId && (e.status ?? 'active') === 'active')
+    .map((e) => courses.find((c) => Number(c.id) === Number(e.courseId))?.name ?? `코스 ${e.courseId}`);
+}
+
 /** 활성 학생만 반환 (퇴원/비활성 제외) — 모든 운영 화면의 기본 스코프 */
 export const activeStudents = (list: Student[]): Student[] => list.filter(isActiveStudent);
 

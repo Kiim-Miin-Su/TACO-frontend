@@ -9,10 +9,16 @@ import type { ScheduleResource, Student } from "@/types";
 import { useStudents, useEnrollments, useCourses, useUpdateStudent } from "@/lib/queries";
 import { COUNTRIES } from "@/lib/domain/tz";
 import { CountryBadge } from "./CountryInput";
-import { STUDENT_STATUS_LABEL as STATUS_LABEL } from "@/lib/domain/students"; // 상태 라벨 단일 소스
+import { STUDENT_STATUS_LABEL as STATUS_LABEL, activeCourseNamesOf } from "@/lib/domain/students"; // 라벨·수강 코스 단일 소스
 
 
-export function ResourceDetailCard({ selected, onMsg }: { selected: ScheduleResource; onMsg: (m: string) => void }) {
+export function ResourceDetailCard({
+  selected, onMsg, onSaved,
+}: {
+  selected: ScheduleResource;
+  onMsg: (m: string) => void;
+  onSaved?: () => void; // 캘린더 rows는 Query 훅이 아닌 자체 load()라 invalidate가 닿지 않음 — 부모 재조회 연결
+}) {
   const { data: students = [] } = useStudents();
   const { data: enrollments = [] } = useEnrollments();
   const { data: courses = [] } = useCourses();
@@ -47,9 +53,7 @@ export function ResourceDetailCard({ selected, onMsg }: { selected: ScheduleReso
   }
   if (!student) return null;
 
-  const myCourses = enrollments
-    .filter((e) => Number(e.studentId) === Number(student.id) && e.status === "active")
-    .map((e) => courses.find((c) => Number(c.id) === Number(e.courseId))?.name ?? `코스 ${e.courseId}`);
+  const myCourses = activeCourseNamesOf(Number(student.id), enrollments, courses);
 
   const save = () => {
     updateStudent.mutate(
@@ -64,7 +68,7 @@ export function ResourceDetailCard({ selected, onMsg }: { selected: ScheduleReso
         },
       },
       {
-        onSuccess: () => { setEditing(false); onMsg(`${student.name} 정보를 수정했습니다`); },
+        onSuccess: () => { setEditing(false); onMsg(`${student.name} 정보를 수정했습니다`); onSaved?.(); },
         onError: () => onMsg("학생 정보 수정 실패"),
       },
     );

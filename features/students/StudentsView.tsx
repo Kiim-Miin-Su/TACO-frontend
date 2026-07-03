@@ -3,7 +3,7 @@
 // 퇴원(소프트삭제)은 useRemoveStudent 훅(백엔드 DELETE /students/:id)으로 처리한다.
 import { Badge, SectionCard, StatusDot, type Tone } from "@/components/ui";
 import { useStudents, useEnrollments, useCourses, useParentStudents, useParents, useRemoveStudent } from "@/lib/queries";
-import { isActiveStudent, STUDENT_STATUS_LABEL as label, STUDENT_STATUS_TONE } from "@/lib/domain/students";
+import { isActiveStudent, activeCourseNamesOf, STUDENT_STATUS_LABEL as label, STUDENT_STATUS_TONE } from "@/lib/domain/students";
 import { CountryBadge } from "@/features/calendar/CountryInput";
 import type { StudentStatus } from "@/types";
 import { StudentForm } from "./StudentForm";
@@ -32,11 +32,8 @@ export function StudentsView() {
     : scoped;
   const activeCount = students.filter(isActiveStudent).length;
 
-  const coursesOf = (studentId: number) =>
-    enrollments
-      .filter((e) => e.studentId === studentId)
-      .map((e) => courses.find((c) => c.id === e.courseId)?.name)
-      .filter(Boolean);
+  // 통일 감사 2026-07-03: 캘린더 유저 카드와 동일 함수(활성 수강 기준 — 취소된 수강 노출 제거 효과)
+  const coursesOf = (studentId: number) => activeCourseNamesOf(studentId, enrollments, courses);
 
   const parentOf = (studentId: number) => {
     const link = parentStudents.find((ps) => ps.studentId === studentId);

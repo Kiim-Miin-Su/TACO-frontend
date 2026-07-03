@@ -1511,7 +1511,7 @@ export function ScheduleCalendar() {
         <div className="w-64 shrink-0 space-y-3 self-start sticky top-4">
           {resources && <ResourcePanel resources={resources} selected={selected} onSelect={setSelected} />}
           {/* 유저 상세·편집(피드백 2026-07-03 #2·#3): 선택 유저의 정보 확인 + 학생은 국가·상태 즉시 수정 */}
-          {selected && <ResourceDetailCard selected={selected} onMsg={setMsg} />}
+          {selected && <ResourceDetailCard selected={selected} onMsg={setMsg} onSaved={load} />}
           <SessionListPanel
             rows={listRows}
             groupBy={listGrouped ? listGroupDim : "none"}
