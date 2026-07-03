@@ -66,9 +66,10 @@ export function ResourceDetailCard({
     return (
       <div className="card card-pad text-[12.5px] space-y-1">
         <div className="font-semibold text-[13px]">{selected.name}</div>
-        <div className="flex items-center justify-between">
+        {/* [QA 2026-07-03] 좁은 패널에서 버튼이 카드 밖으로 나가던 오버플로 — flex-wrap으로 줄바꿈 허용 */}
+        <div className="flex items-center justify-between gap-x-2 gap-y-1 flex-wrap">
           <span className="text-fg-muted">{selected.type === "instructor" ? `강사${selected.sub ? ` · ${selected.sub}` : ""}` : "강의실"}</span>
-          <span className="inline-flex gap-1">{addBtn}{focusBtn}</span>
+          <span className="inline-flex gap-1 flex-wrap justify-end">{addBtn}{focusBtn}</span>
         </div>
         {isFiltered && <p className="text-[11.5px] text-fg-subtle">캘린더가 이 {selected.type === "instructor" ? "강사" : "강의실"} 스케줄로 필터링 중입니다.</p>}
       </div>
@@ -99,16 +100,18 @@ export function ResourceDetailCard({
 
   return (
     <div className="card card-pad text-[12.5px] space-y-2">
-      <div className="flex items-center justify-between">
-        <div>
+      {/* [QA 2026-07-03] 버튼 3개가 좁은 패널에서 카드 밖으로 나가고 이름이 세로로 꺾이던 오버플로 —
+          이름은 nowrap+truncate, 버튼 그룹은 flex-wrap으로 자연 줄바꿈(넓으면 한 줄, 좁으면 다음 줄) */}
+      <div className="flex items-center justify-between gap-x-2 gap-y-1 flex-wrap">
+        <div className="min-w-0 whitespace-nowrap truncate">
           <span className="font-semibold text-[13px]">{student.name}</span>
           {student.englishName && <span className="ml-1 text-fg-subtle text-[11px]">{student.englishName}</span>}
         </div>
         {!editing && (
-          <span className="inline-flex gap-1">
+          <span className="inline-flex gap-1 flex-wrap justify-end">
             {addBtn}
             {focusBtn}
-            <button className="btn btn-sm h-6" onClick={() => setEditing(true)} title="국가(출국/입국)·상태(휴원 등)·학년·연락처 수정">
+            <button className="btn btn-sm h-6 whitespace-nowrap" onClick={() => setEditing(true)} title="국가(출국/입국)·상태(휴원 등)·학년·연락처 수정">
               정보 수정
             </button>
           </span>

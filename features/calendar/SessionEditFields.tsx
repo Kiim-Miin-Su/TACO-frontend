@@ -138,11 +138,12 @@ export function SessionEditFields({
         </Field>
       )}
       {!valid && <p className="text-[12px]" style={{ color: "var(--color-danger)" }}>종료 시각이 시작보다 빠를 수 없습니다.</p>}
-      <div className="flex justify-between gap-2 pt-1">
+      {/* [QA 2026-07-03] compact(우측 패널 w-64)에서 삭제/취소/저장 3버튼이 넘치던 오버플로 — flex-wrap 허용 */}
+      <div className="flex justify-between gap-2 pt-1 flex-wrap">
         {onDelete ? (
           <button className="btn btn-sm" style={{ color: "var(--color-danger)" }} onClick={onDelete}>삭제</button>
         ) : <span />}
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
           <button className={compact ? "btn btn-sm" : "btn"} onClick={onCancel}>취소</button>
           <button
             className={`${compact ? "btn btn-sm" : "btn"} btn-primary`}

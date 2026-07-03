@@ -143,7 +143,8 @@ export function SessionDetailPanel({
           <dt className="text-fg-muted">메모</dt>
           <dd className="whitespace-pre-wrap">{row.memo ? row.memo : <span className="text-fg-subtle">—</span>}</dd>
         </dl>
-        <div className="flex justify-between gap-2">
+        {/* [QA 2026-07-03] 좁은 우측 패널(w-64)에서 버튼 2개가 카드 밖으로 밀리던 오버플로 — flex-wrap 허용 */}
+        <div className="flex justify-between gap-2 flex-wrap">
           {canEdit ? (
             <button className="btn btn-sm btn-primary" onClick={() => setEditing(true)}>
               편집 — 모든 항목
