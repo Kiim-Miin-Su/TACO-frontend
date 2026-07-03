@@ -11,9 +11,13 @@ import type { SchedulePatchBody } from "@/lib/api";
 import { WEEKDAYS_KO as WD } from "@/lib/domain/schedule";
 import { INSTRUCTOR_ATT_LABEL, STATUS_LABEL, isGroupSession } from "@/lib/domain/lantiv";
 import { SessionEditFields } from "./SessionEditFields";
+// [피드백 2026-07-03] 스케줄 선택 시 참여 학생·강사 정보 동시 표시 — 캐시 공유 훅(중복 fetch 0)
+import { useStudents, useInstructors } from "@/lib/queries";
+import { CountryBadge } from "./CountryInput";
+import { STUDENT_STATUS_LABEL } from "@/lib/domain/students";
 
 export function SessionDetailPanel({
-  row, rooms, instructors, canEdit, colorOf, onPatch, onOpenModal, onPickStudent,
+  row, rooms, instructors, canEdit, colorOf, onPatch, onOpenModal, onPickStudent, onPickInstructor,
 }: {
   row: ScheduleRow | null;
   rooms: Room[];
@@ -23,7 +27,11 @@ export function SessionDetailPanel({
   onPatch: (r: ScheduleRow, patch: SchedulePatchBody, label: string) => void;
   onOpenModal: (r: ScheduleRow) => void;
   onPickStudent?: (id: number, name: string) => void; // 학생명 클릭 → 유저 상세·편집(피드백 2026-07-03 #2)
+  onPickInstructor?: (id: number, name: string) => void; // 강사 클릭 → 강사 개인 뷰
 }) {
+  // 참여자 정보(피드백 2026-07-03): 세션의 학생(국가·상태·학년)·강사(담당 과목) 요약을 함께 표시.
+  const { data: allStudents = [] } = useStudents();
+  const { data: allInstructors = [] } = useInstructors();
   // 편집 모드(TBO-10 #3): DetailModal과 동일한 SessionEditFields 공통 폼 — 모든 input 편집 가능.
   const [editing, setEditing] = useState(false);
   useEffect(() => setEditing(false), [row?.id]); // 선택 세션 변경 시 보기 모드로
@@ -74,23 +82,50 @@ export function SessionDetailPanel({
           <dt className="text-fg-muted">과목</dt>
           <dd>{row.subjectName}</dd>
           <dt className="text-fg-muted">강사</dt>
-          <dd>{row.instructorName}</dd>
-          <dt className="text-fg-muted">학생</dt>
           <dd>
-            {/* 학생명 클릭 = 우측 유저 상세에서 국가(출국/입국)·상태(휴원 등) 즉시 수정(피드백 2026-07-03) */}
+            <button
+              className="text-accent hover:underline"
+              title={`${row.instructorName} 개인 스케줄 보기`}
+              onClick={() => onPickInstructor?.(Number(row.instructorId), row.instructorName)}
+            >
+              {row.instructorName}
+            </button>
+            {(() => {
+              const inst = allInstructors.find((i) => Number(i.id) === Number(row.instructorId));
+              return inst?.subjectName ? <span className="ml-1 text-[11px] text-fg-subtle">{inst.subjectName}</span> : null;
+            })()}
+          </dd>
+          <dt className="text-fg-muted">학생</dt>
+          <dd className="space-y-0.5">
+            {/* 학생명 클릭 = 우측 유저 상세에서 국가(출국/입국)·상태(휴원 등) 즉시 수정(피드백 2026-07-03)
+                + 국기·상태·학년 미니 정보 동시 표시(CountryBadge·STUDENT_STATUS_LABEL 단일 소스) */}
             {row.studentNames?.length
-              ? row.studentNames.map((n, i) => (
-                  <button
-                    key={`${n}${i}`}
-                    className="text-accent hover:underline mr-1"
-                    title={`${n} 상세·정보 수정`}
-                    onClick={() => onPickStudent?.(Number((row.studentIds ?? [])[i]), n)}
-                  >
-                    {n}{i < (row.studentNames?.length ?? 0) - 1 ? "," : ""}
-                  </button>
-                ))
+              ? row.studentNames.map((n, i) => {
+                  const sid = Number((row.studentIds ?? [])[i]);
+                  const st = allStudents.find((x) => Number(x.id) === sid);
+                  return (
+                    <div key={`${n}${i}`} className="flex items-center gap-1.5">
+                      <button
+                        className="text-accent hover:underline"
+                        title={`${n} 상세·정보 수정`}
+                        onClick={() => onPickStudent?.(sid, n)}
+                      >
+                        {n}
+                      </button>
+                      {st && (
+                        <span className="text-[11px] text-fg-subtle inline-flex items-center gap-1">
+                          <CountryBadge code={st.country} />
+                          {st.grade != null && <span>{st.grade}학년</span>}
+                          <span style={{ color: st.status !== "active" ? "var(--color-attention)" : undefined }}>
+                            {STUDENT_STATUS_LABEL[st.status] ?? st.status}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  );
+                })
               : "—"}
-            {isGroupSession(row) && <span className="ml-1 text-[11px] text-fg-subtle">(그룹)</span>}
+            {isGroupSession(row) && <span className="text-[11px] text-fg-subtle">(그룹)</span>}
           </dd>
           <dt className="text-fg-muted">강사출결</dt>
           <dd>{row.instructorAttendance ? INSTRUCTOR_ATT_LABEL[row.instructorAttendance] : "—"}</dd>

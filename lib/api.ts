@@ -146,8 +146,8 @@ export type SignupBody = { webId: string; name: string; email: string; password:
 export type SignupResult = { ok: boolean; message: string; account: { id: number; webId: string; name: string; role: string; status: string }; devVerifyLink?: string };
 export type PendingAccount = { id: number; webId: string; name: string; email: string; role: string; status: string; emailVerified: boolean; createdAt: string };
 
-const authHeader = (token: string) => ({ headers: { Authorization: `Bearer ${token}` } });
-
+// [통신 감사 2026-07-03] Authorization은 요청 인터셉터(getToken)가 전 요청에 단일 부착 —
+//  이전의 수동 authHeader(token)는 인터셉터가 덮어써 사실상 무시되던 이중 소스라 제거(통일).
 export const api = {
   health: () => http.get<{ status: string; service: string; ts: string }>("/health").then((r) => r.data),
   auth: {
@@ -159,14 +159,14 @@ export const api = {
     verifyEmail: (token: string) =>
       http.get<{ ok: boolean; message: string }>("/auth/verify-email", { params: { token } }).then((r) => r.data),
     // 토큰 검증(서버에서 claims 반환)
-    me: (token: string) =>
-      http.get<{ sub: number; name: string; roles: string[] }>("/auth/me", authHeader(token)).then((r) => r.data),
+    me: () =>
+      http.get<{ sub: number; name: string; roles: string[] }>("/auth/me").then((r) => r.data),
     // 대표(super_admin) 전용 — 승인 대기 목록·승인·반려
-    pending: (token: string) => http.get<PendingAccount[]>("/auth/pending", authHeader(token)).then((r) => r.data),
-    approve: (token: string, id: number, role?: string) =>
-      http.post<PendingAccount>(`/auth/approve/${id}`, { role }, authHeader(token)).then((r) => r.data),
-    reject: (token: string, id: number) =>
-      http.post<PendingAccount>(`/auth/reject/${id}`, {}, authHeader(token)).then((r) => r.data),
+    pending: () => http.get<PendingAccount[]>("/auth/pending").then((r) => r.data),
+    approve: (id: number, role?: string) =>
+      http.post<PendingAccount>(`/auth/approve/${id}`, { role }).then((r) => r.data),
+    reject: (id: number) =>
+      http.post<PendingAccount>(`/auth/reject/${id}`, {}).then((r) => r.data),
   },
   students: {
     list: () => http.get<Student[]>("/students").then((r) => r.data),

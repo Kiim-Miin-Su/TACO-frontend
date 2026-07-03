@@ -36,7 +36,7 @@ function MemberApprovals() {
   const load = useCallback(async () => {
     const token = getToken();
     if (!token) return;
-    try { setRows(await api.auth.pending(token)); } catch { setMsg('목록을 불러오지 못했습니다. (대표 권한 필요)'); }
+    try { setRows(await api.auth.pending()); } catch { setMsg('목록을 불러오지 못했습니다. (대표 권한 필요)'); }
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -44,8 +44,8 @@ function MemberApprovals() {
     const token = getToken();
     if (!token) return;
     try {
-      if (action === 'approve') await api.auth.approve(token, id, roleSel[id]);
-      else await api.auth.reject(token, id);
+      if (action === 'approve') await api.auth.approve(id, roleSel[id]);
+      else await api.auth.reject(id);
       setMsg(action === 'approve' ? '승인했습니다.' : '반려했습니다.');
       await load();
     } catch { setMsg('처리 실패'); }

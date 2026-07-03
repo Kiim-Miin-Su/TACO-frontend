@@ -15,7 +15,7 @@ const GROUP_LABEL: Record<Exclude<ListGroupBy, "none">, string> = {
 };
 
 export function SessionListPanel({
-  rows, groupBy, groupDim, onToggleGroup, selectedId, onPick, colorOf,
+  rows, groupBy, groupDim, onToggleGroup, selectedId, onPick, colorOf, emptyHint,
 }: {
   rows: ScheduleRow[];
   groupBy: ListGroupBy; // 'none'(날짜순) 또는 groupDim
@@ -24,6 +24,7 @@ export function SessionListPanel({
   selectedId: number | null;
   onPick: (r: ScheduleRow) => void;
   colorOf: (r: ScheduleRow) => string;
+  emptyHint?: string; // 빈 사유 맥락(기간·개인 필터) — '왜 없지?' 혼동 방지(UX QA 2026-07-03)
 }) {
   const groups = useMemo(() => groupSessions(rows, groupBy), [rows, groupBy]);
   return (
@@ -83,7 +84,12 @@ export function SessionListPanel({
             })}
           </div>
         ))}
-        {!rows.length && <div className="text-[12px] text-fg-subtle text-center py-6">필터에 맞는 수업 없음</div>}
+        {!rows.length && (
+          <div className="text-[12px] text-fg-subtle text-center py-6">
+            필터에 맞는 수업 없음
+            {emptyHint && <div className="mt-1 text-[11px]">{emptyHint}</div>}
+          </div>
+        )}
       </div>
     </div>
   );
