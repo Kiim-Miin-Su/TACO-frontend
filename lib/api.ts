@@ -115,7 +115,12 @@ export const http = axios.create({
 // 모든 API 요청/응답/에러를 한 곳에서 로깅 — 문제 발생 시 콘솔에서 어떤 호출이 실패했는지 즉시 확인.
 // (브라우저 콘솔에서 [TACO:api] 로 필터. 끄려면 localStorage taco_debug="0")
 const apiLog = logger("api");
+// [R3 2026-07-06] network 계측 — 요청 개수·시작 시각(응답에서 duration 산출). PII·바디 미기록.
+let reqSeq = 0;
+type MetaConfig = { meta?: { seq: number; start: number } };
+
 http.interceptors.request.use((cfg) => {
+  (cfg as unknown as MetaConfig).meta = { seq: ++reqSeq, start: Date.now() };
   // 로그인 토큰이 있으면 모든 요청에 Bearer로 첨부 → 백엔드 RBAC 가드 대비(권한 체크 일관).
   const token = getToken();
   if (token) cfg.headers.Authorization = `Bearer ${token}`;
@@ -124,12 +129,15 @@ http.interceptors.request.use((cfg) => {
 });
 http.interceptors.response.use(
   (res) => {
-    apiLog.debug(`← ${res.status} ${res.config.url}`);
+    // [R3] category=http 계측: #요청번호 · duration(ms) — "요청 개수·요청 시간·반환 시간"
+    const meta = (res.config as unknown as MetaConfig).meta;
+    apiLog.debug(`← ${res.status} ${res.config.method?.toUpperCase() ?? ""} ${res.config.url} ${meta ? `${Date.now() - meta.start}ms #${meta.seq}` : ""}`);
     return res;
   },
   (err) => {
     const status = err?.response?.status ?? "ERR";
-    apiLog.error(`✗ ${status} ${err?.config?.method?.toUpperCase() ?? ""} ${err?.config?.url ?? ""}`, err?.response?.data ?? err?.message);
+    const meta = (err?.config as unknown as MetaConfig)?.meta;
+    apiLog.error(`✗ ${status} ${err?.config?.method?.toUpperCase() ?? ""} ${err?.config?.url ?? ""} ${meta ? `${Date.now() - meta.start}ms #${meta.seq}` : ""}`, err?.response?.data ?? err?.message);
     // 401(토큰 없음/만료): 조용히 실패하지 않고 로그인으로 유도 — 세션이 끊긴 걸 사용자에게 알림.
     // 단, 로그인 시도 자체의 401(잘못된 자격)이나 공개 경로에선 리다이렉트하지 않음.
     if (

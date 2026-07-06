@@ -36,6 +36,11 @@ export function logger(ns: string): Logger {
   const make = (level: Level) => (...args: unknown[]) => {
     if (ORDER[level] < minLevel()) return;
     const fn = level === "debug" ? console.debug : level === "info" ? console.info : level === "warn" ? console.warn : console.error;
+    // [R3 2026-07-06] 운영 = JSON 라인(카테고리(ns)·레벨별 수집 파싱용 — 종류별 저장), 개발 = 컬러 한 줄.
+    if (process.env.NODE_ENV === "production") {
+      fn(JSON.stringify({ t: new Date().toISOString(), category: ns, level, msg: args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ") }));
+      return;
+    }
     fn(`%c[TACO:${ns}]`, COLOR[level], ...args);
   };
   return { debug: make("debug"), info: make("info"), warn: make("warn"), error: make("error") };
