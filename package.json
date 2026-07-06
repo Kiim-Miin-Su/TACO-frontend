@@ -35,5 +35,8 @@
   },
   "overrides": {
     "postcss": "^8.5.10"
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-linux-arm64-gnu": "1.1.4"
   }
 }
