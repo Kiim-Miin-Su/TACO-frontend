@@ -13,7 +13,10 @@ import type { AccountRole } from '@/types';
 export default function Topbar() {
   const router = useRouter();
   const currentRole = useTacoStore((s) => s.currentRole);
-  const setCurrentRole = useTacoStore((s) => s.setCurrentRole);
+  // [임시/실험용] dev 역할 토글 — 아래 주석/JSX 참조.
+  const overrideRole = useTacoStore((s) => s.overrideRole);
+  const clearRoleOverride = useTacoStore((s) => s.clearRoleOverride);
+  const devRoleOverride = useTacoStore((s) => s.devRoleOverride);
 
   // 알림 항목 — 서버 데이터는 TanStack Query(useAppData) 단일 소스에서 조립.
   const { items, count } = buildTasks({ ...useAppData(), currentRole }, currentRole);
@@ -41,20 +44,32 @@ export default function Topbar() {
         <input className="input pl-8" placeholder="학생, 등록, 결제 검색…" aria-label="검색" />
       </div>
       <div className="flex-1" />
-      {/* 로그인 상태면 역할 전환(데모) 숨기고 로그아웃 노출, 비로그인(데모)면 역할 전환 노출 */}
-      {loggedIn ? (
+      {/* ─────────────────────────────────────────────────────────────────────
+          [임시/실험용 — 나중에 제거] dev 역할 전환 토글.
+          로그인 여부와 무관하게 항상 노출 → 로그인 상태에서도 강사·매니저 등 화면을 즉시 실험.
+          선택 시 overrideRole()이 currentRole을 바꾸고 devRoleOverride=true로 잠가(AppShell 재하이드레이션 스킵)
+          페이지를 이동해도 유지된다. '복귀'로 실제(JWT) 역할로 되돌린다.
+          ⚠ 프론트 UI 게이팅만 바뀜 — 백엔드 RBAC는 실제 로그인 JWT 기준(상세: lib/store.ts 주석).
+          ───────────────────────────────────────────────────────────────────── */}
+      <label
+        className="flex items-center gap-1.5 text-caption text-fg-muted"
+        title="실험용: 이 화면의 역할만 바꿉니다. 백엔드 권한은 실제 로그인 계정 기준입니다."
+      >
+        <span className="badge badge-neutral">실험</span>
+        역할
+        <select
+          className="input w-28 h-8"
+          value={currentRole}
+          onChange={(e) => overrideRole(e.target.value as AccountRole)}
+        >
+          {ROLES.map((r) => (<option key={r} value={r}>{roleLabel[r]}</option>))}
+        </select>
+      </label>
+      {devRoleOverride && (
+        <button className="btn btn-sm" onClick={clearRoleOverride} title="실제 로그인 역할로 되돌리기">복귀</button>
+      )}
+      {loggedIn && (
         <button className="btn btn-sm" onClick={logout} title="로그아웃">로그아웃</button>
-      ) : (
-        <label className="flex items-center gap-1.5 text-caption text-fg-muted">
-          역할
-          <select
-            className="input w-32 h-8"
-            value={currentRole}
-            onChange={(e) => setCurrentRole(e.target.value as AccountRole)}
-          >
-            {ROLES.map((r) => (<option key={r} value={r}>{roleLabel[r]}</option>))}
-          </select>
-        </label>
       )}
 
       {/* 알림 — 앱 알림식 빨간 원 배지(대기 task 수) + 클릭 시 목록 팝오버 */}

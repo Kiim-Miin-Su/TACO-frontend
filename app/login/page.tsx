@@ -18,6 +18,7 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const setCurrentRole = useTacoStore((s) => s.setCurrentRole);
+  const clearRoleOverride = useTacoStore((s) => s.clearRoleOverride); // [임시/실험용] 새 로그인 시 오버라이드 해제
   const [webId, setWebId] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -31,6 +32,7 @@ function LoginForm() {
     try {
       const res = await api.auth.login({ webId: webId.trim(), password });
       setToken(res.accessToken);
+      clearRoleOverride(); // [임시/실험용] 이전 세션의 역할 오버라이드 무시하고 실제 계정 역할로
       setCurrentRole(res.account.role as AccountRole);
       router.replace(params.get("redirect") || "/");
     } catch (e) {
