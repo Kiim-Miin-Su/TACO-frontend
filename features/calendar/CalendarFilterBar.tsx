@@ -6,7 +6,7 @@
 //  - 리소스 후보 = GET /schedule/resources(강사·학생) + GET /rooms(강의실) — FK 유니버스와 동일.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Room, ScheduleResources } from "@/types";
-import { MAX_SPLIT, STATUS_FILTERS, STATUS_FILTER_LABEL, KIND_FILTERS, KIND_FILTER_LABEL, type StatusFilter, type SessionKindFilter } from "@/lib/domain/lantiv";
+import { MAX_SPLIT, STATUS_FILTERS, STATUS_FILTER_LABEL, MODE_FILTERS, MODE_FILTER_LABEL, type StatusFilter, type SessionModeFilter } from "@/lib/domain/lantiv";
 
 export type FilterDim = "instructor" | "student" | "room";
 export type ColorBy = "subject" | "instructor" | "room" | "student";
@@ -156,7 +156,7 @@ export function CalendarFilterBar({
   fInstructors, fStudents, fRooms, onToggleId, onClearDim,
   subjectOptions, fSubjects, onToggleSubject, onClearSubjects,
   fStatuses, onToggleStatus,
-  fKinds, onToggleKind,
+  fModes, onToggleMode,
   groupOnly, onGroupOnly,
   period, onPeriod,
   pickedDates, onPickDate, onUnpickDate, onClearPicked,
@@ -182,8 +182,9 @@ export function CalendarFilterBar({
   onClearSubjects: () => void;
   fStatuses: Set<StatusFilter>;
   onToggleStatus: (s: StatusFilter) => void;
-  fKinds: Set<SessionKindFilter>;
-  onToggleKind: (k: SessionKindFilter) => void;
+  // [오류2 2026-07-06] 수업방식(대면/비대면) — 구 '종류'(kind) 필터 대체(kind는 과목 유사 옵션으로)
+  fModes: Set<SessionModeFilter>;
+  onToggleMode: (k: SessionModeFilter) => void;
   groupOnly: boolean;
   onGroupOnly: (v: boolean) => void;
   period: Period | null;
@@ -232,14 +233,15 @@ export function CalendarFilterBar({
         ))}
         {/* [일관성 2026-07-06] 과목·상태·종류·유형 전부 리소스 팝오버와 같은 문법(버튼+▾+체크) */}
         <OptionPick icon="📚" label="과목" options={subjectOptions.map((s) => ({ value: s, label: s }))} picked={fSubjects} onToggle={onToggleSubject} onClear={onClearSubjects} />
-        <OptionPick icon="✅" label="상태" title="출석/지각/결강/보강 (복수=합집합·빈 선택=전체)"
+        <OptionPick icon="✅" label="상태" title="예정/출석/지각/결강/보강 (복수=합집합·빈 선택=전체)"
           options={STATUS_FILTERS.map((s) => ({ value: s, label: STATUS_FILTER_LABEL[s] }))}
           picked={fStatuses as unknown as Set<string>} onToggle={(v) => onToggleStatus(v as StatusFilter)}
           onClear={() => STATUS_FILTERS.forEach((s) => fStatuses.has(s) && onToggleStatus(s))} />
-        <OptionPick icon="🏷️" label="종류" title="일반/진단고사/상담 (복수=합집합·빈 선택=전체)"
-          options={KIND_FILTERS.map((k) => ({ value: k, label: KIND_FILTER_LABEL[k] }))}
-          picked={fKinds as unknown as Set<string>} onToggle={(v) => onToggleKind(v as SessionKindFilter)}
-          onClear={() => KIND_FILTERS.forEach((k) => fKinds.has(k) && onToggleKind(k))} />
+        {/* [오류2] 수업방식(대면/비대면) — 구 '종류' 자리. 진단고사/상담은 과목 팝오버로 이동 */}
+        <OptionPick icon="🖥️" label="수업방식" title="대면/비대면 (복수=합집합·빈 선택=전체)"
+          options={MODE_FILTERS.map((k) => ({ value: k, label: MODE_FILTER_LABEL[k] }))}
+          picked={fModes as unknown as Set<string>} onToggle={(v) => onToggleMode(v as SessionModeFilter)}
+          onClear={() => MODE_FILTERS.forEach((k) => fModes.has(k) && onToggleMode(k))} />
         <OptionPick icon="👥" label="유형" title="그룹 수업만 보기(해제=1:1·그룹 모두)"
           options={[{ value: "group", label: "그룹 수업만(2명 이상)" }]}
           picked={groupOnly ? new Set(["group"]) : new Set()}

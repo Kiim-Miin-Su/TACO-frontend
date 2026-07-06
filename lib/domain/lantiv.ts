@@ -26,10 +26,13 @@ export const INSTRUCTOR_ATT_LABEL: Record<string, string> = {
   makeup: '보강',
 };
 
-// ── 상태 필터 4종(Lantiv 스펙): 출석=문제없음 · 지각=강사|학생 · 결강=강사|학생·취소 · 보강 ──
-export type StatusFilter = 'attended' | 'late' | 'absence' | 'makeup';
-export const STATUS_FILTERS: StatusFilter[] = ['attended', 'late', 'absence', 'makeup'];
+// ── 상태 필터 5종: 예정 · 출석=문제없음 · 지각=강사|학생 · 결강=강사|학생·취소 · 보강 ──
+//  [오류1 수정 2026-07-06] '예정'(scheduled) 부재로 미래 세션의 상태 집합이 ∅ → 상태 필터를
+//  하나라도 선택하면 미래 수업이 전부 사라졌음(합집합인데 모집단에 없던 것). 어휘 보강으로 해소.
+export type StatusFilter = 'scheduled' | 'attended' | 'late' | 'absence' | 'makeup';
+export const STATUS_FILTERS: StatusFilter[] = ['scheduled', 'attended', 'late', 'absence', 'makeup'];
 export const STATUS_FILTER_LABEL: Record<StatusFilter, string> = {
+  scheduled: '예정',
   attended: '출석',
   late: '지각',
   absence: '결강',
@@ -53,6 +56,8 @@ export function sessionStates(row: StateInput, studentAtt: Attendance[] = []): S
   if (makeup) out.add('makeup');
   // 출석 = 실제 진행(held)됐고 지각·결강 이슈가 없음("문제 없음")
   if (row.status === 'held' && !late && !absent) out.add('attended');
+  // [오류1] 예정 = 아직 진행 전(scheduled)이고 이슈 없음 — 상태 모집단 공백 방지
+  if (row.status === 'scheduled' && !late && !absent && !makeup) out.add('scheduled');
   return out;
 }
 
@@ -298,6 +303,30 @@ export function rowInResource(
 export type SessionKindFilter = 'class' | 'level_test' | 'counsel';
 export const KIND_FILTERS: SessionKindFilter[] = ['class', 'level_test', 'counsel'];
 export const KIND_FILTER_LABEL: Record<SessionKindFilter, string> = { class: '일반', level_test: '진단고사', counsel: '상담' };
+
+// ── [오류2 2026-07-06] 수업방식(대면/비대면) 필터 — 구 '종류' 필터 카테고리 대체 ──
+//  kind(진단고사/상담)는 과목 필터의 유사 과목 옵션(SUBJECT_KIND_OPTIONS)으로 이동.
+//  mode는 contracts v0.1.16 class_sessions.mode(미지정=in_person 하위호환).
+export type SessionModeFilter = 'in_person' | 'online';
+export const MODE_FILTERS: SessionModeFilter[] = ['in_person', 'online'];
+export const MODE_FILTER_LABEL: Record<SessionModeFilter, string> = { in_person: '대면', online: '비대면' };
+
+//  과목 필터에 편입되는 종류 유사 옵션 — 실제 과목명과 구분되도록 라벨 고정.
+//  (주의: 같은 이름의 실제 과목이 생기면 충돌 — 과목명 정책상 '진단고사'/'상담'은 예약어로 간주)
+export const SUBJECT_KIND_OPTIONS: { value: string; kind: SessionKindFilter }[] = [
+  { value: '진단고사', kind: 'level_test' },
+  { value: '상담', kind: 'counsel' },
+];
+/** 과목 필터 매칭 — 실제 과목명 합집합 + 종류 유사 옵션(진단고사/상담) 합집합. */
+export function matchesSubjectFilter(
+  r: Pick<ScheduleRow, 'subjectName' | 'kind'>,
+  fSubjects: Set<string>,
+): boolean {
+  if (!fSubjects.size) return true;
+  if (fSubjects.has(r.subjectName)) return true;
+  const kind = (r.kind ?? 'class') as SessionKindFilter;
+  return SUBJECT_KIND_OPTIONS.some((o) => o.kind === kind && fSubjects.has(o.value));
+}
 
 // ── [R2 2026-07-06] 스플릿 컴팩트 단계형 밀도 — 단일 함수(TBO-16 #1 마감) ──
 //  하루 열 폭은 COL_MIN 고정, 안을 인원수로 서브분할(subW = COL_MIN/perDay).

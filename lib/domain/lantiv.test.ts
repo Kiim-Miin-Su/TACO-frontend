@@ -66,8 +66,17 @@ describe('sessionStates — 출석/지각/결강/보강 판정(status + 강사·
   it('복합 상태: 보강 세션에 학생 지각 → {late, makeup}', () => {
     expect(sessionStates(row({ status: 'makeup' }), [att('late')])).toEqual(new Set(['late', 'makeup']));
   });
-  it('scheduled(아직 안 진행) → 어떤 상태에도 속하지 않음', () => {
-    expect(sessionStates(row({ status: 'scheduled' })).size).toBe(0);
+  // [오류1 2026-07-06] 구 규칙(scheduled=∅)은 상태 필터 선택 시 미래 세션이 전부 사라지는 원인이었음.
+  it("scheduled(아직 안 진행) → {'scheduled'} — 상태 모집단 공백 방지", () => {
+    expect(sessionStates(row({ status: 'scheduled' }))).toEqual(new Set(['scheduled']));
+  });
+  it('scheduled인데 학생 지각 기록 → 예정이 아니라 {late}', () => {
+    expect(sessionStates(row({ status: 'scheduled' }), [att('late')])).toEqual(new Set(['late']));
+  });
+  it("[회귀] 상태 5종 전부 선택(합집합) → scheduled 세션도 통과(과거 미렌더 버그)", () => {
+    const all = new Set<StatusFilter>(['scheduled', 'attended', 'late', 'absence', 'makeup']);
+    expect(matchesStatusFilter(row({ status: 'scheduled' }), [], all)).toBe(true);
+    expect(matchesStatusFilter(row(), [], all)).toBe(true); // held(문제없음)도 통과
   });
 });
 
