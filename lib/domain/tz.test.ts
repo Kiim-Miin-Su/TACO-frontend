@@ -154,6 +154,66 @@ describe('searchCountries — 자동완성(한글·영문·코드)', () => {
   });
 });
 
+// ────────────────────────────────────────────────────────────────
+// [R-1b 2026-07-06] 🔴 F1·F3·F4 회귀 — docs/code-review-tz-2026-07-06.md
+import { kstPatchTimes } from './tz';
+
+describe('[R-1b] F1 — DST 전환일 tzLocalToKst 2-패스 보정(왕복 무손실)', () => {
+  it('뉴욕 봄 전환일(2026-03-08, EST→EDT): 현지 03:30 = KST 16:30 — 단일 패스 오답(17:30) 회귀', () => {
+    expect(tzLocalToKst('2026-03-08', '03:30', 'America/New_York')).toEqual({ date: '2026-03-08', time: '16:30' });
+  });
+  it('뉴욕 봄 전환일 왕복: KST 17:00 → NY 04:00 → 다시 KST 17:00 (같은 자리 재저장 시 +1h 이동하던 오염)', () => {
+    const r = shiftRowToTz(row({ sessionDate: '2026-03-08', startTime: '17:00', endTime: '18:30' }), 'America/New_York');
+    expect(r.startTime).toBe('04:00'); // EDT −13h
+    expect(tzLocalToKst(r.sessionDate, r.startTime!, 'America/New_York')).toEqual({ date: '2026-03-08', time: '17:00' });
+  });
+  it('뉴욕 가을 전환일(2026-11-01, EDT→EST) 왕복: 전환 전(00:30 EDT)·후(03:30 EST) 모두 무손실', () => {
+    const before = shiftRowToTz(row({ sessionDate: '2026-11-01', startTime: '13:30', endTime: '14:30' }), 'America/New_York');
+    expect(before.startTime).toBe('00:30'); // 아직 EDT(−13h)
+    expect(tzLocalToKst(before.sessionDate, before.startTime!, 'America/New_York')).toEqual({ date: '2026-11-01', time: '13:30' });
+    const after = shiftRowToTz(row({ sessionDate: '2026-11-01', startTime: '17:30', endTime: '18:30' }), 'America/New_York');
+    expect(after.startTime).toBe('03:30'); // EST 복귀(−14h)
+    expect(tzLocalToKst(after.sessionDate, after.startTime!, 'America/New_York')).toEqual({ date: '2026-11-01', time: '17:30' });
+  });
+  it('시드니 전환일(2026-04-05, AEDT→AEST) 왕복 무손실', () => {
+    const r = shiftRowToTz(row({ sessionDate: '2026-04-05', startTime: '03:00', endTime: '04:00' }), 'Australia/Sydney');
+    expect(r.startTime).toBe('04:00'); // AEST +1h(전환 후)
+    expect(tzLocalToKst(r.sessionDate, r.startTime!, 'Australia/Sydney')).toEqual({ date: '2026-04-05', time: '03:00' });
+  });
+});
+
+describe('[R-1b] F3 — kstPatchTimes: 자정 크로스 클램프(24:00)가 저장 패치로 새지 않음', () => {
+  it('KST tz는 항등(참조 동일 — KST 컬럼 회귀 없음)', () => {
+    const p = { sessionDate: '2026-07-01', startTime: '16:00', endTime: '17:30', memo: 'x' };
+    expect(kstPatchTimes(p, KST_TZ)).toBe(p);
+  });
+  it('평시 변환: 뉴욕 03:00–04:30 → KST 16:00–17:30(시작 기준 날짜 확정)', () => {
+    expect(kstPatchTimes({ sessionDate: '2026-07-01', startTime: '03:00', endTime: '04:30' }, 'America/New_York'))
+      .toEqual({ sessionDate: '2026-07-01', startTime: '16:00', endTime: '17:30' });
+  });
+  it("클램프 '24:00'은 endTime을 패치에서 제거 — BE가 duration 보존 재계산(KST 종료 조용한 단축 차단)", () => {
+    // KST 수 12:30–14:00 = 뉴욕 화 23:30–24:00(+1일 ~01:00). 메모만 고치고 저장해도
+    // 이전엔 ke=tzLocalToKst('24:00')=KST 13:00으로 60분이 무경고 소실됐다(리뷰 F3 실측).
+    const out = kstPatchTimes({ sessionDate: '2026-06-30', startTime: '23:30', endTime: '24:00', memo: '메모만 수정' }, 'America/New_York');
+    expect(out.sessionDate).toBe('2026-07-01');
+    expect(out.startTime).toBe('12:30');
+    expect('endTime' in out).toBe(false); // 클램프 값 저장 누출 차단
+    expect(out.memo).toBe('메모만 수정');
+  });
+  it("무효 '24:05'(TimeSelect가 24시를 표현 못 해 분만 바뀐 산물)도 크래시 없이 제거 — Date.parse NaN → RangeError 방지", () => {
+    const out = kstPatchTimes({ sessionDate: '2026-06-30', startTime: '23:30', endTime: '24:05' }, 'America/New_York');
+    expect(out.startTime).toBe('12:30');
+    expect('endTime' in out).toBe(false);
+  });
+});
+
+describe('[R-1b] F4 — shiftRowToTz 무효 저장값(NaN) 방어', () => {
+  it("endTime '25:00' 같은 무효 형식은 변환 포기·원본 반환(시차 그리드 렌더 크래시 방지 — 유입은 BE 400이 차단)", () => {
+    const bad = row({ startTime: '23:30', endTime: '25:00' });
+    expect(shiftRowToTz(bad, 'America/New_York')).toBe(bad);
+  });
+});
+
 // [버그수정 2026-07-06] 시차 가용/불가 → KST 자정 크로스 분할
 import { splitKstBand } from './tz';
 describe('splitKstBand — KST 자정 크로스 분할(시차 밴드 저장)', () => {

@@ -15,7 +15,7 @@ import {
   KIND_FILTERS, KIND_FILTER_LABEL, type SessionKindFilter } from "@/lib/domain/lantiv";
 import { useAttendance, useStudents, useEnrollments, useCourses, useCreateViewPreset, useScheduleRequests } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
-import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, type CountryInfo, type TzShiftedRow, splitKstBand } from "@/lib/domain/tz";
+import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, kstPatchTimes, type CountryInfo, type TzShiftedRow, splitKstBand } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
 import { CalendarViewTabs } from "./CalendarViewTabs";
 import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
@@ -50,14 +50,8 @@ const isCanceledStatus = (s?: string) => s === "canceled" || s === "no_show";
 
 const snap = (mm: number) => Math.round(mm / SNAP) * SNAP;
 
-// [이슈1] 편집/생성 패치의 현지 시각(sessionDate·startTime·endTime)을 KST 저장값으로 역변환.
-//  시작 시각 기준으로 KST 날짜 확정 — 저장은 항상 KST 단일 진실원(무결성).
-function kstPatchTimes<T extends { sessionDate?: string; startTime?: string; endTime?: string }>(patch: T, tz: string): T {
-  if (tz === KST_TZ || !patch.sessionDate || !patch.startTime) return patch;
-  const ks = tzLocalToKst(patch.sessionDate, patch.startTime, tz);
-  const ke = patch.endTime ? tzLocalToKst(patch.sessionDate, patch.endTime, tz) : undefined;
-  return { ...patch, sessionDate: ks.date, startTime: ks.time, ...(ke ? { endTime: ke.time } : {}) };
-}
+// [R-1b 2026-07-06] F3: kstPatchTimes는 lib/domain/tz로 이동(순수 함수·vitest 회귀) —
+//  자정 크로스 클램프 endTime('24:00')·무효값('24:05')이 저장 패치로 새지 않도록 방어 추가.
 
 // [이슈2] 시차 그리드 셀 좌표(현지 날짜 + 현지 분) → KST {date, startMin}. 드래그·리사이즈·붙여넣기가
 //  시차 뷰에서도 올바른 KST로 저장되도록 변환. tz 없으면(KST 컬럼) 그대로.
@@ -1071,6 +1065,9 @@ export function ScheduleCalendar() {
     setMoveDrag(null);
     if (!d || !d.moved) return;
     suppressClickRef.current = true;
+    // [R-1b 2026-07-06] F2: 드래그가 셀을 한 번도 못 맞히면(colKey 빈 값 — 그리드 밖 플릭 릴리즈) 커밋 스킵.
+    //  moveRef 초기 좌표는 표시 행(시차 컬럼=현지 벽시계)이라 그대로 커밋하면 로컬 좌표가 KST로 오염된다.
+    if (!d.colKey) return;
     // [이슈2] 시차 컬럼 드롭이면 현지(날짜·분)를 KST로 변환. 비교·저장은 항상 KST 원본 기준(무결성).
     const kst = tzCellToKst(d.date, d.start, d.tz);
     const orig = rows.find((x) => x.id === d.id) ?? d.row; // KST 원본(seriesId·비교용)
@@ -1093,13 +1090,14 @@ export function ScheduleCalendar() {
       newInstructor !== orig.instructorId ? "강사 재배정 및 이동" : `${fromMin(kst.startMin)}로 이동`,
     );
   };
-  const onEventDown = (e: React.PointerEvent, r: ScheduleRow) => {
+  const onEventDown = (e: React.PointerEvent, r: ScheduleRow, srcTz?: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const grab = ((e.clientY - rect.top) / HOUR_H) * 60;
     moveRef.current = {
       id: r.id, row: r, dur: r.durationMinutes, grab, startClientY: e.clientY, moved: false,
       colKey: "", date: r.sessionDate, roomId: r.roomId, start: startMinOf(r),
       copy: e.ctrlKey || e.metaKey, // Ctrl/⌘ 누른 채 드래그 = 복제
+      tz: srcTz, // [R-1b 2026-07-06] F2 이중 방어: 소스 컬럼 tz 시드 — 초기 좌표(현지 벽시계)의 해석 기준 명시
     };
     window.addEventListener("pointermove", onMovePointer);
     window.addEventListener("pointerup", onMoveUp, { once: true });
@@ -1551,7 +1549,7 @@ export function ScheduleCalendar() {
                               return (
                                 <div
                                   key={r.id}
-                                  onPointerDown={(e) => onEventDown(e, r)}
+                                  onPointerDown={(e) => onEventDown(e, r, colTz ? colTzc.tz : undefined)} // [R-1b 2026-07-06] F2 이중 방어
                                   onClick={(e) => { e.stopPropagation(); if (suppressClickRef.current) { suppressClickRef.current = false; return; } setSelEvent(r.id); setSelBand(null); setDetailId(r.id); }}
                                   onDoubleClick={(e) => { e.stopPropagation(); openEditor(r, colTz ? colTzc : null); }}
                                   title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${(r as TzShiftedRow).tzOverflowEnd ? ` · 자정 넘김(+1일 ~${(r as TzShiftedRow).tzOverflowEnd})` : ""}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 드래그=이동 · 더블클릭=상세`}

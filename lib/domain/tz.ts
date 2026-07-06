@@ -87,6 +87,10 @@ export function shiftRowToTz(row: ScheduleRow, tz: string): TzShiftedRow {
   // 종료 UTC: endTime이 있으면 그대로, 없으면 시작+진행시간. KST 저장값에서 endTime<startTime은
   // 자정 넘김(익일 종료) — duration 기반으로 보정(모듈로 래핑 없이 실제 시점 유지).
   const rawEndUtc = row.endTime != null ? kstToUtcMs(row.sessionDate, row.endTime) : startUtc + row.durationMinutes * 60_000;
+  // [R-1b 2026-07-06] F4(방어): 저장값이 '25:00' 등 무효 형식이면 Date.parse=NaN → utcToTzParts의
+  //  formatToParts(Invalid Date)가 RangeError로 시차 그리드 렌더를 죽임 — 변환을 포기하고 원본을
+  //  그대로 반환한다(크래시 방지·표시 강등). 유입 자체는 BE addMinutes [M3] 가드가 400으로 차단(e2e 회귀).
+  if (!Number.isFinite(startUtc) || !Number.isFinite(rawEndUtc)) return row;
   const endUtc = rawEndUtc <= startUtc ? startUtc + row.durationMinutes * 60_000 : rawEndUtc;
   const s = utcToTzParts(startUtc, tz);
   const e = utcToTzParts(endUtc, tz);
@@ -109,12 +113,19 @@ export function shiftRowsToTz(rows: ScheduleRow[], tz: string): TzShiftedRow[] {
 
 // 대상 tz의 로컬 벽시계(date, HH:mm)를 UTC epoch(ms)로 — 추정 후 오프셋 보정(DST 자동 반영).
 //  입력을 UTC로 가정한 뒤 그 순간의 tz 로컬과의 차이(오프셋)를 빼서 실제 UTC를 얻는다.
+// [R-1b 2026-07-06] F1: 단일 패스는 오프셋을 추정 시점(guessUtc)에서 1회만 읽어 DST 전환일에 1시간 오염
+//  (실측: NY 2026-03-08 03:30 → KST 17:30 오답, 정답 16:30 — 왕복 시 세션이 1시간 이동).
+//  → 표준 2-패스 보정: 1차 추정 시점의 오프셋으로 재계산해 shiftRowToTz(정방향)와 왕복 일치.
+//  (봄 전환 갭의 존재하지 않는 벽시계는 인접 유효 시각으로 수렴 — 입력 UI는 실존 표시값만 주므로 실사용 무해)
 function tzLocalToUtcMs(dateLocal: string, hhmm: string, tz: string): number {
   const guessUtc = Date.parse(`${dateLocal}T${hhmm}:00Z`);
-  const p = utcToTzParts(guessUtc, tz);
-  const back = Date.parse(`${p.date}T${fromMin(p.minutes)}:00Z`);
-  const offset = back - guessUtc; // tz로컬 − UTC
-  return guessUtc - offset;
+  let utc = guessUtc;
+  for (let i = 0; i < 2; i++) {
+    const p = utcToTzParts(utc, tz);
+    const back = Date.parse(`${p.date}T${fromMin(p.minutes)}:00Z`);
+    utc = guessUtc - (back - utc); // 현재 추정 시점의 오프셋(back−utc)으로 재보정
+  }
+  return utc;
 }
 
 /**
@@ -127,6 +138,26 @@ export function tzLocalToKst(dateLocal: string, hhmm: string, tz: string): { dat
   const utc = tzLocalToUtcMs(dateLocal, hhmm, tz);
   const k = utcToTzParts(utc, KST_TZ);
   return { date: k.date, time: fromMin(k.minutes) };
+}
+
+/**
+ * [이슈1] 편집/생성 패치의 현지 시각(sessionDate·startTime·endTime)을 KST 저장값으로 역변환.
+ *  시작 시각 기준으로 KST 날짜 확정 — 저장은 항상 KST 단일 진실원(무결성).
+ * [R-1b 2026-07-06] F3: ScheduleCalendar 로컬 함수를 순수 함수로 이동(vitest 회귀 대상) + 클램프 방어 추가.
+ *  자정 크로스 세션의 시차 표시는 endTime='24:00' 클램프(+tzOverflowEnd 배지)인데, 편집 모달 패치에
+ *  이 클램프 값이 그대로 실려 오면 tzLocalToKst('24:00')이 로컬 자정 기준으로 변환돼 KST 종료가 조용히
+ *  단축된다(실측: KST 12:30–14:00 → 12:30–13:00, 60분 소실). TimeSelect가 24시를 표현 못 해 생기는
+ *  '24:05' 같은 무효값은 Date.parse NaN → RangeError 크래시.
+ *  → endTime>'23:59'면 **endTime을 패치에서 제거**: 백엔드 mergeFields가 durationMinutes를 보존한 채
+ *  종료를 재계산하므로 시수·실제 종료가 원본 그대로 유지된다(저장 누출 차단 — 기존 검증 경로 유지).
+ */
+export function kstPatchTimes<T extends { sessionDate?: string; startTime?: string; endTime?: string }>(patch: T, tz: string): T {
+  if (!tz || tz === KST_TZ || !patch.sessionDate || !patch.startTime) return patch;
+  const ks = tzLocalToKst(patch.sessionDate, patch.startTime, tz);
+  const keTime = patch.endTime && patch.endTime <= '23:59' ? tzLocalToKst(patch.sessionDate, patch.endTime, tz).time : undefined;
+  const out = { ...patch, sessionDate: ks.date, startTime: ks.time, ...(keTime ? { endTime: keTime } : {}) };
+  if (patch.endTime && !keTime) delete (out as { endTime?: string }).endTime; // 클램프('24:00')·무효('24:05') 누출 차단
+  return out;
 }
 
 export type TzWindow = { startMin: number; endMin: number };
