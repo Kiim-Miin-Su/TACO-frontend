@@ -23,6 +23,30 @@ export const addMinutes = (hhmm: string, mins: number): string => {
 export const weekdayOf = (dateStr: string): number =>
   new Date(dateStr + 'T00:00:00Z').getUTCDay();
 
+// ── [R-9 2026-07-06] 자정 크로스 수업 정식 지원(옵션 B — 단일 세션 모델) ──
+//  세션은 1레코드·sessionDate=시작일(KST). 종료가 자정을 넘으면 BE가 endTime을 **저장하지 않고**
+//  durationMinutes로 파생한다('25:00' 같은 무효 HH:mm 금지). FE는 아래 두 헬퍼로 파생·표시(단일 소스).
+/** 세션 종료 분 — 시작일 00:00 기준(자정 크로스=1440 초과, 예: 23:00+120분=1500).
+ *  endTime 없음 → start+duration. endTime<start(익일 종료 입력) → +1440 래핑. */
+export const sessionEndMin = (r: { startTime?: string; endTime?: string; durationMinutes: number }): number => {
+  const s = toMin(r.startTime ?? '00:00');
+  if (!r.endTime) return s + r.durationMinutes;
+  const e = toMin(r.endTime);
+  return e < s ? e + 1440 : e;
+};
+/** 자정 크로스 잔여 종료(익일 벽시계 'HH:mm') — 크로스가 아니면 undefined(24:00 정각 종료 포함). */
+export const crossMidnightEnd = (r: { startTime?: string; endTime?: string; durationMinutes: number }): string | undefined => {
+  const e = sessionEndMin(r);
+  return e > 1440 ? fromMin(e - 1440) : undefined;
+};
+const addDaysISO_ = (dateStr: string, days: number): string => {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+const dayDiffDays = (a: string, b: string): number =>
+  Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86_400_000);
+
 /**
  * 특정 날짜에 유효한 가용/불가 블록 — 주기(weekday)+적용기간(effectiveFrom/To)+(선택)소유자 매칭.
  * [단일 소스 2026-07-03] 캘린더 밴드(선택 유저·스플릿 컬럼별)와 추천 엔진이 같은 규칙을 쓰도록 추출.
@@ -60,34 +84,48 @@ export type ConflictCtx = {
   enrolledCount?: number; // 후보 수업의 등록 인원(capacity 비교용)
 };
 
-/** 충돌 검사 — 강사/강의실 이중예약 · 불가시간(Block) · 강의실 capacity. 빈 배열=충돌 없음. */
+/** 충돌 검사 — 강사/강의실 이중예약 · 불가시간(Block) · 강의실 capacity. 빈 배열=충돌 없음.
+ *  [R-9] 자정 크로스 대응(BE conflict.util과 동일 규칙 1:1): 시작일 00:00 기준 절대 분 좌표로
+ *  ±1일 세션까지 비교(익일 스필 포함), 불가시간은 [시작일 잔여]+[익일 00:00~] 두 세그먼트 검사. */
 export function detectConflicts(cand: ConflictCandidate, ctx: ConflictCtx): Conflict[] {
   const out: Conflict[] = [];
-  const cStart = cand.startTime;
-  const cEnd = addMinutes(cand.startTime, cand.durationMinutes);
+  const cS = toMin(cand.startTime);
+  const cE = cS + cand.durationMinutes; // 자정 크로스면 1440 초과
 
-  // 1) 같은 날 기존 세션과의 이중예약(강사·강의실)
+  // 1) 기존 세션과의 이중예약(강사·강의실) — 인접일(±1일) 세션을 같은 분 좌표계로 비교
   for (const s of ctx.sessions) {
     if (s.id === cand.ignoreSessionId) continue;
     if (s.status === 'canceled' || s.status === 'no_show') continue; // 결강/취소는 점유 아님
-    if (s.sessionDate !== cand.sessionDate || !s.startTime) continue;
-    const sEnd = s.endTime ?? addMinutes(s.startTime, s.durationMinutes);
-    if (!overlaps(cStart, cEnd, s.startTime, sEnd)) continue;
+    if (!s.startTime) continue;
+    const dd = dayDiffDays(s.sessionDate, cand.sessionDate);
+    if (dd < -1 || dd > 1) continue; // 세션 상한 8h < 24h — 스필은 인접 1일까지만
+    const off = dd * 1440;
+    const sS = off + toMin(s.startTime);
+    const sE = off + sessionEndMin(s);
+    if (!(cS < sE && sS < cE)) continue;
     if (cand.instructorId != null && s.instructorId === cand.instructorId)
       out.push({ type: 'double_book', resource: 'instructor', resourceId: cand.instructorId, sessionId: s.id });
     if (cand.roomId != null && s.roomId === cand.roomId)
       out.push({ type: 'double_book', resource: 'room', resourceId: cand.roomId, sessionId: s.id });
   }
 
-  // 2) 불가시간(Block) 침범 — 강사/강의실
-  const wd = weekdayOf(cand.sessionDate);
-  for (const b of ctx.blocks ?? []) {
-    if (b.kind !== 'unavailable' || b.weekday !== wd) continue;
-    if (!overlaps(cStart, cEnd, b.startTime, b.endTime)) continue;
-    if (b.ownerType === 'instructor' && cand.instructorId === b.ownerId)
-      out.push({ type: 'unavailable', resource: 'instructor', resourceId: b.ownerId });
-    if (b.ownerType === 'room' && cand.roomId === b.ownerId)
-      out.push({ type: 'unavailable', resource: 'room', resourceId: b.ownerId });
+  // 2) 불가시간(Block) 침범 — 강사/강의실. 크로스 후보는 이틀 세그먼트로 각 날짜 요일 검사.
+  const segs = cE > 1440
+    ? [
+        { date: cand.sessionDate, s: cS, e: 1440 },
+        { date: addDaysISO_(cand.sessionDate, 1), s: 0, e: cE - 1440 },
+      ]
+    : [{ date: cand.sessionDate, s: cS, e: cE }];
+  for (const seg of segs) {
+    const wd = weekdayOf(seg.date);
+    for (const b of ctx.blocks ?? []) {
+      if (b.kind !== 'unavailable' || b.weekday !== wd) continue;
+      if (!(seg.s < toMin(b.endTime) && toMin(b.startTime) < seg.e)) continue;
+      if (b.ownerType === 'instructor' && cand.instructorId === b.ownerId)
+        out.push({ type: 'unavailable', resource: 'instructor', resourceId: b.ownerId });
+      if (b.ownerType === 'room' && cand.roomId === b.ownerId)
+        out.push({ type: 'unavailable', resource: 'room', resourceId: b.ownerId });
+    }
   }
 
   // 3) 강의실 capacity 초과

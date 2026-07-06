@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ClassSession, AvailabilityBlock } from '@/types';
-import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, recommendInstructorsForStudent, ownerWindows, blocksOnDate } from './schedule';
+import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, recommendInstructorsForStudent, ownerWindows, blocksOnDate, sessionEndMin, crossMidnightEnd } from './schedule';
 
 const ablock = (p: Partial<AvailabilityBlock>): AvailabilityBlock => ({
   id: 1, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '09:00', endTime: '12:00', ...p,
@@ -406,5 +406,50 @@ describe('blocksOnDate — 밴드·추천 공통 규칙(주기·적용기간·�
     expect(blocksOnDate(blocks, '2026-07-01', { type: 'student', id: 1 })).toHaveLength(0);
     expect(blocksOnDate(blocks, '2026-07-15', { type: 'student', id: 1 }).map((b) => b.id)).toEqual([3]);
     expect(blocksOnDate(blocks, '2026-07-01').map((b) => b.id)).toEqual([1, 2]);
+  });
+});
+
+// ── [R-9 2026-07-06] 자정 크로스 수업 정식 지원(옵션 B — 단일 세션·sessionDate=시작일) ──
+describe('[R-9] sessionEndMin/crossMidnightEnd — 크로스 종료 파생(단일 소스)', () => {
+  it('endTime 없음(BE 크로스 저장 규칙) → start+duration, 자정 초과 허용(23:00+120=1500)', () => {
+    expect(sessionEndMin({ startTime: '23:00', durationMinutes: 120 })).toBe(1500);
+    expect(sessionEndMin({ startTime: '16:00', durationMinutes: 90 })).toBe(1050);
+  });
+  it('endTime<start = 익일 종료(+1440 래핑) — 입력 해석 규칙과 동일', () => {
+    expect(sessionEndMin({ startTime: '23:00', endTime: '01:00', durationMinutes: 120 })).toBe(1500);
+    expect(sessionEndMin({ startTime: '16:00', endTime: '17:30', durationMinutes: 90 })).toBe(1050); // 평시 불변
+  });
+  it('crossMidnightEnd: 잔여 익일 벽시계 · 비크로스/24:00 정각 종료는 undefined', () => {
+    expect(crossMidnightEnd({ startTime: '23:00', durationMinutes: 120 })).toBe('01:00');
+    expect(crossMidnightEnd({ startTime: '16:00', endTime: '17:30', durationMinutes: 90 })).toBeUndefined();
+    expect(crossMidnightEnd({ startTime: '23:00', durationMinutes: 60 })).toBeUndefined(); // 정확히 24:00 종료 = 잔여 없음
+  });
+});
+
+describe('[R-9] detectConflicts — 자정 크로스 이틀 겹침(BE conflict.util과 동일 규칙 1:1)', () => {
+  // 6/29(월) 23:00 시작 120분 = 6/30(화) 01:00 종료 — endTime 미저장(duration 파생)
+  const cross = [sess({ id: 200, instructorId: 1, roomId: 1, sessionDate: '2026-06-29', startTime: '23:00', endTime: undefined, durationMinutes: 120 })];
+  it('시작일 잔여(월 23:30~) 겹침 → 이중예약', () => {
+    const c = detectConflicts({ sessionDate: '2026-06-29', startTime: '23:30', durationMinutes: 60, instructorId: 1 }, { sessions: cross });
+    expect(c).toContainEqual({ type: 'double_book', resource: 'instructor', resourceId: 1, sessionId: 200 });
+  });
+  it('익일 스필(화 00:30~) 겹침 → 이중예약(이틀에 걸친 검사)', () => {
+    const c = detectConflicts({ sessionDate: '2026-06-30', startTime: '00:30', durationMinutes: 60, instructorId: 1 }, { sessions: cross });
+    expect(c).toContainEqual({ type: 'double_book', resource: 'instructor', resourceId: 1, sessionId: 200 });
+  });
+  it('익일 01:00 맞닿음은 비겹침 · 전전일/다다음날은 검사 제외', () => {
+    expect(detectConflicts({ sessionDate: '2026-06-30', startTime: '01:00', durationMinutes: 60, instructorId: 1 }, { sessions: cross })).toEqual([]);
+    expect(detectConflicts({ sessionDate: '2026-07-01', startTime: '00:30', durationMinutes: 60, instructorId: 1 }, { sessions: cross })).toEqual([]);
+  });
+  it('크로스 **후보**가 익일 기존 세션과 겹침(역방향)', () => {
+    const nextDay = [sess({ id: 201, instructorId: 1, sessionDate: '2026-06-30', startTime: '00:30', endTime: '01:30', durationMinutes: 60 })];
+    const c = detectConflicts({ sessionDate: '2026-06-29', startTime: '23:00', durationMinutes: 120, instructorId: 1 }, { sessions: nextDay });
+    expect(c).toContainEqual({ type: 'double_book', resource: 'instructor', resourceId: 1, sessionId: 201 });
+  });
+  it('크로스 후보의 익일 불가시간 침범 — [시작일 잔여]+[익일 00:00~] 세그먼트 검사', () => {
+    const blocks = [ablock({ id: 9, kind: 'unavailable', weekday: 2, startTime: '00:00', endTime: '02:00' })]; // 화요일 심야 불가
+    const c = detectConflicts({ sessionDate: '2026-06-29', startTime: '23:00', durationMinutes: 120, instructorId: 1 }, { sessions: [], blocks });
+    expect(c).toContainEqual({ type: 'unavailable', resource: 'instructor', resourceId: 1 });
+    // 시작일(월) 요일만 보던 구 규칙이면 미검출 — 회귀 방지
   });
 });

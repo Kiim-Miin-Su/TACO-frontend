@@ -183,7 +183,9 @@ export type SessionDraft = {
 
 /**
  * 편집 폼 → PATCH /schedule/:id 바디. 규칙:
- *  - 시작 < 종료 필수(위반 시 throw — 폼에서 사전 차단하지만 이중 방어).
+ *  - 시작 ≠ 종료 필수(같으면 throw — 폼에서 사전 차단하지만 이중 방어).
+ *  - [R-9 2026-07-06] 종료 < 시작은 **익일 종료(자정 크로스)**로 허용 — BE가 +1440 래핑해
+ *    durationMinutes로 저장(endTime 미저장·단일 세션). 폼은 "익일 종료로 저장됩니다"를 안내.
  *  - scope는 **시리즈일 때만** 포함(단건에 scope를 보내지 않음 — API 계약 명확화).
  *  - topic 빈 문자열은 미전송(백엔드 merge가 기존값 유지 — 실수로 지워지는 것 방지).
  *  - 학생(코호트)은 이 패치로 편집 불가 — enrollment 파생(참조 무결성).
@@ -196,7 +198,7 @@ export function sessionEditPatch(
   status: ScheduleRow['status']; topic?: string; memo?: string; color?: string; scope?: RecurrenceScope;
   kind?: SessionKindFilter; price?: number;
 } {
-  if (!(d.startTime < d.endTime)) throw new Error('종료 시각이 시작보다 빠릅니다');
+  if (d.startTime === d.endTime) throw new Error('종료 시각이 시작과 같을 수 없습니다'); // [R-9] end<start=익일 종료 허용
   return {
     sessionDate: d.sessionDate,
     startTime: d.startTime,
@@ -247,7 +249,9 @@ export function cloneSessionBody(
     roomId,
     sessionDate: t.date,
     startTime: fromMin(t.startMin),
-    endTime: fromMin(t.startMin + src.durationMinutes),
+    // [R-9] 커서가 심야면 종료가 자정을 넘을 수 있음 — %1440 래핑('25:00' 금지). BE가 end<start를
+    //  익일 종료로 해석해 durationMinutes로 저장(자정 크로스 정식 지원 — 구 400 거부 폐지).
+    endTime: fromMin((t.startMin + src.durationMinutes) % 1440),
     topic: src.topic,
     memo: src.memo,
     color: src.color,

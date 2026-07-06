@@ -232,3 +232,29 @@ describe('splitKstBand — KST 자정 크로스 분할(시차 밴드 저장)', (
     expect(splitKstBand({ date: '2026-07-06', time: '22:00' }, { date: '2026-07-07', time: '00:00' })).toHaveLength(1);
   });
 });
+
+// ── [R-9 2026-07-06] KST 자정 크로스 세션(endTime 미저장·durationMinutes 파생)의 시차 변환 ──
+describe('[R-9] shiftRowToTz — KST 자정 크로스 세션(수 23:00 +120분 = 목 01:00)', () => {
+  const cross = row({ sessionDate: '2026-07-08', startTime: '23:00', endTime: undefined, durationMinutes: 120 });
+  it('뉴욕(KST−13h): 수 10:00–12:00 같은 날로 풀림(크로스 해소·배지 없음·시수 불변)', () => {
+    const r = shiftRowToTz(cross, 'America/New_York');
+    expect(r.sessionDate).toBe('2026-07-08');
+    expect(r.startTime).toBe('10:00');
+    expect(r.endTime).toBe('12:00');
+    expect(r.tzOverflowEnd).toBeUndefined();
+    expect(r.durationMinutes).toBe(120);
+  });
+  it('도쿄(KST+0h): 현지도 크로스 → 24:00 클램프 + tzOverflowEnd 01:00(기존 배지 규칙 재사용)', () => {
+    const r = shiftRowToTz(cross, 'Asia/Tokyo');
+    expect(r.sessionDate).toBe('2026-07-08');
+    expect(r.startTime).toBe('23:00');
+    expect(r.endTime).toBe('24:00');
+    expect(r.tzOverflowEnd).toBe('01:00');
+  });
+  it('런던(KST−8h): 수 15:00–17:00 — endTime 미저장이어도 UTC 가산 파생으로 동일 결과', () => {
+    const r = shiftRowToTz(cross, 'Europe/London');
+    expect(r.sessionDate).toBe('2026-07-08');
+    expect(r.startTime).toBe('15:00');
+    expect(r.endTime).toBe('17:00');
+  });
+});
