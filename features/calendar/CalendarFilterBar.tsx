@@ -20,6 +20,44 @@ const DIM_META: Record<FilterDim, { icon: string; label: string }> = {
 
 type Option = { id: number; name: string; color?: string; sub?: string };
 
+// ── [B-7 2026-07-06] 과목 체크 팝오버 — fSubjects는 로직·프리셋만 있고 UI가 없었음(대표 지적 4) ──
+export function SubjectPick({
+  options, picked, onToggle, onClear,
+}: {
+  options: string[];
+  picked: Set<string>;
+  onToggle: (s: string) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    window.addEventListener("pointerdown", h);
+    return () => window.removeEventListener("pointerdown", h);
+  }, [open]);
+  return (
+    <div className="relative" ref={ref}>
+      <button className={`btn btn-sm ${picked.size ? "badge-accent" : ""}`} onClick={() => setOpen((o) => !o)} title="과목별 필터(복수=합집합)">
+        📚 과목{picked.size > 0 && <span className="ml-1 mono">{picked.size}</span>}<span className="ml-1 text-[10px]">▾</span>
+      </button>
+      {open && (
+        <div className="absolute z-40 mt-1 w-44 card shadow-lg p-1.5 space-y-0.5">
+          {options.map((s) => (
+            <label key={s} className="flex items-center gap-2 px-1.5 h-7 rounded hover:bg-canvas-subtle cursor-pointer text-[12px]">
+              <input type="checkbox" checked={picked.has(s)} onChange={() => onToggle(s)} />
+              <span className="flex-1 truncate">{s}</span>
+            </label>
+          ))}
+          {!options.length && <div className="text-[11px] text-fg-subtle px-1.5 py-2">과목 없음</div>}
+          {picked.size > 0 && <button className="btn btn-sm w-full h-6 text-[11px]" onClick={onClear}>과목 필터 해제</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── 체크박스 팝오버(검색 + 다중선택 + 색 스와치) — Lantiv 리소스 드롭다운 ──
 export function MultiPick({
   dim, options, picked, onToggle, onClear,
@@ -112,6 +150,7 @@ export function CalendarFilterBar({
   resources, rooms,
   q, onQ, colorBy, onColorBy,
   fInstructors, fStudents, fRooms, onToggleId, onClearDim,
+  subjectOptions, fSubjects, onToggleSubject, onClearSubjects,
   fStatuses, onToggleStatus,
   fKinds, onToggleKind,
   groupOnly, onGroupOnly,
@@ -129,6 +168,10 @@ export function CalendarFilterBar({
   fRooms: Set<number>;
   onToggleId: (dim: FilterDim, id: number) => void;
   onClearDim: (dim: FilterDim) => void;
+  subjectOptions: string[];
+  fSubjects: Set<string>;
+  onToggleSubject: (s: string) => void;
+  onClearSubjects: () => void;
   fStatuses: Set<StatusFilter>;
   onToggleStatus: (s: StatusFilter) => void;
   fKinds: Set<SessionKindFilter>;
@@ -175,6 +218,7 @@ export function CalendarFilterBar({
             onClear={() => onClearDim(dim)}
           />
         ))}
+        <SubjectPick options={subjectOptions} picked={fSubjects} onToggle={onToggleSubject} onClear={onClearSubjects} />
         <span className="w-px h-5" style={{ background: "var(--color-line)" }} />
         {/* 상태 필터: [전체] + 출석/지각/결강/보강 — 전체=상태 무관(기본), 복수 선택=합집합(피드백: 옵션별 전체 란) */}
         <button

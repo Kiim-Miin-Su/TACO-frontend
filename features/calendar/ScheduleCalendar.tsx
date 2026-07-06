@@ -163,6 +163,9 @@ export function ScheduleCalendar() {
   const [period, setPeriod] = useState<Period | null>(null);
   // [이슈3] 표(패널)별 날짜 범위 — 캘린더(from/to)로 표마다 다르게(예: 왼쪽 7/6~7/8, 오른쪽 7/6~7/10).
   //  미설정=전역 기간을 따름. from만 있고 to 없으면 from 하루.
+  // [B-5 2026-07-06] 컴팩트 열 토글(대표 지적 1·3) — 하루 열 128px 고정이 두 표 스플릿에서 과폭.
+  const [compactCols, setCompactCols] = useState(false);
+  const colMinBase = compactCols ? 80 : COL_MIN; // densityOf(subW)가 자동 연동(좁아지면 title→vtitle→color)
   const [paneRange, setPaneRange] = useState<Partial<Record<SplitDim, { from: string; to: string }>>>({});
   // [B-3 #5] 표별 cherry-pick 날짜(불연속 집합, 최대 14) — 설정 시 paneRange(연속 범위)보다 우선.
   const [panePicked, setPanePicked] = useState<Partial<Record<SplitDim, string[]>>>({});
@@ -1210,7 +1213,7 @@ export function ScheduleCalendar() {
     //  서브분할(같은 크기 요일 열을 늘리는 게 아님 — 컴팩트). 일수가 적으면 flex로 화면을 채움.
     const dayCount = isSplitGrid ? new Set(cols.map((c) => c.date)).size : cols.length;
     const perDay = isSplitGrid ? Math.max(1, Math.round(cols.length / Math.max(1, dayCount))) : 1;
-    const subW = isSplitGrid ? Math.floor(COL_MIN / perDay) : COL_MIN;
+    const subW = isSplitGrid ? Math.floor(colMinBase / perDay) : colMinBase;
     // 텍스트 밀도 단계(서브열 폭 기준) — 단일 함수 densityOf(lib/domain/lantiv, vitest)로 통일(R2)
     const textMode = densityOf(subW, isSplitGrid);
     const minCol = subW;
@@ -1231,7 +1234,7 @@ export function ScheduleCalendar() {
                     <span className="badge text-[10px]" title="저장 시간은 항상 한국 시간(KST) — 시차 표시는 변환본입니다">보기 전용 · 편집은 한국 시간에서</span>
                   </div>
                 )}
-                <div className="flex" style={{ minWidth: GUTTER_W + (isSplitGrid ? dayCount * COL_MIN : cols.length * COL_MIN) }}>
+                <div className="flex" style={{ minWidth: GUTTER_W + (isSplitGrid ? dayCount * colMinBase : cols.length * colMinBase) }}>
                   {/* 시간 거터 */}
                   <div className="shrink-0 sticky left-0 z-10 bg-canvas" style={{ width: GUTTER_W }}>
                     <div style={{ height: HEADER_H }} />
@@ -1574,7 +1577,7 @@ export function ScheduleCalendar() {
                                   {textMode === "vtitle" && (
                                     <div
                                       className="font-semibold overflow-hidden"
-                                      style={{ writingMode: "vertical-rl", fontSize: 9, lineHeight: 1.1, maxHeight: h - 6 }}
+                                      style={{ writingMode: "vertical-rl", fontSize: 9, lineHeight: 1.1, maxHeight: Math.max(8, h - 14), overflow: "hidden" }} /* [B-6] py·보더 감안 클립 — 박스 밖 삐짐 방지 */
                                       title={`${labelOf(r)} ${fromMin(s)}–${fromMin(en)}${(r as TzShiftedRow).tzOverflowEnd ? ` (+1일 ~${(r as TzShiftedRow).tzOverflowEnd})` : ""}`}
                                     >
                                       {labelOf(r)}
@@ -1666,6 +1669,12 @@ export function ScheduleCalendar() {
         {/* 본문 */}
         <div className="flex-1 min-w-0 space-y-4">
           {/* ── 뷰 프리셋 탭(TBO-12 P1): 필터·기간·국가 조합 저장/적용 — DB 자산(직원 공용) ── */}
+          <button
+            type="button"
+            className={`btn btn-sm ${compactCols ? "badge-accent" : ""}`}
+            title="[B-5] 하루 열 폭 좁게(80px) — 두 표 스플릿을 한눈에. 글자는 밀도 단계가 자동 축약"
+            onClick={() => setCompactCols((v) => !v)}
+          >⇤ 열 좁게</button>
           <CalendarViewTabs
             activeId={activePresetId}
             onApply={applyPreset}
@@ -1695,6 +1704,10 @@ export function ScheduleCalendar() {
             onClearDim={(dim) =>
               (dim === "instructor" ? setFInstructors : dim === "student" ? setFStudents : setFRooms)(new Set())
             }
+            subjectOptions={[...new Set((resources?.courses ?? []).map((cs) => cs.subjectName).filter(Boolean))].sort()}
+            fSubjects={fSubjects}
+            onToggleSubject={(s) => setFSubjects((prev) => { const n = new Set(prev); if (n.has(s)) n.delete(s); else n.add(s); return n; })}
+            onClearSubjects={() => setFSubjects(new Set())}
             fStatuses={fStatuses}
             onToggleStatus={(s) =>
               setFStatuses((prev) => {
