@@ -6,7 +6,7 @@ import { api, type SchedulePatchBody, type ScheduleCreateBody, type Availability
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/queryKeys";
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 D — 파일별 중복 toMin/fromMin/pad/WD 제거)
-import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, ownerWindows } from "@/lib/domain/schedule";
+import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, ownerWindows, sessionEndMin, crossMidnightEnd } from "@/lib/domain/schedule";
 import {
   PALETTE, STATUS_LABEL, MAX_SPLIT,
   matchesStatusFilter, matchesResourceFilter, isGroupSession, sortByDateAsc,
@@ -29,7 +29,8 @@ import { ResourceDetailCard } from "./ResourceDetailCard";
 import { ParticipantsCard } from "./ParticipantsCard";
 import { SessionEditFields, ColorPicker, Field, TimeSelect } from "./SessionEditFields";
 import { CalendarSplitPane, type SplitPaneDef } from "./CalendarSplitPane";
-import { CalendarFilterBar, type Period } from "./CalendarFilterBar";
+import { CalendarFilterBar, OptionPick, type Period } from "./CalendarFilterBar";
+import { HelpPopover, PageHeader } from "@/components/ui";
 import { SessionListPanel } from "./SessionListPanel";
 import { SessionDetailPanel } from "./SessionDetailPanel";
 
@@ -74,7 +75,8 @@ const mondayOf = (iso: string) => addDaysISO(iso, weekdayOf(iso) === 0 ? -6 : 1 
 const hashColor = (s: string) => PALETTE[[...s].reduce((a, c) => a + c.charCodeAt(0), 0) % PALETTE.length];
 
 const startMinOf = (r: ScheduleRow) => toMin(r.startTime ?? "09:00");
-const endMinOf = (r: ScheduleRow) => (r.endTime ? toMin(r.endTime) : startMinOf(r) + r.durationMinutes);
+// [R-9] 자정 크로스(endTime 미저장·durationMinutes 파생) 대응 — 1440 초과 가능(단일 소스: sessionEndMin)
+const endMinOf = (r: ScheduleRow) => sessionEndMin({ startTime: r.startTime ?? "09:00", endTime: r.endTime, durationMinutes: r.durationMinutes });
 
 type View = "month" | "week" | "day";
 type ColorBy = "subject" | "instructor" | "room" | "student";
@@ -785,12 +787,18 @@ export function ScheduleCalendar() {
     if (patch.endTime) next.endTime = patch.endTime;
     if (patch.startTime || patch.endTime) {
       const s = toMin(next.startTime ?? "00:00");
-      const e = next.endTime ? toMin(next.endTime) : s + next.durationMinutes;
+      // [R-9] endTime<start = 익일 종료(자정 크로스) — +1440 래핑(BE durationFrom과 동일 규칙)
+      let e = next.endTime ? toMin(next.endTime) : s + next.durationMinutes;
+      if (next.endTime && e < s) e += 1440;
       next.durationMinutes = Math.max(1, e - s);
+      if (e >= 1440) next.endTime = undefined; // 크로스는 endTime 미보유(durationMinutes 파생 — BE 저장 규칙)
     }
     if (patch.durationMinutes != null) {
       next.durationMinutes = patch.durationMinutes;
-      if (next.startTime && !patch.endTime) next.endTime = fromMin(toMin(next.startTime) + patch.durationMinutes);
+      if (next.startTime && !patch.endTime) {
+        const em = toMin(next.startTime) + patch.durationMinutes;
+        next.endTime = em >= 1440 ? undefined : fromMin(em); // [R-9] 크로스면 파생(무효 'HH:mm' 금지)
+      }
     }
     if (patch.roomId !== undefined) next.roomId = patch.roomId;
     if (patch.instructorId !== undefined) next.instructorId = patch.instructorId;
@@ -838,12 +846,17 @@ export function ScheduleCalendar() {
   function optimisticRow(body: ScheduleCreateBody): ScheduleRow {
     const c = resources?.courses.find((x) => x.id === body.courseId);
     const start = body.startTime;
-    const end = body.endTime ?? fromMin(toMin(start) + (body.durationMinutes ?? c?.durationMinutes ?? 60));
+    // [R-9] 자정 크로스: endTime<start = 익일 종료(+1440), 파생 종료가 24:00 이상이면 endTime 미설정
+    //  (BE 저장 규칙과 동일 — durationMinutes 파생. '25:00' 같은 무효 문자열 금지).
+    const dur = body.endTime
+      ? ((toMin(body.endTime) - toMin(start) + 1440) % 1440) || 1
+      : (body.durationMinutes ?? c?.durationMinutes ?? 60);
+    const endMin = toMin(start) + dur;
     return {
       id: -Date.now(), courseId: body.courseId,
       instructorId: body.instructorId ?? c?.instructorId ?? 0, roomId: body.roomId,
       sessionDate: body.sessionDate, weekday: weekdayOf(body.sessionDate),
-      startTime: start, endTime: end, durationMinutes: Math.max(1, toMin(end) - toMin(start)),
+      startTime: start, endTime: endMin >= 1440 ? undefined : fromMin(endMin), durationMinutes: Math.max(1, dur),
       status: (body.status as ScheduleRow["status"]) ?? "scheduled", color: body.color, memo: body.memo,
       courseName: c?.name ?? "수업", subjectName: c?.subjectName ?? "",
       instructorName: c?.instructorName ?? "", roomName: rooms.find((r) => r.id === body.roomId)?.name,
@@ -1130,7 +1143,7 @@ export function ScheduleCalendar() {
     if (!r) return;
     // [이슈2] 시차 컬럼이면 현지 시각(pv.start/end, 현지 날짜 기준)을 KST로 변환해 저장(무결성).
     const kstStart = tzCellToKst(rz.dateLocal, pv.start, rz.tz);
-    const kstEnd = tzCellToKst(rz.dateLocal, pv.end, rz.tz);
+    const kstEnd = tzCellToKst(rz.dateLocal, pv.end % 1440, rz.tz); // [R-9] 1440(24:00)은 '00:00'로 — BE가 익일 종료로 해석
     requestChange(
       r,
       { sessionDate: kstStart.date, startTime: fromMin(kstStart.startMin), endTime: fromMin(kstEnd.startMin) },
@@ -1197,8 +1210,12 @@ export function ScheduleCalendar() {
     if (!axisTz) {
       const colDates = new Set(cols.map((c) => c.date));
       for (const r of filtered) {
-        if (!colDates.has(r.sessionDate)) continue;
-        contentLo = Math.min(contentLo, startMinOf(r)); contentHi = Math.max(contentHi, endMinOf(r));
+        if (colDates.has(r.sessionDate)) {
+          contentLo = Math.min(contentLo, startMinOf(r)); contentHi = Math.max(contentHi, endMinOf(r));
+        }
+        // [R-9] 전일 자정 크로스 세션의 익일 잔여(00:00~) — 다음날 컬럼이 보이면 축을 0시까지 열어
+        //  연속 블록(표시 전용)이 잘리지 않게 한다(expandAxis가 contentLo=0을 startH=0으로 반영).
+        if (endMinOf(r) > 1440 && colDates.has(addDaysISO(r.sessionDate, 1))) contentLo = 0;
       }
       const owners = cols.filter((c) => c.resType != null && c.resId != null);
       const blockSrc = owners.length
@@ -1281,6 +1298,12 @@ export function ScheduleCalendar() {
                       // [B-2] 표별 종류 필터(빈 Set=전체) — 전역 fKinds는 filtered 단계에서 이미 적용
                       const kindPass = (r: ScheduleRow) => !paneKindSet?.size || paneKindSet.has((r.kind ?? "class") as SessionKindFilter);
                       const colRows = rowsOfColumn(c, colTz ? rowsForTz(colTzc.tz) : filtered).filter(kindPass);
+                      // [R-9] 전일 자정 크로스 세션의 익일 연속 블록(00:00~잔여) — **표시 전용**(상호작용은
+                      //  시작일 원본 블록에서). KST 컬럼 전용 — 시차 컬럼은 shiftRowToTz가 현지 좌표로
+                      //  통변환하므로(대개 크로스가 풀림) 기존 tzOverflowEnd 배지 규칙을 유지.
+                      const contRows = !colTz
+                        ? rowsOfColumn({ ...c, date: addDaysISO(c.date, -1) }, filtered).filter(kindPass).filter((r) => endMinOf(r) > 1440)
+                        : [];
                       // [B-4 #9] 강사 본인 pending 요청 고스트(승인 대기 시각화) — KST 컬럼 전용·표시 전용
                       const colGhosts = !colTz && isInstructor
                         ? pendingGhosts.filter((g) => g.sessionDate === c.date && (c.resType == null || (c.resType === "instructor" && Number(c.resId) === Number(g.instructorId))))
@@ -1512,13 +1535,14 @@ export function ScheduleCalendar() {
                                 height: Math.max(22, (moveDrag.dur / 60) * HOUR_H) - 2,
                                 background: moveDrag.color, opacity: 0.9,
                               }}>
-                                <div className="font-semibold mono">{fromMin(moveDrag.start)}–{fromMin(moveDrag.start + moveDrag.dur)}</div>
+                                <div className="font-semibold mono">{fromMin(moveDrag.start)}–{fromMin((moveDrag.start + moveDrag.dur) % 1440)}{moveDrag.start + moveDrag.dur > 1440 ? " (+1일)" : ""}</div>
                               </div>
                             )}
                             {/* [B-4] 승인 대기 요청 고스트 — 점선·반투명·클릭 불가(승인 시 실제 세션으로 대체) */}
                             {colGhosts.map((g) => {
                               const gs = toMin(g.startTime);
-                              const ge = g.endTime ? toMin(g.endTime) : gs + g.durationMinutes;
+                              // [R-9] 요청의 endTime<start = 익일 종료(자정 크로스) — 래핑해 높이 정상화
+                              const ge = sessionEndMin({ startTime: g.startTime, endTime: g.endTime, durationMinutes: g.durationMinutes });
                               return (
                                 <div key={`ghost-${g.id}`} className="absolute left-0.5 right-0.5 z-10 pointer-events-none rounded-lg px-1.5 py-1 text-[10px] leading-tight"
                                   style={{ top: ((clampAxis(gs) - gridMin) / 60) * HOUR_H + 1, height: Math.max(20, ((clampAxis(ge) - clampAxis(gs)) / 60) * HOUR_H) - 2,
@@ -1539,11 +1563,37 @@ export function ScheduleCalendar() {
                                 />
                               </div>
                             )}
+                            {/* [R-9] 전일 자정 크로스 잔여(00:00~) 연속 블록 — 표시 전용(pointer-events 차단) */}
+                            {contRows.map((r) => {
+                              const spill = endMinOf(r) - 1440; // 익일 종료 분(00:00 기준)
+                              const s0 = clampAxis(0), e0 = clampAxis(spill);
+                              if (e0 <= s0) return null; // 축이 0시를 안 열었으면(이 컬럼에 스필 미표시) 생략
+                              return (
+                                <div
+                                  key={`cont-${r.id}`}
+                                  className="absolute left-0.5 right-0.5 pointer-events-none rounded-b-lg text-white text-micro leading-tight px-1.5 py-0.5 overflow-hidden"
+                                  style={{
+                                    top: ((s0 - gridMin) / 60) * HOUR_H + 1,
+                                    height: Math.max(14, ((e0 - s0) / 60) * HOUR_H) - 2,
+                                    background: colorOf(r), opacity: 0.5,
+                                    borderTop: "2px dashed rgba(255,255,255,.9)",
+                                  }}
+                                  title={`${labelOf(r)} — 전일 ${r.startTime ?? ""} 시작 수업의 연속(~${fromMin(spill)}) · 편집·선택은 시작일 블록에서`}
+                                >
+                                  <div className="font-semibold truncate" style={{ fontSize: 9.5 }}>↰ {labelOf(r)} (전일 계속)</div>
+                                  <div className="opacity-90 mono" style={{ fontSize: 9 }}>00:00–{fromMin(spill)}</div>
+                                </div>
+                              );
+                            })}
                             {colRows.map((r) => {
                               const s = sOf(r),
                                 en = eOf(r);
+                              // [R-9] 자정 크로스는 시작일 컬럼에서 24:00(축 상한)으로 클램프해 그리고,
+                              //  잔여는 "+1일 ~HH:mm" 배지(ovEnd) + 익일 컬럼 연속 블록(위 contRows)으로 표시.
+                              const enC = Math.min(en, gridMax);
+                              const ovEnd = (r as TzShiftedRow).tzOverflowEnd ?? crossMidnightEnd(r); // 시차 클램프(기존) ?? KST 크로스(R-9)
                               const top = ((s - gridMin) / 60) * HOUR_H;
-                              const h = Math.max(22, ((en - s) / 60) * HOUR_H);
+                              const h = Math.max(22, ((enC - s) / 60) * HOUR_H);
                               const ln = lanes[r.id] ?? { lane: 0, lanes: 1 };
                               const wPct = 100 / ln.lanes;
                               return (
@@ -1552,7 +1602,7 @@ export function ScheduleCalendar() {
                                   onPointerDown={(e) => onEventDown(e, r, colTz ? colTzc.tz : undefined)} // [R-1b 2026-07-06] F2 이중 방어
                                   onClick={(e) => { e.stopPropagation(); if (suppressClickRef.current) { suppressClickRef.current = false; return; } setSelEvent(r.id); setSelBand(null); setDetailId(r.id); }}
                                   onDoubleClick={(e) => { e.stopPropagation(); openEditor(r, colTz ? colTzc : null); }}
-                                  title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${(r as TzShiftedRow).tzOverflowEnd ? ` · 자정 넘김(+1일 ~${(r as TzShiftedRow).tzOverflowEnd})` : ""}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 드래그=이동 · 더블클릭=상세`}
+                                  title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${ovEnd ? ` · 자정 넘김(+1일 ~${ovEnd})` : ""}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 드래그=이동 · 더블클릭=상세`}
                                   className={`absolute rounded-lg text-white text-micro leading-tight px-1.5 py-1 cursor-grab overflow-hidden shadow-sm hover:brightness-105 transition ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
                                   style={{
                                     top: top + 1,
@@ -1580,11 +1630,11 @@ export function ScheduleCalendar() {
                                         {labelOf(r)}{isCanceledStatus(r.status) ? ` (${STATUS_LABEL[r.status]})` : ""}
                                       </div>
                                       <div className="opacity-90 mono truncate" style={textMode === "title" ? { fontSize: 9.5 } : undefined}>
-                                        {fromMin(s)}–{fromMin(en)}
-                                        {(r as TzShiftedRow).tzOverflowEnd && (
-                                          /* 자정 크로스 잔여(TBO-12 P0): 이 수업은 다음날 이 시각까지 이어짐 */
+                                        {fromMin(s)}–{fromMin(Math.min(en, 1440))}
+                                        {ovEnd && (
+                                          /* 자정 크로스 잔여(TBO-12 P0·R-9): 이 수업은 다음날 이 시각까지 이어짐 */
                                           <span className="ml-1 px-1 rounded bg-white/25 text-[9px] font-semibold not-italic">
-                                            +1일 ~{(r as TzShiftedRow).tzOverflowEnd}
+                                            +1일 ~{ovEnd}
                                           </span>
                                         )}
                                       </div>
@@ -1599,7 +1649,7 @@ export function ScheduleCalendar() {
                                     <div
                                       className="font-semibold overflow-hidden"
                                       style={{ writingMode: "vertical-rl", fontSize: 9, lineHeight: 1.1, maxHeight: Math.max(8, h - 14), overflow: "hidden" }} /* [B-6] py·보더 감안 클립 — 박스 밖 삐짐 방지 */
-                                      title={`${labelOf(r)} ${fromMin(s)}–${fromMin(en)}${(r as TzShiftedRow).tzOverflowEnd ? ` (+1일 ~${(r as TzShiftedRow).tzOverflowEnd})` : ""}`}
+                                      title={`${labelOf(r)} ${fromMin(s)}–${fromMin(Math.min(en, 1440))}${ovEnd ? ` (+1일 ~${ovEnd})` : ""}`}
                                     >
                                       {labelOf(r)}
                                     </div>
@@ -1621,15 +1671,15 @@ export function ScheduleCalendar() {
   };
 
   return (
-    <div className="p-6 max-w-[1560px] mx-auto">
-      <div className="flex items-end justify-between flex-wrap gap-3 mb-4">
-        <div>
-          <h1 className="text-title font-bold">스케줄 캘린더</h1>
-          <p className="text-body text-fg-muted mt-0.5">
-            드래그 이동 · Ctrl+드래그 복제 · Ctrl+C/V 복사·붙여넣기 · 빈 시간 클릭=커서 · {periodLabel}
+    <div className="p-6 max-w-page-wide mx-auto">
+      {/* [DESIGN §5.5] 조작 설명서는 부제에서 제거 → ⓘ 팝오버. 부제는 상태 정보만. */}
+      <PageHeader
+        title="스케줄 캘린더"
+        sub={
+          <>
+            {periodLabel}
             <span className="text-fg-subtle">
-              {" "}
-              · {inRange.length}건{anyFilter ? ` / 전체 ${rows.length}` : ""} · 시수 {hrs.hours}h
+              {" "}· {inRange.length}건{anyFilter ? ` / 전체 ${rows.length}` : ""} · 시수 {hrs.hours}h
             </span>
             {selected && <span className="text-accent"> · {selected.name} 개인 스케줄</span>}
             {isSplit && (
@@ -1639,73 +1689,79 @@ export function ScheduleCalendar() {
                   : `데일리 스플릿(${splitDim === "instructor" ? "강사" : splitDim === "student" ? "학생" : "강의실"} ${singleSplitPicks.length})`}
               </span>
             )}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex rounded-md overflow-hidden border">
-            {(["month", "week", "day"] as View[]).map((v) => (
+          </>
+        }
+        actions={
+          <>
+            <div className="flex rounded-md overflow-hidden border">
+              {(["month", "week", "day"] as View[]).map((v) => (
+                <button
+                  key={v}
+                  className={`btn btn-sm rounded-none border-0 ${view === v ? "badge-accent" : ""}`}
+                  onClick={() => setView(v)}
+                >
+                  {v === "month" ? "월간" : v === "week" ? "주간" : "일간(강의실)"}
+                </button>
+              ))}
+            </div>
+            <button className="btn btn-sm" onClick={() => nav(-1)}>◀</button>
+            <button className="btn btn-sm" onClick={() => setAnchor(todayISO())}>오늘</button>
+            <button className="btn btn-sm" onClick={() => nav(1)}>▶</button>
+            {view === "day" && (
+              <input type="date" className="input h-7 w-36" value={anchor} onChange={(e) => setAnchor(e.target.value)} />
+            )}
+            {/* 표 분할은 필터 선택에서 자동(강사+학생 동시 선택 → 표 2개) — 수동 버튼 제거(피드백) */}
+            {canAdd && resources && (
               <button
-                key={v}
-                className={`btn btn-sm rounded-none border-0 ${view === v ? "badge-accent" : ""}`}
-                onClick={() => setView(v)}
+                className="btn btn-sm btn-primary"
+                onClick={() => setCreating({ date: view === "day" ? anchor : (dates.find((d) => d === todayISO()) ?? dates[0]) })}
               >
-                {v === "month" ? "월간" : v === "week" ? "주간" : "일간(강의실)"}
+                + 스케줄 추가{isInstructor ? " (내 수업)" : ""}
               </button>
-            ))}
-          </div>
-          <button className="btn btn-sm" onClick={() => nav(-1)}>
-            ◀
-          </button>
-          <button className="btn btn-sm" onClick={() => setAnchor(todayISO())}>
-            오늘
-          </button>
-          <button className="btn btn-sm" onClick={() => nav(1)}>
-            ▶
-          </button>
-          {view === "day" && (
-            <input type="date" className="input h-7 w-36" value={anchor} onChange={(e) => setAnchor(e.target.value)} />
-          )}
-          {/* 표 분할은 필터 선택에서 자동(강사+학생 동시 선택 → 표 2개) — 수동 버튼 제거(피드백) */}
-          {canAdd && resources && (
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={() => setCreating({ date: view === "day" ? anchor : (dates.find((d) => d === todayISO()) ?? dates[0]) })}
-            >
-              + 스케줄 추가{isInstructor ? " (내 수업)" : ""}
+            )}
+            {/* 국가 시차 뷰(전역): 선택 시 그 국가 학생 세션 필터 + 그리드가 그 나라 시간으로 — PNG로 그대로 추출 */}
+            <CountryInput value={country} onSelect={setCountry} />
+            <button className="btn btn-sm" disabled={busyImg} onClick={() => saveImage("png")} title="현재 화면을 PNG로 저장(시차 뷰면 그 국가 시간 기준)">
+              PNG
             </button>
-          )}
-          {/* 국가 시차 뷰(전역): 선택 시 그 국가 학생 세션 필터 + 그리드가 그 나라 시간으로 — PNG로 그대로 추출 */}
-          <CountryInput value={country} onSelect={setCountry} />
-          <button className="btn btn-sm" disabled={busyImg} onClick={() => saveImage("png")} title="현재 화면을 PNG로 저장(시차 뷰면 그 국가 시간 기준)">
-            PNG
-          </button>
-          <button className="btn btn-sm" disabled={busyImg} onClick={() => saveImage("jpeg")} title="현재 화면을 JPEG로 저장">
-            JPEG
-          </button>
-        </div>
-      </div>
+            <button className="btn btn-sm" disabled={busyImg} onClick={() => saveImage("jpeg")} title="현재 화면을 JPEG로 저장">
+              JPEG
+            </button>
+            <HelpPopover title="캘린더 조작법">
+              <p>드래그 = 이동 · Ctrl+드래그 = 복제</p>
+              <p>Ctrl+C/V = 복사·붙여넣기 · 빈 시간 클릭 = 커서</p>
+              <p>강사+학생 동시 선택 = 표 2개(스플릿)</p>
+              <p>가용 밴드: 클릭=선택 · 끝 드래그=시간 조절 · ✕=삭제</p>
+              <p>우측 리스트 유저 클릭 = 개인 스케줄 필터</p>
+            </HelpPopover>
+          </>
+        }
+      />
 
       <div className="flex gap-4 items-start">
         {/* 좌측 추천 패널 제거(피드백 2026-07-02 #5) — 스플릿뷰로 강사·학생 스케줄을 직접 비교·배치. */}
         {/* 본문 */}
         <div ref={mainRef} className="flex-1 min-w-0 space-y-4">
-          {/* ── 뷰 프리셋 탭(TBO-12 P1): 필터·기간·국가 조합 저장/적용 — DB 자산(직원 공용) ── */}
-          <div className="flex items-center gap-2 flex-wrap">{/* [정렬 2026-07-06] 뷰 도구 한 줄 통합 */}
-          <button
-            type="button"
-            className={`btn btn-sm ${compactCols ? "badge-accent" : ""}`}
-            title="하루 열 상한 축소(128→80px) — 컬럼은 항상 컨테이너에 맞는 고정폭(스크롤 없음)"
-            onClick={() => setCompactCols((v) => !v)}
-          >⇤ 열 좁게</button>
-          <CalendarViewTabs
-            activeId={activePresetId}
-            onApply={applyPreset}
-            onSaveCurrent={saveCurrentPreset}
-            onMsg={setMsg}
-          />
-          </div>
-          {/* ── Lantiv형 필터 바: 리소스 다중선택(스플릿) + 상태/그룹/기간 + 검색/색 기준 ── */}
+          {/* ── Lantiv형 필터 바: 리소스 다중선택(스플릿) + 상태/그룹/기간 + 검색/색 기준.
+                 [압축 2026-07-06] 뷰 도구(열 좁게·뷰 프리셋)를 별도 행 대신 필터 카드 2행에 통합 — 세로 1행 절약 ── */}
           <CalendarFilterBar
+            tools={
+              <>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${compactCols ? "badge-accent" : ""}`}
+                  title="하루 열 상한 축소(128→80px) — 컬럼은 항상 컨테이너에 맞는 고정폭(스크롤 없음)"
+                  onClick={() => setCompactCols((v) => !v)}
+                >⇤ 열 좁게</button>
+                <CalendarViewTabs
+                  activeId={activePresetId}
+                  onApply={applyPreset}
+                  onSaveCurrent={saveCurrentPreset}
+                  onMsg={setMsg}
+                />
+                <span className="w-px h-5 bg-line" />
+              </>
+            }
             resources={resources}
             rooms={rooms}
             q={q}
@@ -1768,7 +1824,7 @@ export function ScheduleCalendar() {
               <span className="inline-flex items-center gap-1">
                 <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "repeating-linear-gradient(45deg, rgba(110,118,129,.18) 0 3px, rgba(110,118,129,.3) 3px 6px)" }} /> 불가
               </span>
-              <span>밴드 클릭=선택 · 끝 드래그=시간 조절 · ✕=삭제</span>
+              {/* 조작법(클릭·드래그·삭제)은 헤더 ⓘ 팝오버로 이동(DESIGN §5.5) */}
             </p>
           )}
 
@@ -1817,39 +1873,39 @@ export function ScheduleCalendar() {
                       setPaneCountry((prev) => { const n = { ...prev }; delete n[g.dim]; return n; });
                     }}
                     headerExtra={
-                      <div className="flex items-center gap-1">
+                      /* [통일 2026-07-06] 표별 필터바 = 본 필터바와 같은 문법·규격
+                         (input h-7 text-caption w-[120px] · 종류=OptionPick 팝오버 · 배지 text-micro) */
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         {/* [이슈3] 이 표의 날짜 범위 — 캘린더(from~to)로 표마다 다르게. 비우면 전역 기간. */}
-                        <input type="date" className="input h-7 text-micro px-1 w-[122px]" title="이 표 시작일"
+                        <input type="date" className="input h-7 px-1.5 text-caption w-[120px]" title="이 표 시작일"
                           value={paneRange[g.dim]?.from ?? (dates[0] ?? "")}
                           onChange={(e) => setPaneRange((prev) => ({ ...prev, [g.dim]: { from: e.target.value, to: prev[g.dim]?.to ?? e.target.value } }))} />
-                        <span className="text-micro text-fg-subtle">~</span>
-                        <input type="date" className="input h-7 text-micro px-1 w-[122px]" title="이 표 종료일"
+                        <span className="text-caption text-fg-subtle">~</span>
+                        <input type="date" className="input h-7 px-1.5 text-caption w-[120px]" title="이 표 종료일"
                           value={paneRange[g.dim]?.to ?? (dates[dates.length - 1] ?? "")}
                           min={paneRange[g.dim]?.from ?? dates[0]}
                           onChange={(e) => setPaneRange((prev) => ({ ...prev, [g.dim]: { from: prev[g.dim]?.from ?? (dates[0] ?? e.target.value), to: e.target.value } }))} />
                         {(paneRange[g.dim] || panePicked[g.dim]?.length) && (
-                          <button type="button" className="btn btn-sm h-6 px-1 text-micro" title="전역 기간으로(범위·선택 날짜 해제)"
+                          <button type="button" className="btn btn-sm h-7 px-1.5" title="전역 기간으로(범위·선택 날짜 해제)"
                             onClick={() => { setPaneRange((prev) => { const n = { ...prev }; delete n[g.dim]; return n; }); setPanePicked((prev) => { const n = { ...prev }; delete n[g.dim]; return n; }); }}>↺</button>
                         )}
                         {/* [B-3 #5] cherry-pick: 원하는 날짜만 여러 개 — 선택 시 범위(from~to)보다 우선 */}
-                        <input type="date" className="input h-7 text-micro px-1 w-[122px]" title="날짜 추가(cherry-pick) — 고르면 그 날짜들만 표시"
+                        <input type="date" className="input h-7 px-1.5 text-caption w-[120px]" title="날짜 추가(cherry-pick) — 고르면 그 날짜들만 표시"
                           value=""
                           onChange={(e) => { const d = e.target.value; if (!d) return; setPaneRange((prev) => { const n = { ...prev }; delete n[g.dim]; return n; }); /* [배타] */ setPanePicked((prev) => { const cur = prev[g.dim] ?? []; if (cur.includes(d) || cur.length >= 14) return prev; return { ...prev, [g.dim]: [...cur, d].sort() }; }); }} />
                         {(panePicked[g.dim] ?? []).map((d) => (
-                          <span key={d} className="badge text-[10px] mono cursor-pointer" title="클릭=이 날짜 제거"
+                          <span key={d} className="badge text-micro mono cursor-pointer" title="클릭=이 날짜 제거"
                             onClick={() => setPanePicked((prev) => { const cur = (prev[g.dim] ?? []).filter((x) => x !== d); const n = { ...prev }; if (cur.length) n[g.dim] = cur; else delete n[g.dim]; return n; })}>
                             {d.slice(5)} ✕
                           </span>
                         ))}
-                        <span className="w-px h-4 bg-line" />
-                        {/* [B-2 #2] 표별 종류(kind) 필터 — 이 표에만 적용(전역 필터바와 별개·빈 선택=전체) */}
-                        {KIND_FILTERS.map((k) => (
-                          <button key={k} type="button" className={`btn btn-sm h-6 px-1.5 text-[10px] ${paneKinds[g.dim]?.has(k) ? "badge-accent" : ""}`}
-                            title={`이 표에서 ${KIND_FILTER_LABEL[k]}만 (복수=합집합)`}
-                            onClick={() => setPaneKinds((prev) => { const cur = new Set(prev[g.dim] ?? []); if (cur.has(k)) cur.delete(k); else cur.add(k); const n = { ...prev }; if (cur.size) n[g.dim] = cur; else delete n[g.dim]; return n; })}>
-                            {KIND_FILTER_LABEL[k]}
-                          </button>
-                        ))}
+                        <span className="w-px h-5 bg-line" />
+                        {/* [B-2 #2] 표별 종류(kind) 필터 — 이 표에만 적용. 본 필터바와 같은 팝오버 문법(OptionPick) */}
+                        <OptionPick icon="🏷️" label="종류" title="이 표에만 적용 (복수=합집합·빈 선택=전체)"
+                          options={KIND_FILTERS.map((k) => ({ value: k, label: KIND_FILTER_LABEL[k] }))}
+                          picked={(paneKinds[g.dim] ?? new Set()) as unknown as Set<string>}
+                          onToggle={(v) => setPaneKinds((prev) => { const k = v as SessionKindFilter; const cur = new Set(prev[g.dim] ?? []); if (cur.has(k)) cur.delete(k); else cur.add(k); const n = { ...prev }; if (cur.size) n[g.dim] = cur; else delete n[g.dim]; return n; })}
+                          onClear={() => setPaneKinds((prev) => { const n = { ...prev }; delete n[g.dim]; return n; })} />
                         <CountryInput
                           compact
                           value={paneTzOf(g.dim)}
@@ -1972,7 +2028,8 @@ export function ScheduleCalendar() {
           onSave={async (patch) => {
             const id = editing.id;
             // [이슈1] 비KST 편집: 폼에 입력한 현지 시각(sessionDate/start/end)을 KST 저장값으로 역변환.
-            //  종료가 KST에서 다음날로 넘어가면 자정 크로스 — 백엔드가 거부(무결성)하므로 그대로 전달.
+            //  [R-9] 종료가 KST에서 다음날로 넘어가면(end<start) 백엔드가 **익일 종료**로 해석해
+            //  durationMinutes로 저장한다(자정 크로스 정식 지원 — 구 400 거부 폐지).
             const kst = editingTz ? kstPatchTimes(patch, editingTz.tz) : patch;
             setEditing(null); setEditingTz(null);
             await applyPatch(id, kst);
@@ -2372,7 +2429,7 @@ function SearchableCheckList({ items, selected, onToggle, placeholder }: {
 function TimeRangeField({ start, end, onStart, onEnd, endHint }: {
   start: string; end: string; onStart: (v: string) => void; onEnd: (v: string) => void; endHint?: string;
 }) {
-  const dur = toMin(end) - toMin(start);
+  const dur = (toMin(end) - toMin(start) + 1440) % 1440; // [R-9] end<start=익일 종료 — 래핑해 프리셋 하이라이트 유지
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-3">
@@ -2382,7 +2439,8 @@ function TimeRangeField({ start, end, onStart, onEnd, endHint }: {
       <div className="flex flex-wrap gap-1">
         <span className="text-micro text-fg-subtle self-center mr-0.5">빠른 선택</span>
         {DUR_PRESETS.map((m) => (
-          <button key={m} type="button" onClick={() => onEnd(fromMin(toMin(start) + m))}
+          /* [R-9] 심야 시작 + 프리셋이 자정을 넘으면 %1440 래핑 — 수업은 익일 종료로 저장, 블록은 start<end 검증이 막음 */
+          <button key={m} type="button" onClick={() => onEnd(fromMin((toMin(start) + m) % 1440))}
             className={`btn btn-sm ${dur === m ? "badge-accent" : ""}`}>{durLabel(m)}</button>
         ))}
       </div>
@@ -2472,7 +2530,9 @@ function CreateModal({
   const [start, setStart] = useState(defaultStart ?? "16:00");
   // 진행시간은 코스(실제 수업) 데이터에서 — 종료시각 자동 계산(편집 가능)
   const courseDur = course?.durationMinutes ?? 90;
-  const [end, setEnd] = useState(fromMin(toMin(defaultStart ?? "16:00") + (myCourses[0]?.durationMinutes ?? 90)));
+  // [R-9] 심야 시작(예: 23:30) + 진행시간이 자정을 넘으면 %1440 래핑('25:00' 금지) — end<start는
+  //  익일 종료(자정 크로스)로 저장된다(아래 crossesMidnight 안내·BE 해석 규칙).
+  const [end, setEnd] = useState(fromMin((toMin(defaultStart ?? "16:00") + (myCourses[0]?.durationMinutes ?? 90)) % 1440));
   const [memo, setMemo] = useState("");
   // [v0.1.14] 종류(수업/진단고사/상담 — 캘린더 필터 축) + 상담 등 단건 가격(Q1: 담당자=강사 재사용)
   const [kind, setKind] = useState<"class" | "level_test" | "counsel">("class");
@@ -2503,15 +2563,18 @@ function CreateModal({
     const c = resources.courses.find((x) => x.id === id);
     if (c) {
       if (lockInstructorId == null) setInstructorId(c.instructorId);
-      setEnd(fromMin(toMin(start) + c.durationMinutes)); // 코스 진행시간으로 종료 자동
+      setEnd(fromMin((toMin(start) + c.durationMinutes) % 1440)); // 코스 진행시간으로 종료 자동([R-9] 자정 래핑)
       setColor(c.color); // 코스 색을 기본 색으로
     }
   }
   function changeStart(v: string) {
     setStart(v);
-    if (type === "session") setEnd(fromMin(toMin(v) + courseDur)); // 수업만 코스 진행시간으로 종료 자동
+    if (type === "session") setEnd(fromMin((toMin(v) + courseDur) % 1440)); // 수업만 코스 진행시간으로 종료 자동([R-9] 자정 래핑)
   }
-  const sessionValid = courseId && date && start < end;
+  // [R-9] 수업은 end<start = 익일 종료(자정 크로스) 허용 — 같은 시각만 무효. (가용/불가 blockValid는
+  //  기존 start<end 유지 — availability는 FE splitKstBand 분할·BE end<=start 400 정책 불변.)
+  const crossesMidnight = type === "session" && end < start;
+  const sessionValid = courseId && date && start !== end;
 
   // ── #2: 선택 시간대에 가용한 강사 안내(가용 강사 먼저) ──
   const [blocks, setBlocks] = useState<AvailabilityBlock[]>([]);
@@ -2668,6 +2731,10 @@ function CreateModal({
             </Field>
             <DateField value={date} onChange={setDate} />
             <TimeRangeField start={start} end={end} onStart={changeStart} onEnd={setEnd} endHint={`진행 ${courseDur}분`} />
+            {crossesMidnight && (
+              /* [R-9] 자정 크로스 안내 — 익일 종료로 저장(단일 세션·sessionDate=시작일) */
+              <p className="text-caption text-accent">🌙 종료가 시작보다 이르므로 <b>다음날 {end} 종료</b>(자정 크로스)로 저장됩니다.</p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <Field label="종류">
                 <select className="input" value={kind} onChange={(e) => setKind(e.target.value as "class" | "level_test" | "counsel")}>

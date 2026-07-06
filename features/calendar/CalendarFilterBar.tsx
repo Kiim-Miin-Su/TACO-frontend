@@ -161,7 +161,10 @@ export function CalendarFilterBar({
   period, onPeriod,
   pickedDates, onPickDate, onUnpickDate, onClearPicked,
   anyFilter, onClearAll,
+  tools,
 }: {
+  /** [압축 2026-07-06] 뷰 도구(열 좁게·뷰 프리셋 등) — 2행 선두 슬롯. 별도 툴바 행 제거용 */
+  tools?: React.ReactNode;
   resources: ScheduleResources | null;
   rooms: Room[];
   q: string;
@@ -242,12 +245,13 @@ export function CalendarFilterBar({
           picked={groupOnly ? new Set(["group"]) : new Set()}
           onToggle={() => onGroupOnly(!groupOnly)} onClear={() => onGroupOnly(false)} />
         <span className="w-px h-5 bg-line" />
-        {/* 기간: 우측 리스트·조회 범위 확장(뷰 기간 대신 사용) */}
+        {/* 기간: 우측 리스트·조회 범위 확장(뷰 기간 대신 사용)
+            [정렬 2026-07-06] 필터바 컨트롤 높이 h-7 통일(btn-sm과 동일선) · 폭 w-[120px] = 표별 필터바와 동일 규격 */}
         <label className="flex items-center gap-1 text-caption text-fg-muted">
           기간
           <input
             type="date"
-            className="input h-8 w-[130px]"
+            className="input h-7 px-1.5 text-caption w-[120px]"
             value={period?.from ?? ""}
             onChange={(e) => {
               const from = e.target.value;
@@ -258,7 +262,7 @@ export function CalendarFilterBar({
           ~
           <input
             type="date"
-            className="input h-8 w-[130px]"
+            className="input h-7 px-1.5 text-caption w-[120px]"
             value={period?.to ?? ""}
             min={period?.from}
             onChange={(e) => {
@@ -269,7 +273,7 @@ export function CalendarFilterBar({
             disabled={!period}
           />
           {period && (
-            <button className="btn btn-sm h-6 px-1.5" onClick={() => onPeriod(null)} title="기간 해제(뷰 기간으로)">
+            <button className="btn btn-sm h-7 px-1.5" onClick={() => onPeriod(null)} title="기간 해제(뷰 기간으로)">
               ✕
             </button>
           )}
@@ -277,7 +281,7 @@ export function CalendarFilterBar({
         {/* [cherry-pick 2026-07-06] 원하는 날짜만 여러 개(불연속·최대 14) — 선택 시 기간보다 우선(표별 헤더와 동일 문법) */}
         <label className="flex items-center gap-1 text-caption text-fg-muted" title="원하는 날짜만 골라 보기 — 고르면 기간(from~to) 대신 이 날짜들만 표시">
           날짜
-          <input type="date" className="input h-8 w-[130px]" value="" onChange={(e) => e.target.value && onPickDate(e.target.value)} />
+          <input type="date" className="input h-7 px-1.5 text-caption w-[120px]" value="" onChange={(e) => e.target.value && onPickDate(e.target.value)} />
         </label>
         {pickedDates.map((d) => (
           <span key={d} className="badge inline-flex items-center gap-1 mono text-micro cursor-pointer" title="클릭=이 날짜 제거" onClick={() => onUnpickDate(d)}>
@@ -285,20 +289,21 @@ export function CalendarFilterBar({
           </span>
         ))}
         {pickedDates.length > 0 && (
-          <button className="btn btn-sm h-6 px-1.5" onClick={onClearPicked} title="선택 날짜 전체 해제">↺</button>
+          <button className="btn btn-sm h-7 px-1.5" onClick={onClearPicked} title="선택 날짜 전체 해제">↺</button>
         )}
       </div>
-      {/* 2행: 검색 + 색 기준 + 선택 칩 */}
+      {/* 2행: 뷰 도구(tools 슬롯) + 검색 + 색 기준 + 선택 칩 */}
       <div className="flex items-center gap-2 flex-wrap">
+        {tools}
         <input
-          className="input h-8 w-56"
+          className="input h-7 w-56"
           placeholder="검색 (수업·강사·강의실·학생·주제)"
           value={q}
           onChange={(e) => onQ(e.target.value)}
         />
         <label className="flex items-center gap-1.5 text-caption text-fg-muted">
           색 기준
-          <select className="input h-8 w-24" value={colorBy} onChange={(e) => onColorBy(e.target.value as ColorBy)}>
+          <select className="input h-7 w-24 text-caption" value={colorBy} onChange={(e) => onColorBy(e.target.value as ColorBy)}>
             <option value="subject">과목</option>
             <option value="instructor">강사</option>
             <option value="room">강의실</option>

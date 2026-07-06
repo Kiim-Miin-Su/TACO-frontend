@@ -105,11 +105,28 @@ Lantiv의 핵심은 "**Scheduling is all about seeing the BIG picture**" — 한
 | 컴포넌트 | 규칙 |
 |---|---|
 | SectionCard | 부모 폭 100%. 자체 max-width 금지 |
-| 테이블 | `<div className="overflow-x-auto">` 래퍼 필수 + 열별 `min-w` 지정(§6) |
+| 테이블 | `TableWrap`(overflow-x-auto) 래퍼 필수 + 열별 `min-w` 지정(§6) |
 | 모달 | sm 400 / md 560 / lg 720 3단. `max-w-[95vw]` 병행 유지 |
 | 우측 패널(캘린더) | 고정 280px, `shrink-0`, 내부 truncate |
 | 폼 grid | `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3` — 고정 열수 금지 |
 | Topbar 검색 | `w-80 max-w-[40vw]` 유지 |
+
+### 2.4 높이 규격 (2026-07-06 추가 — width와 동급으로 강제)
+
+원칙: **화면(뷰포트)을 넘어 자라는 요소는 반드시 자기 안에서 스크롤**하고, 빈 상태에서 레이아웃이 무너지지 않게 최소 높이를 지킨다.
+
+| 대상 | 규칙 |
+|---|---|
+| 모달 | `max-h-[85vh]` + 본문 `overflow-y-auto`(헤더·푸터는 고정). 세로 중앙 배치 유지 |
+| 팝오버·드롭다운(알림, ⓘ 도움말, Combobox 목록) | `max-h-[320px] overflow-y-auto` |
+| 대시보드 To-do 리스트(TaskList) | 카드당 `max-h-[300px] overflow-y-auto` — 항목 폭주 시 카드가 페이지를 밀어내지 않게 |
+| 빈 상태(EmptyState) | 한 줄(p-4) 고정 — 0건 섹션이 공간 점유 금지. 별도 min-h 금지 |
+| 풀그리드 화면(캘린더·출석부 매트릭스) | 페이지가 아니라 **그리드 컨테이너가 스크롤 소유**: `flex-1 min-h-0` + 내부 `overflow-auto` |
+| 사이드 패널(캘린더 우측) | `min-h-0` + 리스트 영역 `overflow-y-auto` — 패널이 그리드보다 길어지지 않게 |
+| textarea | `min-h-[96px]`(기본)·`max-h-[40vh]`, resize-y 허용 |
+| 페이지 최소 높이 | 명시 금지 — 콘텐츠 높이를 따른다(스크롤은 AppShell `main`이 소유) |
+
+검증: QA 하네스에서 `scrollHeight > innerHeight`인 요소 중 overflow 미소유 요소를 스캔(§6-5와 동일한 방식의 세로판).
 
 ---
 
@@ -161,6 +178,20 @@ Lantiv의 핵심은 "**Scheduling is all about seeing the BIG picture**" — 한
 | **TableWrap** | 래퍼 없는 table 전부 | `overflow-x-auto` + 선택적 `minWidth` |
 
 기존 유지: SectionCard, StatCard, Badge, StatusDot, Combobox, MonthCalendar, tokens.ts(Tone).
+
+### 5.5 View 분리 기준 — 기능·책임 단위 (2026-07-06 추가)
+
+한 화면에 여러 책임이 섞이면 페이지·모달·패널로 분리한다. 기준:
+
+| 형태 | 쓰는 경우 | 예 |
+|---|---|---|
+| **페이지** | 조회·워크플로 허브(목록/현황/그리드). URL로 공유·복귀할 가치가 있는 단위 | 학생 목록, 캘린더, 정산 목록 |
+| **서브페이지** (`/x/new`, `/x/[id]`) | 필드 6개 이상 복잡 폼, 상세 화면 | 결제 생성, 지출 상세 |
+| **모달** (Prompt/Confirm/Reason) | 필드 1~5개의 짧은 입력, 파괴적 액션 확인. 컨텍스트(목록)를 벗어나면 안 되는 작업 | 급여 수정, 반려 사유, 퇴원 확인 |
+| **접이식 패널** | 페이지 안에서 가끔 쓰는 생성 폼 — 기본 접힘, 헤더 버튼으로 토글 | 학생 등록 |
+| **팝오버** | 조작 도움말·알림 등 읽기 전용 보조 정보 | 캘린더 단축키 ⓘ |
+
+규칙: 하나의 뷰 파일은 하나의 책임. 조회 뷰 안에 생성 폼을 상시 노출하지 않는다(§8 학생 페이지 역전). 모달 안에서 또 모달을 열지 않는다.
 
 ## 6. 오버플로 제로 규칙
 

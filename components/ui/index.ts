@@ -6,6 +6,7 @@ export { EmptyState } from './EmptyState';
 export { TableWrap } from './TableWrap';
 export { PromptModal, ConfirmModal } from './Modal';
 export type { PromptField } from './Modal';
+export { HelpPopover } from './HelpPopover';
 export { StatusDot } from './StatusDot';
 export { StatCard } from './StatCard';
 export { SectionCard } from './SectionCard';

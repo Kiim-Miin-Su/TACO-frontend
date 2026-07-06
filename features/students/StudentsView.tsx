@@ -1,11 +1,12 @@
 "use client";
 // 목록 데이터(students·enrollments·courses·parentStudents·parents)는 TanStack Query로 읽고,
 // 퇴원(소프트삭제)은 useRemoveStudent 훅(백엔드 DELETE /students/:id)으로 처리한다.
-import { Badge, SectionCard, StatusDot, type Tone } from "@/components/ui";
+// [DESIGN §8·§5.5] 첫 화면 = 목록(조회 우선). 등록 폼은 접이식 패널(기본 접힘) — 헤더 버튼 토글.
+import { Badge, ConfirmModal, EmptyState, PageHeader, SectionCard, StatusDot, TableWrap, type Tone } from "@/components/ui";
 import { useStudents, useEnrollments, useCourses, useParentStudents, useParents, useRemoveStudent } from "@/lib/queries";
 import { isActiveStudent, activeCourseNamesOf, STUDENT_STATUS_LABEL as label, STUDENT_STATUS_TONE } from "@/lib/domain/students";
 import { CountryBadge } from "@/features/calendar/CountryInput";
-import type { StudentStatus } from "@/types";
+import type { Student } from "@/types";
 import { StudentForm } from "./StudentForm";
 import { useState } from "react";
 
@@ -19,6 +20,8 @@ export function StudentsView() {
   const removeStudent = useRemoveStudent();
   const [q, setQ] = useState("");
   const [showDropped, setShowDropped] = useState(false);
+  const [showForm, setShowForm] = useState(false); // 등록 패널 — 기본 접힘
+  const [dropTarget, setDropTarget] = useState<Student | null>(null); // 퇴원 확인 모달
   const kw = q.trim().toLowerCase();
 
   // 기본 스코프 = 활성 학생만(퇴원 제외). 토글 시 퇴원 포함.
@@ -43,18 +46,26 @@ export function StudentsView() {
   };
 
   return (
-    <div className="p-6 max-w-[1180px] mx-auto space-y-6">
-      <div>
-        <h1 className="text-title font-bold">학생</h1>
-        <p className="text-body text-fg-muted mt-0.5">학생 등록 및 목록 · 활성 {activeCount}명</p>
-      </div>
+    <div className="p-6 max-w-page mx-auto space-y-6">
+      <PageHeader
+        title="학생 · 부모"
+        sub={`활성 ${activeCount}명`}
+        actions={
+          <button className={showForm ? "btn" : "btn btn-primary"} onClick={() => setShowForm((v) => !v)}>
+            {showForm ? "등록 닫기" : "+ 학생 등록"}
+          </button>
+        }
+      />
 
-      <SectionCard title="학생 등록">
-        <StudentForm />
-      </SectionCard>
+      {/* 등록 폼 — 접이식(기본 접힘). 목록이 항상 첫 화면. */}
+      {showForm && (
+        <SectionCard title="학생 등록" action={<button className="btn btn-sm" onClick={() => setShowForm(false)}>닫기</button>}>
+          <StudentForm />
+        </SectionCard>
+      )}
 
       <SectionCard
-        title="학생 목록"
+        title={`학생 목록 (${filtered.length})`}
         action={
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-1.5 text-caption text-fg-muted select-none">
@@ -65,7 +76,13 @@ export function StudentsView() {
           </div>
         }
       >
-        <div className="overflow-x-auto">
+        {filtered.length === 0 ? (
+          <EmptyState
+            message={kw ? "검색 결과가 없습니다." : "등록된 학생이 없습니다."}
+            action={!kw && <button className="btn btn-sm" onClick={() => setShowForm(true)}>+ 학생 등록</button>}
+          />
+        ) : (
+        <TableWrap minWidth={880}>
           <table className="table">
             <thead>
               <tr>
@@ -92,7 +109,7 @@ export function StudentsView() {
                     {/* 국가(피드백 2026-07-02): 해외 학생 시차 시간표의 기준 — 미지정은 KR(국내) 간주 */}
                     <td><CountryBadge code={s.country} /></td>
                     <td className="mono text-fg-muted">{s.webId ?? <span className="text-fg-subtle">미가입</span>}</td>
-                    <td className="text-fg-muted">{cs.length ? cs.join(", ") : "—"}</td>
+                    <td className="text-fg-muted max-w-[220px] truncate" title={cs.join(", ")}>{cs.length ? cs.join(", ") : "—"}</td>
                     <td className="text-fg-muted">{parentOf(s.id) ?? "—"}</td>
                     <td>
                       <Badge tone={(STUDENT_STATUS_TONE[s.status] as Tone)}>
@@ -101,18 +118,8 @@ export function StudentsView() {
                     </td>
                     <td className="text-right">
                       {isActiveStudent(s) ? (
-                        <button
-                          className="btn btn-sm btn-danger"
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `${s.name} 학생을 퇴원 처리할까요?\n상담·수업보고서·결제 등 이력은 보존되며, 활성 목록과 일정에서만 제외됩니다.`,
-                              )
-                            ) {
-                              removeStudent.mutate(s.id);
-                            }
-                          }}
-                        >
+                        // [DESIGN §5.5] 파괴적 액션 확인은 ConfirmModal(danger)
+                        <button className="btn btn-sm btn-danger" onClick={() => setDropTarget(s)}>
                           퇴원 처리
                         </button>
                       ) : (
@@ -124,8 +131,20 @@ export function StudentsView() {
               })}
             </tbody>
           </table>
-        </div>
+        </TableWrap>
+        )}
       </SectionCard>
+
+      {dropTarget && (
+        <ConfirmModal
+          title={`${dropTarget.name} 학생 퇴원 처리`}
+          message="상담·수업보고서·결제 등 이력은 보존되며, 활성 목록과 일정에서만 제외됩니다."
+          confirmLabel="퇴원 처리"
+          danger
+          onClose={() => setDropTarget(null)}
+          onConfirm={() => { removeStudent.mutate(dropTarget.id); setDropTarget(null); }}
+        />
+      )}
     </div>
   );
 }

@@ -1,9 +1,15 @@
 'use client';
 import {
   Badge,
+  EmptyState,
+  PageHeader,
   StatCard,
   SectionCard,
   StatusDot,
+  TableWrap,
+  IconBell,
+  IconBook,
+  IconCalendar,
   IconUsers,
   type Tone,
 } from '@/components/ui';
@@ -16,25 +22,40 @@ import { buildTasks, type TaskItem } from '@/lib/tasks';
 import type { EnrollmentStatus } from '@/types';
 
 // To-do 항목 리스트 — 알림/대시보드 공용 표현. 항목 클릭 시 해당 화면으로.
+// [DESIGN §2.4] 항목 폭주 시 카드가 페이지를 밀지 않게 자체 스크롤(max-h-[300px]).
 function TaskList({ items, empty }: { items: TaskItem[]; empty: string }) {
-  if (items.length === 0) return <div className="p-4 text-body text-fg-subtle">{empty}</div>;
+  if (items.length === 0) return <EmptyState message={empty} />;
   return (
-    <ul className="divide-y border-line-muted">
-      {items.map((t) => (
-        <li key={t.id}>
-          <Link href={t.href} className="flex items-center gap-3 px-4 py-3 hover:bg-canvas-subtle">
-            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: `var(--color-${t.tone === 'neutral' ? 'fg-subtle' : t.tone})` }} />
-            <span className="min-w-0 flex-1">
-              <span className="block text-body font-medium text-fg truncate">{t.title}</span>
-              {t.detail && <span className="block text-caption text-fg-subtle truncate">{t.detail}</span>}
-            </span>
-            <span className="text-fg-subtle text-body">›</span>
-          </Link>
-        </li>
-      ))}
-    </ul>
+    <div className="max-h-[300px] overflow-y-auto">
+      <ul className="divide-y border-line-muted">
+        {items.map((t) => (
+          <li key={t.id}>
+            <Link href={t.href} className="flex items-center gap-3 px-4 py-3 hover:bg-canvas-subtle">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: `var(--color-${t.tone === 'neutral' ? 'fg-subtle' : t.tone})` }} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-body font-medium text-fg truncate">{t.title}</span>
+                {t.detail && <span className="block text-caption text-fg-subtle truncate">{t.detail}</span>}
+              </span>
+              <span className="text-fg-subtle text-body">›</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
+
+// 할 일 그룹 메타 — 카드/축약 스트립 공용 정의(회계상 분리: 입금/출금/상담/수업)
+const TASK_GROUPS = [
+  { key: 'payment', title: '결제 · 수납', href: '/payments', btn: '결제 관리', empty: '재결제 임박·미수 건이 없습니다.' },
+  { key: 'pay', title: '강사 페이', href: '/payouts', btn: '강사 페이', empty: '승인·지급 대기 정산이 없습니다.' },
+  { key: 'expense', title: '지출 승인', href: '/admin/approvals', btn: '승인 센터', empty: '승인 대기 지출이 없습니다.' },
+  { key: 'counsel', title: '상담 배정', href: '/counsel', btn: '상담', empty: '배정 대기(날짜 미정) 상담이 없습니다.' },
+  // [UX QA 2026-07-06 H2] 수업 요청(TBO-16 #9) — 배지·승인센터와 같은 모집단
+  { key: 'schedule', title: '수업 요청', href: '/admin/approvals', btn: '승인 센터', empty: '승인 대기 수업 요청이 없습니다.' },
+] as const;
+
+const iso = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
 
 const statusTone: Record<EnrollmentStatus, Tone> = {
   active: 'success',
@@ -63,17 +84,17 @@ export function DashboardView() {
     const reportTasks = tasks.filter((t) => t.group === 'report');
     const classTasks = tasks.filter((t) => t.group === 'class' || t.group === 'schedule'); // [UX H2] 내 수업 요청(반려·대기)도 수업 카드에
     return (
-      <div className="p-6 max-w-[860px] mx-auto space-y-6">
-        <div className="flex items-end justify-between">
-          <div>
-            <h1 className="text-title font-bold">내 할 일</h1>
-            <p className="text-body text-fg-muted mt-0.5">오늘·다가오는 수업과 작성할 리포트를 확인하세요.</p>
-          </div>
-          <div className="flex items-center gap-2 text-caption text-fg-subtle">
-            <span className="dot bg-success" />
-            {roleLabel[role]} · 대기 {taskCount}건
-          </div>
-        </div>
+      <div className="p-6 max-w-page-form mx-auto space-y-6">
+        <PageHeader
+          title="내 할 일"
+          sub="오늘·다가오는 수업과 작성할 리포트"
+          actions={
+            <span className="flex items-center gap-2 text-caption text-fg-subtle">
+              <span className="dot bg-success" />
+              {roleLabel[role]} · 대기 {taskCount}건
+            </span>
+          }
+        />
 
         <SectionCard title={`리포트 미작성 (${reportTasks.length})`} action={<a href="/reports" className="btn btn-sm">리포트 작성</a>}>
           <TaskList items={reportTasks} empty="작성할 리포트가 없습니다. 진행한 수업의 리포트가 모두 제출되었습니다." />
@@ -91,9 +112,8 @@ export function DashboardView() {
   // 학생/학부모는 운영 대시보드 대신 본인 일정으로 안내
   if (!admin) {
     return (
-      <div className="p-6 max-w-[760px] mx-auto">
-        <h1 className="text-title font-bold">안녕하세요 ({roleLabel[role]})</h1>
-        <p className="text-body text-fg-muted mt-1 mb-5">학원 일정과 내 수업을 캘린더에서 확인하세요.</p>
+      <div className="p-6 max-w-page-form mx-auto">
+        <PageHeader title={`안녕하세요 (${roleLabel[role]})`} sub="학원 일정과 내 수업을 캘린더에서 확인하세요." />
         <SectionCard title="바로가기">
           <div className="p-4 flex gap-2">
             <a href="/schedule" className="btn btn-primary">학원 캘린더 보기</a>
@@ -114,54 +134,75 @@ export function DashboardView() {
       return { id: e.id, student, course, status: e.status, amount: course?.price ?? 0, at: e.enrolledAt };
     });
 
+  // 이번 주(월~일) 수업 수 — 지표 행. 날짜는 하드코딩 금지(동적).
+  const now = new Date();
+  const monthLabel = `${now.getFullYear()}년 ${now.getMonth() + 1}월`;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const weekSessions = appData.classSessions.filter(
+    (s) => s.sessionDate >= iso(monday) && s.sessionDate <= iso(sunday),
+  ).length;
+  const activeEnrollments = appData.enrollments.filter((e) => e.status === 'active').length;
+
+  // [DESIGN §8] 대기>0 그룹만 카드, 0건 그룹은 하단 한 줄 스트립으로 축약
+  const grouped = TASK_GROUPS.map((g) => ({ ...g, items: tasks.filter((t) => t.group === g.key) }));
+  const activeGroups = grouped.filter((g) => g.items.length > 0);
+  const idleGroups = grouped.filter((g) => g.items.length === 0);
+
   return (
-    <div className="p-6 max-w-[1200px] mx-auto">
-      <div className="flex items-end justify-between mb-5">
-        <div>
-          <h1 className="text-title font-bold">대시보드</h1>
-          <p className="text-body text-fg-muted mt-0.5">2026년 6월 · 이번 달 운영 현황</p>
-        </div>
-        <div className="flex items-center gap-2 text-caption text-fg-subtle">
-          {ceo && <Link href="/insights" className="btn btn-sm">경영 지표 →</Link>}
-          <span className="dot bg-success" />
-          {roleLabel[role]} · {ceo ? '경영 지표는 별도 탭' : '운영 화면'}
-        </div>
-      </div>
+    <div className="p-6 max-w-page mx-auto">
+      <PageHeader
+        title="대시보드"
+        sub={`${monthLabel} · 이번 달 운영 현황`}
+        actions={
+          <>
+            {ceo && <Link href="/insights" className="btn btn-sm">경영 지표 →</Link>}
+            <span className="flex items-center gap-2 text-caption text-fg-subtle">
+              <span className="dot bg-success" />
+              {roleLabel[role]}
+            </span>
+          </>
+        }
+      />
 
-      {/* 관리자/매니저 할 일 — 회계상 분리: 결제·수납(입금) / 강사 페이·지출(출금) / 상담 */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-section font-semibold">할 일 · 처리 대기 <span className="text-fg-subtle font-normal">({taskCount})</span></h2>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <SectionCard title={`결제 · 수납 (${tasks.filter((t) => t.group === 'payment').length})`} action={<a href="/payments" className="btn btn-sm">결제 관리</a>}>
-            <TaskList items={tasks.filter((t) => t.group === 'payment')} empty="재결제 임박·미수 건이 없습니다." />
-          </SectionCard>
-          <SectionCard title={`강사 페이 (${tasks.filter((t) => t.group === 'pay').length})`} action={<a href="/payouts" className="btn btn-sm">강사 페이</a>}>
-            <TaskList items={tasks.filter((t) => t.group === 'pay')} empty="승인·지급 대기 정산이 없습니다." />
-          </SectionCard>
-          <SectionCard title={`지출 승인 (${tasks.filter((t) => t.group === 'expense').length})`} action={<a href="/admin/approvals" className="btn btn-sm">승인 센터</a>}>
-            <TaskList items={tasks.filter((t) => t.group === 'expense')} empty="승인 대기 지출이 없습니다." />
-          </SectionCard>
-          <SectionCard title={`상담 배정 (${tasks.filter((t) => t.group === 'counsel').length})`} action={<a href="/counsel" className="btn btn-sm">상담</a>}>
-            <TaskList items={tasks.filter((t) => t.group === 'counsel')} empty="배정 대기(날짜 미정) 상담이 없습니다." />
-          </SectionCard>
-          {/* [UX QA 2026-07-06 H2] 수업 요청 승인 대기(TBO-16 #9) — 배지·승인센터와 같은 모집단인데 카드가 없어 대시보드에서 누락되던 것 */}
-          <SectionCard title={`수업 요청 (${tasks.filter((t) => t.group === 'schedule').length})`} action={<a href="/admin/approvals" className="btn btn-sm">승인 센터</a>}>
-            <TaskList items={tasks.filter((t) => t.group === 'schedule')} empty="승인 대기 수업 요청이 없습니다." />
-          </SectionCard>
-        </div>
-      </div>
-
-      {/* 경영 지표(수입·지출 그래프·원장)는 /insights 탭으로 분리. 대시보드는 운영 처리 대기에 집중. */}
+      {/* 지표 행 — 운영 중립 지표 4개(경영 금액 지표는 /insights로 분리 유지) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label="수강 등록" value={`${appData.enrollments.length}건`} tone="accent" icon={<IconUsers />} sub={`학생 ${appData.students.length}명`} />
+        <StatCard label="수강 등록" value={`${appData.enrollments.length}건`} tone="accent" icon={<IconBook />} sub={`활성 ${activeEnrollments}건`} />
+        <StatCard label="학생" value={`${appData.students.length}명`} tone="success" icon={<IconUsers />} sub={`학부모 ${appData.parents.length}명`} />
+        <StatCard label="이번 주 수업" value={`${weekSessions}회`} tone="done" icon={<IconCalendar />} sub={`${iso(monday).slice(5)} ~ ${iso(sunday).slice(5)}`} />
+        <StatCard label="처리 대기" value={`${taskCount}건`} tone={taskCount > 0 ? 'attention' : 'neutral'} icon={<IconBell />} sub={taskCount > 0 ? '아래 카드에서 처리' : '모두 처리됨'} />
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        <div>
-          <SectionCard title="최근 수강 등록" action={<a href="/students" className="btn btn-sm">학생 관리</a>}>
-            <table className="table">
+      {/* 관리자/매니저 할 일 — 회계상 분리: 결제·수납(입금) / 강사 페이·지출(출금) / 상담 / 수업 */}
+      <div className="mb-6">
+        <h2 className="text-section font-semibold mb-2">할 일 · 처리 대기 <span className="text-fg-subtle font-normal">({taskCount})</span></h2>
+        {activeGroups.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-3">
+            {activeGroups.map((g) => (
+              <SectionCard key={g.key} title={`${g.title} (${g.items.length})`} action={<Link href={g.href} className="btn btn-sm">{g.btn}</Link>}>
+                <TaskList items={g.items} empty={g.empty} />
+              </SectionCard>
+            ))}
+          </div>
+        )}
+        {/* 0건 그룹 축약 스트립 — 빈 카드가 화면을 점유하지 않게(DESIGN §2.4·§8) */}
+        {idleGroups.length > 0 && (
+          <div className="card px-4 py-2.5 flex items-center gap-x-4 gap-y-1 flex-wrap text-caption text-fg-subtle">
+            <span className="font-medium text-fg-muted shrink-0">대기 없음</span>
+            {idleGroups.map((g) => (
+              <Link key={g.key} href={g.href} className="hover:underline text-fg-subtle" title={g.empty}>
+                ✓ {g.title}
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <SectionCard title="최근 수강 등록" action={<Link href="/students" className="btn btn-sm">학생 관리</Link>}>
+        <TableWrap>
+          <table className="table">
               <thead>
                 <tr>
                   <th>학생</th>
@@ -189,11 +230,9 @@ export function DashboardView() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </SectionCard>
-        </div>
-      </div>
-
+          </table>
+        </TableWrap>
+      </SectionCard>
     </div>
   );
 }

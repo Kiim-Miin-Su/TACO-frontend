@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Room, ScheduleRow } from "@/types";
 import type { SchedulePatchBody } from "@/lib/api";
-import { WEEKDAYS_KO as WD } from "@/lib/domain/schedule";
+import { WEEKDAYS_KO as WD, crossMidnightEnd } from "@/lib/domain/schedule"; // [R-9] 자정 크로스 익일 종료 표기
 import { INSTRUCTOR_ATT_LABEL, STATUS_LABEL, isGroupSession } from "@/lib/domain/lantiv";
 import { SessionEditFields } from "./SessionEditFields";
 // [피드백 2026-07-03] 스케줄 선택 시 참여 학생·강사 정보 동시 표시 — 캐시 공유 훅(중복 fetch 0)
@@ -77,7 +77,7 @@ export function SessionDetailPanel({
           </dd>
           <dt className="text-fg-muted">시간</dt>
           <dd className="mono">
-            {row.startTime ?? "-"}–{row.endTime ?? "-"} ({row.durationMinutes}분)
+            {row.startTime ?? "-"}–{row.endTime ?? (crossMidnightEnd(row) ? `익일 ${crossMidnightEnd(row)}` : "-")} ({row.durationMinutes}분)
           </dd>
           <dt className="text-fg-muted">과목</dt>
           <dd>{row.subjectName}</dd>

@@ -44,6 +44,16 @@ export const usePayouts = () => {
   const role = useTacoStore((s) => s.currentRole);
   return useQuery({ queryKey: qk.payouts.list(), queryFn: () => api.payouts.list(), enabled: isAdmin(role) });
 };
+// [상태 무결성 2026-07-06] 산정 미리보기(읽기전용) — 강사·기간 키 캐시(PayoutsView 로컬 fetch 대체).
+//  mutation 성공 시 qk.payouts.all 무효화가 preview 키도 접두사로 포함 → 자동 재계산.
+export const usePayoutPreview = (instructorId: number | null, from: string, to: string) => {
+  const role = useTacoStore((s) => s.currentRole);
+  return useQuery({
+    queryKey: qk.payouts.preview(instructorId ?? 0, from, to),
+    queryFn: () => api.payouts.preview(instructorId as number, from, to),
+    enabled: isAdmin(role) && instructorId != null && !!from && !!to,
+  });
+};
 // [TBO-16 #9] 수업 요청 — 승인센터·배지(tasks)·캘린더가 **같은 queryKey를 구독**(단일 이벤트 객체).
 //  서버가 역할별 스코프 적용(강사=본인 요청만) — 클라 필터 불요.
 export const useScheduleRequests = () =>

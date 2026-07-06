@@ -1,11 +1,15 @@
 'use client';
-import { Fragment, useCallback, useEffect, useState } from 'react';
-import { Badge, Field, SectionCard, type Tone } from '@/components/ui';
+import { Fragment, useCallback, useState } from 'react';
+import { Badge, EmptyState, Field, PageHeader, PromptModal, SectionCard, TableWrap, type Tone } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
-import { useSchedule, useCourses, useSubjects, useEnrollments, useStudents } from '@/lib/queries';
+import {
+  useSchedule, useCourses, useSubjects, useEnrollments, useStudents,
+  useInstructors, usePayouts, usePayoutPreview,
+  useGeneratePayout, useConfirmPayout, usePayPayout, useAdjustPayout, useRejectPayout,
+} from '@/lib/queries';
 import { isAdmin } from '@/lib/roles';
 import { won } from '@/lib/format';
-import { api, type MeasureResult, type PayoutRow, type PayoutRowStatus, type PayoutLine } from '@/lib/api';
+import type { PayoutRow, PayoutRowStatus, PayoutLine } from '@/lib/api';
 import { ReasonModal } from '@/components/ReasonModal';
 
 const statusLabel: Record<PayoutRowStatus, string> = {
@@ -16,7 +20,16 @@ const statusTone: Record<PayoutRowStatus, Tone> = {
 };
 const hours = (min?: number) => `${((min ?? 0) / 60).toFixed(1)}h`;
 
-type Conn = 'checking' | 'online' | 'offline';
+// 기본 산정 기간 = 이번 달 1일~말일(하드코딩 금지 — DESIGN §8 공통)
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const monthRange = () => {
+  const d = new Date();
+  const y = d.getFullYear(), m = d.getMonth();
+  return {
+    from: `${y}-${pad2(m + 1)}-01`,
+    to: `${y}-${pad2(m + 1)}-${pad2(new Date(y, m + 1, 0).getDate())}`,
+  };
+};
 
 export function PayoutsView() {
   const role = useTacoStore((s) => s.currentRole);
@@ -39,15 +52,23 @@ export function PayoutsView() {
   }, [classSessions, courses, subjects, enrollments, students]);
   const [expanded, setExpanded] = useState<number | null>(null);
 
-  const [conn, setConn] = useState<Conn>('checking');
-  const [instructors, setInstructors] = useState<{ id: number; name: string }[]>([]);
-  const [payouts, setPayouts] = useState<PayoutRow[]>([]);
-  const [busy, setBusy] = useState(false);
+  // [상태 무결성 2026-07-06] 서버 데이터는 TanStack Query 단일 소스 — 로컬 useState 복사 제거.
+  //  usePayouts는 관리자 게이트(비관리자 fetch 생략), mutation 성공 시 qk.payouts.all 무효화로 자동 최신화.
+  const payoutsQ = usePayouts();
+  const instructorsQ = useInstructors();
+  const payouts = payoutsQ.data ?? [];
+  const instructors = instructorsQ.data ?? [];
+  const conn: 'checking' | 'online' | 'offline' =
+    payoutsQ.isError || instructorsQ.isError ? 'offline'
+    : payoutsQ.isSuccess ? 'online' : 'checking';
 
   const [instructorId, setInstructorId] = useState('');
-  const [start, setStart] = useState('2026-06-01');
-  const [end, setEnd] = useState('2026-06-30');
-  const [preview, setPreview] = useState<MeasureResult | null>(null);
+  const [{ from: defFrom, to: defTo }] = useState(monthRange);
+  const [start, setStart] = useState(defFrom);
+  const [end, setEnd] = useState(defTo);
+  // 산정 미리보기(읽기전용) — 강사·기간 키의 쿼리(캐시·중복요청 제거)
+  const previewQ = usePayoutPreview(instructorId ? Number(instructorId) : null, start, end);
+  const preview = previewQ.data ?? null;
 
   // 필터 — 정산 목록(강사·상태) / 적격 수업 내역(수업)
   const [fInstructor, setFInstructor] = useState('');
@@ -59,83 +80,34 @@ export function PayoutsView() {
     [instructors],
   );
 
-  const loadPayouts = useCallback(async () => {
-    setPayouts(await api.payouts.list());
-  }, []);
-
-  // 초기 로드 — 자원(강사)·정산 목록 + 연결 상태
-  // [코드리뷰 2026-07-03 M1] 정산 API 관리자 전용 — 비관리자는 호출 자체를 생략(403→offline 오표시 방지)
-  useEffect(() => {
-    if (!admin) return;
-    (async () => {
-      try {
-        const res = await api.schedule.resources();
-        setInstructors(res.instructors.map((i) => ({ id: i.id, name: i.name })));
-        await loadPayouts();
-        setConn('online');
-      } catch {
-        setConn('offline');
-      }
-    })();
-  }, [admin, loadPayouts]);
-
-  // 강사·기간 변경 시 산정 미리보기(읽기전용)
-  useEffect(() => {
-    if (conn !== 'online' || !instructorId) { setPreview(null); return; }
-    let alive = true;
-    (async () => {
-      try {
-        const m = await api.payouts.preview(Number(instructorId), start, end);
-        if (alive) setPreview(m);
-      } catch {
-        if (alive) setPreview(null);
-      }
-    })();
-    return () => { alive = false; };
-  }, [conn, instructorId, start, end]);
-
-  const refreshPreview = useCallback(async () => {
-    if (!instructorId) return;
-    try { setPreview(await api.payouts.preview(Number(instructorId), start, end)); } catch { setPreview(null); }
-  }, [instructorId, start, end]);
-
-  // 액션 래퍼 — 공통 busy/에러/리로드
-  const act = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
-    try {
-      await fn();
-      await loadPayouts();
-      await refreshPreview();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      alert(`처리 실패: ${msg ?? String(e)}`);
-    } finally {
-      setBusy(false);
-    }
+  // mutation 훅 — 공통 에러 알림. 리로드는 invalidateQueries가 담당.
+  const onErr = (e: unknown) => {
+    const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+    alert(`처리 실패: ${msg ?? String(e)}`);
   };
+  const generateM = useGeneratePayout();
+  const confirmM = useConfirmPayout();
+  const payM = usePayPayout();
+  const adjustM = useAdjustPayout();
+  const rejectM = useRejectPayout();
+  const busy = generateM.isPending || confirmM.isPending || payM.isPending || adjustM.isPending || rejectM.isPending;
 
   const generate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!instructorId) return;
-    act(() => api.payouts.generate(Number(instructorId), start, end));
+    generateM.mutate({ instructorId: Number(instructorId), from: start, to: end }, { onError: onErr });
   };
-  const adjust = (p: PayoutRow) => {
-    const raw = window.prompt(`급여 수정 — 실효 지급액(원)\n자동 산정액: ${won(p.computedAmount)}`, String(p.amount));
-    if (raw == null) return;
-    const amount = Number(raw.replace(/[^\d]/g, ''));
-    if (!Number.isFinite(amount) || amount < 0) { alert('금액이 올바르지 않습니다'); return; }
-    const reason = window.prompt('수정 사유(선택)', p.adjustReason ?? '') ?? undefined;
-    act(() => api.payouts.adjust(p.id, amount, reason));
-  };
+  // [DESIGN §5.5] 급여 수정 — prompt 2연타 대신 금액+사유 한 화면 모달
+  const [adjustModal, setAdjustModal] = useState<PayoutRow | null>(null);
   // 반려 사유 모달(입력/보기)
   const [reasonModal, setReasonModal] = useState<{ mode: 'input' | 'view'; payout: PayoutRow } | null>(null);
 
   // [코드리뷰 2026-07-03 M1] 비관리자 접근 안내 — 백엔드 403과 일치하는 프론트 게이트(메뉴는 Sidebar에서 숨김, 직접 URL 접근 대비)
   if (!admin) {
     return (
-      <div className="p-6 max-w-[1000px] mx-auto">
-        <h1 className="text-title font-bold">강사 페이</h1>
-        <div className="mt-4 p-4 rounded-lg border text-body text-fg-muted border-line-muted">
+      <div className="p-6 max-w-page mx-auto">
+        <PageHeader title="강사 페이" />
+        <div className="p-4 rounded-lg border text-body text-fg-muted border-line-muted">
           정산 정보는 관리자 전용입니다. 본인 정산 조회 기능은 준비 중입니다.
         </div>
       </div>
@@ -144,9 +116,9 @@ export function PayoutsView() {
 
   if (conn === 'offline') {
     return (
-      <div className="p-6 max-w-[1000px] mx-auto">
-        <h1 className="text-title font-bold">강사 페이</h1>
-        <div className="mt-4 p-4 rounded-lg border text-body text-fg-muted border-line-muted">
+      <div className="p-6 max-w-page mx-auto">
+        <PageHeader title="강사 페이" />
+        <div className="p-4 rounded-lg border text-body text-fg-muted border-line-muted">
           백엔드 API에 연결할 수 없습니다. 로컬은 <span className="mono">cd backend &amp;&amp; npm run dev</span>, 배포는 <span className="mono">NEXT_PUBLIC_API_URL</span>를 확인하세요.
         </div>
       </div>
@@ -154,14 +126,12 @@ export function PayoutsView() {
   }
 
   return (
-    <div className="p-6 max-w-[1000px] mx-auto space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-title font-bold">강사 페이</h1>
-          <p className="text-body text-fg-muted mt-0.5">시수 × 코스 시급으로 산정(진행 완료 + 보고서 승인분만) · 생성 → 승인 → 지급</p>
-        </div>
-        <Badge tone={conn === 'online' ? 'success' : 'neutral'}>{conn === 'online' ? '실시간 API' : '확인 중…'}</Badge>
-      </div>
+    <div className="p-6 max-w-page mx-auto space-y-6">
+      <PageHeader
+        title="강사 페이"
+        sub="시수 × 코스 시급으로 산정(진행 완료 + 보고서 승인분만) · 생성 → 승인 → 지급"
+        actions={<Badge tone={conn === 'online' ? 'success' : 'neutral'}>{conn === 'online' ? '실시간 API' : '확인 중…'}</Badge>}
+      />
 
       <SectionCard title="정산 산정 · 정산서 생성">
         <form onSubmit={generate} className="p-4 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
@@ -200,6 +170,7 @@ export function PayoutsView() {
             </select>
           }
         >
+          <TableWrap minWidth={640}>
           <table className="table">
             <thead>
               <tr><th>일시</th><th>과목</th><th>수업</th><th>학생</th><th className="text-right">시수</th><th className="text-right">페이</th></tr>
@@ -226,6 +197,7 @@ export function PayoutsView() {
               </tr>
             </tfoot>
           </table>
+          </TableWrap>
         </SectionCard>
         );
       })()}
@@ -254,6 +226,7 @@ export function PayoutsView() {
             </div>
           }
         >
+        <TableWrap minWidth={760}>
         <table className="table">
           <thead>
             <tr>
@@ -262,7 +235,7 @@ export function PayoutsView() {
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={6} className="p-4 text-body text-fg-subtle">조건에 맞는 정산서가 없습니다.</td></tr>
+              <tr><td colSpan={6}><EmptyState message="조건에 맞는 정산서가 없습니다." compact /></td></tr>
             )}
             {filtered.map((p) => (
               <Fragment key={p.id}>
@@ -294,14 +267,14 @@ export function PayoutsView() {
                   ) : (
                     <div className="inline-flex gap-1.5 justify-end flex-wrap">
                       {p.status === 'pending' && (
-                        <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => act(() => api.payouts.confirm(p.id))}>승인</button>
+                        <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => confirmM.mutate(p.id, { onError: onErr })}>승인</button>
                       )}
                       {p.status === 'confirmed' && (
-                        <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => act(() => api.payouts.pay(p.id))}>지급</button>
+                        <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => payM.mutate(p.id, { onError: onErr })}>지급</button>
                       )}
                       {(p.status === 'pending' || p.status === 'confirmed') && (
                         <>
-                          <button className="btn btn-sm" disabled={busy} onClick={() => adjust(p)}>급여수정</button>
+                          <button className="btn btn-sm" disabled={busy} onClick={() => setAdjustModal(p)}>급여수정</button>
                           <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => setReasonModal({ mode: 'input', payout: p })}>반려</button>
                         </>
                       )}
@@ -347,6 +320,7 @@ export function PayoutsView() {
             ))}
           </tbody>
         </table>
+        </TableWrap>
         </SectionCard>
         );
       })()}
@@ -362,7 +336,27 @@ export function PayoutsView() {
           title={reasonModal.mode === 'input' ? `강사 페이 반려 — ${instructorName(reasonModal.payout.instructorId)}` : '반려 사유'}
           initial={reasonModal.payout.rejectedReason ?? ''}
           onClose={() => setReasonModal(null)}
-          onSubmit={(reason) => { const p = reasonModal.payout; setReasonModal(null); act(() => api.payouts.reject(p.id, reason)); }}
+          onSubmit={(reason) => { const p = reasonModal.payout; setReasonModal(null); rejectM.mutate({ id: p.id, reason }, { onError: onErr }); }}
+        />
+      )}
+
+      {/* [DESIGN §5.5] 급여 수정 — window.prompt 2연타 대체(금액+사유 한 화면) */}
+      {adjustModal && (
+        <PromptModal
+          title={`급여 수정 — ${instructorName(adjustModal.instructorId)} (자동 산정 ${won(adjustModal.computedAmount)})`}
+          fields={[
+            { name: 'amount', label: '실효 지급액(원)', type: 'number', required: true, initial: String(adjustModal.amount) },
+            { name: 'reason', label: '수정 사유(선택)', initial: adjustModal.adjustReason ?? '', hint: '강사에게 표시됩니다' },
+          ]}
+          submitLabel="수정"
+          onClose={() => setAdjustModal(null)}
+          onSubmit={(v) => {
+            const p = adjustModal;
+            const amount = Number(v.amount);
+            if (!Number.isFinite(amount) || amount < 0) { alert('금액이 올바르지 않습니다'); return; }
+            setAdjustModal(null);
+            adjustM.mutate({ id: p.id, amount, reason: v.reason || undefined }, { onError: onErr });
+          }}
         />
       )}
     </div>

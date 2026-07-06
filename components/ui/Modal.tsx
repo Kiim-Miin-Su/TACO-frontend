@@ -3,8 +3,8 @@ import { useEffect, useState, type ReactNode } from "react";
 
 /**
  * Modal 계열 — window.prompt/confirm 대체 (DESIGN.md §5).
- * 폭 3단: sm 400 / md 560 / lg 720 (+ max-w-[95vw]).
- * 금지: window.prompt / window.confirm / window.alert 신규 사용.
+ * 폭 3단: sm 400 / md 560 / lg 720 (+ max-w-[95vw]) · 높이 max-h-[85vh] 본문 스크롤(§2.4).
+ * 금지: window.prompt / window.confirm / window.alert 신규 사용, 모달 안에서 모달 열기.
  */
 
 const widths = { sm: "w-[400px]", md: "w-[560px]", lg: "w-[720px]" } as const;
@@ -67,8 +67,9 @@ export function PromptModal({
   };
   return (
     <Overlay onClose={onClose}>
-      <div className={`card card-pad ${widths.sm} max-w-[95vw] space-y-3`} onClick={(e) => e.stopPropagation()}>
-        <div className="font-semibold">{title}</div>
+      <div className={`card card-pad ${widths.sm} max-w-[95vw] max-h-[85vh] flex flex-col gap-3`} onClick={(e) => e.stopPropagation()}>
+        <div className="font-semibold shrink-0">{title}</div>
+        <div className="min-h-0 overflow-y-auto space-y-3">
         {fields.map((f, i) => (
           <label key={f.name} className="block">
             <span className="block text-caption font-medium text-fg-muted mb-1">{f.label}{f.required ? " *" : ""}</span>
@@ -84,7 +85,8 @@ export function PromptModal({
             {f.hint && <span className="block text-micro text-fg-subtle mt-1">{f.hint}</span>}
           </label>
         ))}
-        <div className="flex justify-end gap-2 pt-1">
+        </div>
+        <div className="flex justify-end gap-2 pt-1 shrink-0">
           <button className="btn btn-sm" onClick={onClose}>취소</button>
           <button className="btn btn-sm btn-primary" disabled={invalid} onClick={submit}>{submitLabel}</button>
         </div>
@@ -110,10 +112,10 @@ export function ConfirmModal({
 }) {
   return (
     <Overlay onClose={onClose}>
-      <div className={`card card-pad ${widths.sm} max-w-[95vw] space-y-3`} onClick={(e) => e.stopPropagation()}>
-        <div className="font-semibold">{title}</div>
-        <div className="text-body text-fg-muted">{message}</div>
-        <div className="flex justify-end gap-2 pt-1">
+      <div className={`card card-pad ${widths.sm} max-w-[95vw] max-h-[85vh] flex flex-col gap-3`} onClick={(e) => e.stopPropagation()}>
+        <div className="font-semibold shrink-0">{title}</div>
+        <div className="text-body text-fg-muted min-h-0 overflow-y-auto">{message}</div>
+        <div className="flex justify-end gap-2 pt-1 shrink-0">
           <button className="btn btn-sm" onClick={onClose}>취소</button>
           <button className={`btn btn-sm ${danger ? "btn-danger" : "btn-primary"}`} autoFocus onClick={onConfirm}>
             {confirmLabel}

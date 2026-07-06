@@ -66,10 +66,11 @@ export function CalendarSplitPane({
           {names || `${DIM_LABEL[pane.dim]}을 선택하세요`}
         </span>
         {headerExtra}
-        <button className="btn btn-sm h-6 px-1.5" onClick={onRemove} title="이 표 닫기">✕</button>
+        <button className="btn btn-sm h-7 px-1.5" onClick={onRemove} title="이 표 닫기">✕</button>
       </div>
       {pane.ids.length === 0 ? (
-        <div className="card grid place-items-center text-body text-fg-subtle" style={{ height: 200 }}>
+        /* [DESIGN §2.4] 빈 표 자리 — 고정 인라인 height 대신 min-h 클래스 */
+        <div className="card grid place-items-center text-body text-fg-subtle min-h-[200px]">
           위에서 {DIM_LABEL[pane.dim]}을 선택하면 시간표가 표시됩니다.
         </div>
       ) : (

@@ -6,7 +6,7 @@
 import { useMemo } from "react";
 import type { ScheduleRow } from "@/types";
 import { groupSessions, isGroupSession, type ListGroupBy } from "@/lib/domain/lantiv";
-import { WEEKDAYS_KO as WD } from "@/lib/domain/schedule";
+import { WEEKDAYS_KO as WD, crossMidnightEnd } from "@/lib/domain/schedule"; // [R-9] 자정 크로스 익일 종료 표기
 
 const GROUP_LABEL: Record<Exclude<ListGroupBy, "none">, string> = {
   student: "학생별",
@@ -66,7 +66,7 @@ export function SessionListPanel({
                   <span className="inline-block w-1 self-stretch rounded-full shrink-0" style={{ background: colorOf(r) }} />
                   <span className="min-w-0 flex-1">
                     <span className="block text-caption mono text-fg-muted">
-                      {r.sessionDate.slice(5)} ({WD[r.weekday]}) {r.startTime ?? ""}–{r.endTime ?? ""}
+                      {r.sessionDate.slice(5)} ({WD[r.weekday]}) {r.startTime ?? ""}–{r.endTime ?? (crossMidnightEnd(r) ? `익일 ${crossMidnightEnd(r)}` : "")}
                     </span>
                     <span className={`block text-body truncate ${on ? "font-semibold" : ""}`}>
                       {r.courseName}

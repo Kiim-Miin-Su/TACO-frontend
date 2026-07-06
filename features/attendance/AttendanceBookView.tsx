@@ -11,7 +11,7 @@ import { teachingHours } from "@/lib/domain/schedule";
 import { INSTRUCTOR_ATT_LABEL } from "@/lib/domain/lantiv";
 import { useTacoStore } from "@/lib/store";
 import { isAdmin } from "@/lib/roles";
-import { SectionCard } from "@/components/ui";
+import { EmptyState, HelpPopover, PageHeader, SectionCard, TableWrap } from "@/components/ui";
 
 // 상태 배지(셀) — LMS 관례: P/L/A/E 원형 + 색
 const CELL: Record<AttendanceStatus, { label: string; bg: string }> = {
@@ -93,29 +93,33 @@ export function AttendanceBookView() {
   }, [rows, ym, manager]);
 
   return (
-    <div className="p-6 max-w-[1280px] mx-auto space-y-4">
-      <div className="flex items-end justify-between flex-wrap gap-2">
-        <div>
-          <h1 className="text-title font-bold">출석부</h1>
-          <p className="text-body text-fg-muted mt-0.5">
-            회차별 출결 체크와 누적 시수 — 셀 클릭=상태 변경(출→지→결→공), 회차 헤더 클릭=전체 출석
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {manager && (
-            <div className="flex rounded-md overflow-hidden border">
-              {(["student", "instructor"] as const).map((t) => (
-                <button key={t} className={`btn btn-sm rounded-none border-0 ${tab === t ? "badge-accent" : ""}`} onClick={() => setTab(t)}>
-                  {t === "student" ? "학생 출석" : "강사 출석"}
-                </button>
-              ))}
-            </div>
-          )}
-          <button className="btn btn-sm" onClick={() => navYm(-1)}>◀</button>
-          <span className="mono text-body">{ym}</span>
-          <button className="btn btn-sm" onClick={() => navYm(1)}>▶</button>
-        </div>
-      </div>
+    <div className="p-6 max-w-page-wide mx-auto space-y-4">
+      <PageHeader
+        title="출석부"
+        sub="회차별 출결 체크와 누적 시수"
+        actions={
+          <>
+            {manager && (
+              <div className="flex rounded-md overflow-hidden border">
+                {(["student", "instructor"] as const).map((t) => (
+                  <button key={t} className={`btn btn-sm rounded-none border-0 ${tab === t ? "badge-accent" : ""}`} onClick={() => setTab(t)}>
+                    {t === "student" ? "학생 출석" : "강사 출석"}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button className="btn btn-sm" onClick={() => navYm(-1)}>◀</button>
+            <span className="mono text-body">{ym}</span>
+            <button className="btn btn-sm" onClick={() => navYm(1)}>▶</button>
+            {/* [DESIGN §5.5] 조작 설명은 부제가 아니라 ⓘ 팝오버 */}
+            <HelpPopover title="출석부 사용법">
+              <p>셀 클릭 = 상태 변경(출→지→결→공 순환)</p>
+              <p>회차 헤더 클릭 = 해당 회차 전체 출석</p>
+              <p>시수 인정: 출석·지각만 인정(정산 규칙과 대칭)</p>
+            </HelpPopover>
+          </>
+        }
+      />
 
       {tab === "student" ? (
         <SectionCard
@@ -133,9 +137,9 @@ export function AttendanceBookView() {
           }
         >
           {!book.columns.length ? (
-            <p className="text-body text-fg-subtle py-6 text-center">{ym}에 이 코스의 회차가 없습니다.</p>
+            <EmptyState message={`${ym}에 이 코스의 회차가 없습니다.`} />
           ) : (
-            <div className="overflow-x-auto">
+            <TableWrap>
               <table className="table text-body">
                 <thead>
                   <tr>
@@ -205,7 +209,7 @@ export function AttendanceBookView() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableWrap>
           )}
           <p className="text-caption text-fg-subtle mt-2">
             시수 인정: 출석·지각 = 회차 시간 인정 · 결석·공결·미체크 = 0 (강사 정산 시수 규칙과 대칭). 예정 회차는 집계 제외.
@@ -214,9 +218,9 @@ export function AttendanceBookView() {
       ) : (
         <SectionCard title={`강사 출석 — ${ym} 진행 회차`}>
           {!instructorBook.length ? (
-            <p className="text-body text-fg-subtle py-6 text-center">{ym}에 진행된 회차가 없습니다.</p>
+            <EmptyState message={`${ym}에 진행된 회차가 없습니다.`} />
           ) : (
-            <div className="overflow-x-auto">
+            <TableWrap>
               <table className="table text-body">
                 <thead>
                   <tr>
@@ -245,7 +249,7 @@ export function AttendanceBookView() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableWrap>
           )}
           <p className="text-caption text-fg-subtle mt-2">
             누적 강의 시수는 정산(강사 페이)과 동일한 teachingHours 규칙(진행·보강 회차) — 숫자 불일치가 없습니다.

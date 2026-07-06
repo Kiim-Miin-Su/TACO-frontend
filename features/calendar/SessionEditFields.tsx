@@ -78,7 +78,9 @@ export function SessionEditFields({
   const [d, setD] = useState<SessionDraft>({
     sessionDate: row.sessionDate,
     startTime: row.startTime ?? "16:00",
-    endTime: row.endTime ?? fromMin(toMin(row.startTime ?? "16:00") + row.durationMinutes),
+    // [R-9] 자정 크로스 세션은 endTime 미보유(durationMinutes 파생) — 익일 벽시계(%1440)로 프리필.
+    //  end<start 상태로 저장하면 BE가 익일 종료로 해석(단일 규칙) → 시수·종료 원본 유지.
+    endTime: row.endTime ?? fromMin((toMin(row.startTime ?? "16:00") + row.durationMinutes) % 1440),
     instructorId: Number(row.instructorId),
     roomId: row.roomId != null ? Number(row.roomId) : undefined,
     status: row.status,
@@ -91,7 +93,9 @@ export function SessionEditFields({
   });
   const set = <K extends keyof SessionDraft>(k: K, v: SessionDraft[K]) => setD((x) => ({ ...x, [k]: v }));
   const isSeries = row.seriesId != null;
-  const valid = d.startTime < d.endTime;
+  // [R-9] 종료 < 시작 = 익일 종료(자정 크로스)로 **허용** — 같은 시각만 무효(sessionEditPatch 동일 규칙)
+  const crossesMidnight = d.endTime < d.startTime;
+  const valid = d.startTime !== d.endTime;
   const input = compact ? "input h-8 text-caption" : "input";
 
   return (
@@ -171,7 +175,11 @@ export function SessionEditFields({
           </select>
         </Field>
       )}
-      {!valid && <p className="text-caption text-danger">종료 시각이 시작보다 빠를 수 없습니다.</p>}
+      {!valid && <p className="text-caption text-danger">종료 시각이 시작과 같을 수 없습니다.</p>}
+      {valid && crossesMidnight && (
+        /* [R-9] 자정 크로스 안내 — end<start 입력은 익일 종료로 저장(1레코드·시작일 기준) */
+        <p className="text-caption text-accent">🌙 종료가 시작보다 이르므로 <b>다음날 {d.endTime} 종료</b>(자정 크로스)로 저장됩니다.</p>
+      )}
       {/* [QA 2026-07-03] compact(우측 패널 w-64)에서 삭제/취소/저장 3버튼이 넘치던 오버플로 — flex-wrap 허용 */}
       <div className="flex justify-between gap-2 pt-1 flex-wrap">
         {onDelete ? (
