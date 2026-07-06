@@ -20,14 +20,18 @@ const DIM_META: Record<FilterDim, { icon: string; label: string }> = {
 
 type Option = { id: number; name: string; color?: string; sub?: string };
 
-// ── [B-7 2026-07-06] 과목 체크 팝오버 — fSubjects는 로직·프리셋만 있고 UI가 없었음(대표 지적 4) ──
-export function SubjectPick({
-  options, picked, onToggle, onClear,
+// ── [일관성 2026-07-06] 범용 옵션 팝오버 — 리소스(MultiPick)와 같은 "버튼+▾+체크 팝오버" 문법을
+//  상태·종류·유형·과목 필터에 공통 적용(인라인 칩 나열 → 팝오버 통일, 대표 지시). 빈 선택=전체.
+export function OptionPick({
+  icon, label, options, picked, onToggle, onClear, title,
 }: {
-  options: string[];
+  icon: string;
+  label: string;
+  options: { value: string; label: string }[];
   picked: Set<string>;
-  onToggle: (s: string) => void;
+  onToggle: (v: string) => void;
   onClear: () => void;
+  title?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -39,19 +43,19 @@ export function SubjectPick({
   }, [open]);
   return (
     <div className="relative" ref={ref}>
-      <button className={`btn btn-sm ${picked.size ? "badge-accent" : ""}`} onClick={() => setOpen((o) => !o)} title="과목별 필터(복수=합집합)">
-        📚 과목{picked.size > 0 && <span className="ml-1 mono">{picked.size}</span>}<span className="ml-1 text-[10px]">▾</span>
+      <button className={`btn btn-sm ${picked.size ? "badge-accent" : ""}`} onClick={() => setOpen((o) => !o)} title={title ?? `${label} 필터(복수=합집합·빈 선택=전체)`}>
+        {icon} {label}{picked.size > 0 && <span className="ml-1 mono">{picked.size}</span>}<span className="ml-1 text-[10px]">▾</span>
       </button>
       {open && (
         <div className="absolute z-40 mt-1 w-44 card shadow-lg p-1.5 space-y-0.5">
-          {options.map((s) => (
-            <label key={s} className="flex items-center gap-2 px-1.5 h-7 rounded hover:bg-canvas-subtle cursor-pointer text-[12px]">
-              <input type="checkbox" checked={picked.has(s)} onChange={() => onToggle(s)} />
-              <span className="flex-1 truncate">{s}</span>
+          {options.map((o) => (
+            <label key={o.value} className="flex items-center gap-2 px-1.5 h-7 rounded hover:bg-canvas-subtle cursor-pointer text-[12px]">
+              <input type="checkbox" checked={picked.has(o.value)} onChange={() => onToggle(o.value)} />
+              <span className="flex-1 truncate">{o.label}</span>
             </label>
           ))}
-          {!options.length && <div className="text-[11px] text-fg-subtle px-1.5 py-2">과목 없음</div>}
-          {picked.size > 0 && <button className="btn btn-sm w-full h-6 text-[11px]" onClick={onClear}>과목 필터 해제</button>}
+          {!options.length && <div className="text-[11px] text-fg-subtle px-1.5 py-2">옵션 없음</div>}
+          {picked.size > 0 && <button className="btn btn-sm w-full h-6 text-[11px]" onClick={onClear}>전체(해제)</button>}
         </div>
       )}
     </div>
@@ -155,6 +159,7 @@ export function CalendarFilterBar({
   fKinds, onToggleKind,
   groupOnly, onGroupOnly,
   period, onPeriod,
+  pickedDates, onPickDate, onUnpickDate, onClearPicked,
   anyFilter, onClearAll,
 }: {
   resources: ScheduleResources | null;
@@ -180,6 +185,10 @@ export function CalendarFilterBar({
   onGroupOnly: (v: boolean) => void;
   period: Period | null;
   onPeriod: (p: Period | null) => void;
+  pickedDates: string[];
+  onPickDate: (d: string) => void;
+  onUnpickDate: (d: string) => void;
+  onClearPicked: () => void;
   anyFilter: boolean;
   onClearAll: () => void;
 }) {
@@ -218,55 +227,20 @@ export function CalendarFilterBar({
             onClear={() => onClearDim(dim)}
           />
         ))}
-        <SubjectPick options={subjectOptions} picked={fSubjects} onToggle={onToggleSubject} onClear={onClearSubjects} />
-        <span className="w-px h-5" style={{ background: "var(--color-line)" }} />
-        {/* 상태 필터: [전체] + 출석/지각/결강/보강 — 전체=상태 무관(기본), 복수 선택=합집합(피드백: 옵션별 전체 란) */}
-        <button
-          className={`btn btn-sm ${fStatuses.size === 0 ? "badge-accent" : ""}`}
-          onClick={() => STATUS_FILTERS.forEach((s) => fStatuses.has(s) && onToggleStatus(s))}
-          title="상태 무관 전체 보기"
-        >
-          전체
-        </button>
-        {STATUS_FILTERS.map((s) => (
-          <button
-            key={s}
-            className={`btn btn-sm ${fStatuses.has(s) ? "badge-accent" : ""}`}
-            onClick={() => onToggleStatus(s)}
-            title={`${STATUS_FILTER_LABEL[s]}인 수업만 (복수 선택 = 합집합)`}
-          >
-            {STATUS_FILTER_LABEL[s]}
-          </button>
-        ))}
-        <span className="w-px h-5" style={{ background: "var(--color-line)" }} />
-        {/* [v0.1.14 #2] 종류(kind) 필터: 수업/진단고사/상담 — 빈 선택=전체, 복수=합집합(상태 필터와 동일 UX) */}
-        <span className="text-[11px] text-fg-subtle px-0.5" title="세션 종류로 거르기(빈 선택=전체)">종류</span>
-        {KIND_FILTERS.map((k) => (
-          <button
-            key={k}
-            className={`btn btn-sm ${fKinds.has(k) ? "badge-accent" : ""}`}
-            onClick={() => onToggleKind(k)}
-            title={`${KIND_FILTER_LABEL[k]} 세션만 (복수 선택 = 합집합)`}
-          >
-            {KIND_FILTER_LABEL[k]}
-          </button>
-        ))}
-        <span className="w-px h-5" style={{ background: "var(--color-line)" }} />
-        {/* 수업 유형: [전체] / [그룹 수업만] */}
-        <button
-          className={`btn btn-sm ${!groupOnly ? "badge-accent" : ""}`}
-          onClick={() => onGroupOnly(false)}
-          title="1:1·그룹 모두"
-        >
-          전체
-        </button>
-        <button
-          className={`btn btn-sm ${groupOnly ? "badge-accent" : ""}`}
-          onClick={() => onGroupOnly(true)}
-          title="수강생 2명 이상인 그룹 수업만"
-        >
-          그룹 수업만
-        </button>
+        {/* [일관성 2026-07-06] 과목·상태·종류·유형 전부 리소스 팝오버와 같은 문법(버튼+▾+체크) */}
+        <OptionPick icon="📚" label="과목" options={subjectOptions.map((s) => ({ value: s, label: s }))} picked={fSubjects} onToggle={onToggleSubject} onClear={onClearSubjects} />
+        <OptionPick icon="✅" label="상태" title="출석/지각/결강/보강 (복수=합집합·빈 선택=전체)"
+          options={STATUS_FILTERS.map((s) => ({ value: s, label: STATUS_FILTER_LABEL[s] }))}
+          picked={fStatuses as unknown as Set<string>} onToggle={(v) => onToggleStatus(v as StatusFilter)}
+          onClear={() => STATUS_FILTERS.forEach((s) => fStatuses.has(s) && onToggleStatus(s))} />
+        <OptionPick icon="🏷️" label="종류" title="일반/진단고사/상담 (복수=합집합·빈 선택=전체)"
+          options={KIND_FILTERS.map((k) => ({ value: k, label: KIND_FILTER_LABEL[k] }))}
+          picked={fKinds as unknown as Set<string>} onToggle={(v) => onToggleKind(v as SessionKindFilter)}
+          onClear={() => KIND_FILTERS.forEach((k) => fKinds.has(k) && onToggleKind(k))} />
+        <OptionPick icon="👥" label="유형" title="그룹 수업만 보기(해제=1:1·그룹 모두)"
+          options={[{ value: "group", label: "그룹 수업만(2명 이상)" }]}
+          picked={groupOnly ? new Set(["group"]) : new Set()}
+          onToggle={() => onGroupOnly(!groupOnly)} onClear={() => onGroupOnly(false)} />
         <span className="w-px h-5" style={{ background: "var(--color-line)" }} />
         {/* 기간: 우측 리스트·조회 범위 확장(뷰 기간 대신 사용) */}
         <label className="flex items-center gap-1 text-[12px] text-fg-muted">
@@ -300,6 +274,19 @@ export function CalendarFilterBar({
             </button>
           )}
         </label>
+        {/* [cherry-pick 2026-07-06] 원하는 날짜만 여러 개(불연속·최대 14) — 선택 시 기간보다 우선(표별 헤더와 동일 문법) */}
+        <label className="flex items-center gap-1 text-[12px] text-fg-muted" title="원하는 날짜만 골라 보기 — 고르면 기간(from~to) 대신 이 날짜들만 표시">
+          날짜
+          <input type="date" className="input h-8 w-[130px]" value="" onChange={(e) => e.target.value && onPickDate(e.target.value)} />
+        </label>
+        {pickedDates.map((d) => (
+          <span key={d} className="badge inline-flex items-center gap-1 mono text-[11px] cursor-pointer" title="클릭=이 날짜 제거" onClick={() => onUnpickDate(d)}>
+            {d.slice(5)} ✕
+          </span>
+        ))}
+        {pickedDates.length > 0 && (
+          <button className="btn btn-sm h-6 px-1.5" onClick={onClearPicked} title="선택 날짜 전체 해제">↺</button>
+        )}
       </div>
       {/* 2행: 검색 + 색 기준 + 선택 칩 */}
       <div className="flex items-center gap-2 flex-wrap">

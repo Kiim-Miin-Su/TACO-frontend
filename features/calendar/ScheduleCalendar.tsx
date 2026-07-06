@@ -163,6 +163,9 @@ export function ScheduleCalendar() {
   const [period, setPeriod] = useState<Period | null>(null);
   // [이슈3] 표(패널)별 날짜 범위 — 캘린더(from/to)로 표마다 다르게(예: 왼쪽 7/6~7/8, 오른쪽 7/6~7/10).
   //  미설정=전역 기간을 따름. from만 있고 to 없으면 from 하루.
+  // [전역 cherry-pick 2026-07-06] 원하는 날짜만 골라 보기(불연속, 최대 14) — 설정 시 기간(period)보다 우선.
+  //  그리드 축(dates)·조회(range=min~max)·리스트/시수(filtered 날짜 술어)가 같은 집합을 쓴다(모집단 단일).
+  const [pickedDates, setPickedDates] = useState<string[]>([]);
   // [B-5 2026-07-06] 컴팩트 열 토글(대표 지적 1·3) — 하루 열 128px 고정이 두 표 스플릿에서 과폭.
   const [compactCols, setCompactCols] = useState(false);
   const colMinBase = compactCols ? 80 : COL_MIN; // densityOf(subW)가 자동 연동(좁아지면 title→vtitle→color)
@@ -268,11 +271,12 @@ export function ScheduleCalendar() {
   const weekStart = useMemo(() => mondayOf(anchor), [anchor]);
   // 기간(period)을 지정하면 **뷰 자체가 그 날짜들로 재구성**(피드백: 4일 선택=4일만 표시). 상한 14일.
   const dates = useMemo(() => {
+    if (pickedDates.length) return [...new Set(pickedDates)].sort().slice(0, 14); // cherry-pick 우선
     if (!period) return weekDates(weekStart);
     const out: string[] = [];
     for (let d = period.from; d <= period.to && out.length < 14; d = addDaysISO(d, 1)) out.push(d);
     return out.length ? out : [period.from];
-  }, [period, weekStart]);
+  }, [pickedDates, period, weekStart]);
 
   // 조회 기간(월/주/일/표). 표는 주간 기준.
   const range = useMemo(() => {
@@ -417,6 +421,7 @@ export function ScheduleCalendar() {
     return rows.filter((r) => {
       // 강사·학생 = 합집합(OR), 강의실 = AND — 동시 다중선택 교집합 버그 수정(lantiv.matchesResourceFilter).
       if (!matchesResourceFilter(r, { instructors: fInstructors, students: fStudents, rooms: fRooms })) return false;
+      if (pickedDates.length && !dates.includes(r.sessionDate)) return false; // cherry-pick — 그리드·리스트·시수 동일 모집단
       if (fSubjects.size && !fSubjects.has(r.subjectName)) return false;
       // Lantiv 상태 필터(출석/지각/결강/보강) — 세션 status + 강사·학생 출결 조합(lib/domain/lantiv)
       if (!matchesStatusFilter(r, attBySession.get(Number(r.id)) ?? [], fStatuses)) return false;
@@ -431,11 +436,11 @@ export function ScheduleCalendar() {
       }
       return true;
     });
-  }, [rows, q, fInstructors, fSubjects, fRooms, fStudents, fStatuses, fKinds, groupOnly, attBySession, countryStudentIds]);
+  }, [rows, q, fInstructors, fSubjects, fRooms, fStudents, fStatuses, fKinds, groupOnly, attBySession, countryStudentIds, pickedDates, dates]);
 
   const anyFilter =
     q.trim() !== "" || fInstructors.size || fSubjects.size || fRooms.size || fStudents.size ||
-    fStatuses.size || fKinds.size || groupOnly || period != null || country != null;
+    fStatuses.size || fKinds.size || groupOnly || period != null || pickedDates.length || country != null;
   const clearFilters = () => {
     setQ("");
     setFInstructors(new Set());
@@ -444,6 +449,7 @@ export function ScheduleCalendar() {
     setFStudents(new Set());
     setFStatuses(new Set());
     setFKinds(new Set());
+    setPickedDates([]);
     setGroupOnly(false);
     setPeriod(null);
     setCountry(null);
@@ -1730,6 +1736,10 @@ export function ScheduleCalendar() {
             onGroupOnly={setGroupOnly}
             period={period}
             onPeriod={setPeriod}
+            pickedDates={pickedDates}
+            onPickDate={(d) => setPickedDates((prev) => (prev.includes(d) || prev.length >= 14 ? prev : [...prev, d].sort()))}
+            onUnpickDate={(d) => setPickedDates((prev) => prev.filter((x) => x !== d))}
+            onClearPicked={() => setPickedDates([])}
             anyFilter={!!anyFilter}
             onClearAll={clearFilters}
           />
