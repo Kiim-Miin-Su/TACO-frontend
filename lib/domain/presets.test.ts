@@ -7,7 +7,7 @@ import { countryByCode } from './tz';
 const state = (over: Partial<CalendarViewState> = {}): CalendarViewState => ({
   view: 'week', period: { from: '2026-07-01', to: '2026-07-03' }, q: ' SAT ', colorBy: 'subject',
   fInstructors: new Set([1, 2]), fStudents: new Set([1]), fRooms: new Set(),
-  fSubjects: new Set(['영어']), fStatuses: new Set(['attended', 'late']), groupOnly: true,
+  fSubjects: new Set(['영어']), fStatuses: new Set(['attended', 'late']), fKinds: new Set(), groupOnly: true,
   country: countryByCode('US') ?? null,
   paneCountry: { instructor: null, student: countryByCode('US') ?? null }, // 강사 표=강제 KST
   ...over,
@@ -28,6 +28,19 @@ describe('serializeViewPreset ↔ presetToState (round-trip)', () => {
     expect(restored.period).toEqual({ from: '2026-07-01', to: '2026-07-03' });
     expect(restored.country?.code).toBe('US');
     expect(restored.paneCountry.instructor?.code).toBe('KR'); // KR=KST와 동작 동일
+  });
+
+  it('[v0.1.14 #2] kinds(종류 필터) 왕복 — 빈 선택=미저장(전체), 미지 값은 복원 시 무시(내성)', () => {
+    // 빈 Set → kinds 미저장(undefined)
+    expect(serializeViewPreset('x', state()).kinds).toBeUndefined();
+    // 선택 → 저장·복원 보존
+    const body = serializeViewPreset('진단·상담만', state({ fKinds: new Set(['level_test', 'counsel']) }));
+    expect(body.kinds).toEqual(['level_test', 'counsel']);
+    const restored = presetToState({ id: 2, ...body } as CalendarViewPreset);
+    expect([...restored.fKinds].sort()).toEqual(['counsel', 'level_test']);
+    // 미지 코드 내성(스키마 진화 대비)
+    const legacy = presetToState({ id: 3, ...body, kinds: ['counsel', 'unknown_kind'] } as CalendarViewPreset);
+    expect([...legacy.fKinds]).toEqual(['counsel']);
     expect(restored.paneCountry.student?.code).toBe('US');
     expect([...restored.fStatuses]).toEqual(['attended', 'late']);
   });

@@ -65,6 +65,7 @@ export type AvailabilityUpsertBody = {
 export type SchedulePatchBody = {
   sessionDate?: string; startTime?: string; endTime?: string; durationMinutes?: number;
   roomId?: number; instructorId?: number; courseId?: number; status?: string; topic?: string; memo?: string; color?: string;
+  kind?: SessionKind; price?: number; // [v0.1.14] 종류·세션 단건 가격
   // 반복 편집 범위(this=이 일정만 · this_and_following=이후 전부 · all=시리즈 전체). seriesId가 있을 때만 의미.
   scope?: "this" | "this_and_following" | "all"; force?: boolean;
 };

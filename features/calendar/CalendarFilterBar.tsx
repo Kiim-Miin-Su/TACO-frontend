@@ -6,7 +6,7 @@
 //  - 리소스 후보 = GET /schedule/resources(강사·학생) + GET /rooms(강의실) — FK 유니버스와 동일.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Room, ScheduleResources } from "@/types";
-import { MAX_SPLIT, STATUS_FILTERS, STATUS_FILTER_LABEL, type StatusFilter } from "@/lib/domain/lantiv";
+import { MAX_SPLIT, STATUS_FILTERS, STATUS_FILTER_LABEL, KIND_FILTERS, KIND_FILTER_LABEL, type StatusFilter, type SessionKindFilter } from "@/lib/domain/lantiv";
 
 export type FilterDim = "instructor" | "student" | "room";
 export type ColorBy = "subject" | "instructor" | "room" | "student";
@@ -104,10 +104,9 @@ export function MultiPick({
   );
 }
 
-// [v0.1.14] 종류(kind) 필터 어휘 — contracts SessionKind와 1:1(class|level_test|counsel)
-export type SessionKindFilter = "class" | "level_test" | "counsel";
-export const KIND_FILTERS: SessionKindFilter[] = ["class", "level_test", "counsel"];
-export const KIND_FILTER_LABEL: Record<SessionKindFilter, string> = { class: "일반", level_test: "진단고사", counsel: "상담" };
+// [v0.1.14] 종류(kind) 필터 어휘 — lib/domain/lantiv 단일 소스 재수출(프리셋·표별 필터와 공유)
+export { KIND_FILTERS, KIND_FILTER_LABEL } from "@/lib/domain/lantiv";
+export type { SessionKindFilter } from "@/lib/domain/lantiv";
 
 export function CalendarFilterBar({
   resources, rooms,

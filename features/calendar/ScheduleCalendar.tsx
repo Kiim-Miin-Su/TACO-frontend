@@ -11,9 +11,9 @@ import {
   PALETTE, STATUS_LABEL, MAX_SPLIT,
   matchesStatusFilter, matchesResourceFilter, isGroupSession, sortByDateAsc,
   buildMixedSplitColumns, rowInResource, cloneSessionBody, resolvePasteCourseId,
-  type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick,
-} from "@/lib/domain/lantiv";
-import { useAttendance, useStudents, useEnrollments, useCourses, useCreateViewPreset } from "@/lib/queries";
+  type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick, densityOf,
+  KIND_FILTERS, KIND_FILTER_LABEL, type SessionKindFilter } from "@/lib/domain/lantiv";
+import { useAttendance, useStudents, useEnrollments, useCourses, useCreateViewPreset, useScheduleRequests } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
 import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, type CountryInfo, type TzShiftedRow } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
@@ -130,6 +130,9 @@ export function ScheduleCalendar() {
 
   // 관리자(데모 역할) — 스케줄 직접 추가
   const qc = useQueryClient(); // [TBO-16] 요청 생성 후 scheduleRequests 무효화(배지·승인센터 동일 모집단)
+  // [B-4] 내 수업 요청(강사) — 배지·승인센터와 같은 useScheduleRequests 단일 queryKey 구독
+  const { data: myRequests = [] } = useScheduleRequests();
+  const pendingGhosts = useMemo(() => myRequests.filter((r) => r.status === "pending"), [myRequests]);
   const role = useTacoStore((s) => s.currentRole);
   const canManage = isAdmin(role); // 대표/매니저/관리자 — 모든 스케줄 추가
   const isInstructor = role === "instructor"; // 강사 — 본인 스케줄만 추가
@@ -161,6 +164,10 @@ export function ScheduleCalendar() {
   // [이슈3] 표(패널)별 날짜 범위 — 캘린더(from/to)로 표마다 다르게(예: 왼쪽 7/6~7/8, 오른쪽 7/6~7/10).
   //  미설정=전역 기간을 따름. from만 있고 to 없으면 from 하루.
   const [paneRange, setPaneRange] = useState<Partial<Record<SplitDim, { from: string; to: string }>>>({});
+  // [B-3 #5] 표별 cherry-pick 날짜(불연속 집합, 최대 14) — 설정 시 paneRange(연속 범위)보다 우선.
+  const [panePicked, setPanePicked] = useState<Partial<Record<SplitDim, string[]>>>({});
+  // [B-2 #2] 표별 종류(kind) 필터 — 전역 fKinds와 별개로 그 표에만 적용(빈 Set=전체).
+  const [paneKinds, setPaneKinds] = useState<Partial<Record<SplitDim, Set<SessionKindFilter>>>>({});
   // 우측 패널: 리스트에서 클릭한 세션(아래 상세) + 그룹 토글
   const [detailId, setDetailId] = useState<number | null>(null);
   const [listGrouped, setListGrouped] = useState(false);
@@ -188,7 +195,7 @@ export function ScheduleCalendar() {
     const st = presetToState(p);
     setView(st.view); setPeriod(st.period); setQ(st.q); setColorBy(st.colorBy as ColorBy);
     setFInstructors(st.fInstructors); setFStudents(st.fStudents); setFRooms(st.fRooms);
-    setFSubjects(st.fSubjects); setFStatuses(st.fStatuses); setGroupOnly(st.groupOnly);
+    setFSubjects(st.fSubjects); setFStatuses(st.fStatuses); setFKinds(st.fKinds); setGroupOnly(st.groupOnly);
     setCountry(st.country); setPaneCountry(st.paneCountry);
     setClosedPanes(new Set()); // 표 닫힘 상태 초기화 — 프리셋의 스플릿 구성을 그대로 복원
     setActivePresetId(Number(p.id));
@@ -196,7 +203,7 @@ export function ScheduleCalendar() {
   };
   const saveCurrentPreset = async (name: string) => {
     await createViewPreset.mutateAsync(serializeViewPreset(name, {
-      view, period, q, colorBy, fInstructors, fStudents, fRooms, fSubjects, fStatuses,
+      view, period, q, colorBy, fInstructors, fStudents, fRooms, fSubjects, fStatuses, fKinds,
       groupOnly, country, paneCountry,
     }));
   };
@@ -324,7 +331,10 @@ export function ScheduleCalendar() {
   //  컬럼 날짜 매칭이 표시 범위를 자연 결정.
 
   // [이슈3] 표별 캘린더 범위가 전역 기간을 벗어나면 그만큼 조회 범위 확장(그 날짜 세션도 로드).
-  const paneBounds = Object.values(paneRange).filter((r): r is { from: string; to: string } => !!r?.from);
+  const pickedBounds = Object.values(panePicked)
+    .filter((a): a is string[] => !!a?.length)
+    .map((a) => { const s = [...a].sort(); return { from: s[0], to: s[s.length - 1] }; });
+  const paneBounds = [...Object.values(paneRange).filter((r): r is { from: string; to: string } => !!r?.from), ...pickedBounds];
   const spanFrom = paneBounds.reduce((a, r) => (r.from < a ? r.from : a), effRange.from);
   const spanTo = paneBounds.reduce((a, r) => { const t = r.to && r.to >= r.from ? r.to : r.from; return t > a ? t : a; }, effRange.to);
   const baseRange = { from: spanFrom, to: spanTo };
@@ -511,6 +521,8 @@ export function ScheduleCalendar() {
     }));
   // 표별 날짜 = 그 표의 캘린더 범위(from~to, 최대 14일). 미설정이면 전역 dates.
   const paneDatesOf = (dim: SplitDim): string[] => {
+    const picked = panePicked[dim];
+    if (picked?.length) return [...new Set(picked)].sort().slice(0, 14); // cherry-pick 우선(정렬·중복 제거·상한 14)
     const r = paneRange[dim];
     if (!r?.from) return dates;
     const out: string[] = [];
@@ -1153,7 +1165,7 @@ export function ScheduleCalendar() {
   //  minCol(스플릿 44px) 미만으로 좁아질 상황이면 가로 스크롤 발동(minWidth).
   // tzc: 이 그리드의 국가(시차 뷰). 비KST면 ① 행을 그 나라 로컬로 변환(표시 전용) ② 시간축 0~24h
   //  ③ 편집·드래그·복제·밴드 잠금(저장은 KST 단일 진실원 — 무결성). 표(스플릿)마다 다르게 지정 가능.
-  const renderTimeGrid = (cols: Col[], tzc?: CountryInfo | null) => {
+  const renderTimeGrid = (cols: Col[], tzc?: CountryInfo | null, paneKindSet?: Set<SessionKindFilter>) => {
     const tzActive = !!tzc && tzc.tz !== KST_TZ;
     // 학생 개별 시차(피드백 2026-07-03 #1): 그리드 tz(전역/표별 — 명시 선택)가 없을 때만
     //  학생 컬럼의 country 파생 tz가 동작. 축은 컬럼 하나라도 tz면 0~24h(다른 나라 새벽 대비).
@@ -1181,9 +1193,8 @@ export function ScheduleCalendar() {
     const dayCount = isSplitGrid ? new Set(cols.map((c) => c.date)).size : cols.length;
     const perDay = isSplitGrid ? Math.max(1, Math.round(cols.length / Math.max(1, dayCount))) : 1;
     const subW = isSplitGrid ? Math.floor(COL_MIN / perDay) : COL_MIN;
-    // 텍스트 3단계(서브열 폭 기준): 가로(제목+시간) → 세로 제목(vtitle) → 색상만(결강·보강=회색)
-    const textMode: "full" | "title" | "vtitle" | "color" =
-      !isSplitGrid || subW >= 80 ? "full" : subW >= 46 ? "title" : subW >= 24 ? "vtitle" : "color";
+    // 텍스트 밀도 단계(서브열 폭 기준) — 단일 함수 densityOf(lib/domain/lantiv, vitest)로 통일(R2)
+    const textMode = densityOf(subW, isSplitGrid);
     const minCol = subW;
     return (
               <div className="card overflow-x-auto">
@@ -1224,7 +1235,13 @@ export function ScheduleCalendar() {
                       // 컬럼 유효 tz: 그리드(전역/표별) > 학생 개별(country) > KST
                       const colTzc = tzActive ? tzc : (c.tzc ?? null);
                       const colTz = !!colTzc && colTzc.tz !== KST_TZ;
-                      const colRows = rowsOfColumn(c, colTz ? rowsForTz(colTzc.tz) : filtered);
+                      // [B-2] 표별 종류 필터(빈 Set=전체) — 전역 fKinds는 filtered 단계에서 이미 적용
+                      const kindPass = (r: ScheduleRow) => !paneKindSet?.size || paneKindSet.has((r.kind ?? "class") as SessionKindFilter);
+                      const colRows = rowsOfColumn(c, colTz ? rowsForTz(colTzc.tz) : filtered).filter(kindPass);
+                      // [B-4 #9] 강사 본인 pending 요청 고스트(승인 대기 시각화) — KST 컬럼 전용·표시 전용
+                      const colGhosts = !colTz && isInstructor
+                        ? pendingGhosts.filter((g) => g.sessionDate === c.date && (c.resType == null || (c.resType === "instructor" && Number(c.resId) === Number(g.instructorId))))
+                        : [];
                       const sOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.start : startMinOf(r));
                       const eOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.end : endMinOf(r));
                       const lanes = layoutLanes(colRows.map((r) => ({ id: r.id, start: sOf(r), end: eOf(r) })));
@@ -1456,6 +1473,20 @@ export function ScheduleCalendar() {
                                 <div className="font-semibold mono">{fromMin(moveDrag.start)}–{fromMin(moveDrag.start + moveDrag.dur)}</div>
                               </div>
                             )}
+                            {/* [B-4] 승인 대기 요청 고스트 — 점선·반투명·클릭 불가(승인 시 실제 세션으로 대체) */}
+                            {colGhosts.map((g) => {
+                              const gs = toMin(g.startTime);
+                              const ge = g.endTime ? toMin(g.endTime) : gs + g.durationMinutes;
+                              return (
+                                <div key={`ghost-${g.id}`} className="absolute left-0.5 right-0.5 z-10 pointer-events-none rounded-lg px-1.5 py-1 text-[10px] leading-tight"
+                                  style={{ top: ((clampAxis(gs) - gridMin) / 60) * HOUR_H + 1, height: Math.max(20, ((clampAxis(ge) - clampAxis(gs)) / 60) * HOUR_H) - 2,
+                                    border: "1.5px dashed var(--color-accent)", background: "color-mix(in srgb, var(--color-accent) 12%, transparent)", color: "var(--color-accent)" }}
+                                  title={`승인 대기 요청 — ${g.topic ?? "수업"} ${g.startTime} (매니저 승인 시 확정)`}>
+                                  <div className="font-semibold truncate">⏳ {g.topic ?? "수업"}</div>
+                                  <div className="mono">{g.startTime}{g.endTime ? `–${g.endTime}` : ""} 승인 대기</div>
+                                </div>
+                              );
+                            })}
                             {/* 현재 시각 인디케이터 */}
                             {!colTz && showNow && isToday && (
                               <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: nowTop }}>
@@ -1738,10 +1769,29 @@ export function ScheduleCalendar() {
                           value={paneRange[g.dim]?.to ?? (dates[dates.length - 1] ?? "")}
                           min={paneRange[g.dim]?.from ?? dates[0]}
                           onChange={(e) => setPaneRange((prev) => ({ ...prev, [g.dim]: { from: prev[g.dim]?.from ?? (dates[0] ?? e.target.value), to: e.target.value } }))} />
-                        {paneRange[g.dim] && (
-                          <button type="button" className="btn btn-sm h-6 px-1 text-[11px]" title="전역 기간으로"
-                            onClick={() => setPaneRange((prev) => { const n = { ...prev }; delete n[g.dim]; return n; })}>↺</button>
+                        {(paneRange[g.dim] || panePicked[g.dim]?.length) && (
+                          <button type="button" className="btn btn-sm h-6 px-1 text-[11px]" title="전역 기간으로(범위·선택 날짜 해제)"
+                            onClick={() => { setPaneRange((prev) => { const n = { ...prev }; delete n[g.dim]; return n; }); setPanePicked((prev) => { const n = { ...prev }; delete n[g.dim]; return n; }); }}>↺</button>
                         )}
+                        {/* [B-3 #5] cherry-pick: 원하는 날짜만 여러 개 — 선택 시 범위(from~to)보다 우선 */}
+                        <input type="date" className="input h-7 text-[11px] px-1 w-[122px]" title="날짜 추가(cherry-pick) — 고르면 그 날짜들만 표시"
+                          value=""
+                          onChange={(e) => { const d = e.target.value; if (!d) return; setPanePicked((prev) => { const cur = prev[g.dim] ?? []; if (cur.includes(d) || cur.length >= 14) return prev; return { ...prev, [g.dim]: [...cur, d].sort() }; }); }} />
+                        {(panePicked[g.dim] ?? []).map((d) => (
+                          <span key={d} className="badge text-[10px] mono cursor-pointer" title="클릭=이 날짜 제거"
+                            onClick={() => setPanePicked((prev) => { const cur = (prev[g.dim] ?? []).filter((x) => x !== d); const n = { ...prev }; if (cur.length) n[g.dim] = cur; else delete n[g.dim]; return n; })}>
+                            {d.slice(5)} ✕
+                          </span>
+                        ))}
+                        <span className="w-px h-4" style={{ background: "var(--color-line)" }} />
+                        {/* [B-2 #2] 표별 종류(kind) 필터 — 이 표에만 적용(전역 필터바와 별개·빈 선택=전체) */}
+                        {KIND_FILTERS.map((k) => (
+                          <button key={k} type="button" className={`btn btn-sm h-6 px-1.5 text-[10px] ${paneKinds[g.dim]?.has(k) ? "badge-accent" : ""}`}
+                            title={`이 표에서 ${KIND_FILTER_LABEL[k]}만 (복수=합집합)`}
+                            onClick={() => setPaneKinds((prev) => { const cur = new Set(prev[g.dim] ?? []); if (cur.has(k)) cur.delete(k); else cur.add(k); const n = { ...prev }; if (cur.size) n[g.dim] = cur; else delete n[g.dim]; return n; })}>
+                            {KIND_FILTER_LABEL[k]}
+                          </button>
+                        ))}
                         <CountryInput
                           compact
                           value={paneTzOf(g.dim)}
@@ -1751,7 +1801,7 @@ export function ScheduleCalendar() {
                       </div>
                     }
                   >
-                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim))}
+                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim), paneKinds[g.dim])}
                   </CalendarSplitPane>
                 ))}
               </div>

@@ -10,7 +10,7 @@ import { useState } from "react";
 import type { Room, ScheduleRow, RecurrenceScope } from "@/types";
 import type { SchedulePatchBody } from "@/lib/api";
 import { fromMin, toMin, pad2, WEEKDAYS_KO as WD } from "@/lib/domain/schedule";
-import { PALETTE, STATUS_LABEL, sessionEditPatch, type SessionDraft } from "@/lib/domain/lantiv";
+import { PALETTE, STATUS_LABEL, sessionEditPatch, KIND_FILTERS, KIND_FILTER_LABEL, type SessionDraft } from "@/lib/domain/lantiv";
 
 // ── 시간 선택기(24시간 · 시/분 드롭다운) — 브라우저 type=time의 AM/PM(로케일 의존) 불편 해소.
 //  실제 앱처럼 시(00~23)·분(5분 단위)을 직접 고른다. 값·onChange는 "HH:mm" 문자열(기존 계약 유지).
@@ -85,6 +85,8 @@ export function SessionEditFields({
     topic: row.topic ?? "",
     memo: row.memo ?? "",
     color: row.color,
+    kind: (row.kind ?? "class") as SessionDraft["kind"], // [v0.1.14]
+    price: row.price,
     scope: "this",
   });
   const set = <K extends keyof SessionDraft>(k: K, v: SessionDraft[K]) => setD((x) => ({ ...x, [k]: v }));
@@ -141,6 +143,19 @@ export function SessionEditFields({
       <Field label="주제">
         <input className={input} placeholder="비우면 기존 주제 유지" value={d.topic} onChange={(e) => set("topic", e.target.value)} />
       </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="종류">
+          <select className={input} value={d.kind ?? "class"} onChange={(e) => set("kind", e.target.value as SessionDraft["kind"]) }>
+            {KIND_FILTERS.map((k) => <option key={k} value={k}>{KIND_FILTER_LABEL[k]}</option>)}
+          </select>
+        </Field>
+        {(d.kind ?? "class") !== "class" ? (
+          <Field label="가격(원)">
+            <input type="number" min={0} max={100000000} className={input} value={d.price ?? ""} placeholder="선택"
+              onChange={(e) => set("price", e.target.value === "" ? undefined : Number(e.target.value))} />
+          </Field>
+        ) : <span />}
+      </div>
       <Field label="메모">
         <textarea className={`input py-1.5 ${compact ? "min-h-[48px] text-[12px]" : "min-h-[64px]"}`} rows={compact ? 2 : 3}
           value={d.memo} onChange={(e) => set("memo", e.target.value)} />

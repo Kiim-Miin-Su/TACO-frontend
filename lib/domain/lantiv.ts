@@ -176,6 +176,8 @@ export type SessionDraft = {
   topic?: string;
   memo?: string;
   color?: string;
+  kind?: SessionKindFilter; // [v0.1.14] 종류(일반/진단고사/상담)
+  price?: number; // [v0.1.14] 세션 단건 가격(상담 등)
   scope: RecurrenceScope; // 반복 적용 범위 — 이 수업만 / 이 이후 / 시리즈 전체
 };
 
@@ -192,6 +194,7 @@ export function sessionEditPatch(
 ): {
   sessionDate: string; startTime: string; endTime: string; instructorId?: number; roomId?: number;
   status: ScheduleRow['status']; topic?: string; memo?: string; color?: string; scope?: RecurrenceScope;
+  kind?: SessionKindFilter; price?: number;
 } {
   if (!(d.startTime < d.endTime)) throw new Error('종료 시각이 시작보다 빠릅니다');
   return {
@@ -204,6 +207,8 @@ export function sessionEditPatch(
     topic: d.topic?.trim() ? d.topic : undefined,
     memo: d.memo,
     color: d.color,
+    kind: d.kind,
+    price: d.price,
     ...(isSeries ? { scope: d.scope } : {}),
   };
 }
@@ -282,4 +287,23 @@ export function rowInResource(
   if (type === 'instructor') return r.instructorId === id;
   if (type === 'room') return r.roomId === id;
   return (r.studentIds ?? []).includes(id);
+}
+
+
+// ── [v0.1.14 #2] 세션 종류(kind) 필터 어휘 — 도메인 단일 소스(FilterBar·프리셋·표별 필터 공용) ──
+export type SessionKindFilter = 'class' | 'level_test' | 'counsel';
+export const KIND_FILTERS: SessionKindFilter[] = ['class', 'level_test', 'counsel'];
+export const KIND_FILTER_LABEL: Record<SessionKindFilter, string> = { class: '일반', level_test: '진단고사', counsel: '상담' };
+
+// ── [R2 2026-07-06] 스플릿 컴팩트 단계형 밀도 — 단일 함수(TBO-16 #1 마감) ──
+//  하루 열 폭은 COL_MIN 고정, 안을 인원수로 서브분할(subW = COL_MIN/perDay).
+//  단계: full(전체 내용) ≥80px → title(가로 축약 제목+시간) ≥46 → vtitle(세로 글) ≥24 → color(색상 라벨만).
+//  전체 정보는 블록 title 툴팁으로 항상 보존(렌더 계층 책임).
+export type TextDensity = 'full' | 'title' | 'vtitle' | 'color';
+
+export function densityOf(subW: number, isSplit: boolean): TextDensity {
+  if (!isSplit || subW >= 80) return 'full';
+  if (subW >= 46) return 'title';
+  if (subW >= 24) return 'vtitle';
+  return 'color';
 }

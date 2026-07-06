@@ -5,7 +5,7 @@
 // ──────────────────────────────────────────────────────────────
 import type { CalendarViewPreset, CreateViewPresetInput } from '@/types';
 import { countryByCode, type CountryInfo } from './tz';
-import type { SplitDim, StatusFilter } from './lantiv';
+import type { SplitDim, StatusFilter, SessionKindFilter } from './lantiv';
 
 export type CalendarViewState = {
   view: 'month' | 'week' | 'day';
@@ -17,6 +17,7 @@ export type CalendarViewState = {
   fRooms: Set<number>;
   fSubjects: Set<string>;
   fStatuses: Set<StatusFilter>;
+  fKinds: Set<SessionKindFilter>; // [v0.1.14 #2] 종류 필터(전역)
   groupOnly: boolean;
   country: CountryInfo | null;
   paneCountry: Partial<Record<SplitDim, CountryInfo | null>>;
@@ -36,6 +37,7 @@ export function serializeViewPreset(name: string, s: CalendarViewState): CreateV
     roomIds: [...s.fRooms],
     subjects: [...s.fSubjects],
     statuses: [...s.fStatuses],
+    kinds: s.fKinds.size ? [...s.fKinds] : undefined, // 빈 선택=미저장(전체)
     groupOnly: s.groupOnly,
     q: s.q.trim() || undefined,
     colorBy: s.colorBy,
@@ -60,6 +62,7 @@ export function presetToState(p: CalendarViewPreset): CalendarViewState {
     fRooms: new Set(p.roomIds.map(Number)),
     fSubjects: new Set(p.subjects),
     fStatuses: new Set(p.statuses as StatusFilter[]),
+    fKinds: new Set((p.kinds ?? []).filter((k): k is SessionKindFilter => k === 'class' || k === 'level_test' || k === 'counsel')), // 미지 값 내성
     groupOnly: p.groupOnly,
     country: p.countryCode ? (countryByCode(p.countryCode) ?? null) : null,
     paneCountry: pane,
