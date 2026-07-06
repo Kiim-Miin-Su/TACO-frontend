@@ -15,9 +15,12 @@ import {
   useApproveExpense,
   useRejectExpense,
   useConfirmPayout,
+  useScheduleRequests,
+  useApproveScheduleRequest,
+  useRejectScheduleRequest,
 } from '@/lib/queries';
 import { won } from '@/lib/format';
-import { roleLabel } from '@/lib/roles';
+import { isAdmin, roleLabel } from '@/lib/roles';
 import { AdminHeader } from './AdminShell';
 import { categoryLabel } from '@/features/expenses/labels';
 import { api, type PendingAccount } from '@/lib/api';
@@ -104,6 +107,25 @@ export function ApprovalsView() {
   const instructorName = (id: number) => instructors.find((i) => i.id === id)?.name ?? '—';
 
   const [expenseReject, setExpenseReject] = useState<number | null>(null);
+  // ── 수업 요청(TBO-16 #9) — 배지(lib/tasks)와 같은 useScheduleRequests 모집단(단일 구독) ──
+  const { data: scheduleRequests = [] } = useScheduleRequests();
+  const approveRequest = useApproveScheduleRequest();
+  const rejectRequest = useRejectScheduleRequest();
+  const [requestReject, setRequestReject] = useState<number | null>(null);
+  const [requestMsg, setRequestMsg] = useState<string | null>(null);
+  const pendingRequests = scheduleRequests.filter((r) => r.status === 'pending');
+  // 승인 — 충돌 409면 force 재시도 확인(세션 생성과 동일 규약: 서버 createSession 재검사)
+  const onApproveRequest = (id: number) => {
+    approveRequest.mutate({ id }, {
+      onSuccess: () => setRequestMsg('승인 — 캘린더에 세션이 생성되었습니다.'),
+      onError: (e) => {
+        const err = e as { response?: { status?: number } };
+        if (err.response?.status === 409 && window.confirm('시간 충돌이 있습니다. 무시하고 강제 승인할까요?'))
+          approveRequest.mutate({ id, force: true }, { onSuccess: () => setRequestMsg('강제 승인 — 세션 생성됨(충돌 무시).') });
+        else setRequestMsg('승인 보류 — 충돌을 확인하세요.');
+      },
+    });
+  };
   const pendingExpenses = expenses.filter((e) => e.status === 'requested');
   const pendingPayouts = instructorPayouts.filter((p) => p.status === 'pending');
   // 작성완료(submitted)·미승인 리포트 — 승인 시 시수 적격으로 편입
@@ -116,13 +138,56 @@ export function ApprovalsView() {
     return `${c} · ${s.sessionDate} ${s.startTime ?? ''}`;
   };
 
+  // 수업 요청 승인/반려는 BE가 manager 이상 허용(ADMIN_ROLES) — 섹션 컴포넌트로 분리해 재사용.
+  const requestsSection = (
+    <SectionCard title={`수업 요청 승인 대기 (${pendingRequests.length})`}>
+      {requestMsg && <div className="px-4 pt-3 text-[12px] text-accent">{requestMsg}</div>}
+      {pendingRequests.length === 0 ? (
+        <div className="p-4 text-[13px] text-fg-subtle">대기 중인 수업 요청이 없습니다. <span className="text-fg-subtle">승인 시 캘린더에 세션이 생성됩니다(충돌 재검사).</span></div>
+      ) : (
+        <table className="table">
+          <thead><tr><th>강사</th><th>일시</th><th>수업</th><th>인원</th><th className="text-right"></th></tr></thead>
+          <tbody>
+            {pendingRequests.map((r) => (
+              <tr key={r.id}>
+                <td className="font-medium">{instructorName(r.instructorId)}</td>
+                <td className="mono text-fg-muted">{r.sessionDate} {r.startTime}{r.endTime ? `~${r.endTime}` : ''}</td>
+                <td className="text-fg-muted">{r.topic ?? courses.find((x) => x.id === r.courseId)?.name ?? '수업'}{r.kind && r.kind !== 'class' ? ` · ${r.kind === 'level_test' ? '진단고사' : '상담'}` : ''}</td>
+                <td className="text-fg-muted">{r.studentIds?.length ? `${r.studentIds.length}명(지정)` : '코스 전원'}</td>
+                <td className="text-right whitespace-nowrap">
+                  <button className="btn btn-sm btn-primary mr-1.5" onClick={() => onApproveRequest(r.id)}>승인</button>
+                  <button className="btn btn-sm btn-danger" onClick={() => setRequestReject(r.id)}>반려</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {requestReject != null && (
+        <ReasonModal
+          mode="input"
+          title="수업 요청 반려 — 사유 필수"
+          onClose={() => setRequestReject(null)}
+          onSubmit={(reason) => { rejectRequest.mutate({ id: requestReject, reason }); setRequestReject(null); }}
+        />
+      )}
+    </SectionCard>
+  );
+
   if (!isSuper) {
     return (
       <div className="p-6 max-w-[1100px] mx-auto space-y-6">
         <AdminHeader />
-        <div className="card card-pad text-[14px] text-fg-muted">
-          🔒 승인 센터는 <b>대표(CEO)</b> 전용입니다. 현재 역할: {roleLabel[currentRole]} — 우측 상단에서 대표로 전환하세요.
-        </div>
+        {isAdmin(currentRole) ? (
+          <>
+            {requestsSection}
+            <div className="card card-pad text-[13px] text-fg-muted">그 외 승인(가입·보고서·지출·페이)은 <b>대표(CEO)</b> 전용입니다. 현재 역할: {roleLabel[currentRole]}</div>
+          </>
+        ) : (
+          <div className="card card-pad text-[14px] text-fg-muted">
+            🔒 승인 센터는 <b>관리자</b> 전용입니다. 현재 역할: {roleLabel[currentRole]} — 우측 상단에서 전환하세요.
+          </div>
+        )}
       </div>
     );
   }
@@ -132,6 +197,8 @@ export function ApprovalsView() {
       <AdminHeader />
 
       <MemberApprovals />
+
+      {requestsSection}
 
       <SectionCard title={`수업 보고서 승인 대기 (${pendingReports.length})`}>
         {pendingReports.length === 0 ? (

@@ -45,6 +45,9 @@ import type {
   ScheduleRow,
   ScheduleResources,
   Conflict,
+  ScheduleRequest,
+  CreateScheduleRequestInput,
+  SessionKind,
 } from "@kms545487/contracts";
 
 export type ScheduleQuery = { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number };
@@ -53,6 +56,7 @@ export type ScheduleCreateBody = {
   startTime: string; endTime?: string; durationMinutes?: number; topic?: string; memo?: string; color?: string;
   studentIds?: number[]; // 명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원(단체=여러 명 선택)
   seriesId?: number; status?: string; force?: boolean;
+  kind?: SessionKind; price?: number; // [v0.1.14] 종류(진단고사/상담)·세션 단건 가격
 };
 export type AvailabilityUpsertBody = {
   id?: number; ownerType: AvailabilityOwner; ownerId: number; kind?: AvailabilityKind;
@@ -195,8 +199,8 @@ export const api = {
     list: () => http.get<Expense[]>("/expenses").then((r) => r.data),
     create: (input: CreateExpenseInput) => http.post<Expense>("/expenses", input).then((r) => r.data),
     approve: (id: number) => http.post<Expense>(`/expenses/${id}/approve`, {}).then((r) => r.data),
-    // 반려 사유는 서버 저장(v0.1.12 Expense.rejectedReason) — 이전 zustand 휘발분 자산화.
-    reject: (id: number, reason?: string) => http.post<Expense>(`/expenses/${id}/reject`, { reason }).then((r) => r.data),
+    // 반려 사유 **필수**(Q2 2026-07-06 — 반려류 패턴 통일). 서버 저장(Expense.rejectedReason).
+    reject: (id: number, reason: string) => http.post<Expense>(`/expenses/${id}/reject`, { reason }).then((r) => r.data),
   },
   // 캘린더 뷰 프리셋(TBO-12 P1) — 직원 공용 자산(DB 컬렉션, localStorage 대체).
   viewPresets: {
@@ -268,9 +272,22 @@ export const api = {
       http.patch<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }>(`/schedule/${id}`, body).then((r) => r.data),
     conflicts: (body: ConflictCheckBody) =>
       http.post<Conflict[]>("/schedule/conflicts", body).then((r) => r.data),
-    // 세션 삭제
+    // 세션 삭제(soft delete — v9)
     remove: (id: number) =>
       http.delete<{ id: number; deleted: boolean }>(`/schedule/${id}`).then((r) => r.data),
+  },
+  // 강사 수업 요청 → 매니저 승인/반려(TBO-16 #9). 승인=서버가 createSession 재사용(409+force 동일 규약).
+  scheduleRequests: {
+    list: (status?: ScheduleRequest["status"]) =>
+      http.get<ScheduleRequest[]>("/schedule-requests", { params: status ? { status } : {} }).then((r) => r.data),
+    create: (input: CreateScheduleRequestInput) =>
+      http.post<{ row: ScheduleRequest; conflicts: Conflict[] }>("/schedule-requests", input).then((r) => r.data),
+    approve: (id: number, force?: boolean) =>
+      http.post<{ request: ScheduleRequest; conflicts: Conflict[] }>(`/schedule-requests/${id}/approve`, {}, { params: force ? { force: "true" } : {} }).then((r) => r.data),
+    reject: (id: number, reason: string) => // 사유 필수(Q2)
+      http.post<ScheduleRequest>(`/schedule-requests/${id}/reject`, { reason }).then((r) => r.data),
+    withdraw: (id: number) =>
+      http.delete<{ id: number; deleted: boolean }>(`/schedule-requests/${id}`).then((r) => r.data),
   },
   rooms: {
     list: () => http.get<Room[]>("/rooms").then((r) => r.data),

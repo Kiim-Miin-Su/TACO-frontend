@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, AvailabilityBlock, AccountRole, Attendance } from "@/types";
 import { api, type SchedulePatchBody, type ScheduleCreateBody, type AvailabilityUpsertBody } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { qk } from "@/lib/queryKeys";
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 D — 파일별 중복 toMin/fromMin/pad/WD 제거)
 import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, ownerWindows } from "@/lib/domain/schedule";
 import {
@@ -127,6 +129,7 @@ export function ScheduleCalendar() {
   const [busyImg, setBusyImg] = useState(false);
 
   // 관리자(데모 역할) — 스케줄 직접 추가
+  const qc = useQueryClient(); // [TBO-16] 요청 생성 후 scheduleRequests 무효화(배지·승인센터 동일 모집단)
   const role = useTacoStore((s) => s.currentRole);
   const canManage = isAdmin(role); // 대표/매니저/관리자 — 모든 스케줄 추가
   const isInstructor = role === "instructor"; // 강사 — 본인 스케줄만 추가
@@ -151,6 +154,8 @@ export function ScheduleCalendar() {
   const [fStudents, setFStudents] = useState<Set<number>>(new Set());
   // Lantiv 확장: 상태(출석/지각/결강/보강) · 그룹 수업만 · 기간(from/to, 뷰 기간 대신 조회)
   const [fStatuses, setFStatuses] = useState<Set<StatusFilter>>(new Set());
+  // [v0.1.14 #2] 종류 필터(수업/진단고사/상담) — 빈 Set=전체. 프리셋 직렬화 편입은 후속(contracts 필드 필요).
+  const [fKinds, setFKinds] = useState<Set<"class" | "level_test" | "counsel">>(new Set());
   const [groupOnly, setGroupOnly] = useState(false);
   const [period, setPeriod] = useState<Period | null>(null);
   // [이슈3] 표(패널)별 날짜 범위 — 캘린더(from/to)로 표마다 다르게(예: 왼쪽 7/6~7/8, 오른쪽 7/6~7/10).
@@ -402,6 +407,7 @@ export function ScheduleCalendar() {
       if (fSubjects.size && !fSubjects.has(r.subjectName)) return false;
       // Lantiv 상태 필터(출석/지각/결강/보강) — 세션 status + 강사·학생 출결 조합(lib/domain/lantiv)
       if (!matchesStatusFilter(r, attBySession.get(Number(r.id)) ?? [], fStatuses)) return false;
+      if (fKinds.size && !fKinds.has((r.kind ?? "class") as "class" | "level_test" | "counsel")) return false; // 종류(kind) — 미지정=class 하위호환
       if (groupOnly && !isGroupSession(r)) return false;
       // 국가 필터: 그 국가 학생이 코호트에 포함된 세션만(해외 학생에게 보낼 시간표 추출용)
       if (countryStudentIds && !(r.studentIds ?? []).some((id) => countryStudentIds.has(Number(id)))) return false;
@@ -412,11 +418,11 @@ export function ScheduleCalendar() {
       }
       return true;
     });
-  }, [rows, q, fInstructors, fSubjects, fRooms, fStudents, fStatuses, groupOnly, attBySession, countryStudentIds]);
+  }, [rows, q, fInstructors, fSubjects, fRooms, fStudents, fStatuses, fKinds, groupOnly, attBySession, countryStudentIds]);
 
   const anyFilter =
     q.trim() !== "" || fInstructors.size || fSubjects.size || fRooms.size || fStudents.size ||
-    fStatuses.size || groupOnly || period != null || country != null;
+    fStatuses.size || fKinds.size || groupOnly || period != null || country != null;
   const clearFilters = () => {
     setQ("");
     setFInstructors(new Set());
@@ -424,6 +430,7 @@ export function ScheduleCalendar() {
     setFRooms(new Set());
     setFStudents(new Set());
     setFStatuses(new Set());
+    setFKinds(new Set());
     setGroupOnly(false);
     setPeriod(null);
     setCountry(null);
@@ -793,6 +800,8 @@ export function ScheduleCalendar() {
   }
 
   function requestChange(r: ScheduleRow, patch: SchedulePatchBody, label: string) {
+    // [TBO-16 #8] 수업 변경은 manager 이상(BE 403) — 강사는 요청·가용/불가만
+    if (isInstructor) { setMsg("수업 변경은 매니저 승인이 필요합니다 — 새 수업은 '+ 추가'로 요청하세요."); return; }
     // [M5] SessionEditFields가 이미 scope를 골라 보냈으면 RecurrencePrompt 재질문 생략(이중 질문 방지)
     if (r.seriesId != null && !("scope" in patch)) setPending({ row: r, patch, label });
     else applyPatch(r.id, patch);
@@ -816,8 +825,26 @@ export function ScheduleCalendar() {
   }
 
   // 세션 생성(추가, 낙관적). 강사는 본인(myInstructorId)으로 강제 — 권한 게이팅(데모; 실제는 백엔드 가드).
+  // [TBO-16 #8·#9] 강사는 직접 배정 불가(BE 403) → **승인 요청(schedule-requests)으로 전환**.
+  //  같은 입력·같은 검증(서버 validateSessionInput 재사용), 승인 시 매니저 경로로 세션 생성.
   async function createSession(body: ScheduleCreateBody) {
-    const safe: ScheduleCreateBody = isInstructor && myInstructorId != null ? { ...body, instructorId: myInstructorId } : body;
+    if (isInstructor) {
+      try {
+        await api.scheduleRequests.create({
+          courseId: body.courseId, instructorId: myInstructorId ?? body.instructorId, roomId: body.roomId,
+          sessionDate: body.sessionDate, startTime: body.startTime, endTime: body.endTime,
+          durationMinutes: body.durationMinutes, studentIds: body.studentIds, topic: body.topic, kind: body.kind,
+        });
+        setCreating(null);
+        setMsg("승인 요청을 보냈습니다 — 매니저 승인 시 캘린더에 반영됩니다.");
+        qc.invalidateQueries({ queryKey: qk.scheduleRequests.all }); // 배지·승인센터 동일 모집단 갱신
+      } catch (e) {
+        const err = e as { response?: { data?: { message?: string } } };
+        setMsg(err.response?.data?.message ?? "요청 실패 — 입력을 확인하세요");
+      }
+      return;
+    }
+    const safe: ScheduleCreateBody = body;
     const snapshot = rows;
     setRows((rs) => [...rs, optimisticRow(safe)]); // 즉시 반영
     setCreating(null);
@@ -873,7 +900,8 @@ export function ScheduleCalendar() {
 
   // 세션 삭제(낙관적). 확인 후 즉시 제거 → 실패 시 롤백.
   async function deleteSession(id: number) {
-    if (!confirm("이 스케줄을 삭제할까요? 되돌릴 수 없습니다.")) return;
+    if (isInstructor) { setMsg("수업 삭제는 매니저 권한입니다."); return; } // [TBO-16 #8]
+    if (!confirm("이 스케줄을 삭제할까요? (삭제 내역은 DB에 보존됩니다)")) return;
     const snapshot = rows;
     setRows((rs) => rs.filter((r) => r.id !== id)); // 즉시 반영
     setEditing(null);
@@ -893,6 +921,7 @@ export function ScheduleCalendar() {
   //  [버그수정 2026-07-02] 다른 학생 컬럼에 붙여넣기: 대상 학생의 활성 수강 기반으로 코스 재배정
   //  (원본 코스 수강 중이면 유지 → 같은 과목 코스 → 첫 활성 코스, 없으면 중단 — 유령 세션 방지).
   function pasteAt(src: ScheduleRow, target: PasteTarget) {
+    if (isInstructor) { setMsg("수업 복제 배정은 매니저 권한입니다 — '+ 추가'로 요청하세요."); return; } // [TBO-16 #8]
     let body = cloneSessionBody(src, target);
     if (target.resType === "student" && target.resId != null
         && !(src.studentIds ?? []).map(Number).includes(Number(target.resId))) {
@@ -1626,6 +1655,15 @@ export function ScheduleCalendar() {
                 return n;
               })
             }
+            fKinds={fKinds}
+            onToggleKind={(k) =>
+              setFKinds((prev) => {
+                const n = new Set(prev);
+                if (n.has(k)) n.delete(k);
+                else n.add(k);
+                return n;
+              })
+            }
             groupOnly={groupOnly}
             onGroupOnly={setGroupOnly}
             period={period}
@@ -2319,6 +2357,9 @@ function CreateModal({
   const courseDur = course?.durationMinutes ?? 90;
   const [end, setEnd] = useState(fromMin(toMin(defaultStart ?? "16:00") + (myCourses[0]?.durationMinutes ?? 90)));
   const [memo, setMemo] = useState("");
+  // [v0.1.14] 종류(수업/진단고사/상담 — 캘린더 필터 축) + 상담 등 단건 가격(Q1: 담당자=강사 재사용)
+  const [kind, setKind] = useState<"class" | "level_test" | "counsel">("class");
+  const [price, setPrice] = useState("");
   // 색상 라벨: 생성 시 기본값은 개설 때 고른 코스 색(미지정 시 비움 → 백엔드가 코스/과목 색 폴백)
   const [color, setColor] = useState<string | undefined>(myCourses[0]?.color);
   const [status, setStatus] = useState<string>("scheduled");
@@ -2422,7 +2463,8 @@ function CreateModal({
     // [이슈1] 각 발생일(현지)을 KST로 변환해 저장 — 종료는 시작과 같은 현지날짜 기준으로 변환.
     const mk = (dLocal: string): ScheduleCreateBody => {
       const ks = toKst(dLocal, start), ke = toKst(dLocal, end);
-      return { courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: ks.date, startTime: ks.time, endTime: ke.time, memo: memo || undefined, color, status, seriesId, studentIds };
+      return { courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: ks.date, startTime: ks.time, endTime: ke.time, memo: memo || undefined, color, status, seriesId, studentIds,
+        kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined };
     };
     const days = occurrences();
     if (days.length <= 1) onCreate(mk(days[0] ?? date));
@@ -2498,6 +2540,18 @@ function CreateModal({
             <DateField value={date} onChange={setDate} />
             <TimeRangeField start={start} end={end} onStart={changeStart} onEnd={setEnd} endHint={`진행 ${courseDur}분`} />
             <div className="grid grid-cols-2 gap-3">
+              <Field label="종류">
+                <select className="input" value={kind} onChange={(e) => setKind(e.target.value as "class" | "level_test" | "counsel")}>
+                  <option value="class">일반 수업</option>
+                  <option value="level_test">진단고사</option>
+                  <option value="counsel">상담</option>
+                </select>
+              </Field>
+              {kind !== "class" ? (
+                <Field label="가격(원) — 선택">
+                  <input className="input" type="number" min={0} max={100000000} placeholder="예: 50000" value={price} onChange={(e) => setPrice(e.target.value)} />
+                </Field>
+              ) : <div />}
               <Field label="상태">
                 <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
                   {Object.keys(STATUS_LABEL).map((s) => (

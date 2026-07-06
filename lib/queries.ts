@@ -44,6 +44,10 @@ export const usePayouts = () => {
   const role = useTacoStore((s) => s.currentRole);
   return useQuery({ queryKey: qk.payouts.list(), queryFn: () => api.payouts.list(), enabled: isAdmin(role) });
 };
+// [TBO-16 #9] 수업 요청 — 승인센터·배지(tasks)·캘린더가 **같은 queryKey를 구독**(단일 이벤트 객체).
+//  서버가 역할별 스코프 적용(강사=본인 요청만) — 클라 필터 불요.
+export const useScheduleRequests = () =>
+  useQuery({ queryKey: qk.scheduleRequests.list(), queryFn: () => api.scheduleRequests.list() });
 export const useCounselForms = () => useQuery({ queryKey: qk.counsel.forms(), queryFn: () => api.counsel.forms() });
 export const useCounselRounds = () => useQuery({ queryKey: qk.counsel.rounds(), queryFn: () => api.counsel.rounds() });
 export const useAcademyEvents = () => useQuery({ queryKey: qk.events.list(), queryFn: () => api.events.list() });
@@ -86,10 +90,12 @@ export function useAppData() {
   const roadmaps = useRoadmaps().data ?? [];
   const roadmapCourses = useRoadmapCourses().data ?? [];
   const instructors = useInstructors().data ?? [];
+  const scheduleRequests = useScheduleRequests().data ?? []; // TBO-16 — 배지·승인센터 동일 모집단
   return {
     students, parents, parentStudents, subjects, courses, enrollments, classSessions,
     attendance, sessionReports, payments, transactions, expenses, instructorPayouts,
     counselForms, counselRounds, academyEvents, roadmaps, roadmapCourses, instructors,
+    scheduleRequests,
   };
 }
 
@@ -129,8 +135,8 @@ export const useCreateExpense = () => useMutation({ mutationFn: api.expenses.cre
 export const useApproveExpense = () => useMutation({ mutationFn: api.expenses.approve, onSuccess: useInvalidator([qk.expenses.all, qk.transactions.all]) });
 export const useRejectExpense = () =>
   useMutation({
-    // 반려 사유 동반(자산화 — 서버 Expense.rejectedReason 저장)
-    mutationFn: (v: { id: number; reason?: string }) => api.expenses.reject(v.id, v.reason),
+    // 반려 사유 **필수**(Q2 — 서버 DTO @IsNotEmpty와 정합)
+    mutationFn: (v: { id: number; reason: string }) => api.expenses.reject(v.id, v.reason),
     onSuccess: useInvalidator([qk.expenses.all]),
   });
 export const useRefundPayment = () => useMutation({ mutationFn: api.payments.refund, onSuccess: useInvalidator([qk.payments.all, qk.transactions.all]) });
@@ -155,6 +161,22 @@ export const useCreateSchedule = () => useMutation({ mutationFn: api.schedule.cr
 export const useUpdateSchedule = () =>
   useMutation({ mutationFn: (v: { id: number; body: Parameters<typeof api.schedule.update>[1] }) => api.schedule.update(v.id, v.body), onSuccess: useInvalidator([qk.schedule.all, qk.reports.all, qk.payouts.all]) });
 export const useRemoveSchedule = () => useMutation({ mutationFn: api.schedule.remove, onSuccess: useInvalidator([qk.schedule.all, qk.reports.all, qk.payouts.all]) });
+
+// 수업 요청(TBO-16 #9) — 승인 시 세션이 생기므로 schedule도 무효화(참조 무결성 — 캘린더·배지 동시 갱신)
+export const useCreateScheduleRequest = () =>
+  useMutation({ mutationFn: api.scheduleRequests.create, onSuccess: useInvalidator([qk.scheduleRequests.all]) });
+export const useApproveScheduleRequest = () =>
+  useMutation({
+    mutationFn: (v: { id: number; force?: boolean }) => api.scheduleRequests.approve(v.id, v.force),
+    onSuccess: useInvalidator([qk.scheduleRequests.all, qk.schedule.all]),
+  });
+export const useRejectScheduleRequest = () =>
+  useMutation({
+    mutationFn: (v: { id: number; reason: string }) => api.scheduleRequests.reject(v.id, v.reason), // 사유 필수
+    onSuccess: useInvalidator([qk.scheduleRequests.all]),
+  });
+export const useWithdrawScheduleRequest = () =>
+  useMutation({ mutationFn: api.scheduleRequests.withdraw, onSuccess: useInvalidator([qk.scheduleRequests.all]) });
 
 // 출결(강사 마킹) — session×student upsert
 export const useUpsertAttendance = () => useMutation({ mutationFn: api.attendance.upsert, onSuccess: useInvalidator([qk.attendance.all]) });

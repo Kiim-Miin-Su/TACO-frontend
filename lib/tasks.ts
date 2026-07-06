@@ -3,6 +3,7 @@
 import type {
   AccountRole,
   ClassSession,
+  ScheduleRequest,
   CounselForm,
   Course,
   Enrollment,
@@ -19,7 +20,7 @@ import { pendingReportSessions, pendingReportSummary, type ReportSlice } from '@
 import { makeupNeeds, makeupNeededCount, MAKEUP_REASON_LABEL } from '@/lib/makeup';
 
 // 회계상 분리: pay(강사 페이=출금) / expense(지출=출금) / payment(결제·수납=입금) / counsel(상담) / report·class(강사)
-export type TaskGroup = 'pay' | 'expense' | 'payment' | 'counsel' | 'report' | 'class';
+export type TaskGroup = 'pay' | 'expense' | 'payment' | 'counsel' | 'report' | 'class' | 'schedule';
 
 export type TaskItem = {
   id: string;
@@ -49,6 +50,7 @@ type StoreSlice = ReportSlice & {
   counselForms: CounselForm[];
   enrollments: Enrollment[];
   payments: Payment[];
+  scheduleRequests: ScheduleRequest[]; // TBO-16 #9 — 승인센터·배지 동일 모집단(R1)
 };
 
 const todayISO = (): string => new Date().toISOString().slice(0, 10);
@@ -116,6 +118,16 @@ function adminTasks(s: StoreSlice): TaskItem[] {
     });
   }
 
+  // ── 수업 요청(강사→매니저) 승인 대기 — TBO-16 #9. 승인센터와 같은 모집단(pending) ──
+  for (const r of s.scheduleRequests.filter((x) => x.status === 'pending')) {
+    out.push({
+      id: `schedule-request-${r.id}`, group: 'schedule', tone: 'attention', counts: true,
+      title: `수업 요청 승인 대기 — ${iname(r.instructorId)}`,
+      detail: `${r.sessionDate} ${r.startTime} · ${r.topic ?? '수업'}`,
+      href: '/admin/approvals',
+    });
+  }
+
   // ── 수업 보고서 승인 대기(작성완료·미승인) — 승인은 관리자(승인센터) 책임이므로 /admin/approvals로 ──
   for (const r of s.sessionReports.filter((x) => (x.status === 'submitted' || x.approvalStatus === 'submitted') && x.approvalStatus !== 'approved')) {
     out.push({
@@ -154,6 +166,25 @@ function instructorTasks(s: StoreSlice, instructorId: number): TaskItem[] {
     });
   }
 
+  // 내 수업 요청 결과 — 반려=조치 필요(카운트), 대기=정보성. 서버가 본인 것만 반환(수평 권한).
+  for (const r of s.scheduleRequests) {
+    if (r.status === 'rejected') {
+      out.push({
+        id: `my-request-${r.id}`, group: 'schedule', tone: 'danger', counts: true,
+        title: `수업 요청 반려 — ${r.topic ?? '수업'}`,
+        detail: `${r.sessionDate} ${r.startTime} · 사유: ${r.reason ?? '-'}`,
+        href: '/calendar',
+      });
+    } else if (r.status === 'pending') {
+      out.push({
+        id: `my-request-${r.id}`, group: 'schedule', tone: 'neutral', counts: false,
+        title: `수업 요청 승인 대기 중 — ${r.topic ?? '수업'}`,
+        detail: `${r.sessionDate} ${r.startTime}`,
+        href: '/calendar',
+      });
+    }
+  }
+
   // 오늘 수업(진행 예정) — 카운트 / 다가오는 수업 — 정보성
   const upcoming = s.classSessions
     .filter((ses) => ses.instructorId === instructorId && ses.status === 'scheduled' && ses.sessionDate >= today)
@@ -190,7 +221,8 @@ export function navBadges(s: StoreSlice, role: AccountRole = s.currentRole): Rec
   // ⚠ 배지와 /reports 탭 리스트는 pendingReportSummary(같은 모집단)를 공유해야 한다(불일치 재발 방지).
   if (role === 'instructor') {
     put('/reports', pendingReportSummary(s, DEMO_INSTRUCTOR_ID).itemCount);
-    put('/calendar', makeupNeededCount(s, DEMO_INSTRUCTOR_ID)); // 보강 필요 건수(캘린더 탭)
+    // 보강 필요 + 반려된 내 수업 요청(재요청 필요) — 캘린더 탭
+    put('/calendar', makeupNeededCount(s, DEMO_INSTRUCTOR_ID) + s.scheduleRequests.filter((r) => r.status === 'rejected').length);
     return out;
   }
   if (!isAdmin(role)) return out; // 학생/학부모 등은 알림 없음
@@ -206,7 +238,8 @@ export function navBadges(s: StoreSlice, role: AccountRole = s.currentRole): Rec
   const reportApprove = s.sessionReports.filter((r) => (r.status === 'submitted' || r.approvalStatus === 'submitted') && r.approvalStatus !== 'approved').length;
   const expenseApprove = s.expenses.filter((e) => e.status === 'requested').length;
   const payoutApprove = s.instructorPayouts.filter((p) => p.status === 'pending').length;
-  put('/admin', reportApprove + expenseApprove + payoutApprove);
+  const requestApprove = s.scheduleRequests.filter((r) => r.status === 'pending').length; // TBO-16 #9
+  put('/admin', reportApprove + expenseApprove + payoutApprove + requestApprove);
 
   return out;
 }

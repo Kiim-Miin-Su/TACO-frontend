@@ -104,11 +104,17 @@ export function MultiPick({
   );
 }
 
+// [v0.1.14] 종류(kind) 필터 어휘 — contracts SessionKind와 1:1(class|level_test|counsel)
+export type SessionKindFilter = "class" | "level_test" | "counsel";
+export const KIND_FILTERS: SessionKindFilter[] = ["class", "level_test", "counsel"];
+export const KIND_FILTER_LABEL: Record<SessionKindFilter, string> = { class: "일반", level_test: "진단고사", counsel: "상담" };
+
 export function CalendarFilterBar({
   resources, rooms,
   q, onQ, colorBy, onColorBy,
   fInstructors, fStudents, fRooms, onToggleId, onClearDim,
   fStatuses, onToggleStatus,
+  fKinds, onToggleKind,
   groupOnly, onGroupOnly,
   period, onPeriod,
   anyFilter, onClearAll,
@@ -126,6 +132,8 @@ export function CalendarFilterBar({
   onClearDim: (dim: FilterDim) => void;
   fStatuses: Set<StatusFilter>;
   onToggleStatus: (s: StatusFilter) => void;
+  fKinds: Set<SessionKindFilter>;
+  onToggleKind: (k: SessionKindFilter) => void;
   groupOnly: boolean;
   onGroupOnly: (v: boolean) => void;
   period: Period | null;
@@ -185,6 +193,18 @@ export function CalendarFilterBar({
             title={`${STATUS_FILTER_LABEL[s]}인 수업만 (복수 선택 = 합집합)`}
           >
             {STATUS_FILTER_LABEL[s]}
+          </button>
+        ))}
+        <span className="w-px h-5" style={{ background: "var(--color-line)" }} />
+        {/* [v0.1.14 #2] 종류(kind) 필터: 수업/진단고사/상담 — 빈 선택=전체, 복수=합집합(상태 필터와 동일 UX) */}
+        {KIND_FILTERS.map((k) => (
+          <button
+            key={k}
+            className={`btn btn-sm ${fKinds.has(k) ? "badge-accent" : ""}`}
+            onClick={() => onToggleKind(k)}
+            title={`${KIND_FILTER_LABEL[k]} 세션만 (복수 선택 = 합집합)`}
+          >
+            {KIND_FILTER_LABEL[k]}
           </button>
         ))}
         <span className="w-px h-5" style={{ background: "var(--color-line)" }} />

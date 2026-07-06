@@ -13,7 +13,6 @@ import { useTacoStore } from '@/lib/store';
 import { useAppData } from '@/lib/queries';
 import { isCEO, isAdmin, roleLabel } from '@/lib/roles';
 import { buildTasks, type TaskItem } from '@/lib/tasks';
-import { BackendPanel } from '@/features/system/BackendPanel';
 import type { EnrollmentStatus } from '@/types';
 
 // To-do 항목 리스트 — 알림/대시보드 공용 표현. 항목 클릭 시 해당 화면으로.
@@ -191,9 +190,6 @@ export function DashboardView() {
         </div>
       </div>
 
-      <div className="mt-6">
-        <BackendPanel />
-      </div>
     </div>
   );
 }
