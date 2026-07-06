@@ -34,7 +34,16 @@ export function OptionPick({
   title?: string;
 }) {
   const [open, setOpen] = useState(false);
+  // [#3 2026-07-06] 팝오버 fixed(뷰포트 기준) — 표 헤더·필터바에서 뒤로 숨거나 잘리지 않게(단일 패턴).
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const MENU_W = 176; // w-44
+  const toggle = () => {
+    setOpen((o) => {
+      if (!o) { const r = ref.current?.getBoundingClientRect(); if (r) setPos({ left: Math.min(r.left, window.innerWidth - MENU_W - 8), top: r.bottom + 4 }); }
+      return !o;
+    });
+  };
   useEffect(() => {
     if (!open) return;
     const h = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
@@ -43,11 +52,11 @@ export function OptionPick({
   }, [open]);
   return (
     <div className="relative" ref={ref}>
-      <button className={`btn btn-sm ${picked.size ? "badge-accent" : ""}`} onClick={() => setOpen((o) => !o)} title={title ?? `${label} 필터(복수=합집합·빈 선택=전체)`}>
+      <button className={`btn btn-sm ${picked.size ? "badge-accent" : ""}`} onClick={toggle} title={title ?? `${label} 필터(복수=합집합·빈 선택=전체)`}>
         {icon} {label}{picked.size > 0 && <span className="ml-1 mono">{picked.size}</span>}<span className="ml-1 text-[10px]">▾</span>
       </button>
-      {open && (
-        <div className="absolute z-40 mt-1 w-44 card shadow-lg p-1.5 space-y-0.5">
+      {open && pos && (
+        <div className="fixed z-[70] w-44 card shadow-lg p-1.5 space-y-0.5" style={{ left: pos.left, top: pos.top }}>
           {options.map((o) => (
             <label key={o.value} className="flex items-center gap-2 px-1.5 h-7 rounded hover:bg-canvas-subtle cursor-pointer text-caption">
               <input type="checkbox" checked={picked.has(o.value)} onChange={() => onToggle(o.value)} />
@@ -74,7 +83,16 @@ export function MultiPick({
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  // [#3 2026-07-06] 팝오버 fixed(뷰포트 기준) — 표 헤더의 overflow/스택에 가려 뒤로 숨는 문제 차단.
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const MENU_W = 240; // w-60
+  const toggle = () => {
+    setOpen((o) => {
+      if (!o) { const r = ref.current?.getBoundingClientRect(); if (r) setPos({ left: Math.min(r.left, window.innerWidth - MENU_W - 8), top: r.bottom + 4 }); }
+      return !o;
+    });
+  };
   // 바깥 클릭으로 닫기
   useEffect(() => {
     if (!open) return;
@@ -93,17 +111,17 @@ export function MultiPick({
     <div className="relative" ref={ref}>
       <button
         className={`btn btn-sm ${picked.size ? "badge-accent" : ""}`}
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         title={`${meta.label} 다중선택 — 2명 이상 선택하면 스플릿 뷰`}
       >
         {meta.icon} {meta.label}
         {picked.size > 0 && <span className="ml-1 mono">{picked.size}</span>}
         <span className="ml-1 text-[10px]">▾</span>
       </button>
-      {open && (
+      {open && pos && (
         <div
-          className="absolute left-0 top-full mt-1 z-40 card shadow-lg w-60 overflow-hidden"
-         
+          className="fixed z-[70] card shadow-lg w-60 overflow-hidden"
+          style={{ left: pos.left, top: pos.top }}
         >
           <div className="p-2 border-b">
             <input

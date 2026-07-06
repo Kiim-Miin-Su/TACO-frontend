@@ -44,7 +44,16 @@ export function CountryInput({
 }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  // [#3 2026-07-06] 팝오버 위치 = 트리거 rect 기준 fixed(뷰포트) — 표 헤더의 overflow/스택 컨텍스트에
+  //  가려 "뒤로 숨는" 문제 근본 차단(시차 셀 픽커와 동일 패턴). 열 때 rect 캡처.
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const MENU_W = 224; // w-56
+  const openMenu = () => {
+    const r = ref.current?.getBoundingClientRect();
+    if (r) setPos({ left: Math.min(r.left, window.innerWidth - MENU_W - 8), top: r.bottom + 4 });
+    setOpen(true);
+  };
   useEffect(() => {
     if (!open) return;
     const h = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
@@ -67,12 +76,12 @@ export function CountryInput({
           className={`input ${compact ? "h-7 w-[120px] text-micro" : "h-8 w-[150px] text-caption"}`}
           placeholder={placeholder ?? "🌐 국가 (시차 뷰)"}
           value={q}
-          onFocus={() => setOpen(true)}
-          onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+          onFocus={openMenu}
+          onChange={(e) => { setQ(e.target.value); openMenu(); }}
         />
       )}
-      {open && !value && results.length > 0 && (
-        <div className="absolute left-0 top-full mt-1 z-40 card shadow-lg w-56 overflow-hidden">
+      {open && !value && results.length > 0 && pos && (
+        <div className="fixed z-[70] card shadow-lg w-56 overflow-hidden" style={{ left: pos.left, top: pos.top }}>
           {!q.trim() && <div className="px-2 pt-1.5 text-[10px] text-fg-subtle">최근 검색</div>}
           <div className="p-1 max-h-56 overflow-y-auto">
             {results.map((c) => (
