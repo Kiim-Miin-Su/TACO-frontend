@@ -1231,9 +1231,13 @@ export function ScheduleCalendar() {
     const perDay = isSplitGrid ? Math.max(1, Math.round(cols.length / Math.max(1, dayCount))) : 1;
     // [fit 2026-07-06] 하루 열 폭 = min(상한 colMinBase, 컨테이너 균등분할) — 표가 컨테이너보다 길어지지 않게.
     //  하한 18px까지 축소(그 밑에서만 가로 스크롤). densityOf가 실폭 기반으로 동작(좁으면 색상 라벨 단계).
-    const netW = Math.max(120, (availW ?? mainW) - GUTTER_W - 8);
-    const dayW = Math.max(18 * perDay, Math.min(colMinBase, Math.floor(netW / Math.max(1, dayCount))));
-    const subW = isSplitGrid ? Math.max(18, Math.floor(dayW / perDay)) : dayW;
+    // [고정폭 2026-07-06·정정] 일별 컬럼 = 컨테이너 균등분할의 **고정 px**(유동 grow/shrink 없음).
+    //  스크롤은 "최대한 회피"(대표 정정): 서브폭이 가용 하한(24px — 색상 라벨 최소 가독) 아래로
+    //  떨어질 때만 폴백으로 발생. 상한은 colMinBase(128/80 — 열 좁게 토글).
+    const netW = Math.max(80, (availW ?? mainW) - GUTTER_W - 10);
+    const fitDayW = Math.floor(netW / Math.max(1, dayCount));
+    const dayW = Math.max(24 * perDay, Math.min(colMinBase, fitDayW)); // 상한 적용 후 하한 보장(하한 우선)
+    const subW = isSplitGrid ? Math.max(24, Math.floor(dayW / perDay)) : Math.max(24, dayW);
     // 텍스트 밀도 단계(서브열 폭 기준) — 단일 함수 densityOf(lib/domain/lantiv, vitest)로 통일(R2)
     const textMode = densityOf(subW, isSplitGrid);
     const minCol = subW;
@@ -1254,7 +1258,7 @@ export function ScheduleCalendar() {
                     <span className="badge text-[10px]" title="저장 시간은 항상 한국 시간(KST) — 시차 표시는 변환본입니다">보기 전용 · 편집은 한국 시간에서</span>
                   </div>
                 )}
-                <div className="flex" style={{ minWidth: GUTTER_W + (isSplitGrid ? dayCount : cols.length) * 18 /* [fit] 하한만 강제 — 스크롤은 극단에서만 */ }}>
+                <div className="flex" /* [고정폭] minWidth 강제 제거 — 스크롤 없음 */>
                   {/* 시간 거터 */}
                   <div className="shrink-0 sticky left-0 z-10 bg-canvas" style={{ width: GUTTER_W }}>
                     <div style={{ height: HEADER_H }} />
@@ -1291,12 +1295,11 @@ export function ScheduleCalendar() {
                       return (
                         <div
                           key={c.key}
-                          className="flex-1 border-l overflow-hidden" /* [fit 2026-07-06] 헤더 nowrap 콘텐츠가 scrollWidth를 부풀려 가로 스크롤 유발하던 것 클립 */
+                          className="border-l overflow-hidden shrink-0" /* [고정폭] 컬럼 = 계산된 px 고정(유동 제거) + 클립 */
                           style={{
                             borderColor: c.resType && c.firstOfDate ? "var(--color-line)" : "var(--color-line-muted)",
                             borderLeftWidth: c.resType && c.firstOfDate ? 2 : undefined,
-                            minWidth: minCol,
-                            flex: `1 1 ${minCol}px`, // [fit] 축소 허용(1 1) — 컨테이너 폭에 맞춤
+                            width: minCol,
                           }}
                         >
                           {/* 헤더: 스플릿=날짜+리소스명 · 주간=요일+날짜(오늘 강조) · 일간=강의실 */}
@@ -1689,10 +1692,11 @@ export function ScheduleCalendar() {
         {/* 본문 */}
         <div ref={mainRef} className="flex-1 min-w-0 space-y-4">
           {/* ── 뷰 프리셋 탭(TBO-12 P1): 필터·기간·국가 조합 저장/적용 — DB 자산(직원 공용) ── */}
+          <div className="flex items-center gap-2 flex-wrap">{/* [정렬 2026-07-06] 뷰 도구 한 줄 통합 */}
           <button
             type="button"
             className={`btn btn-sm ${compactCols ? "badge-accent" : ""}`}
-            title="[B-5] 하루 열 폭 좁게(80px) — 두 표 스플릿을 한눈에. 글자는 밀도 단계가 자동 축약"
+            title="하루 열 상한 축소(128→80px) — 컬럼은 항상 컨테이너에 맞는 고정폭(스크롤 없음)"
             onClick={() => setCompactCols((v) => !v)}
           >⇤ 열 좁게</button>
           <CalendarViewTabs
@@ -1701,6 +1705,7 @@ export function ScheduleCalendar() {
             onSaveCurrent={saveCurrentPreset}
             onMsg={setMsg}
           />
+          </div>
           {/* ── Lantiv형 필터 바: 리소스 다중선택(스플릿) + 상태/그룹/기간 + 검색/색 기준 ── */}
           <CalendarFilterBar
             resources={resources}
@@ -1795,7 +1800,7 @@ export function ScheduleCalendar() {
               />
             ) : twoPanes ? (
               /* 강사+학생 동시 필터 → 표 2개 자동(각 표 = 날짜×선택 데일리 스플릿). ✕=표 닫기(필터 유지) */
-              <div className="flex gap-3 items-start overflow-x-auto pb-1">
+              <div className="flex gap-3 items-start pb-1">{/* [정렬 2026-07-06] 표 자체가 고정폭 fit — wrapper 스크롤 불필요 */}
                 {panes.map((g) => (
                   <CalendarSplitPane
                     key={g.dim}
