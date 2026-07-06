@@ -197,7 +197,8 @@ export function ScheduleCalendar() {
   // ── 국가·시차 뷰(피드백 2026-07-02) ──
   //  country: 전역 — 선택 시 ① 그 국가 학생 세션만 필터 ② 그리드를 그 국가 로컬 시간으로 표시(KST→변환).
   //  paneCountry: 표(스플릿)별 override — 강사 표는 KST, 학생 표는 미국 시간처럼 표마다 다르게.
-  //  저장은 항상 KST(단일 진실원) — 비KST 표시는 읽기 전용(편집·드래그·복제 잠금).
+  //  저장은 항상 KST(단일 진실원). [개방 2026-07-06] 비KST 컬럼도 드래그·리사이즈·생성·복제 전부 허용 —
+  //  커밋 직전 tzCellToKst(R-1b DST 2-패스)로 KST 변환(익일 연속 블록만 표시 전용 유지).
   // 학생 국가·수강·코스(붙여넣기 코스 재배정 + 국가 필터) — TanStack Query 캐시 공유.
   const { data: allStudents = [] } = useStudents();
   const { data: allEnrollments = [] } = useEnrollments();
@@ -843,7 +844,9 @@ export function ScheduleCalendar() {
         }
       } else {
         setRows(snapshot); // 실패 → 롤백
-        setMsg("수정 실패");
+        // [개방 2026-07-06] 서버 사유 표면화 — 예: 학생 재배정 시 "코스 수강생이 아님"(400) 원인 안내
+        const serverMsg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+        setMsg(`수정 실패${serverMsg ? ` — ${Array.isArray(serverMsg) ? serverMsg[0] : serverMsg}` : ""}`);
       }
     }
   }
@@ -1104,17 +1107,28 @@ export function ScheduleCalendar() {
       return;
     }
     const newRoom = d.roomId ?? orig.roomId;
-    // 스플릿(강사) 컬럼으로 드롭 → 강사 재배정. 학생 컬럼은 재배정 없음(코호트는 enrollment 파생 — 무결성).
+    // 스플릿(강사) 컬럼으로 드롭 → 강사 재배정(백엔드 FK·충돌 검증).
     const newInstructor = d.resType === "instructor" && d.resId != null ? d.resId : orig.instructorId;
-    if (kst.date === orig.sessionDate && kst.startMin === startMinOf(orig) && newRoom === orig.roomId && newInstructor === orig.instructorId)
+    // [개방 2026-07-06] 학생 컬럼 드롭 → 1:1 수업이면 그 학생으로 재배정(studentIds 교체 —
+    //  BE가 "그 코스 활성 수강생의 부분집합" 검증, 아니면 400 롤백+메시지).
+    //  단체(코호트 2명+)는 임의 재배정 방지 — 코호트 유지, 시간만 이동(안내 토스트).
+    const curCohort = (orig.studentIds ?? []).map(Number);
+    const dropStudent = d.resType === "student" && d.resId != null ? Number(d.resId) : null;
+    const reassignStudent = dropStudent != null && !curCohort.includes(dropStudent) && curCohort.length === 1;
+    if (dropStudent != null && !curCohort.includes(dropStudent) && curCohort.length > 1)
+      setMsg("단체 수업은 학생 재배정 없이 시간만 이동합니다(코호트 유지)");
+    if (kst.date === orig.sessionDate && kst.startMin === startMinOf(orig) && newRoom === orig.roomId && newInstructor === orig.instructorId && !reassignStudent)
       return;
     requestChange(
       orig,
       {
         sessionDate: kst.date, startTime: fromMin(kst.startMin), durationMinutes: d.dur, roomId: newRoom,
         ...(newInstructor !== orig.instructorId ? { instructorId: newInstructor } : {}),
+        ...(reassignStudent ? { studentIds: [dropStudent] } : {}),
       },
-      newInstructor !== orig.instructorId ? "강사 재배정 및 이동" : `${fromMin(kst.startMin)}로 이동`,
+      reassignStudent
+        ? "학생 재배정 및 이동"
+        : newInstructor !== orig.instructorId ? "강사 재배정 및 이동" : `${fromMin(kst.startMin)}로 이동`,
     );
   };
   const onEventDown = (e: React.PointerEvent, r: ScheduleRow, srcTz?: string) => {
@@ -1278,7 +1292,7 @@ export function ScheduleCalendar() {
                   <div className="flex items-center gap-x-2 gap-y-0.5 px-3 py-1.5 border-b text-caption bg-canvas-subtle flex-wrap">
                     <span className="shrink-0">🌐</span>
                     <span className="font-semibold shrink-0">학생 국가별 시간 표시 중</span>
-                    <span className="badge text-[10px] shrink-0" title="해외 학생 컬럼은 그 나라 시간으로 표시되며 보기 전용 — 편집은 한국(KST) 컬럼에서">국기 컬럼 = 그 나라 시간 · 보기 전용</span>
+                    <span className="badge text-[10px] shrink-0" title="해외 학생 컬럼은 그 나라 시간으로 표시 — 드래그·리사이즈·추가 가능(저장은 KST 자동 변환)">국기 컬럼 = 그 나라 시간 · 편집 가능(KST 자동 변환)</span>
                   </div>
                 )}
                 {tzActive && tzc && (
@@ -1286,7 +1300,7 @@ export function ScheduleCalendar() {
                     <span className="shrink-0">{tzc.flag}</span>
                     <span className="font-semibold shrink-0">{tzc.name} 시간</span>
                     <span className="text-fg-subtle mono shrink-0">KST{offLabel}</span>
-                    <span className="badge text-[10px] shrink-0" title="저장 시간은 항상 한국 시간(KST) — 시차 표시는 변환본입니다">보기 전용 · 편집은 한국 시간에서</span>
+                    <span className="badge text-[10px] shrink-0" title="저장 시간은 항상 한국 시간(KST) — 이 화면의 조작은 현지 시각으로 하고 저장 시 자동 변환됩니다">편집 가능 · 저장은 KST 자동 변환</span>
                   </div>
                 )}
                 <div className="flex" /* [고정폭] minWidth 강제 제거 — 스크롤 없음 */>
@@ -1640,7 +1654,8 @@ export function ScheduleCalendar() {
                                     outlineOffset: selEvent === r.id ? "1px" : undefined,
                                   }}
                                 >
-                                  {!colTz && selEvent === r.id && (
+                                  {/* [개방 2026-07-06] 시차 컬럼에서도 리사이즈 — 커밋은 tzCellToKst로 KST 변환(R-1b·R-9 검증 경로) */}
+                                  {selEvent === r.id && (
                                     <div onPointerDown={(e) => onResizeDown(e, r, "top", colTz ? colTzc.tz : null, gridMin, gridMax)} className="absolute left-1/2 -translate-x-1/2 top-0 w-6 h-2 rounded-b bg-white/90 cursor-ns-resize" />
                                   )}
                                   {/* 텍스트 3단계: full/title=가로 · vtitle=세로 글씨 · color=색상만 */}
@@ -1677,7 +1692,7 @@ export function ScheduleCalendar() {
                                       {labelOf(r)}
                                     </div>
                                   )}
-                                  {!colTz && selEvent === r.id && (
+                                  {selEvent === r.id && (
                                     <div onPointerDown={(e) => onResizeDown(e, r, "bottom", colTz ? colTzc.tz : null, gridMin, gridMax)} className="absolute left-1/2 -translate-x-1/2 bottom-0 w-6 h-2 rounded-t bg-white/90 cursor-ns-resize" />
                                   )}
                                 </div>
@@ -1754,6 +1769,8 @@ export function ScheduleCalendar() {
               <p>드래그 = 이동 · Ctrl+드래그 = 복제</p>
               <p>Ctrl+C/V = 복사·붙여넣기 · 빈 시간 클릭 = 커서</p>
               <p>강사+학생 동시 선택 = 표 2개(스플릿)</p>
+              <p>표 사이 드래그 = 이동/재배정(강사·1:1 학생)</p>
+              <p>시차 컬럼도 편집 가능 — 저장은 KST 자동 변환</p>
               <p>가용 밴드: 클릭=선택 · 끝 드래그=시간 조절 · ✕=삭제</p>
               <p>우측 리스트 유저 클릭 = 개인 스케줄 필터</p>
             </HelpPopover>
