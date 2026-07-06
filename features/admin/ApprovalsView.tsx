@@ -36,12 +36,19 @@ function MemberApprovals() {
   const [roleSel, setRoleSel] = useState<Record<number, string>>({});
   const [msg, setMsg] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  // [C-2 2026-07-06] alive 게이터 주입 — 언마운트 후 setState 방지(초기 mount fetch가 늦게 도착하는 경우).
+  //  decide()의 재조회는 사용자 액션(마운트 상태)이라 기본값(항상 alive)로 호출.
+  const load = useCallback(async (isAlive: () => boolean = () => true) => {
     const token = getToken();
     if (!token) return;
-    try { setRows(await api.auth.pending()); } catch { setMsg('목록을 불러오지 못했습니다. (대표 권한 필요)'); }
+    try { const r = await api.auth.pending(); if (isAlive()) setRows(r); }
+    catch { if (isAlive()) setMsg('목록을 불러오지 못했습니다. (대표 권한 필요)'); }
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let alive = true;
+    load(() => alive);
+    return () => { alive = false; };
+  }, [load]);
 
   async function decide(id: number, action: 'approve' | 'reject') {
     const token = getToken();

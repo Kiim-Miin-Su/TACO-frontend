@@ -23,6 +23,7 @@ import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
 import type { CalendarViewPreset } from "@/types";
 import { exportNodeAsImage } from "@/lib/export";
 import { useTacoStore } from "@/lib/store";
+import { usePersistedState } from "@/lib/usePersistedState";
 import { isAdmin, roleLabel } from "@/lib/roles";
 import { currentClaims } from "@/lib/auth";
 import { ResourcePanel } from "./ResourcePanel";
@@ -86,7 +87,9 @@ type Resizing = { id: number; edge: "top" | "bottom"; startClientY: number; orig
 type Pending = { row: ScheduleRow; patch: SchedulePatchBody; label: string };
 
 export function ScheduleCalendar() {
-  const [view, setView] = useState<View>("week");
+  // [C-2 2026-07-06] 뷰 프리셋(월/주/일·색 기준·열 좁게)만 localStorage 복원 — 새로고침에도 유지.
+  //  anchor(기준일)는 항상 오늘로 시작(과거 날짜 고정 방지). 내용 필터(Set)는 후속(setCodec)으로 확장.
+  const [view, setView] = usePersistedState<View>("taco.cal.view", "week");
   const [anchor, setAnchor] = useState(todayISO());
   const [rows, setRows] = useState<ScheduleRow[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -150,7 +153,7 @@ export function ScheduleCalendar() {
 
   // ── 필터(Lantiv형) ──
   const [q, setQ] = useState("");
-  const [colorBy, setColorBy] = useState<ColorBy>("subject");
+  const [colorBy, setColorBy] = usePersistedState<ColorBy>("taco.cal.colorBy", "subject");
   const [fInstructors, setFInstructors] = useState<Set<number>>(new Set());
   const [fSubjects, setFSubjects] = useState<Set<string>>(new Set());
   const [fRooms, setFRooms] = useState<Set<number>>(new Set());
@@ -178,7 +181,7 @@ export function ScheduleCalendar() {
   //  그리드 축(dates)·조회(range=min~max)·리스트/시수(filtered 날짜 술어)가 같은 집합을 쓴다(모집단 단일).
   const [pickedDates, setPickedDates] = useState<string[]>([]);
   // [B-5 2026-07-06] 컴팩트 열 토글(대표 지적 1·3) — 하루 열 128px 고정이 두 표 스플릿에서 과폭.
-  const [compactCols, setCompactCols] = useState(false);
+  const [compactCols, setCompactCols] = usePersistedState<boolean>("taco.cal.compactCols", false);
   const colMinBase = compactCols ? 80 : COL_MIN; // densityOf(subW)가 자동 연동(좁아지면 title→vtitle→color)
   const [paneRange, setPaneRange] = useState<Partial<Record<SplitDim, { from: string; to: string }>>>({});
   // [B-3 #5] 표별 cherry-pick 날짜(불연속 집합, 최대 14) — 설정 시 paneRange(연속 범위)보다 우선.
@@ -504,6 +507,8 @@ export function ScheduleCalendar() {
   );
   // ✕로 닫은 표(차원) — 필터는 유지한 채 표만 접음. 해당 차원 선택이 비면 자동 해제.
   const [closedPanes, setClosedPanes] = useState<Set<SplitDim>>(new Set());
+  // [C-2 명시화] 이 effect는 picks의 **길이**만 읽는다(내용 아님) — 선택이 0이 되면 닫힘 상태를 해제.
+  //  따라서 deps = [instPicks.length, studPicks.length]가 완전(exhaustive)하다(배열 전체 불필요).
   useEffect(() => {
     setClosedPanes((prev) => {
       const n = new Set(prev);
@@ -994,32 +999,36 @@ export function ScheduleCalendar() {
 
   // 키보드: Ctrl/⌘+C=선택 수업 복사 · Ctrl/⌘+V=커서 위치 붙여넣기 · Esc=커서·선택 해제.
   //  입력 요소 포커스 중에는 무시(폼 타이핑 방해 금지).
+  // [C-2 명시화] latest-ref 패턴 — 핸들러 본문을 매 렌더 ref에 최신화하고, 리스너는 mount 1회만 등록.
+  //  종전엔 [rows,selEvent,clip,cursor,canAdd]에 eslint-disable로 pasteAt를 누락(stale closure 위험).
+  //  이제 kbdRef.current가 항상 최신 클로저(rows·pasteAt·allEnrollments 등 포함)라 재등록·누락 걱정 없음.
+  const kbdRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  kbdRef.current = (e: KeyboardEvent) => {
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === "c") {
+      const r = rows.find((x) => x.id === selEvent);
+      if (!r) return;
+      setClip(r);
+      setMsg(`복사됨 — ${r.courseName} (${r.durationMinutes}분) · 빈 시간을 클릭한 뒤 Ctrl+V`);
+    } else if (mod && e.key.toLowerCase() === "v") {
+      if (!canAdd) return;
+      if (!clip) { setMsg("복사된 수업이 없습니다 — 수업을 클릭하고 Ctrl+C"); return; }
+      if (!cursor) { setMsg("붙여넣을 빈 시간을 먼저 클릭하세요"); return; }
+      e.preventDefault();
+      // [이슈2] 시차 커서면 현지 좌표를 KST로 변환해 붙여넣기(무결성). KST면 그대로.
+      const kst = tzCellToKst(cursor.date, cursor.startMin, cursor.tz);
+      pasteAt(clip, { ...cursor, date: kst.date, startMin: kst.startMin });
+    } else if (e.key === "Escape") {
+      setCursor(null); setSelEvent(null); setSelBand(null);
+    }
+  };
   useEffect(() => {
-    const h = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key.toLowerCase() === "c") {
-        const r = rows.find((x) => x.id === selEvent);
-        if (!r) return;
-        setClip(r);
-        setMsg(`복사됨 — ${r.courseName} (${r.durationMinutes}분) · 빈 시간을 클릭한 뒤 Ctrl+V`);
-      } else if (mod && e.key.toLowerCase() === "v") {
-        if (!canAdd) return;
-        if (!clip) { setMsg("복사된 수업이 없습니다 — 수업을 클릭하고 Ctrl+C"); return; }
-        if (!cursor) { setMsg("붙여넣을 빈 시간을 먼저 클릭하세요"); return; }
-        e.preventDefault();
-        // [이슈2] 시차 커서면 현지 좌표를 KST로 변환해 붙여넣기(무결성). KST면 그대로.
-        const kst = tzCellToKst(cursor.date, cursor.startMin, cursor.tz);
-        pasteAt(clip, { ...cursor, date: kst.date, startMin: kst.startMin });
-      } else if (e.key === "Escape") {
-        setCursor(null); setSelEvent(null); setSelBand(null);
-      }
-    };
+    const h = (e: KeyboardEvent) => kbdRef.current(e);
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, selEvent, clip, cursor, canAdd]);
+  }, []);
 
   // [감사 M6] 국가(시차) 변경 시 stale 커서·선택 해제 — KST 좌표 커서가 tz 뷰에 남아 오배치되는 것 방지.
   useEffect(() => { setCursor(null); setSelEvent(null); }, [country, paneCountry]);

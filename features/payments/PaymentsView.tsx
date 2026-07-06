@@ -1,16 +1,17 @@
 'use client';
 // 데이터 소스: TanStack Query 훅(usePayments/useStudents)에서 조회.
-import { useState } from 'react';
 import Link from 'next/link';
 import { Badge, SectionCard, MonthCalendar } from '@/components/ui';
 import { usePayments, useStudents } from '@/lib/queries';
+import { usePersistedState } from '@/lib/usePersistedState';
 import { won } from '@/lib/format';
 import { statusLabel, statusTone, methodLabel } from './labels';
 
 export function PaymentsView() {
   const { data: payments = [] } = usePayments();
   const { data: students = [] } = useStudents();
-  const [view, setView] = useState<'list' | 'calendar'>('list');
+  // [C-2 2026-07-06] 목록/달력 보기 토글 localStorage 복원(새로고침에도 유지).
+  const [view, setView] = usePersistedState<'list' | 'calendar'>('taco.payments.view', 'list');
 
   const nameOf = (id: number) => students.find((s) => s.id === id)?.name ?? '—';
   // 캘린더 표시 기준: 수납 완료=수납일, 미수=등록일(청구 생성일).
