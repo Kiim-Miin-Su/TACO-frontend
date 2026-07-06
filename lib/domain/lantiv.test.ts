@@ -290,3 +290,20 @@ describe('densityOf — 스플릿 서브열 폭 → 텍스트 밀도', () => {
     expect(densityOf(23, true)).toBe('color');
   });
 });
+
+// [버그수정 2026-07-06 2단] KST 축 자동 확장 — 해외 학생 심야 밴드가 축 밖에서 잘리던 문제
+import { expandAxis } from './lantiv';
+describe('expandAxis — 축 밖 콘텐츠 자동 확장', () => {
+  it('콘텐츠가 기본 축(08~22) 안이면 축 유지', () => {
+    expect(expandAxis(false, 9 * 60, 18 * 60)).toEqual({ startH: 8, endH: 22 });
+  });
+  it('심야 밴드(23:00~23:59)면 endH 24로 확장 — KST 뷰에서 렌더 보장', () => {
+    expect(expandAxis(false, 23 * 60, 1439)).toEqual({ startH: 8, endH: 24 });
+  });
+  it('새벽 콘텐츠(00:00~01:00)면 startH 0으로 확장', () => {
+    expect(expandAxis(false, 0, 60)).toEqual({ startH: 0, endH: 22 });
+  });
+  it('시차 축은 항상 0~24(전일)', () => {
+    expect(expandAxis(true, 10 * 60, 11 * 60)).toEqual({ startH: 0, endH: 24 });
+  });
+});

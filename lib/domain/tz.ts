@@ -166,3 +166,19 @@ export function tzOffsetFromKst(tz: string, dateISO: string): number {
   const dayDelta = Math.round((Date.parse(other.date) - Date.parse(kst.date)) / 86_400_000);
   return dayDelta * 24 * 60 + (other.minutes - kst.minutes);
 }
+
+
+// [버그수정 2026-07-06] 시차 컬럼에서 추가한 가용/불가를 KST로 저장할 때, 현지 구간이 KST 자정을
+//  넘으면(예: 미국 오전 = KST 23:00~익일 01:00) end<start로 저장돼 KST 뷰에서 미렌더되던 문제.
+//  → KST 날짜가 갈리면 [시작~23:59] + [00:00~끝] **두 블록으로 분할**(각자 자기 요일·날짜).
+//  1분 갭(23:59~24:00)은 dto HH:mm 제약(24:00 불가)에 따른 근사 — 표시·충돌 실용상 무해.
+export type KstBandPart = { date: string; weekday: number; startTime: string; endTime: string };
+
+export function splitKstBand(ks: { date: string; time: string }, ke: { date: string; time: string }): KstBandPart[] {
+  if (ks.date === ke.date) {
+    return [{ date: ks.date, weekday: weekdayOf(ks.date), startTime: ks.time, endTime: ke.time }];
+  }
+  const parts: KstBandPart[] = [{ date: ks.date, weekday: weekdayOf(ks.date), startTime: ks.time, endTime: '23:59' }];
+  if (ke.time !== '00:00') parts.push({ date: ke.date, weekday: weekdayOf(ke.date), startTime: '00:00', endTime: ke.time });
+  return parts;
+}

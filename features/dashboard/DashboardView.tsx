@@ -61,7 +61,7 @@ export function DashboardView() {
   // 강사: 내 수업·리포트 중심 To-do 대시보드
   if (role === 'instructor') {
     const reportTasks = tasks.filter((t) => t.group === 'report');
-    const classTasks = tasks.filter((t) => t.group === 'class');
+    const classTasks = tasks.filter((t) => t.group === 'class' || t.group === 'schedule'); // [UX H2] 내 수업 요청(반려·대기)도 수업 카드에
     return (
       <div className="p-6 max-w-[860px] mx-auto space-y-6">
         <div className="flex items-end justify-between">
@@ -145,6 +145,10 @@ export function DashboardView() {
           </SectionCard>
           <SectionCard title={`상담 배정 (${tasks.filter((t) => t.group === 'counsel').length})`} action={<a href="/counsel" className="btn btn-sm">상담</a>}>
             <TaskList items={tasks.filter((t) => t.group === 'counsel')} empty="배정 대기(날짜 미정) 상담이 없습니다." />
+          </SectionCard>
+          {/* [UX QA 2026-07-06 H2] 수업 요청 승인 대기(TBO-16 #9) — 배지·승인센터와 같은 모집단인데 카드가 없어 대시보드에서 누락되던 것 */}
+          <SectionCard title={`수업 요청 (${tasks.filter((t) => t.group === 'schedule').length})`} action={<a href="/admin/approvals" className="btn btn-sm">승인 센터</a>}>
+            <TaskList items={tasks.filter((t) => t.group === 'schedule')} empty="승인 대기 수업 요청이 없습니다." />
           </SectionCard>
         </div>
       </div>

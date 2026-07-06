@@ -11,11 +11,11 @@ import {
   PALETTE, STATUS_LABEL, MAX_SPLIT,
   matchesStatusFilter, matchesResourceFilter, isGroupSession, sortByDateAsc,
   buildMixedSplitColumns, rowInResource, cloneSessionBody, resolvePasteCourseId,
-  type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick, densityOf,
+  type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick, densityOf, expandAxis,
   KIND_FILTERS, KIND_FILTER_LABEL, type SessionKindFilter } from "@/lib/domain/lantiv";
 import { useAttendance, useStudents, useEnrollments, useCourses, useCreateViewPreset, useScheduleRequests } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
-import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, type CountryInfo, type TzShiftedRow } from "@/lib/domain/tz";
+import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, type CountryInfo, type TzShiftedRow, splitKstBand } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
 import { CalendarViewTabs } from "./CalendarViewTabs";
 import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
@@ -559,9 +559,11 @@ export function ScheduleCalendar() {
   // gridMin: 렌더 그리드의 시작 분(개별 시차로 축이 0~24h일 때 top 정합 — renderTimeGrid가 전달)
   // tz: 컬럼이 비KST(해외 학생 등)면 그 tz — KST 블록을 그 나라 로컬로 변환해 표시(이슈1). KST·tz 모두
   //  kstBlockToTzWindow 단일 함수로 매칭·변환(세션 엔진 재사용·단위테스트 — 이슈3).
-  const bandsOfColumn = (c: { date: string; roomId?: number; resType?: SplitDim; resId?: number }, gridMin: number = GRID_MIN, tz?: string | null): Band[] => {
+  const bandsOfColumn = (c: { date: string; roomId?: number; resType?: SplitDim; resId?: number }, gridMin: number = GRID_MIN, gridMax: number = END_H * 60, tz?: string | null): Band[] => {
     const isTz = !!tz && tz !== KST_TZ;
-    const axisClamp = isTz ? (mm: number) => Math.max(0, Math.min(24 * 60, mm)) : clampMin;
+    // [버그수정 2026-07-06 2단] KST 클램프를 상수 축(8~22)이 아닌 **이 그리드의 실제 축**으로 —
+    //  expandAxis로 축을 늘려도 여기서 상수로 클램프되면 심야 밴드가 0높이→미렌더되던 원인.
+    const axisClamp = isTz ? (mm: number) => Math.max(0, Math.min(24 * 60, mm)) : (mm: number) => clampToAxis(mm, gridMin, gridMax);
     // 블록 1건 → 밴드(그 컬럼 날짜에 안 걸리면 null). tz면 표시 전용(editable=false — 드래그는 KST 좌표라).
     const toBand = (b: AvailabilityBlock, editable: boolean): Band | null => {
       const w = kstBlockToTzWindow(b, c.date, tz ?? KST_TZ);
@@ -1171,7 +1173,23 @@ export function ScheduleCalendar() {
     //  학생 컬럼의 country 파생 tz가 동작. 축은 컬럼 하나라도 tz면 0~24h(다른 나라 새벽 대비).
     const anyColTz = !tzActive && cols.some((c) => c.tzc != null);
     const axisTz = tzActive || anyColTz;
-    const startH = axisTz ? 0 : START_H, endH = axisTz ? 24 : END_H; // 시차로 새벽·심야 이동 대비 전일 축
+    // [버그수정 2026-07-06 2단] KST 축(08~22) 밖 콘텐츠 자동 확장 — 해외 학생의 가용/불가·세션은
+    //  KST로 보면 심야·새벽이 일상(예: 미국 오전=KST 23시). 축 고정 탓에 잘려 "사라지던" 것을,
+    //  이 그리드에 실제로 축 밖 밴드·세션이 있으면 그 시간까지만 축을 늘려 항상 보이게 한다.
+    let contentLo = START_H * 60, contentHi = END_H * 60;
+    if (!axisTz) {
+      const colDates = new Set(cols.map((c) => c.date));
+      for (const r of filtered) {
+        if (!colDates.has(r.sessionDate)) continue;
+        contentLo = Math.min(contentLo, startMinOf(r)); contentHi = Math.max(contentHi, endMinOf(r));
+      }
+      const owners = cols.filter((c) => c.resType != null && c.resId != null);
+      const blockSrc = owners.length
+        ? allBlocks.filter((b) => owners.some((o) => b.ownerType === o.resType && Number(b.ownerId) === Number(o.resId)))
+        : selBlocks;
+      for (const b of blockSrc) { contentLo = Math.min(contentLo, toMin(b.startTime)); contentHi = Math.max(contentHi, toMin(b.endTime)); }
+    }
+    const { startH, endH } = expandAxis(axisTz, contentLo, contentHi, START_H, END_H); // 순수 함수(vitest) — 시차는 전일 축
     const gridMin = startH * 60, gridMax = endH * 60, gridH = (endH - startH) * HOUR_H;
     const clampAxis = (mm: number) => clampToAxis(mm, gridMin, gridMax); // [이슈2] 이 그리드 축 경계
     // 변환 캐시(같은 filtered·tz면 재사용) — 표 2개/컬럼별 tz/리렌더에서 tz별 1회만 O(n) 변환(감사 M4)
@@ -1245,7 +1263,7 @@ export function ScheduleCalendar() {
                       const sOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.start : startMinOf(r));
                       const eOf = (r: ScheduleRow) => (preview && preview.id === r.id ? preview.end : endMinOf(r));
                       const lanes = layoutLanes(colRows.map((r) => ({ id: r.id, start: sOf(r), end: eOf(r) })));
-                      const bands = bandsOfColumn(c, gridMin, colTz ? colTzc.tz : null); // [이슈1] 시차 컬럼도 변환해 표시
+                      const bands = bandsOfColumn(c, gridMin, gridMax, colTz ? colTzc.tz : null); // [이슈1] 시차 컬럼도 변환해 표시
                       const isToday = c.date === todayISO();
                       return (
                         <div
@@ -1826,6 +1844,12 @@ export function ScheduleCalendar() {
               resources={resources}
               selected={cardTarget}
               onSelect={(r) => { selectResource(r); setInfoTarget(r); }}
+              filterIds={{ instructor: fInstructors, student: fStudents, room: fRooms }}
+              onToggleFilter={(dim, id) => {
+                // 필터바 onToggleId와 동일 로직(단일 소스) — 리스트 클릭 = 필터 선택/해제(UX 제안 2026-07-06)
+                const setter = dim === "instructor" ? setFInstructors : dim === "student" ? setFStudents : setFRooms;
+                setter((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+              }}
             />
           )}
           {/* [피드백 2026-07-03] 스케줄 선택 → 포함 인원 리스트 → 한 명 클릭 → 바로 아래 유저 상세 카드 */}
@@ -1935,6 +1959,7 @@ export function ScheduleCalendar() {
         <CreateModal
           resources={resources}
           rooms={rooms}
+          requestMode={isInstructor} // [UX H1] 강사=수업 탭 제출이 승인 요청
           defaultDate={creating.date}
           defaultStart={creating.start}
           lockInstructorId={isInstructor ? myInstructorId : undefined}
@@ -2365,6 +2390,7 @@ function RepeatField({ repeat, setRepeat, customWds, toggleWd, untilDate, setUnt
 function CreateModal({
   resources,
   rooms,
+  requestMode, // [UX H1] 강사=승인 요청 모드 — 버튼·안내 문구를 실제 동작과 일치
   defaultDate,
   defaultStart,
   lockInstructorId,
@@ -2378,6 +2404,7 @@ function CreateModal({
 }: {
   resources: ScheduleResources;
   rooms: Room[];
+  requestMode?: boolean; // 강사(비관리자) — 수업 탭 제출이 승인 요청으로 전송됨
   defaultDate: string;
   defaultStart?: string; // 빈 곳 더블클릭 시 그 시각으로 프리필
   lockInstructorId?: number; // 강사 본인만 추가 가능할 때 — 본인 ID로 고정
@@ -2493,16 +2520,22 @@ function CreateModal({
   function submitBlocks() {
     const kind = type === "unavailable" ? "unavailable" : "available";
     // [이슈1] 비KST 입력: 현지 (date,시각)을 KST로 변환 후 요일·시각 확정. 반복은 KST 시각·요일 기준.
+    // [버그수정 2026-07-06] 현지→KST 변환이 자정을 넘으면 두 블록으로 분할(splitKstBand) —
+    //  이전엔 end<start로 저장돼 KST 뷰(축·렌더 모두 KST)에서 밴드가 사라졌다.
+    const ks = toKst(date, start), ke = toKst(date, end);
+    const parts = splitKstBand(ks, ke);
     if (repeat === "none") {
-      const ks = toKst(date, start), ke = toKst(date, end);
-      onCreateBlock({ ownerType: bType, ownerId: Number(bId), kind, startTime: ks.time, endTime: ke.time, weekday: weekdayOf(ks.date), effectiveFrom: ks.date, effectiveTo: ks.date });
+      parts.forEach((pt) =>
+        onCreateBlock({ ownerType: bType, ownerId: Number(bId), kind, startTime: pt.startTime, endTime: pt.endTime, weekday: pt.weekday, effectiveFrom: pt.date, effectiveTo: pt.date }));
     } else {
-      const ks = toKst(date, start), ke = toKst(date, end);
-      const base = { ownerType: bType, ownerId: Number(bId), kind, startTime: ks.time, endTime: ke.time } as const;
-      // 변환으로 요일이 밀리면 그만큼 보정(현지 요일 → KST 요일 델타)
+      // 반복: 현지 요일 각각에 대해 (KST 요일 델타 + 분할) 적용. 종료일도 델타만큼 보정(미보정이던 것 정정).
       const wdShift = tzActive ? (weekdayOf(ks.date) - weekdayOf(date) + 7) % 7 : 0;
+      const dayShift = tzActive ? Math.round((Date.parse(ks.date) - Date.parse(date)) / 86_400_000) : 0;
+      const effTo = addDaysISO(untilDate, dayShift);
       const wds = repeat === "weekly" ? [weekdayOf(date)] : customWds;
-      wds.forEach((wd) => onCreateBlock({ ...base, weekday: (wd + wdShift) % 7, effectiveFrom: ks.date, effectiveTo: untilDate }));
+      wds.forEach((wd) => parts.forEach((pt, i) =>
+        onCreateBlock({ ownerType: bType, ownerId: Number(bId), kind, startTime: pt.startTime, endTime: pt.endTime,
+          weekday: (wd + wdShift + i) % 7, effectiveFrom: pt.date, effectiveTo: addDaysISO(effTo, i) })));
     }
   }
   function submitSession() {
@@ -2535,6 +2568,12 @@ function CreateModal({
             <button key={v} className={`btn btn-sm flex-1 rounded-none border-0 ${type === v ? "badge-accent" : ""}`} onClick={() => setType(v)}>{lbl}</button>
           ))}
         </div>
+        {requestMode && type === "session" && (
+          /* [UX H1] 강사에게 실제 동작(승인 요청)을 사전 고지 — 버튼 라벨과 일치 */
+          <div className="rounded-md px-2.5 py-1.5 text-[12px]" style={{ background: "color-mix(in srgb, var(--color-accent) 10%, transparent)", color: "var(--color-accent)" }}>
+            ⏳ 수업은 <b>매니저 승인 후</b> 캘린더에 확정됩니다 — 제출 시 승인 요청이 전송돼요. (가용·불가 시간은 바로 저장)
+          </div>
+        )}
         {tzActive && (
           <p className="text-[12px] px-0.5" style={{ color: "var(--color-accent)" }}>
             🌐 {ownerTz!.name} 현지 시각으로 입력하세요 — 저장은 한국 시간(KST)으로 변환됩니다.
@@ -2649,7 +2688,7 @@ function CreateModal({
           <button className="btn" onClick={onClose}>취소</button>
           {type === "session" ? (
             <button className="btn btn-primary" disabled={!sessionValid || (repeat !== "none" && occurrences().length === 0)} onClick={submitSession}>
-              {repeat === "none" ? "수업 추가" : `반복 추가 (${occurrences().length}회)`}
+              {requestMode ? "승인 요청 보내기" : repeat === "none" ? "수업 추가" : `반복 추가 (${occurrences().length}회)`}
             </button>
           ) : (
             <button className="btn btn-primary" disabled={!blockValid} onClick={submitBlocks}>

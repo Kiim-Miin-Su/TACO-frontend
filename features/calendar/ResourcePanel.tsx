@@ -14,12 +14,18 @@ const PAGE = 8;
 // 선택한 학생은 좌측 "학생 → 강사 추천"의 기준이 된다.
 // React.memo — 부모(ScheduleCalendar)가 드래그 중 자주 리렌더돼도 props(resources/selected/onSelect)가
 // 바뀌지 않으면 이 패널은 리렌더하지 않음(주간 뷰 드래그 성능).
+// [UX 제안 2026-07-06] 스플릿 토글 옆 truncate 이름 대신, 이 패널이 "누가 필터돼 있는지"의 단일 확인처.
+//  - 필터가 있으면: 선택(필터)된 유저를 리스트 상단에 ✓ 강조로 고정 표시(해제도 클릭 한 번).
+//  - 필터가 없으면: 전체 유저(검색 가능 — 기존 그대로). 행 클릭 = **필터 토글**(대표 지시).
+//  - 상세 카드(뷰 불변)는 행 우측 ⓘ 버튼으로 분리(기존 onSelect 유지 — 역할 명확화).
 function ResourcePanelImpl({
-  resources, selected, onSelect,
+  resources, selected, onSelect, filterIds, onToggleFilter,
 }: {
   resources: ScheduleResources;
   selected: ScheduleResource | null;
   onSelect: (r: ScheduleResource | null) => void;
+  filterIds: Record<RType, Set<number>>;
+  onToggleFilter: (dim: RType, id: number) => void;
 }) {
   const [open, setOpen] = useState(true);
   const [tab, setTab] = useState<RType>("student");
@@ -28,10 +34,13 @@ function ResourcePanelImpl({
 
   const list: ScheduleResource[] =
     tab === "student" ? resources.students : tab === "instructor" ? resources.instructors : resources.rooms;
+  const picked = filterIds[tab]; // 이 탭 차원의 필터 선택(캘린더 필터바와 같은 상태 — 단일 소스)
   const filtered = useMemo(() => {
     const n = q.trim().toLowerCase();
-    return n ? list.filter((x) => x.name.toLowerCase().includes(n)) : list;
-  }, [list, q]);
+    const base = n ? list.filter((x) => x.name.toLowerCase().includes(n)) : list;
+    // 필터된 유저를 상단 고정(스플릿에서 "누구를 보고 있는지" 즉시 확인 — UX 제안)
+    return picked.size ? [...base].sort((a, b) => Number(picked.has(Number(b.id))) - Number(picked.has(Number(a.id)))) : base;
+  }, [list, q, picked]);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
   const cur = Math.min(page, pages - 1);
   const slice = filtered.slice(cur * PAGE, cur * PAGE + PAGE);
@@ -45,7 +54,7 @@ function ResourcePanelImpl({
         className="w-full px-3 h-10 flex items-center justify-between border-b"
         style={{ borderColor: "var(--color-line)" }}
       >
-        <span className="text-[13px] font-semibold">유저별 스케줄</span>
+        <span className="text-[13px] font-semibold">유저별 스케줄{picked.size ? <span className="ml-1.5 badge badge-accent text-[10px]">{picked.size}명 필터</span> : null}</span>
         <span className="text-[12px] text-fg-subtle inline-flex items-center gap-1">
           {selected ? <span className="text-accent truncate max-w-[90px]">{selected.name}</span> : null}
           {open ? "▲" : "▼"}
@@ -86,16 +95,24 @@ function ResourcePanelImpl({
           <div className="px-2 pb-1 space-y-0.5" style={{ minHeight: PAGE * 34 }}>
             {slice.map((r) => {
               const on = selected?.type === r.type && selected?.id === r.id;
+              const inFilter = picked.has(Number(r.id));
               return (
-                <button
+                <div
                   key={`${r.type}-${r.id}`}
-                  onClick={() => onSelect(on ? null : r)}
-                  className={`w-full flex items-center gap-2 px-2 h-8 rounded text-[13px] ${on ? "bg-neutral-subtle font-semibold" : "hover:bg-canvas-subtle text-fg-muted"}`}
+                  className={`w-full flex items-center gap-2 px-2 h-8 rounded text-[13px] cursor-pointer ${inFilter ? "bg-neutral-subtle" : on ? "bg-canvas-subtle" : "hover:bg-canvas-subtle text-fg-muted"}`}
+                  title={inFilter ? "클릭 = 필터에서 제외" : "클릭 = 이 유저로 필터(스플릿·조회 반영)"}
+                  onClick={() => onToggleFilter(tab, Number(r.id))}
                 >
                   <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color ?? "var(--color-line)" }} />
-                  <span className="flex-1 text-left truncate text-fg">{r.name}</span>
+                  <span className={`flex-1 text-left truncate text-fg ${inFilter ? "font-semibold" : ""}`}>{r.name}</span>
+                  {inFilter && <span className="text-accent text-[12px] font-bold" aria-label="필터 선택됨">✓</span>}
                   {r.sub && <span className="text-[11px] text-fg-subtle">{r.sub}</span>}
-                </button>
+                  <button
+                    className={`btn btn-sm h-6 px-1.5 text-[11px] shrink-0 ${on ? "badge-accent" : ""}`}
+                    title="상세 카드 열기(뷰는 그대로)"
+                    onClick={(e) => { e.stopPropagation(); onSelect(on ? null : r); }}
+                  >ⓘ</button>
+                </div>
               );
             })}
             {!slice.length && <div className="text-[12px] text-fg-subtle text-center py-6">결과 없음</div>}

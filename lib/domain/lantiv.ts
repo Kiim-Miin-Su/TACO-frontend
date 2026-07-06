@@ -307,3 +307,13 @@ export function densityOf(subW: number, isSplit: boolean): TextDensity {
   if (subW >= 24) return 'vtitle';
   return 'color';
 }
+
+
+// [버그수정 2026-07-06 2단] KST 그리드 축 자동 확장 — 기본 08~22시지만, 축 밖 콘텐츠(해외 학생의
+//  KST 심야 밴드·세션)가 있으면 그 시간까지 확장(잘려서 '사라짐' 방지). 시차 축은 항상 0~24.
+export function expandAxis(axisTz: boolean, contentLoMin: number, contentHiMin: number, baseStartH = 8, baseEndH = 22): { startH: number; endH: number } {
+  if (axisTz) return { startH: 0, endH: 24 };
+  const startH = Math.min(baseStartH, Math.max(0, Math.floor(contentLoMin / 60)));
+  const endH = Math.max(baseEndH, Math.min(24, Math.ceil(contentHiMin / 60)));
+  return { startH, endH };
+}

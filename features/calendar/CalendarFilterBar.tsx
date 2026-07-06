@@ -196,6 +196,7 @@ export function CalendarFilterBar({
         ))}
         <span className="w-px h-5" style={{ background: "var(--color-line)" }} />
         {/* [v0.1.14 #2] 종류(kind) 필터: 수업/진단고사/상담 — 빈 선택=전체, 복수=합집합(상태 필터와 동일 UX) */}
+        <span className="text-[11px] text-fg-subtle px-0.5" title="세션 종류로 거르기(빈 선택=전체)">종류</span>
         {KIND_FILTERS.map((k) => (
           <button
             key={k}

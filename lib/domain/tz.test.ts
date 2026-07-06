@@ -153,3 +153,22 @@ describe('searchCountries — 자동완성(한글·영문·코드)', () => {
     for (const c of COUNTRIES) expect(c.tz).toMatch(/^[A-Za-z]+\/[A-Za-z_]+$/);
   });
 });
+
+// [버그수정 2026-07-06] 시차 가용/불가 → KST 자정 크로스 분할
+import { splitKstBand } from './tz';
+describe('splitKstBand — KST 자정 크로스 분할(시차 밴드 저장)', () => {
+  it('같은 날짜면 1블록 그대로', () => {
+    expect(splitKstBand({ date: '2026-07-06', time: '09:00' }, { date: '2026-07-06', time: '11:00' }))
+      .toEqual([{ date: '2026-07-06', weekday: 1, startTime: '09:00', endTime: '11:00' }]);
+  });
+  it('자정 크로스(미국 오전=KST 23:00~익일 01:00)는 [23:00~23:59]+[00:00~01:00] 두 블록·각자 요일', () => {
+    const parts = splitKstBand({ date: '2026-07-06', time: '23:00' }, { date: '2026-07-07', time: '01:00' });
+    expect(parts).toEqual([
+      { date: '2026-07-06', weekday: 1, startTime: '23:00', endTime: '23:59' },
+      { date: '2026-07-07', weekday: 2, startTime: '00:00', endTime: '01:00' },
+    ]);
+  });
+  it('끝이 정확히 00:00이면 둘째 블록 생략(0분 블록 방지)', () => {
+    expect(splitKstBand({ date: '2026-07-06', time: '22:00' }, { date: '2026-07-07', time: '00:00' })).toHaveLength(1);
+  });
+});
