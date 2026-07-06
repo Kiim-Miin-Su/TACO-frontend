@@ -2,21 +2,27 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { IconSearch, IconBell } from '../ui/icons';
 import { useTacoStore } from '@/lib/store';
 import { useAppData } from '@/lib/queries';
 import { ROLES, roleLabel } from '@/lib/roles';
 import { buildTasks } from '@/lib/tasks';
-import { currentClaims, clearToken } from '@/lib/auth';
+import { api } from '@/lib/api';
+import { currentClaims, clearToken, setToken } from '@/lib/auth';
+import { DEV_ROLE_ACCOUNTS } from '@/lib/dev-roles'; // [임시/실험용]
 import type { AccountRole } from '@/types';
 
 export default function Topbar() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const currentRole = useTacoStore((s) => s.currentRole);
+  const setCurrentRole = useTacoStore((s) => s.setCurrentRole);
   // [임시/실험용] dev 역할 토글 — 아래 주석/JSX 참조.
   const overrideRole = useTacoStore((s) => s.overrideRole);
   const clearRoleOverride = useTacoStore((s) => s.clearRoleOverride);
   const devRoleOverride = useTacoStore((s) => s.devRoleOverride);
+  const [switching, setSwitching] = useState(false);
 
   // 알림 항목 — 서버 데이터는 TanStack Query(useAppData) 단일 소스에서 조립.
   const { items, count } = buildTasks({ ...useAppData(), currentRole }, currentRole);
@@ -27,6 +33,34 @@ export default function Topbar() {
   const [loggedIn, setLoggedIn] = useState(false);
   useEffect(() => { setLoggedIn(!!currentClaims()); }, []);
   const logout = () => { clearToken(); router.replace('/login'); };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // [임시/실험용 — 나중에 제거] 역할 전환.
+  //  staff 3역할(super_admin/manager/instructor)은 해당 데모 계정으로 **실제 재로그인** →
+  //   새 JWT로 토큰 교체 → 백엔드 RBAC까지 그 역할로 바뀐다(403 등 실권한 재현 가능).
+  //   토큰이 곧 진실원이므로 devRoleOverride는 끈다(AppShell이 JWT로 하이드레이션 = 동일 역할).
+  //   권한이 바뀌었으니 이전 역할로 채운 쿼리 캐시는 전부 폐기(clear) 후 대시보드로.
+  //  로그인 계정이 없는 역할(student/parent)은 UI 전용 미리보기(overrideRole — 토큰 불변).
+  async function switchRole(role: AccountRole) {
+    const acc = DEV_ROLE_ACCOUNTS[role];
+    if (!acc) { overrideRole(role); return; } // 계정 없음 → UI 전용
+    try {
+      setSwitching(true);
+      const res = await api.auth.login({ webId: acc.webId, password: acc.password });
+      setToken(res.accessToken);
+      clearRoleOverride();
+      setCurrentRole(res.account.role as AccountRole);
+      setLoggedIn(true);
+      queryClient.clear(); // 권한 바뀜 — 이전 역할 캐시 폐기(재패칭)
+      router.replace('/'); // 새 역할로 금지된 현재 페이지에 갇히지 않게 대시보드로
+      router.refresh();
+    } catch {
+      // 데모 계정은 항상 존재 — 실패는 백엔드 미기동 등. 조용히 무시(토글은 이전 상태 유지).
+    } finally {
+      setSwitching(false);
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   // 바깥 클릭 시 팝오버 닫기
   useEffect(() => {
@@ -45,24 +79,28 @@ export default function Topbar() {
       </div>
       <div className="flex-1" />
       {/* ─────────────────────────────────────────────────────────────────────
-          [임시/실험용 — 나중에 제거] dev 역할 전환 토글.
-          로그인 여부와 무관하게 항상 노출 → 로그인 상태에서도 강사·매니저 등 화면을 즉시 실험.
-          선택 시 overrideRole()이 currentRole을 바꾸고 devRoleOverride=true로 잠가(AppShell 재하이드레이션 스킵)
-          페이지를 이동해도 유지된다. '복귀'로 실제(JWT) 역할로 되돌린다.
-          ⚠ 프론트 UI 게이팅만 바뀜 — 백엔드 RBAC는 실제 로그인 JWT 기준(상세: lib/store.ts 주석).
+          [임시/실험용 — 나중에 제거] dev 역할 전환 토글(탑네비 상시 노출).
+          staff 3역할(대표/매니저/강사) = 데모 계정으로 **실제 재로그인** → 백엔드 RBAC까지 그 역할로.
+          학생/학부모(로그인 계정 없음) = UI 전용 미리보기(devRoleOverride, '미리보기' 뱃지+복귀).
+          상세·제거 지점: lib/store.ts · lib/dev-roles.ts 주석.
           ───────────────────────────────────────────────────────────────────── */}
       <label
         className="flex items-center gap-1.5 text-caption text-fg-muted"
-        title="실험용: 이 화면의 역할만 바꿉니다. 백엔드 권한은 실제 로그인 계정 기준입니다."
+        title="실험용 역할 전환: 대표/매니저/강사는 실제 계정으로 재로그인(백엔드 권한까지 변경), 학생/학부모는 화면 미리보기입니다."
       >
-        <span className="badge badge-neutral">실험</span>
+        <span className={`badge ${devRoleOverride ? 'badge-attention' : 'badge-neutral'}`}>
+          {devRoleOverride ? '미리보기' : '실험'}
+        </span>
         역할
         <select
           className="input w-28 h-8"
           value={currentRole}
-          onChange={(e) => overrideRole(e.target.value as AccountRole)}
+          disabled={switching}
+          onChange={(e) => switchRole(e.target.value as AccountRole)}
         >
-          {ROLES.map((r) => (<option key={r} value={r}>{roleLabel[r]}</option>))}
+          {ROLES.map((r) => (
+            <option key={r} value={r}>{roleLabel[r]}{DEV_ROLE_ACCOUNTS[r] ? '' : ' (미리보기)'}</option>
+          ))}
         </select>
       </label>
       {devRoleOverride && (

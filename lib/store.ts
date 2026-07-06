@@ -14,15 +14,16 @@ type TacoState = {
   setCurrentStudentId: (id: number) => void;
 
   // ─────────────────────────────────────────────────────────────────────────
-  // [임시/실험용 — 나중에 제거] dev 역할 오버라이드
-  //  목적: 로그인 상태에서도 탑네비 토글로 강사/매니저 등 다른 역할의 화면을 즉시 실험.
-  //  동작: devRoleOverride=true이면 AppShell이 라우팅마다 하던 "JWT→currentRole 재하이드레이션"을
-  //        건너뛴다(그렇지 않으면 페이지 이동 시 실제 역할로 되돌아감) → 토글로 고른 역할이 유지된다.
-  //  ⚠ 범위: 이건 **프론트 UI 게이팅(currentRole)만** 바꾼다. 백엔드 RBAC는 여전히 실제 로그인 JWT의
-  //     roles로 인가한다. 데모 기본 계정(super_admin)으로 로그인한 상태면 낮은 역할로 내려도 쓰기가
-  //     막히지 않는다(토큰이 상위라서). 특정 역할의 백엔드 403까지 재현하려면 그 역할 계정으로 로그인할 것.
+  // [임시/실험용 — 나중에 제거] dev 역할 오버라이드 (UI 전용 미리보기)
+  //  탑네비 역할 토글의 **두 경로 중 UI 전용 경로**에서만 쓴다:
+  //   · staff 3역할(대표/매니저/강사) = Topbar.switchRole이 데모 계정으로 **실제 재로그인**해
+  //     JWT를 교체 → 백엔드 RBAC까지 그 역할로 바뀐다(override 미사용, devRoleOverride=false).
+  //   · 로그인 계정이 없는 역할(학생/학부모 — 엔티티만 존재) = **overrideRole**로 currentRole만 바꿔
+  //     화면을 미리본다(토큰 불변 → 백엔드는 여전히 실제 로그인 계정 권한).
+  //  devRoleOverride=true이면 AppShell이 라우팅마다 하던 "JWT→currentRole 재하이드레이션"을 건너뛴다
+  //   (안 그러면 페이지 이동 시 실제 역할로 되돌아감). '복귀'(clearRoleOverride)로 실제 역할 복원.
   devRoleOverride: boolean;
-  overrideRole: (role: AccountRole) => void; // 토글 선택 = 오버라이드 켜기(+currentRole 설정)
+  overrideRole: (role: AccountRole) => void; // UI 전용 미리보기 켜기(+currentRole 설정)
   clearRoleOverride: () => void; // 실제(JWT) 역할로 복귀 — AppShell이 다음 렌더에 재하이드레이션
   // ─────────────────────────────────────────────────────────────────────────
 };
