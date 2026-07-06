@@ -17,18 +17,18 @@ import type { EnrollmentStatus } from '@/types';
 
 // To-do 항목 리스트 — 알림/대시보드 공용 표현. 항목 클릭 시 해당 화면으로.
 function TaskList({ items, empty }: { items: TaskItem[]; empty: string }) {
-  if (items.length === 0) return <div className="p-4 text-[13px] text-fg-subtle">{empty}</div>;
+  if (items.length === 0) return <div className="p-4 text-body text-fg-subtle">{empty}</div>;
   return (
-    <ul className="divide-y" style={{ borderColor: 'var(--color-line-muted)' }}>
+    <ul className="divide-y border-line-muted">
       {items.map((t) => (
         <li key={t.id}>
           <Link href={t.href} className="flex items-center gap-3 px-4 py-3 hover:bg-canvas-subtle">
             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: `var(--color-${t.tone === 'neutral' ? 'fg-subtle' : t.tone})` }} />
             <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-medium text-fg truncate">{t.title}</span>
-              {t.detail && <span className="block text-[12px] text-fg-subtle truncate">{t.detail}</span>}
+              <span className="block text-body font-medium text-fg truncate">{t.title}</span>
+              {t.detail && <span className="block text-caption text-fg-subtle truncate">{t.detail}</span>}
             </span>
-            <span className="text-fg-subtle text-[13px]">›</span>
+            <span className="text-fg-subtle text-body">›</span>
           </Link>
         </li>
       ))}
@@ -66,11 +66,11 @@ export function DashboardView() {
       <div className="p-6 max-w-[860px] mx-auto space-y-6">
         <div className="flex items-end justify-between">
           <div>
-            <h1 className="text-[20px] font-semibold">내 할 일</h1>
-            <p className="text-[13px] text-fg-muted mt-0.5">오늘·다가오는 수업과 작성할 리포트를 확인하세요.</p>
+            <h1 className="text-title font-bold">내 할 일</h1>
+            <p className="text-body text-fg-muted mt-0.5">오늘·다가오는 수업과 작성할 리포트를 확인하세요.</p>
           </div>
-          <div className="flex items-center gap-2 text-[12px] text-fg-subtle">
-            <span className="dot" style={{ backgroundColor: 'var(--color-success)' }} />
+          <div className="flex items-center gap-2 text-caption text-fg-subtle">
+            <span className="dot bg-success" />
             {roleLabel[role]} · 대기 {taskCount}건
           </div>
         </div>
@@ -83,7 +83,7 @@ export function DashboardView() {
           <TaskList items={classTasks} empty="예정된 수업이 없습니다." />
         </SectionCard>
 
-        <p className="text-[12px] text-fg-subtle">진행한 수업은 <b>리포트를 작성·승인</b>받아야 시수로 측정되고 페이가 산정됩니다.</p>
+        <p className="text-caption text-fg-subtle">진행한 수업은 <b>리포트를 작성·승인</b>받아야 시수로 측정되고 페이가 산정됩니다.</p>
       </div>
     );
   }
@@ -92,8 +92,8 @@ export function DashboardView() {
   if (!admin) {
     return (
       <div className="p-6 max-w-[760px] mx-auto">
-        <h1 className="text-[20px] font-semibold">안녕하세요 ({roleLabel[role]})</h1>
-        <p className="text-[13px] text-fg-muted mt-1 mb-5">학원 일정과 내 수업을 캘린더에서 확인하세요.</p>
+        <h1 className="text-title font-bold">안녕하세요 ({roleLabel[role]})</h1>
+        <p className="text-body text-fg-muted mt-1 mb-5">학원 일정과 내 수업을 캘린더에서 확인하세요.</p>
         <SectionCard title="바로가기">
           <div className="p-4 flex gap-2">
             <a href="/schedule" className="btn btn-primary">학원 캘린더 보기</a>
@@ -118,12 +118,12 @@ export function DashboardView() {
     <div className="p-6 max-w-[1200px] mx-auto">
       <div className="flex items-end justify-between mb-5">
         <div>
-          <h1 className="text-[20px] font-semibold">대시보드</h1>
-          <p className="text-[13px] text-fg-muted mt-0.5">2026년 6월 · 이번 달 운영 현황</p>
+          <h1 className="text-title font-bold">대시보드</h1>
+          <p className="text-body text-fg-muted mt-0.5">2026년 6월 · 이번 달 운영 현황</p>
         </div>
-        <div className="flex items-center gap-2 text-[12px] text-fg-subtle">
+        <div className="flex items-center gap-2 text-caption text-fg-subtle">
           {ceo && <Link href="/insights" className="btn btn-sm">경영 지표 →</Link>}
-          <span className="dot" style={{ backgroundColor: 'var(--color-success)' }} />
+          <span className="dot bg-success" />
           {roleLabel[role]} · {ceo ? '경영 지표는 별도 탭' : '운영 화면'}
         </div>
       </div>
@@ -131,7 +131,7 @@ export function DashboardView() {
       {/* 관리자/매니저 할 일 — 회계상 분리: 결제·수납(입금) / 강사 페이·지출(출금) / 상담 */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-[15px] font-semibold">할 일 · 처리 대기 <span className="text-fg-subtle font-normal">({taskCount})</span></h2>
+          <h2 className="text-section font-semibold">할 일 · 처리 대기 <span className="text-fg-subtle font-normal">({taskCount})</span></h2>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <SectionCard title={`결제 · 수납 (${tasks.filter((t) => t.group === 'payment').length})`} action={<a href="/payments" className="btn btn-sm">결제 관리</a>}>
@@ -176,7 +176,7 @@ export function DashboardView() {
                   <tr key={e.id}>
                     <td>
                       <div className="font-medium">{e.student?.name ?? '—'}</div>
-                      <div className="text-[12px] text-fg-subtle">{e.student?.englishName}</div>
+                      <div className="text-caption text-fg-subtle">{e.student?.englishName}</div>
                     </td>
                     <td className="text-fg-muted">{e.course?.name ?? '—'}</td>
                     <td>

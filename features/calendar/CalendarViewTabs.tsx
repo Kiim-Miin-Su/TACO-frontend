@@ -51,7 +51,7 @@ export function CalendarViewTabs({
         return (
           <span
             key={p.id}
-            className={`inline-flex items-center gap-1 h-7 pl-2 pr-1 rounded-md border text-[12px] cursor-pointer ${on ? "badge-accent font-semibold" : "hover:bg-canvas-subtle"}`}
+            className={`inline-flex items-center gap-1 h-7 pl-2 pr-1 rounded-md border text-caption cursor-pointer ${on ? "badge-accent font-semibold" : "hover:bg-canvas-subtle"}`}
             style={{ borderColor: on ? "var(--color-accent)" : "var(--color-line)" }}
             onClick={() => onApply(p)}
             title={`적용 — ${p.view}${p.periodFrom ? ` · ${p.periodFrom}~${p.periodTo}` : ""}${p.countryCode ? ` · ${p.countryCode} 시간` : ""}`}

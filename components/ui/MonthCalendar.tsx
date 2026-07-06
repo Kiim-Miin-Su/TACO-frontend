@@ -39,15 +39,15 @@ export function MonthCalendar({
         </div>
       }
     >
-      <div className="grid grid-cols-7 border-b" style={{ borderColor: 'var(--color-line)' }}>
+      <div className="grid grid-cols-7 border-b">
         {WEEK.map((w, i) => (
-          <div key={w} className={`px-3 py-2 text-[12px] font-semibold ${i === 0 ? 'text-danger' : i === 6 ? 'text-accent' : 'text-fg-muted'}`}>{w}</div>
+          <div key={w} className={`px-3 py-2 text-caption font-semibold ${i === 0 ? 'text-danger' : i === 6 ? 'text-accent' : 'text-fg-muted'}`}>{w}</div>
         ))}
       </div>
       <div className="grid grid-cols-7">
         {cells.map((day, idx) => (
-          <div key={idx} className="min-h-[92px] border-b border-r p-1.5" style={{ borderColor: 'var(--color-line-muted)' }}>
-            {day && <div className="text-[12px] text-fg-subtle mb-1 px-1">{day}</div>}
+          <div key={idx} className="min-h-[92px] border-b border-r p-1.5 border-line-muted">
+            {day && <div className="text-caption text-fg-subtle mb-1 px-1">{day}</div>}
             <div className="space-y-1">{day ? renderDay(`${monthStr}-${pad(day)}`, day) : null}</div>
           </div>
         ))}

@@ -45,8 +45,8 @@ export function ExpenseFormView() {
   return (
     <div className="p-6 max-w-[720px] mx-auto space-y-5">
       <div>
-        <Link href="/expenses" className="text-[12px] text-fg-muted hover:underline">← 지출 목록</Link>
-        <h1 className="text-[20px] font-semibold mt-1">지출 등록</h1>
+        <Link href="/expenses" className="text-caption text-fg-muted hover:underline">← 지출 목록</Link>
+        <h1 className="text-title font-bold mt-1">지출 등록</h1>
       </div>
       <SectionCard title="지출 정보">
         <form onSubmit={submit} className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -61,11 +61,11 @@ export function ExpenseFormView() {
           <Field label="거래처"><input className="input" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="오피스디포" /></Field>
           <Field label="메모"><input className="input" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="비고" /></Field>
           <div className="sm:col-span-2">
-            <span className="block text-[12px] font-medium text-fg-muted mb-1">영수증 사진</span>
-            <input type="file" accept="image/*" className="text-[13px]" onChange={(e) => onFile(e.target.files?.[0])} />
+            <span className="block text-caption font-medium text-fg-muted mb-1">영수증 사진</span>
+            <input type="file" accept="image/*" className="text-body" onChange={(e) => onFile(e.target.files?.[0])} />
             {receipt && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={receipt} alt="영수증 미리보기" className="mt-2 max-h-40 rounded border" style={{ borderColor: 'var(--color-line)' }} />
+              <img src={receipt} alt="영수증 미리보기" className="mt-2 max-h-40 rounded border" />
             )}
           </div>
           <div className="sm:col-span-2 flex justify-end pt-1">
@@ -73,7 +73,7 @@ export function ExpenseFormView() {
           </div>
         </form>
       </SectionCard>
-      <p className="text-[12px] text-fg-subtle">지출은 <b>대표(super_admin) 승인</b> 후 출금 원장·대시보드에 반영됩니다. (관리자 &gt; 승인 센터)</p>
+      <p className="text-caption text-fg-subtle">지출은 <b>대표(super_admin) 승인</b> 후 출금 원장·대시보드에 반영됩니다. (관리자 &gt; 승인 센터)</p>
     </div>
   );
 }
@@ -81,7 +81,7 @@ export function ExpenseFormView() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-[12px] font-medium text-fg-muted mb-1">{label}</span>
+      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
       {children}
     </label>
   );

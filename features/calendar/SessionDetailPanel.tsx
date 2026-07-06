@@ -38,19 +38,19 @@ export function SessionDetailPanel({
 
   if (!row) {
     return (
-      <div className="card card-pad text-[12px] text-fg-subtle">
+      <div className="card card-pad text-caption text-fg-subtle">
         수업을 클릭하면 상세 정보가 여기에 표시됩니다.
       </div>
     );
   }
   return (
     <div className="card overflow-hidden">
-      <div className="px-3 h-10 flex items-center gap-2 border-b" style={{ borderColor: "var(--color-line)" }}>
+      <div className="px-3 h-10 flex items-center gap-2 border-b">
         <span className="inline-block w-3 h-3 rounded-sm shrink-0" style={{ background: colorOf(row) }} />
         {/* 제목 클릭 = 수업 상세 페이지(학생 출결 관리) — 피드백 2026-07-02 */}
         <Link
           href={`/sessions/${row.id}`}
-          className="text-[13px] font-semibold truncate flex-1 hover:underline text-accent"
+          className="text-body font-semibold truncate flex-1 hover:underline text-accent"
           title="수업 상세 페이지로 — 학생 출결 관리"
         >
           {row.courseName} →
@@ -70,7 +70,7 @@ export function SessionDetailPanel({
         ) : (
           <>
         {/* ScheduleRow DTO 그대로 렌더 */}
-        <dl className="grid grid-cols-[64px_1fr] gap-y-1 text-[12.5px]">
+        <dl className="grid grid-cols-[64px_1fr] gap-y-1 text-body">
           <dt className="text-fg-muted">날짜</dt>
           <dd>
             {row.sessionDate} ({WD[row.weekday]})
@@ -92,7 +92,7 @@ export function SessionDetailPanel({
             </button>
             {(() => {
               const inst = allInstructors.find((i) => Number(i.id) === Number(row.instructorId));
-              return inst?.subjectName ? <span className="ml-1 text-[11px] text-fg-subtle">{inst.subjectName}</span> : null;
+              return inst?.subjectName ? <span className="ml-1 text-micro text-fg-subtle">{inst.subjectName}</span> : null;
             })()}
           </dd>
           <dt className="text-fg-muted">학생</dt>
@@ -113,7 +113,7 @@ export function SessionDetailPanel({
                         {n}
                       </button>
                       {st && (
-                        <span className="text-[11px] text-fg-subtle inline-flex items-center gap-1">
+                        <span className="text-micro text-fg-subtle inline-flex items-center gap-1">
                           <CountryBadge code={st.country} />
                           {st.grade != null && <span>{st.grade}학년</span>}
                           <span style={{ color: st.status !== "active" ? "var(--color-attention)" : undefined }}>
@@ -125,7 +125,7 @@ export function SessionDetailPanel({
                   );
                 })
               : "—"}
-            {isGroupSession(row) && <span className="text-[11px] text-fg-subtle">(그룹)</span>}
+            {isGroupSession(row) && <span className="text-micro text-fg-subtle">(그룹)</span>}
           </dd>
           <dt className="text-fg-muted">강사출결</dt>
           <dd>{row.instructorAttendance ? INSTRUCTOR_ATT_LABEL[row.instructorAttendance] : "—"}</dd>
@@ -137,7 +137,7 @@ export function SessionDetailPanel({
           )}
         </dl>
 
-        <dl className="grid grid-cols-[64px_1fr] gap-y-1 text-[12.5px]">
+        <dl className="grid grid-cols-[64px_1fr] gap-y-1 text-body">
           <dt className="text-fg-muted">상태</dt>
           <dd>{STATUS_LABEL[row.status] ?? row.status}</dd>
           <dt className="text-fg-muted">메모</dt>

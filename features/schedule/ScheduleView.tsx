@@ -39,8 +39,8 @@ export function ScheduleView() {
   return (
     <div className="p-6 max-w-[1100px] mx-auto space-y-5">
       <div>
-        <h1 className="text-[20px] font-semibold">학원 캘린더</h1>
-        <p className="text-[13px] text-fg-muted mt-0.5">수업과 학원 일정을 한눈에. 필터로 골라 보세요.</p>
+        <h1 className="text-title font-bold">학원 캘린더</h1>
+        <p className="text-body text-fg-muted mt-0.5">수업과 학원 일정을 한눈에. 필터로 골라 보세요.</p>
       </div>
 
       <div className="flex flex-wrap gap-4">
@@ -56,7 +56,7 @@ export function ScheduleView() {
             {events
               .filter((e) => dateStr >= e.startDate && dateStr <= e.endDate)
               .map((e) => (
-                <div key={`e${e.id}`} className="rounded px-1.5 py-1 text-[11px] font-medium truncate"
+                <div key={`e${e.id}`} className="rounded px-1.5 py-1 text-micro font-medium truncate"
                   style={{ backgroundColor: eventStyle[e.type].bg, color: eventStyle[e.type].fg }} title={e.title}>
                   {e.priority === 'high' ? '★ ' : ''}{eventLabel[e.type]} · {e.title}
                 </div>
@@ -64,8 +64,7 @@ export function ScheduleView() {
             {sessions
               .filter((s) => s.sessionDate === dateStr)
               .map((s) => (
-                <div key={`s${s.id}`} className="rounded px-1.5 py-1 text-[11px] truncate"
-                  style={{ backgroundColor: 'var(--color-canvas-subtle)', color: 'var(--color-fg-muted)' }}
+                <div key={`s${s.id}`} className="rounded px-1.5 py-1 text-micro truncate bg-canvas-subtle text-fg-muted"
                   title={`${courseName(s.courseId)}${s.topic ? ' · ' + s.topic : ''}`}>
                   {courseName(s.courseId)}
                 </div>
@@ -74,7 +73,7 @@ export function ScheduleView() {
         )}
       />
 
-      <div className="flex flex-wrap gap-3 text-[12px] text-fg-muted">
+      <div className="flex flex-wrap gap-3 text-caption text-fg-muted">
         <Legend bg="var(--color-canvas-subtle)" fg="var(--color-fg-muted)" label="수업" />
         <Legend bg={eventStyle.notice.bg} fg={eventStyle.notice.fg} label="공지" />
         <Legend bg={eventStyle.exam.bg} fg={eventStyle.exam.fg} label="시험" />
@@ -90,8 +89,8 @@ function Filter({ label, value, onChange, options }: {
 }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="text-[12px] font-medium text-fg-muted">{label}</span>
-      <div className="flex rounded-md overflow-hidden border" style={{ borderColor: 'var(--color-line)' }}>
+      <span className="text-caption font-medium text-fg-muted">{label}</span>
+      <div className="flex rounded-md overflow-hidden border">
         {options.map(([v, l]) => (
           <button key={v} className={`btn btn-sm rounded-none border-0 ${value === v ? 'badge-accent' : ''}`} onClick={() => onChange(v)}>{l}</button>
         ))}

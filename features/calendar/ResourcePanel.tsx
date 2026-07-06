@@ -52,10 +52,10 @@ function ResourcePanelImpl({
       <button
         onClick={() => setOpen((o) => !o)}
         className="w-full px-3 h-10 flex items-center justify-between border-b"
-        style={{ borderColor: "var(--color-line)" }}
+       
       >
-        <span className="text-[13px] font-semibold">유저별 스케줄{picked.size ? <span className="ml-1.5 badge badge-accent text-[10px]">{picked.size}명 필터</span> : null}</span>
-        <span className="text-[12px] text-fg-subtle inline-flex items-center gap-1">
+        <span className="text-body font-semibold">유저별 스케줄{picked.size ? <span className="ml-1.5 badge badge-accent text-[10px]">{picked.size}명 필터</span> : null}</span>
+        <span className="text-caption text-fg-subtle inline-flex items-center gap-1">
           {selected ? <span className="text-accent truncate max-w-[90px]">{selected.name}</span> : null}
           {open ? "▲" : "▼"}
         </span>
@@ -67,18 +67,18 @@ function ResourcePanelImpl({
             <div className="px-2 pt-2">
               <button
                 onClick={() => onSelect(null)}
-                className="w-full text-left px-2 h-7 rounded text-[12px] text-fg-muted hover:bg-canvas-subtle"
+                className="w-full text-left px-2 h-7 rounded text-caption text-fg-muted hover:bg-canvas-subtle"
               >
                 ← 선택 해제 (카드 닫기)
               </button>
             </div>
           )}
-          <div className="flex border-b" style={{ borderColor: "var(--color-line)" }}>
+          <div className="flex border-b">
             {TABS.map((t) => (
               <button
                 key={t.key}
                 onClick={() => changeTab(t.key)}
-                className={`flex-1 h-9 text-[12px] font-medium ${tab === t.key ? "text-fg border-b-2 border-accent" : "text-fg-muted"}`}
+                className={`flex-1 h-9 text-caption font-medium ${tab === t.key ? "text-fg border-b-2 border-accent" : "text-fg-muted"}`}
               >
                 {t.label}
               </button>
@@ -86,7 +86,7 @@ function ResourcePanelImpl({
           </div>
           <div className="p-2">
             <input
-              className="input h-8 w-full text-[13px]"
+              className="input h-8 w-full text-body"
               placeholder={`${TABS.find((t) => t.key === tab)?.label} 검색`}
               value={q}
               onChange={(e) => { setQ(e.target.value); setPage(0); }}
@@ -99,25 +99,25 @@ function ResourcePanelImpl({
               return (
                 <div
                   key={`${r.type}-${r.id}`}
-                  className={`w-full flex items-center gap-2 px-2 h-8 rounded text-[13px] cursor-pointer ${inFilter ? "bg-neutral-subtle" : on ? "bg-canvas-subtle" : "hover:bg-canvas-subtle text-fg-muted"}`}
+                  className={`w-full flex items-center gap-2 px-2 h-8 rounded text-body cursor-pointer ${inFilter ? "bg-neutral-subtle" : on ? "bg-canvas-subtle" : "hover:bg-canvas-subtle text-fg-muted"}`}
                   title={inFilter ? "클릭 = 필터에서 제외" : "클릭 = 이 유저로 필터(스플릿·조회 반영)"}
                   onClick={() => onToggleFilter(tab, Number(r.id))}
                 >
                   <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color ?? "var(--color-line)" }} />
                   <span className={`flex-1 text-left truncate text-fg ${inFilter ? "font-semibold" : ""}`}>{r.name}</span>
-                  {inFilter && <span className="text-accent text-[12px] font-bold" aria-label="필터 선택됨">✓</span>}
-                  {r.sub && <span className="text-[11px] text-fg-subtle">{r.sub}</span>}
+                  {inFilter && <span className="text-accent text-caption font-bold" aria-label="필터 선택됨">✓</span>}
+                  {r.sub && <span className="text-micro text-fg-subtle">{r.sub}</span>}
                   <button
-                    className={`btn btn-sm h-6 px-1.5 text-[11px] shrink-0 ${on ? "badge-accent" : ""}`}
+                    className={`btn btn-sm h-6 px-1.5 text-micro shrink-0 ${on ? "badge-accent" : ""}`}
                     title="상세 카드 열기(뷰는 그대로)"
                     onClick={(e) => { e.stopPropagation(); onSelect(on ? null : r); }}
                   >ⓘ</button>
                 </div>
               );
             })}
-            {!slice.length && <div className="text-[12px] text-fg-subtle text-center py-6">결과 없음</div>}
+            {!slice.length && <div className="text-caption text-fg-subtle text-center py-6">결과 없음</div>}
           </div>
-          <div className="flex items-center justify-between px-3 h-9 border-t text-[12px] text-fg-muted" style={{ borderColor: "var(--color-line)" }}>
+          <div className="flex items-center justify-between px-3 h-9 border-t text-caption text-fg-muted">
             <span>{filtered.length}개</span>
             <div className="flex items-center gap-1.5">
               <button className="btn btn-sm h-6 px-1.5" disabled={cur === 0} onClick={() => setPage(cur - 1)}>◀</button>

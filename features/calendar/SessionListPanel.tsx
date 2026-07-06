@@ -31,10 +31,10 @@ export function SessionListPanel({
     <div className="card overflow-hidden">
       <div
         className="px-3 h-10 flex items-center justify-between border-b"
-        style={{ borderColor: "var(--color-line)" }}
+       
       >
-        <span className="text-[13px] font-semibold">수업 리스트</span>
-        <span className="inline-flex items-center gap-1.5 text-[12px] text-fg-subtle">
+        <span className="text-body font-semibold">수업 리스트</span>
+        <span className="inline-flex items-center gap-1.5 text-caption text-fg-subtle">
           {rows.length}건
           <button
             className={`btn btn-sm h-6 px-1.5 ${groupBy !== "none" ? "badge-accent" : ""}`}
@@ -50,8 +50,7 @@ export function SessionListPanel({
           <div key={g.key}>
             {g.label && (
               <div
-                className="px-3 py-1 text-[11px] font-semibold text-fg-muted sticky top-0 bg-canvas-subtle border-b"
-                style={{ borderColor: "var(--color-line-muted)" }}
+                className="px-3 py-1 text-micro font-semibold text-fg-muted sticky top-0 bg-canvas-subtle border-b border-line-muted"
               >
                 {g.label} <span className="text-fg-subtle font-normal">({g.rows.length})</span>
               </div>
@@ -62,19 +61,18 @@ export function SessionListPanel({
                 <button
                   key={`${g.key}-${r.id}`}
                   onClick={() => onPick(r)}
-                  className={`w-full text-left px-3 py-1.5 border-b flex items-start gap-2 ${on ? "bg-neutral-subtle" : "hover:bg-canvas-subtle"}`}
-                  style={{ borderColor: "var(--color-line-muted)" }}
+                  className={`w-full text-left px-3 py-1.5 border-b border-line-muted flex items-start gap-2 ${on ? "bg-neutral-subtle" : "hover:bg-canvas-subtle"}`}
                 >
                   <span className="inline-block w-1 self-stretch rounded-full shrink-0" style={{ background: colorOf(r) }} />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[12px] mono text-fg-muted">
+                    <span className="block text-caption mono text-fg-muted">
                       {r.sessionDate.slice(5)} ({WD[r.weekday]}) {r.startTime ?? ""}–{r.endTime ?? ""}
                     </span>
-                    <span className={`block text-[13px] truncate ${on ? "font-semibold" : ""}`}>
+                    <span className={`block text-body truncate ${on ? "font-semibold" : ""}`}>
                       {r.courseName}
-                      {isGroupSession(r) && <span className="ml-1 text-[11px] text-fg-subtle">그룹 {r.studentIds.length}명</span>}
+                      {isGroupSession(r) && <span className="ml-1 text-micro text-fg-subtle">그룹 {r.studentIds.length}명</span>}
                     </span>
-                    <span className="block text-[11px] text-fg-subtle truncate">
+                    <span className="block text-micro text-fg-subtle truncate">
                       {r.instructorName}
                       {r.roomName ? ` · ${r.roomName}` : ""}
                     </span>
@@ -85,9 +83,9 @@ export function SessionListPanel({
           </div>
         ))}
         {!rows.length && (
-          <div className="text-[12px] text-fg-subtle text-center py-6">
+          <div className="text-caption text-fg-subtle text-center py-6">
             필터에 맞는 수업 없음
-            {emptyHint && <div className="mt-1 text-[11px]">{emptyHint}</div>}
+            {emptyHint && <div className="mt-1 text-micro">{emptyHint}</div>}
           </div>
         )}
       </div>

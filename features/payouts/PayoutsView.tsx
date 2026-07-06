@@ -1,6 +1,6 @@
 'use client';
 import { Fragment, useCallback, useEffect, useState } from 'react';
-import { Badge, SectionCard, type Tone } from '@/components/ui';
+import { Badge, Field, SectionCard, type Tone } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
 import { useSchedule, useCourses, useSubjects, useEnrollments, useStudents } from '@/lib/queries';
 import { isAdmin } from '@/lib/roles';
@@ -134,8 +134,8 @@ export function PayoutsView() {
   if (!admin) {
     return (
       <div className="p-6 max-w-[1000px] mx-auto">
-        <h1 className="text-[20px] font-semibold">강사 페이</h1>
-        <div className="mt-4 p-4 rounded-lg border text-[13px] text-fg-muted" style={{ borderColor: 'var(--color-line-muted)' }}>
+        <h1 className="text-title font-bold">강사 페이</h1>
+        <div className="mt-4 p-4 rounded-lg border text-body text-fg-muted border-line-muted">
           정산 정보는 관리자 전용입니다. 본인 정산 조회 기능은 준비 중입니다.
         </div>
       </div>
@@ -145,8 +145,8 @@ export function PayoutsView() {
   if (conn === 'offline') {
     return (
       <div className="p-6 max-w-[1000px] mx-auto">
-        <h1 className="text-[20px] font-semibold">강사 페이</h1>
-        <div className="mt-4 p-4 rounded-lg border text-[13px] text-fg-muted" style={{ borderColor: 'var(--color-line-muted)' }}>
+        <h1 className="text-title font-bold">강사 페이</h1>
+        <div className="mt-4 p-4 rounded-lg border text-body text-fg-muted border-line-muted">
           백엔드 API에 연결할 수 없습니다. 로컬은 <span className="mono">cd backend &amp;&amp; npm run dev</span>, 배포는 <span className="mono">NEXT_PUBLIC_API_URL</span>를 확인하세요.
         </div>
       </div>
@@ -157,8 +157,8 @@ export function PayoutsView() {
     <div className="p-6 max-w-[1000px] mx-auto space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-[20px] font-semibold">강사 페이</h1>
-          <p className="text-[13px] text-fg-muted mt-0.5">시수 × 코스 시급으로 산정(진행 완료 + 보고서 승인분만) · 생성 → 승인 → 지급</p>
+          <h1 className="text-title font-bold">강사 페이</h1>
+          <p className="text-body text-fg-muted mt-0.5">시수 × 코스 시급으로 산정(진행 완료 + 보고서 승인분만) · 생성 → 승인 → 지급</p>
         </div>
         <Badge tone={conn === 'online' ? 'success' : 'neutral'}>{conn === 'online' ? '실시간 API' : '확인 중…'}</Badge>
       </div>
@@ -175,7 +175,7 @@ export function PayoutsView() {
           <Field label="종료일"><input type="date" className="input" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
           <button type="submit" className="btn btn-primary h-8" disabled={!instructorId || busy || !preview?.sessionCount}>정산서 생성</button>
           {instructorId && (
-            <div className="sm:col-span-4 text-[13px] text-fg-muted">
+            <div className="sm:col-span-4 text-body text-fg-muted">
               {preview && preview.sessionCount > 0 ? (
                 <>미리보기 — 적격 수업 <b>{preview.sessionCount}</b>회 · 시수 <b>{hours(preview.totalMinutes)}</b> · 산정액 <b className="text-fg">{won(preview.computedAmount)}</b></>
               ) : (
@@ -221,7 +221,7 @@ export function PayoutsView() {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={5} className="text-right text-[12px] text-fg-muted">소계{fCourse ? ' (필터)' : ''}</td>
+                <td colSpan={5} className="text-right text-caption text-fg-muted">소계{fCourse ? ' (필터)' : ''}</td>
                 <td className="text-right mono font-semibold">{won(subTotal)}</td>
               </tr>
             </tfoot>
@@ -262,7 +262,7 @@ export function PayoutsView() {
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={6} className="p-4 text-[13px] text-fg-subtle">조건에 맞는 정산서가 없습니다.</td></tr>
+              <tr><td colSpan={6} className="p-4 text-body text-fg-subtle">조건에 맞는 정산서가 없습니다.</td></tr>
             )}
             {filtered.map((p) => (
               <Fragment key={p.id}>
@@ -277,20 +277,20 @@ export function PayoutsView() {
                 <td className="text-right mono">
                   {won(p.amount)}
                   {p.adjustedAmount != null && p.adjustedAmount !== p.computedAmount && (
-                    <div className="text-[11px] text-fg-subtle">산정 {won(p.computedAmount)}</div>
+                    <div className="text-micro text-fg-subtle">산정 {won(p.computedAmount)}</div>
                   )}
                 </td>
                 <td>
                   <Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge>
                   {p.status === 'rejected' && (
-                    <button className="block text-[11px] text-danger mt-0.5 hover:underline" onClick={() => setReasonModal({ mode: 'view', payout: p })}>
+                    <button className="block text-micro text-danger mt-0.5 hover:underline" onClick={() => setReasonModal({ mode: 'view', payout: p })}>
                       반려 사유 보기
                     </button>
                   )}
                 </td>
                 <td className="text-right">
                   {!admin ? (
-                    <span className="text-[12px] text-fg-subtle">{p.status === 'pending' ? '관리자 승인 대기' : '—'}</span>
+                    <span className="text-caption text-fg-subtle">{p.status === 'pending' ? '관리자 승인 대기' : '—'}</span>
                   ) : (
                     <div className="inline-flex gap-1.5 justify-end flex-wrap">
                       {p.status === 'pending' && (
@@ -306,7 +306,7 @@ export function PayoutsView() {
                         </>
                       )}
                       {(p.status === 'paid' || p.status === 'rejected') && (
-                        <span className="text-[12px] text-fg-subtle mono">{p.paidAt ? p.paidAt.slice(0, 10) : '—'}</span>
+                        <span className="text-caption text-fg-subtle mono">{p.paidAt ? p.paidAt.slice(0, 10) : '—'}</span>
                       )}
                     </div>
                   )}
@@ -316,9 +316,9 @@ export function PayoutsView() {
                 <tr>
                   <td colSpan={6} className="bg-canvas-subtle">
                     <div className="p-2">
-                      <div className="text-[12px] text-fg-muted mb-1">정산 근거 — 언제·과목·학생별 내역 ({p.lines.length}건)</div>
+                      <div className="text-caption text-fg-muted mb-1">정산 근거 — 언제·과목·학생별 내역 ({p.lines.length}건)</div>
                       {p.lines.length === 0 ? (
-                        <div className="text-[12px] text-fg-subtle px-1 py-2">연결된 수업 내역이 없습니다.</div>
+                        <div className="text-caption text-fg-subtle px-1 py-2">연결된 수업 내역이 없습니다.</div>
                       ) : (
                         <table className="table">
                           <thead><tr><th>일시</th><th>과목</th><th>수업</th><th>학생</th><th className="text-right">시수</th><th className="text-right">페이</th></tr></thead>
@@ -350,7 +350,7 @@ export function PayoutsView() {
         </SectionCard>
         );
       })()}
-      <p className="text-[12px] text-fg-subtle">
+      <p className="text-caption text-fg-subtle">
         시수는 <b>진행 완료(held) + 보고서 승인</b>분만 채워지며, 세션은 한 정산서에만 연결됩니다(이중 계상 방지).
         지급 시 출금 거래 원장과 대시보드에 반영됩니다.
         {!admin && ' 승인·지급·수정은 관리자(대표) 역할에서 가능합니다.'}
@@ -366,14 +366,5 @@ export function PayoutsView() {
         />
       )}
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-[12px] font-medium text-fg-muted mb-1">{label}</span>
-      {children}
-    </label>
   );
 }

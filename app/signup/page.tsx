@@ -36,9 +36,9 @@ export default function SignupPage() {
     return (
       <AuthShell title="가입 신청 완료" subtitle="이메일 인증 후 대표 승인을 기다려 주세요">
         <div className="space-y-3">
-          <div className="rounded-lg p-3 text-[13px]" style={{ background: "var(--color-canvas-subtle)" }}>{done.message}</div>
+          <div className="rounded-lg p-3 text-body bg-canvas-subtle">{done.message}</div>
           {done.devVerifyLink && (
-            <div className="text-[12px] text-fg-muted space-y-1">
+            <div className="text-caption text-fg-muted space-y-1">
               <div>개발 모드(SMTP 미설정) — 아래 링크로 이메일 인증을 진행하세요:</div>
               <Link href={done.devVerifyLink.replace(/^https?:\/\/[^/]+/, "")} className="text-accent break-all hover:underline">{done.devVerifyLink}</Link>
             </div>
@@ -69,10 +69,10 @@ export default function SignupPage() {
             {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
         </AuthField>
-        {err && <p className="text-[12px] text-danger">{err}</p>}
+        {err && <p className="text-caption text-danger">{err}</p>}
         <button className="btn btn-primary w-full h-10" disabled={busy}>{busy ? "신청 중…" : "가입 신청"}</button>
       </form>
-      <div className="flex items-center justify-between text-[12px] text-fg-muted pt-1">
+      <div className="flex items-center justify-between text-caption text-fg-muted pt-1">
         <span>이미 계정이 있으신가요?</span>
         <Link href="/login" className="font-medium text-accent hover:underline">로그인 →</Link>
       </div>

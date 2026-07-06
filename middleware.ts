@@ -24,7 +24,7 @@ export function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-// 정적 자원·이미지·내부 경로는 가드 제외
+// 정적 자원·이미지·폰트·내부 경로는 가드 제외
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|fonts/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|woff2?)$).*)"],
 };

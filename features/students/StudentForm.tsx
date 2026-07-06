@@ -2,6 +2,7 @@
 // 학생 생성과 코스 등록은 백엔드로 전송한다(useCreateStudent → useCreateEnrollment).
 // 학부모 정보는 아직 백엔드 생성 엔드포인트가 없어 UI 전용이며 mutation에 포함되지 않는다.
 import { useState } from 'react';
+import { Field } from '@/components/ui';
 import { useCreateStudent, useCreateEnrollment, useCourses } from '@/lib/queries';
 import { COUNTRIES } from '@/lib/domain/tz'; // 국가(피드백 2026-07-02) — 해외 학생 시차 시간표 기준
 import { api } from '@/lib/api';
@@ -143,7 +144,7 @@ function WebIdField({
 }) {
   return (
     <div className="block">
-      <span className="block text-[12px] font-medium text-fg-muted mb-1">{label}</span>
+      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
       <div className="flex gap-2">
         <input className="input flex-1" value={value} onChange={(e) => onChange(e.target.value)} placeholder="로그인 계정 / 미가입 시 비움" />
         <button
@@ -155,8 +156,8 @@ function WebIdField({
           {status.state === 'checking' ? '확인 중…' : '확인'}
         </button>
       </div>
-      {status.state === 'valid' && <span className="text-[12px] text-success mt-1 inline-block">✓ {status.name} 확인됨</span>}
-      {status.state === 'invalid' && <span className="text-[12px] text-danger mt-1 inline-block">존재하지 않는 ID</span>}
+      {status.state === 'valid' && <span className="text-caption text-success mt-1 inline-block">✓ {status.name} 확인됨</span>}
+      {status.state === 'invalid' && <span className="text-caption text-danger mt-1 inline-block">존재하지 않는 ID</span>}
     </div>
   );
 }
@@ -164,17 +165,8 @@ function WebIdField({
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[12px] font-semibold text-fg-muted mb-2">{title}</div>
+      <div className="text-caption font-semibold text-fg-muted mb-2">{title}</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{children}</div>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-[12px] font-medium text-fg-muted mb-1">{label}</span>
-      {children}
-    </label>
   );
 }

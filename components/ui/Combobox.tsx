@@ -31,13 +31,13 @@ export function Combobox({
       {open && (filtered.length > 0 || (!!q && !exact)) && (
         <div className="absolute z-20 mt-1 w-full card overflow-hidden" style={{ boxShadow: 'var(--shadow-overlay)' }}>
           {filtered.length > 0 && (
-            <div className="px-3 py-1 text-[11px] text-fg-subtle">사용된 라벨</div>
+            <div className="px-3 py-1 text-micro text-fg-subtle">사용된 라벨</div>
           )}
           {filtered.map((s) => (
             <button
               key={s}
               type="button"
-              className="block w-full text-left px-3 py-1.5 text-[13px] hover:bg-canvas-subtle"
+              className="block w-full text-left px-3 py-1.5 text-body hover:bg-canvas-subtle"
               onMouseDown={() => { onChange(s); setOpen(false); }}
             >
               {s}
@@ -46,8 +46,7 @@ export function Combobox({
           {!!q && !exact && (
             <button
               type="button"
-              className="block w-full text-left px-3 py-1.5 text-[13px] text-accent hover:bg-canvas-subtle border-t"
-              style={{ borderColor: 'var(--color-line-muted)' }}
+              className="block w-full text-left px-3 py-1.5 text-body text-accent hover:bg-canvas-subtle border-t border-line-muted"
               onMouseDown={() => setOpen(false)}
             >
               + “{value}” 새로 만들기

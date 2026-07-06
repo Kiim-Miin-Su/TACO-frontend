@@ -56,9 +56,9 @@ function MemberApprovals() {
 
   return (
     <SectionCard title={`가입 승인 대기 (${rows.length})`}>
-      {msg && <div className="px-4 pt-3 text-[12px] text-accent">{msg}</div>}
+      {msg && <div className="px-4 pt-3 text-caption text-accent">{msg}</div>}
       {rows.length === 0 ? (
-        <div className="p-4 text-[13px] text-fg-subtle">승인 대기 중인 가입 신청이 없습니다.</div>
+        <div className="p-4 text-body text-fg-subtle">승인 대기 중인 가입 신청이 없습니다.</div>
       ) : (
         <table className="table">
           <thead><tr><th>아이디</th><th>이름</th><th>이메일</th><th>이메일 인증</th><th>역할 지정</th><th className="text-right"></th></tr></thead>
@@ -141,9 +141,9 @@ export function ApprovalsView() {
   // 수업 요청 승인/반려는 BE가 manager 이상 허용(ADMIN_ROLES) — 섹션 컴포넌트로 분리해 재사용.
   const requestsSection = (
     <SectionCard title={`수업 요청 승인 대기 (${pendingRequests.length})`}>
-      {requestMsg && <div className="px-4 pt-3 text-[12px] text-accent">{requestMsg}</div>}
+      {requestMsg && <div className="px-4 pt-3 text-caption text-accent">{requestMsg}</div>}
       {pendingRequests.length === 0 ? (
-        <div className="p-4 text-[13px] text-fg-subtle">대기 중인 수업 요청이 없습니다. <span className="text-fg-subtle">승인 시 캘린더에 세션이 생성됩니다(충돌 재검사).</span></div>
+        <div className="p-4 text-body text-fg-subtle">대기 중인 수업 요청이 없습니다. <span className="text-fg-subtle">승인 시 캘린더에 세션이 생성됩니다(충돌 재검사).</span></div>
       ) : (
         <table className="table">
           <thead><tr><th>강사</th><th>일시</th><th>수업</th><th>인원</th><th className="text-right"></th></tr></thead>
@@ -181,10 +181,10 @@ export function ApprovalsView() {
         {isAdmin(currentRole) ? (
           <>
             {requestsSection}
-            <div className="card card-pad text-[13px] text-fg-muted">그 외 승인(가입·보고서·지출·페이)은 <b>대표(CEO)</b> 전용입니다. 현재 역할: {roleLabel[currentRole]}</div>
+            <div className="card card-pad text-body text-fg-muted">그 외 승인(가입·보고서·지출·페이)은 <b>대표(CEO)</b> 전용입니다. 현재 역할: {roleLabel[currentRole]}</div>
           </>
         ) : (
-          <div className="card card-pad text-[14px] text-fg-muted">
+          <div className="card card-pad text-section text-fg-muted">
             🔒 승인 센터는 <b>관리자</b> 전용입니다. 현재 역할: {roleLabel[currentRole]} — 우측 상단에서 전환하세요.
           </div>
         )}
@@ -202,7 +202,7 @@ export function ApprovalsView() {
 
       <SectionCard title={`수업 보고서 승인 대기 (${pendingReports.length})`}>
         {pendingReports.length === 0 ? (
-          <div className="p-4 text-[13px] text-fg-subtle">승인 대기 중인 보고서가 없습니다. <span className="text-fg-subtle">승인 시 해당 수업이 시수로 집계됩니다.</span></div>
+          <div className="p-4 text-body text-fg-subtle">승인 대기 중인 보고서가 없습니다. <span className="text-fg-subtle">승인 시 해당 수업이 시수로 집계됩니다.</span></div>
         ) : (
           <table className="table">
             <thead><tr><th>강사</th><th>학생</th><th>수업</th><th>내용</th><th className="text-right"></th></tr></thead>
@@ -226,7 +226,7 @@ export function ApprovalsView() {
 
       <SectionCard title={`지출 승인 대기 (${pendingExpenses.length})`}>
         {pendingExpenses.length === 0 ? (
-          <div className="p-4 text-[13px] text-fg-subtle">대기 중인 지출이 없습니다.</div>
+          <div className="p-4 text-body text-fg-subtle">대기 중인 지출이 없습니다.</div>
         ) : (
           <table className="table">
             <thead><tr><th>항목</th><th>분류</th><th className="text-right">금액</th><th>지출일</th><th></th></tr></thead>
@@ -250,7 +250,7 @@ export function ApprovalsView() {
 
       <SectionCard title={`강사 페이 승인 대기 (${pendingPayouts.length})`}>
         {pendingPayouts.length === 0 ? (
-          <div className="p-4 text-[13px] text-fg-subtle">대기 중인 정산이 없습니다.</div>
+          <div className="p-4 text-body text-fg-subtle">대기 중인 정산이 없습니다.</div>
         ) : (
           <table className="table">
             <thead><tr><th>강사</th><th>기간</th><th className="text-right">금액</th><th></th></tr></thead>
@@ -269,7 +269,7 @@ export function ApprovalsView() {
           </table>
         )}
       </SectionCard>
-      <p className="text-[12px] text-fg-subtle">승인 시 지출은 즉시 출금 반영, 강사 페이는 승인 후 강사페이 탭에서 지급 처리합니다.</p>
+      <p className="text-caption text-fg-subtle">승인 시 지출은 즉시 출금 반영, 강사 페이는 승인 후 강사페이 탭에서 지급 처리합니다.</p>
 
       {expenseReject != null && (
         <ReasonModal

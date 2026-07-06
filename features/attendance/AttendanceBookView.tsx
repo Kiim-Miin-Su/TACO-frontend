@@ -96,14 +96,14 @@ export function AttendanceBookView() {
     <div className="p-6 max-w-[1280px] mx-auto space-y-4">
       <div className="flex items-end justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-[20px] font-semibold">출석부</h1>
-          <p className="text-[13px] text-fg-muted mt-0.5">
+          <h1 className="text-title font-bold">출석부</h1>
+          <p className="text-body text-fg-muted mt-0.5">
             회차별 출결 체크와 누적 시수 — 셀 클릭=상태 변경(출→지→결→공), 회차 헤더 클릭=전체 출석
           </p>
         </div>
         <div className="flex items-center gap-2">
           {manager && (
-            <div className="flex rounded-md overflow-hidden border" style={{ borderColor: "var(--color-line)" }}>
+            <div className="flex rounded-md overflow-hidden border">
               {(["student", "instructor"] as const).map((t) => (
                 <button key={t} className={`btn btn-sm rounded-none border-0 ${tab === t ? "badge-accent" : ""}`} onClick={() => setTab(t)}>
                   {t === "student" ? "학생 출석" : "강사 출석"}
@@ -112,7 +112,7 @@ export function AttendanceBookView() {
             </div>
           )}
           <button className="btn btn-sm" onClick={() => navYm(-1)}>◀</button>
-          <span className="mono text-[13px]">{ym}</span>
+          <span className="mono text-body">{ym}</span>
           <button className="btn btn-sm" onClick={() => navYm(1)}>▶</button>
         </div>
       </div>
@@ -122,7 +122,7 @@ export function AttendanceBookView() {
           title={`학생 출석 — ${curCourse?.name ?? "코스 없음"}`}
           action={
             <select
-              className="input h-7 w-52 text-[12px]"
+              className="input h-7 w-52 text-caption"
               value={curCourse ? Number(curCourse.id) : ""}
               onChange={(e) => setCourseId(Number(e.target.value))}
             >
@@ -133,10 +133,10 @@ export function AttendanceBookView() {
           }
         >
           {!book.columns.length ? (
-            <p className="text-[13px] text-fg-subtle py-6 text-center">{ym}에 이 코스의 회차가 없습니다.</p>
+            <p className="text-body text-fg-subtle py-6 text-center">{ym}에 이 코스의 회차가 없습니다.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="table text-[12.5px]">
+              <table className="table text-body">
                 <thead>
                   <tr>
                     <th className="sticky left-0 bg-canvas z-10 min-w-[110px]">학생</th>
@@ -168,7 +168,7 @@ export function AttendanceBookView() {
                             <span className="text-fg-subtle">–</span>
                           ) : (
                             <button
-                              className="inline-grid place-items-center w-6 h-6 rounded-full text-[11px] font-semibold text-white disabled:opacity-40"
+                              className="inline-grid place-items-center w-6 h-6 rounded-full text-micro font-semibold text-white disabled:opacity-40"
                               style={{ background: cell.status ? CELL[cell.status].bg : "var(--color-line)" }}
                               title={cell.held ? "클릭 = 출석→지각→결석→공결 순환" : "예정 회차 — 미리 체크 가능"}
                               onClick={() => mark(cell.sessionId, r.studentId, cell.status)}
@@ -179,15 +179,15 @@ export function AttendanceBookView() {
                         </td>
                       ))}
                       <td className="text-center mono">
-                        <span style={{ color: "var(--color-success)" }}>{r.counts.present}</span>/
-                        <span style={{ color: "var(--color-attention)" }}>{r.counts.late}</span>/
-                        <span style={{ color: "var(--color-danger)" }}>{r.counts.absent}</span>
+                        <span className="text-success">{r.counts.present}</span>/
+                        <span className="text-attention">{r.counts.late}</span>/
+                        <span className="text-danger">{r.counts.absent}</span>
                       </td>
                       <td className="text-center mono">{r.rate == null ? "—" : `${r.rate}%`}</td>
                       <td>
                         {/* 누적 시수 진도바 — 인정(출석·지각) 분 / 진행 회차 총 분 */}
                         <div className="flex items-center gap-1.5">
-                          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "var(--color-line-muted)" }}>
+                          <div className="flex-1 h-2 rounded-full overflow-hidden bg-line-muted">
                             <div
                               className="h-full rounded-full"
                               style={{
@@ -196,7 +196,7 @@ export function AttendanceBookView() {
                               }}
                             />
                           </div>
-                          <span className="mono text-[11px] whitespace-nowrap">
+                          <span className="mono text-micro whitespace-nowrap">
                             {hoursLabel(r.attendedMinutes)}/{hoursLabel(r.totalMinutes)}
                           </span>
                         </div>
@@ -207,17 +207,17 @@ export function AttendanceBookView() {
               </table>
             </div>
           )}
-          <p className="text-[11.5px] text-fg-subtle mt-2">
+          <p className="text-caption text-fg-subtle mt-2">
             시수 인정: 출석·지각 = 회차 시간 인정 · 결석·공결·미체크 = 0 (강사 정산 시수 규칙과 대칭). 예정 회차는 집계 제외.
           </p>
         </SectionCard>
       ) : (
         <SectionCard title={`강사 출석 — ${ym} 진행 회차`}>
           {!instructorBook.length ? (
-            <p className="text-[13px] text-fg-subtle py-6 text-center">{ym}에 진행된 회차가 없습니다.</p>
+            <p className="text-body text-fg-subtle py-6 text-center">{ym}에 진행된 회차가 없습니다.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="table text-[12.5px]">
+              <table className="table text-body">
                 <thead>
                   <tr>
                     <th className="min-w-[110px]">강사</th>
@@ -247,7 +247,7 @@ export function AttendanceBookView() {
               </table>
             </div>
           )}
-          <p className="text-[11.5px] text-fg-subtle mt-2">
+          <p className="text-caption text-fg-subtle mt-2">
             누적 강의 시수는 정산(강사 페이)과 동일한 teachingHours 규칙(진행·보강 회차) — 숫자 불일치가 없습니다.
           </p>
         </SectionCard>

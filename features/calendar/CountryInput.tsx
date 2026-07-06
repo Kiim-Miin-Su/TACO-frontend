@@ -29,7 +29,7 @@ export function CountryBadge({ code, showName }: { code?: string; showName?: boo
   if (!c) return <span className="mono text-fg-muted">{code}</span>;
   return (
     <span title={`${c.name} · ${c.tz}`}>
-      {c.flag} <span className="text-[12px] text-fg-muted">{showName ? c.name : c.code}</span>
+      {c.flag} <span className="text-caption text-fg-muted">{showName ? c.name : c.code}</span>
     </span>
   );
 }
@@ -58,13 +58,13 @@ export function CountryInput({
   return (
     <div className="relative" ref={ref}>
       {value ? (
-        <span className={`badge badge-accent inline-flex items-center gap-1 ${compact ? "text-[11px]" : ""}`} title={`${value.name} · ${value.tz}`}>
+        <span className={`badge badge-accent inline-flex items-center gap-1 ${compact ? "text-micro" : ""}`} title={`${value.name} · ${value.tz}`}>
           {value.flag} {value.name}
           <button className="opacity-70 hover:opacity-100" onClick={() => onSelect(null)} aria-label="국가 해제">✕</button>
         </span>
       ) : (
         <input
-          className={`input ${compact ? "h-7 w-[120px] text-[11px]" : "h-8 w-[150px] text-[12px]"}`}
+          className={`input ${compact ? "h-7 w-[120px] text-micro" : "h-8 w-[150px] text-caption"}`}
           placeholder={placeholder ?? "🌐 국가 (시차 뷰)"}
           value={q}
           onFocus={() => setOpen(true)}
@@ -78,7 +78,7 @@ export function CountryInput({
             {results.map((c) => (
               <button
                 key={c.code}
-                className="w-full flex items-center gap-2 px-2 h-8 rounded text-[13px] hover:bg-canvas-subtle text-left"
+                className="w-full flex items-center gap-2 px-2 h-8 rounded text-body hover:bg-canvas-subtle text-left"
                 onClick={() => pick(c)}
               >
                 <span>{c.flag}</span>

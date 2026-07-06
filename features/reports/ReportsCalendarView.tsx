@@ -72,8 +72,8 @@ export function ReportsCalendarView() {
     <div className="p-6 max-w-[1100px] mx-auto space-y-6">
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-[20px] font-semibold">수업 보고서</h1>
-          <p className="text-[13px] text-fg-muted mt-0.5">캘린더·리스트에서 수업을 선택해 확인하거나, 한 페이지에서 바로 작성하세요.</p>
+          <h1 className="text-title font-bold">수업 보고서</h1>
+          <p className="text-body text-fg-muted mt-0.5">캘린더·리스트에서 수업을 선택해 확인하거나, 한 페이지에서 바로 작성하세요.</p>
         </div>
         <Link href="/reports/write" className="btn btn-primary">리포트 작성하기</Link>
       </div>
@@ -87,9 +87,9 @@ export function ReportsCalendarView() {
           </div>
         }
       >
-        <div className="grid grid-cols-7 border-b" style={{ borderColor: 'var(--color-line)' }}>
+        <div className="grid grid-cols-7 border-b">
           {WEEK.map((w, i) => (
-            <div key={w} className={`px-3 py-2 text-[12px] font-semibold ${i === 0 ? 'text-danger' : i === 6 ? 'text-accent' : 'text-fg-muted'}`}>
+            <div key={w} className={`px-3 py-2 text-caption font-semibold ${i === 0 ? 'text-danger' : i === 6 ? 'text-accent' : 'text-fg-muted'}`}>
               {w}
             </div>
           ))}
@@ -100,10 +100,9 @@ export function ReportsCalendarView() {
             return (
               <div
                 key={idx}
-                className="min-h-[92px] border-b border-r p-1.5"
-                style={{ borderColor: 'var(--color-line-muted)' }}
+                className="min-h-[92px] border-b border-r p-1.5 border-line-muted"
               >
-                {day && <div className="text-[12px] text-fg-subtle mb-1 px-1">{day}</div>}
+                {day && <div className="text-caption text-fg-subtle mb-1 px-1">{day}</div>}
                 <div className="space-y-1">
                   {list.map((cs) => {
                     const active = cs.id === selected;
@@ -111,7 +110,7 @@ export function ReportsCalendarView() {
                       <button
                         key={cs.id}
                         onClick={() => setSelected(cs.id)}
-                        className="w-full text-left rounded px-1.5 py-1 text-[11px] font-medium truncate"
+                        className="w-full text-left rounded px-1.5 py-1 text-micro font-medium truncate"
                         style={{
                           backgroundColor: active ? 'var(--color-accent)' : 'var(--color-accent-subtle)',
                           color: active ? '#fff' : 'var(--color-accent)',
@@ -120,7 +119,7 @@ export function ReportsCalendarView() {
                       >
                         {/* 미작성(배지 모집단) 수업은 빨간 점으로 표시 — 리스트·배지와 같은 기준 */}
                         {pendingIds.has(cs.id) && (
-                          <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ backgroundColor: 'var(--color-danger)' }} />
+                          <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle bg-danger" />
                         )}
                         {courseName(cs.courseId)}
                       </button>
@@ -157,7 +156,7 @@ export function ReportsCalendarView() {
             }
           >
             {monthSessions.length === 0 ? (
-              <div className="p-4 text-[13px] text-fg-subtle">{needOnly ? '이 달 작성할 리포트가 없습니다.' : '이 달 수업이 없습니다.'}</div>
+              <div className="p-4 text-body text-fg-subtle">{needOnly ? '이 달 작성할 리포트가 없습니다.' : '이 달 수업이 없습니다.'}</div>
             ) : (
               <table className="table">
                 <thead><tr><th>날짜</th><th>수업</th><th>강사</th><th className="text-right">리포트</th><th></th></tr></thead>
@@ -190,7 +189,7 @@ export function ReportsCalendarView() {
           title={`${courseName(session.courseId)} · ${session.sessionDate} · 강사 ${instructorName(session.instructorId)}`}
           action={<button className="btn btn-sm" onClick={() => setSelected(null)}>닫기</button>}
         >
-          <div className="divide-y" style={{ borderColor: 'var(--color-line-muted)' }}>
+          <div className="divide-y border-line-muted">
             {roster.map((student) => {
               const att = attendance.find((a) => a.sessionId === session.id && a.studentId === student.id);
               const report = sessionReports.find((r) => r.sessionId === session.id && r.studentId === student.id);
@@ -198,22 +197,22 @@ export function ReportsCalendarView() {
                 <div key={student.id} className="p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="font-medium">{student.name}</span>
-                    <span className="text-[12px] text-fg-subtle">{student.englishName}</span>
+                    <span className="text-caption text-fg-subtle">{student.englishName}</span>
                     {att && <Badge tone={attTone[att.status]}>{attLabel[att.status]}</Badge>}
                     {report && <Badge tone={reportTone[report.status]}>{reportLabel[report.status]}</Badge>}
                   </div>
                   {report?.content ? (
-                    <div className="text-[13px] text-fg whitespace-pre-wrap">{report.content}</div>
+                    <div className="text-body text-fg whitespace-pre-wrap">{report.content}</div>
                   ) : (
-                    <div className="text-[13px] text-fg-subtle">작성된 피드백 없음</div>
+                    <div className="text-body text-fg-subtle">작성된 피드백 없음</div>
                   )}
                   {report?.homework && (
-                    <div className="text-[12px] text-fg-muted mt-1.5">숙제 · {report.homework}</div>
+                    <div className="text-caption text-fg-muted mt-1.5">숙제 · {report.homework}</div>
                   )}
                 </div>
               );
             })}
-            {roster.length === 0 && <div className="p-4 text-[13px] text-fg-subtle">수강생이 없습니다.</div>}
+            {roster.length === 0 && <div className="p-4 text-body text-fg-subtle">수강생이 없습니다.</div>}
           </div>
         </SectionCard>
       )}

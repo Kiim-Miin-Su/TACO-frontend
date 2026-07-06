@@ -10,7 +10,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
   if (!isAdmin(role)) {
     return (
       <div className="p-6 max-w-[760px] mx-auto">
-        <div className="card card-pad text-[14px] text-fg-muted">
+        <div className="card card-pad text-section text-fg-muted">
           🔒 관리자 전용 화면입니다. 현재 역할: <b>{roleLabel[role]}</b> — 우측 상단에서 매니저/대표로 전환해 확인하세요.
         </div>
       </div>
@@ -31,8 +31,8 @@ export function AdminHeader() {
   return (
     <div className="flex items-end justify-between flex-wrap gap-3">
       <div>
-        <h1 className="text-[20px] font-semibold">관리자</h1>
-        <p className="text-[13px] text-fg-muted mt-0.5">코스·과목 관리 · 학원 이벤트 발행 · 통합 캘린더</p>
+        <h1 className="text-title font-bold">관리자</h1>
+        <p className="text-body text-fg-muted mt-0.5">코스·과목 관리 · 학원 이벤트 발행 · 통합 캘린더</p>
       </div>
       <div className="flex gap-1.5">
         {TABS.map(([href, label]) => (
@@ -46,7 +46,7 @@ export function AdminHeader() {
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-[12px] font-medium text-fg-muted mb-1">{label}</span>
+      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
       {children}
     </label>
   );

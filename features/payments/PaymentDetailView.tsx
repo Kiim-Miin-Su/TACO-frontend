@@ -21,7 +21,7 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
   if (!payment) {
     return (
       <div className="p-6 max-w-[720px] mx-auto">
-        <Link href="/payments" className="text-[12px] text-fg-muted hover:underline">← 결제 목록</Link>
+        <Link href="/payments" className="text-caption text-fg-muted hover:underline">← 결제 목록</Link>
         <div className="mt-3 text-fg-muted">결제를 찾을 수 없습니다. (id: {paymentId})</div>
       </div>
     );
@@ -60,9 +60,9 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
   return (
     <div className="p-6 max-w-[720px] mx-auto space-y-5">
       <div>
-        <Link href="/payments" className="text-[12px] text-fg-muted hover:underline">← 결제 목록</Link>
+        <Link href="/payments" className="text-caption text-fg-muted hover:underline">← 결제 목록</Link>
         <div className="flex items-center gap-2 mt-1">
-          <h1 className="text-[20px] font-semibold">{student?.name ?? '결제'} · {won(payment.amount)}</h1>
+          <h1 className="text-title font-bold">{student?.name ?? '결제'} · {won(payment.amount)}</h1>
           <Badge tone={statusTone[payment.status]}>{statusLabel[payment.status]}</Badge>
         </div>
       </div>
@@ -106,7 +106,7 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
             </Field>
           </div>
         ) : (
-          <div className="divide-y" style={{ borderColor: 'var(--color-line-muted)' }}>
+          <div className="divide-y border-line-muted">
             {([
               ['학생', student?.name ?? '—'],
               ['코스', course?.name ?? '— (직접 청구)'],
@@ -116,7 +116,7 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
               ['납부 기한', payment.dueAt ?? '—'],
               ['수납일', payment.paidAt ?? '—'],
             ] as [string, string][]).map(([k, v]) => (
-              <div key={k} className="flex px-4 py-3 text-[13px]">
+              <div key={k} className="flex px-4 py-3 text-body">
                 <span className="w-32 text-fg-muted">{k}</span>
                 <span className={k.includes('금액') || k.includes('수납액') ? 'mono font-medium' : ''}>{v}</span>
               </div>
@@ -124,7 +124,7 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
           </div>
         )}
       </SectionCard>
-      <p className="text-[12px] text-fg-subtle">수납 처리하면 입·출금 원장과 대시보드 입금/미수금에 반영됩니다.</p>
+      <p className="text-caption text-fg-subtle">수납 처리하면 입·출금 원장과 대시보드 입금/미수금에 반영됩니다.</p>
     </div>
   );
 }
@@ -132,7 +132,7 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-[12px] font-medium text-fg-muted mb-1">{label}</span>
+      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
       {children}
     </label>
   );

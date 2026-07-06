@@ -34,7 +34,7 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
   if (!form) {
     return (
       <div className="p-6 max-w-[820px] mx-auto">
-        <Link href="/counsel" className="text-[12px] text-fg-muted hover:underline">← 상담 목록</Link>
+        <Link href="/counsel" className="text-caption text-fg-muted hover:underline">← 상담 목록</Link>
         <div className="mt-3 text-fg-muted">상담카드를 찾을 수 없습니다. (id: {counselId})</div>
       </div>
     );
@@ -69,12 +69,12 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
   return (
     <div className="p-6 max-w-[920px] mx-auto space-y-6">
       <div>
-        <Link href="/counsel" className="text-[12px] text-fg-muted hover:underline">← 상담 목록</Link>
+        <Link href="/counsel" className="text-caption text-fg-muted hover:underline">← 상담 목록</Link>
         <div className="flex items-center gap-2 mt-1">
-          <h1 className="text-[20px] font-semibold">{form.applicantName} 상담카드</h1>
+          <h1 className="text-title font-bold">{form.applicantName} 상담카드</h1>
           <Badge tone={statusTone[form.status]}>{statusLabel[form.status]}</Badge>
         </div>
-        <p className="text-[13px] text-fg-muted mt-0.5">{sourceLabel[form.source]} · 접수 {form.createdAt}</p>
+        <p className="text-body text-fg-muted mt-0.5">{sourceLabel[form.source]} · 접수 {form.createdAt}</p>
       </div>
 
       {/* 편집 가능한 상담카드 */}
@@ -141,25 +141,25 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
 
       {/* 상담 회차 (타임라인) */}
       <SectionCard title={`상담 회차 (${formRounds.length}회)`}>
-        <div className="divide-y" style={{ borderColor: 'var(--color-line-muted)' }}>
+        <div className="divide-y border-line-muted">
           {formRounds.map((r) => (
             <div key={r.id} className="p-4">
               <div className="flex items-center gap-2 mb-1">
                 <span className="badge badge-neutral">{r.roundNo + 1}차</span>
-                <span className="font-medium text-[13px]">{r.summary ?? '(요약 없음)'}</span>
+                <span className="font-medium text-body">{r.summary ?? '(요약 없음)'}</span>
                 {r.result && <Badge tone={resultTone[r.result]}>{resultLabel[r.result]}</Badge>}
-                <span className="text-[11px] text-fg-subtle ml-auto">{r.completedAt ?? r.scheduledAt ?? ''}</span>
+                <span className="text-micro text-fg-subtle ml-auto">{r.completedAt ?? r.scheduledAt ?? ''}</span>
               </div>
-              {r.detail && <div className="text-[13px] text-fg-muted whitespace-pre-wrap">{r.detail}</div>}
-              {r.nextAction && <div className="text-[12px] text-accent mt-1">다음 액션 · {r.nextAction}</div>}
+              {r.detail && <div className="text-body text-fg-muted whitespace-pre-wrap">{r.detail}</div>}
+              {r.nextAction && <div className="text-caption text-accent mt-1">다음 액션 · {r.nextAction}</div>}
             </div>
           ))}
-          {formRounds.length === 0 && <div className="p-4 text-[13px] text-fg-subtle">아직 상담 회차가 없습니다.</div>}
+          {formRounds.length === 0 && <div className="p-4 text-body text-fg-subtle">아직 상담 회차가 없습니다.</div>}
         </div>
 
         {/* 회차 추가 */}
-        <div className="p-4 border-t space-y-3" style={{ borderColor: 'var(--color-line)' }}>
-          <div className="text-[12px] font-semibold text-fg-muted">상담 회차 추가</div>
+        <div className="p-4 border-t space-y-3">
+          <div className="text-caption font-semibold text-fg-muted">상담 회차 추가</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input className="input" placeholder="요약" value={round.summary} onChange={(e) => setRound({ ...round, summary: e.target.value })} />
             <select className="input" value={round.result} onChange={(e) => setRound({ ...round, result: e.target.value })}>
@@ -181,7 +181,7 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-[12px] font-medium text-fg-muted mb-1">{label}</span>
+      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
       {children}
     </label>
   );

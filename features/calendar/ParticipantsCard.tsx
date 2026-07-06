@@ -24,22 +24,22 @@ export function ParticipantsCard({
     return (
       <button
         key={`${r.type}-${r.id}`}
-        className={`w-full flex items-center gap-2 px-2 h-8 rounded text-[12.5px] text-left ${on ? "bg-neutral-subtle font-semibold" : "hover:bg-canvas-subtle"}`}
+        className={`w-full flex items-center gap-2 px-2 h-8 rounded text-body text-left ${on ? "bg-neutral-subtle font-semibold" : "hover:bg-canvas-subtle"}`}
         onClick={() => onPick(r)}
         title={`${r.name} 상세 정보 보기${r.type === "student" ? "·수정" : ""}`}
       >
         <span className="badge text-[10px] shrink-0">{r.type === "instructor" ? "강사" : "학생"}</span>
         <span className="flex-1 truncate">{r.name}</span>
-        <span className="text-[11px] text-fg-subtle shrink-0">{sub}</span>
+        <span className="text-micro text-fg-subtle shrink-0">{sub}</span>
       </button>
     );
   };
 
   return (
     <div className="card overflow-hidden">
-      <div className="px-3 h-9 flex items-center justify-between border-b" style={{ borderColor: "var(--color-line)" }}>
-        <span className="text-[12.5px] font-semibold">이 수업 참여 인원</span>
-        <span className="text-[11px] text-fg-subtle">{1 + (row.studentIds?.length ?? 0)}명</span>
+      <div className="px-3 h-9 flex items-center justify-between border-b">
+        <span className="text-body font-semibold">이 수업 참여 인원</span>
+        <span className="text-micro text-fg-subtle">{1 + (row.studentIds?.length ?? 0)}명</span>
       </div>
       <div className="p-1.5 space-y-0.5">
         {rowBtn(

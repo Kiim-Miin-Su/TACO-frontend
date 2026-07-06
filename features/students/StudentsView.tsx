@@ -45,8 +45,8 @@ export function StudentsView() {
   return (
     <div className="p-6 max-w-[1180px] mx-auto space-y-6">
       <div>
-        <h1 className="text-[20px] font-semibold">학생</h1>
-        <p className="text-[13px] text-fg-muted mt-0.5">학생 등록 및 목록 · 활성 {activeCount}명</p>
+        <h1 className="text-title font-bold">학생</h1>
+        <p className="text-body text-fg-muted mt-0.5">학생 등록 및 목록 · 활성 {activeCount}명</p>
       </div>
 
       <SectionCard title="학생 등록">
@@ -57,7 +57,7 @@ export function StudentsView() {
         title="학생 목록"
         action={
           <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-[12px] text-fg-muted select-none">
+            <label className="flex items-center gap-1.5 text-caption text-fg-muted select-none">
               <input type="checkbox" checked={showDropped} onChange={(e) => setShowDropped(e.target.checked)} />
               퇴원 포함
             </label>
@@ -86,7 +86,7 @@ export function StudentsView() {
                   <tr key={s.id}>
                     <td>
                       <div className="font-medium">{s.name}</div>
-                      <div className="text-[12px] text-fg-subtle">{s.englishName ?? ""}</div>
+                      <div className="text-caption text-fg-subtle">{s.englishName ?? ""}</div>
                     </td>
                     <td className="mono">{s.grade ?? "—"}</td>
                     {/* 국가(피드백 2026-07-02): 해외 학생 시차 시간표의 기준 — 미지정은 KR(국내) 간주 */}
@@ -116,7 +116,7 @@ export function StudentsView() {
                           퇴원 처리
                         </button>
                       ) : (
-                        <span className="text-[12px] text-fg-subtle">퇴원됨</span>
+                        <span className="text-caption text-fg-subtle">퇴원됨</span>
                       )}
                     </td>
                   </tr>

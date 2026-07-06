@@ -15,7 +15,7 @@ export function ReasonModal({
 }) {
   const [reason, setReason] = useState(initial);
   return (
-    <div className="fixed inset-0 z-[55] grid place-items-center" style={{ background: "rgba(0,0,0,.35)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-[55] grid place-items-center bg-black/35" onClick={onClose}>
       <div className="card card-pad w-[400px] space-y-3" onClick={(e) => e.stopPropagation()}>
         <div className="font-semibold">{title}</div>
         {mode === "input" ? (
@@ -27,7 +27,7 @@ export function ReasonModal({
             onChange={(e) => setReason(e.target.value)}
           />
         ) : (
-          <div className="rounded-lg p-3 text-[13px] whitespace-pre-wrap" style={{ background: "var(--color-canvas-subtle)" }}>
+          <div className="rounded-lg p-3 text-body whitespace-pre-wrap bg-canvas-subtle">
             {initial || <span className="text-fg-subtle">사유가 기재되지 않았습니다.</span>}
           </div>
         )}

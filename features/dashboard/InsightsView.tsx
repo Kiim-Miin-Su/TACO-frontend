@@ -18,8 +18,8 @@ export function InsightsView() {
   if (!isCEO(role)) {
     return (
       <div className="p-6 max-w-[760px] mx-auto">
-        <h1 className="text-[20px] font-semibold">경영 지표</h1>
-        <p className="text-[13px] text-fg-muted mt-1">경영 지표(수입·지출·매출 추이)는 대표(super_admin)만 열람할 수 있습니다. (현재: {roleLabel[role]})</p>
+        <h1 className="text-title font-bold">경영 지표</h1>
+        <p className="text-body text-fg-muted mt-1">경영 지표(수입·지출·매출 추이)는 대표(super_admin)만 열람할 수 있습니다. (현재: {roleLabel[role]})</p>
         <div className="mt-4"><Link href="/" className="btn btn-primary">대시보드로</Link></div>
       </div>
     );
@@ -33,8 +33,8 @@ export function InsightsView() {
     <div className="p-6 max-w-[1200px] mx-auto space-y-6">
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-[20px] font-semibold">경영 지표</h1>
-          <p className="text-[13px] text-fg-muted mt-0.5">수입·지출·매출 추이 (대표 전용)</p>
+          <h1 className="text-title font-bold">경영 지표</h1>
+          <p className="text-body text-fg-muted mt-0.5">수입·지출·매출 추이 (대표 전용)</p>
         </div>
         <Link href="/" className="btn btn-sm">← 대시보드</Link>
       </div>
@@ -48,7 +48,7 @@ export function InsightsView() {
       <RevenueCharts />
 
       <SectionCard title="입·출금 원장">
-        <ul className="divide-y" style={{ borderColor: 'var(--color-line-muted)' }}>
+        <ul className="divide-y border-line-muted">
           {transactions.map((t) => {
             const isIn = t.direction === 'in';
             return (
@@ -63,10 +63,10 @@ export function InsightsView() {
                   {isIn ? <IconArrowDown /> : <IconArrowUp />}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-medium truncate">{t.label}</div>
-                  <div className="text-[11px] text-fg-subtle uppercase">{t.method} · {shortDate(t.occurredAt)}</div>
+                  <div className="text-body font-medium truncate">{t.label}</div>
+                  <div className="text-micro text-fg-subtle uppercase">{t.method} · {shortDate(t.occurredAt)}</div>
                 </div>
-                <div className={`mono text-[13px] font-semibold ${isIn ? 'text-success' : 'text-fg'}`}>
+                <div className={`mono text-body font-semibold ${isIn ? 'text-success' : 'text-fg'}`}>
                   {isIn ? '+' : '−'}{won(t.amount)}
                 </div>
               </li>

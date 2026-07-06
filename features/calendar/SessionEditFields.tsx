@@ -35,7 +35,7 @@ export function TimeSelect({ value, onChange, className }: { value: string; onCh
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-[12px] font-medium text-fg-muted mb-1">{label}</span>
+      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
       {children}
     </label>
   );
@@ -92,7 +92,7 @@ export function SessionEditFields({
   const set = <K extends keyof SessionDraft>(k: K, v: SessionDraft[K]) => setD((x) => ({ ...x, [k]: v }));
   const isSeries = row.seriesId != null;
   const valid = d.startTime < d.endTime;
-  const input = compact ? "input h-8 text-[12px]" : "input";
+  const input = compact ? "input h-8 text-caption" : "input";
 
   return (
     <div className="space-y-3">
@@ -101,10 +101,10 @@ export function SessionEditFields({
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="시작">
-          <TimeSelect value={d.startTime} onChange={(v) => set("startTime", v)} className={compact ? "h-8 text-[12px]" : ""} />
+          <TimeSelect value={d.startTime} onChange={(v) => set("startTime", v)} className={compact ? "h-8 text-caption" : ""} />
         </Field>
         <Field label="종료">
-          <TimeSelect value={d.endTime} onChange={(v) => set("endTime", v)} className={compact ? "h-8 text-[12px]" : ""} />
+          <TimeSelect value={d.endTime} onChange={(v) => set("endTime", v)} className={compact ? "h-8 text-caption" : ""} />
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -157,11 +157,11 @@ export function SessionEditFields({
         ) : <span />}
       </div>
       <Field label="메모">
-        <textarea className={`input py-1.5 ${compact ? "min-h-[48px] text-[12px]" : "min-h-[64px]"}`} rows={compact ? 2 : 3}
+        <textarea className={`input py-1.5 ${compact ? "min-h-[48px] text-caption" : "min-h-[64px]"}`} rows={compact ? 2 : 3}
           value={d.memo} onChange={(e) => set("memo", e.target.value)} />
       </Field>
       {/* 학생은 여기서 편집 불가(코호트=수강 등록 파생) — 무결성 안내 */}
-      <p className="text-[11px] text-fg-subtle">학생(수강생)은 수강 등록에서 관리됩니다 — 학생·부모 탭 참조.</p>
+      <p className="text-micro text-fg-subtle">학생(수강생)은 수강 등록에서 관리됩니다 — 학생·부모 탭 참조.</p>
       {isSeries && (
         <Field label="반복 적용 범위">
           <select className={input} value={d.scope} onChange={(e) => set("scope", e.target.value as RecurrenceScope)}>
@@ -171,11 +171,11 @@ export function SessionEditFields({
           </select>
         </Field>
       )}
-      {!valid && <p className="text-[12px]" style={{ color: "var(--color-danger)" }}>종료 시각이 시작보다 빠를 수 없습니다.</p>}
+      {!valid && <p className="text-caption text-danger">종료 시각이 시작보다 빠를 수 없습니다.</p>}
       {/* [QA 2026-07-03] compact(우측 패널 w-64)에서 삭제/취소/저장 3버튼이 넘치던 오버플로 — flex-wrap 허용 */}
       <div className="flex justify-between gap-2 pt-1 flex-wrap">
         {onDelete ? (
-          <button className="btn btn-sm" style={{ color: "var(--color-danger)" }} onClick={onDelete}>삭제</button>
+          <button className="btn btn-sm text-danger" onClick={onDelete}>삭제</button>
         ) : <span />}
         <div className="flex gap-2 flex-wrap justify-end">
           <button className={compact ? "btn btn-sm" : "btn"} onClick={onCancel}>취소</button>
@@ -191,7 +191,7 @@ export function SessionEditFields({
           </button>
         </div>
       </div>
-      <p className="text-[11px] text-fg-subtle">
+      <p className="text-micro text-fg-subtle">
         {WD[row.weekday]}요일 수업 · 저장 시 충돌(강사·강의실 이중예약/불가시간)은 자동 검사됩니다.
       </p>
     </div>

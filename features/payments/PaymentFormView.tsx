@@ -46,8 +46,8 @@ export function PaymentFormView() {
   return (
     <div className="p-6 max-w-[720px] mx-auto space-y-5">
       <div>
-        <Link href="/payments" className="text-[12px] text-fg-muted hover:underline">← 결제 목록</Link>
-        <h1 className="text-[20px] font-semibold mt-1">신규 청구</h1>
+        <Link href="/payments" className="text-caption text-fg-muted hover:underline">← 결제 목록</Link>
+        <h1 className="text-title font-bold mt-1">신규 청구</h1>
       </div>
       <SectionCard title="청구 정보">
         <form onSubmit={submit} className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -76,7 +76,7 @@ export function PaymentFormView() {
             <input type="date" className="input" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
           </Field>
           <div className="sm:col-span-2 flex items-center justify-between pt-1">
-            <span className="text-[12px] text-fg-subtle">
+            <span className="text-caption text-fg-subtle">
               {studentId && courseId ? (enrollment ? '수강 등록 연결됨' : '연결된 수강 등록 없음(청구만 생성)') : ''}
             </span>
             <button type="submit" className="btn btn-primary">청구 생성</button>
@@ -90,7 +90,7 @@ export function PaymentFormView() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-[12px] font-medium text-fg-muted mb-1">{label}</span>
+      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
       {children}
     </label>
   );

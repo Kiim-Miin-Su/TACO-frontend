@@ -29,7 +29,7 @@ function AcademyCalendar() {
           {events
             .filter((e) => dateStr >= e.startDate && dateStr <= e.endDate)
             .map((e) => (
-              <div key={`e${e.id}`} className="rounded px-1.5 py-1 text-[11px] font-medium truncate"
+              <div key={`e${e.id}`} className="rounded px-1.5 py-1 text-micro font-medium truncate"
                 style={{ backgroundColor: eventStyle[e.type].bg, color: eventStyle[e.type].fg }} title={e.title}>
                 {e.priority === 'high' ? '★ ' : ''}{eventLabel[e.type]} · {e.title}
               </div>
@@ -37,8 +37,7 @@ function AcademyCalendar() {
           {classSessions
             .filter((s) => s.sessionDate === dateStr)
             .map((s) => (
-              <div key={`s${s.id}`} className="rounded px-1.5 py-1 text-[11px] truncate"
-                style={{ backgroundColor: 'var(--color-canvas-subtle)', color: 'var(--color-fg-muted)' }} title={courseName(s.courseId)}>
+              <div key={`s${s.id}`} className="rounded px-1.5 py-1 text-micro truncate bg-canvas-subtle text-fg-muted" title={courseName(s.courseId)}>
                 {courseName(s.courseId)}
               </div>
             ))}

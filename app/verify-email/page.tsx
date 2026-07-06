@@ -21,12 +21,12 @@ function Verify() {
   return (
     <AuthShell title="이메일 인증" subtitle="가입 인증 처리">
       <div className="space-y-4">
-        {state === "loading" && <p className="text-[13px] text-fg-muted">인증 처리 중…</p>}
+        {state === "loading" && <p className="text-body text-fg-muted">인증 처리 중…</p>}
         {state === "ok" && (
-          <div className="rounded-lg p-3 text-[13px]" style={{ background: "var(--color-canvas-subtle)", color: "var(--color-success)" }}>✓ {msg}</div>
+          <div className="rounded-lg p-3 text-body bg-canvas-subtle text-success">✓ {msg}</div>
         )}
         {state === "error" && (
-          <div className="rounded-lg p-3 text-[13px] text-danger" style={{ background: "var(--color-canvas-subtle)" }}>{msg}</div>
+          <div className="rounded-lg p-3 text-body text-danger bg-canvas-subtle">{msg}</div>
         )}
         <Link href="/login" className="btn btn-primary w-full h-10">로그인으로 →</Link>
       </div>

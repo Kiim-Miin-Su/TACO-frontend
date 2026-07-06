@@ -64,14 +64,14 @@ export function ResourceDetailCard({
 
   if (selected.type === "instructor" || selected.type === "room") {
     return (
-      <div className="card card-pad text-[12.5px] space-y-1">
-        <div className="font-semibold text-[13px]">{selected.name}</div>
+      <div className="card card-pad text-body space-y-1">
+        <div className="font-semibold text-body">{selected.name}</div>
         {/* [QA 2026-07-03] 좁은 패널에서 버튼이 카드 밖으로 나가던 오버플로 — flex-wrap으로 줄바꿈 허용 */}
         <div className="flex items-center justify-between gap-x-2 gap-y-1 flex-wrap">
           <span className="text-fg-muted">{selected.type === "instructor" ? `강사${selected.sub ? ` · ${selected.sub}` : ""}` : "강의실"}</span>
           <span className="inline-flex gap-1 flex-wrap justify-end">{addBtn}{focusBtn}</span>
         </div>
-        {isFiltered && <p className="text-[11.5px] text-fg-subtle">캘린더가 이 {selected.type === "instructor" ? "강사" : "강의실"} 스케줄로 필터링 중입니다.</p>}
+        {isFiltered && <p className="text-caption text-fg-subtle">캘린더가 이 {selected.type === "instructor" ? "강사" : "강의실"} 스케줄로 필터링 중입니다.</p>}
       </div>
     );
   }
@@ -99,13 +99,13 @@ export function ResourceDetailCard({
   };
 
   return (
-    <div className="card card-pad text-[12.5px] space-y-2">
+    <div className="card card-pad text-body space-y-2">
       {/* [QA 2026-07-03] 버튼 3개가 좁은 패널에서 카드 밖으로 나가고 이름이 세로로 꺾이던 오버플로 —
           이름은 nowrap+truncate, 버튼 그룹은 flex-wrap으로 자연 줄바꿈(넓으면 한 줄, 좁으면 다음 줄) */}
       <div className="flex items-center justify-between gap-x-2 gap-y-1 flex-wrap">
         <div className="min-w-0 whitespace-nowrap truncate">
-          <span className="font-semibold text-[13px]">{student.name}</span>
-          {student.englishName && <span className="ml-1 text-fg-subtle text-[11px]">{student.englishName}</span>}
+          <span className="font-semibold text-body">{student.name}</span>
+          {student.englishName && <span className="ml-1 text-fg-subtle text-micro">{student.englishName}</span>}
         </div>
         {!editing && (
           <span className="inline-flex gap-1 flex-wrap justify-end">
@@ -131,36 +131,36 @@ export function ResourceDetailCard({
       ) : (
         <div className="space-y-1.5">
           <label className="block">
-            <span className="text-[11px] text-fg-muted">국가 (출국/입국 시 변경 — 캘린더 시차에 즉시 반영)</span>
-            <select className="input h-7 w-full text-[12px]" value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>
+            <span className="text-micro text-fg-muted">국가 (출국/입국 시 변경 — 캘린더 시차에 즉시 반영)</span>
+            <select className="input h-7 w-full text-caption" value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>
               {COUNTRIES.map((c) => (<option key={c.code} value={c.code}>{c.flag} {c.name}</option>))}
             </select>
           </label>
           <div className="grid grid-cols-2 gap-1.5">
             <label className="block">
-              <span className="text-[11px] text-fg-muted">거주</span>
-              <select className="input h-7 w-full text-[12px]" value={f.residenceType} onChange={(e) => setF({ ...f, residenceType: e.target.value })}>
+              <span className="text-micro text-fg-muted">거주</span>
+              <select className="input h-7 w-full text-caption" value={f.residenceType} onChange={(e) => setF({ ...f, residenceType: e.target.value })}>
                 <option value="domestic">국내</option>
                 <option value="overseas">해외</option>
               </select>
             </label>
             <label className="block">
-              <span className="text-[11px] text-fg-muted">상태</span>
-              <select className="input h-7 w-full text-[12px]" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
+              <span className="text-micro text-fg-muted">상태</span>
+              <select className="input h-7 w-full text-caption" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
                 {Object.entries(STATUS_LABEL).map(([v, l]) => (<option key={v} value={v}>{l}</option>))}
               </select>
             </label>
             <label className="block">
-              <span className="text-[11px] text-fg-muted">학년</span>
-              <input className="input h-7 w-full text-[12px]" type="number" min={1} max={12} value={f.grade} onChange={(e) => setF({ ...f, grade: e.target.value })} />
+              <span className="text-micro text-fg-muted">학년</span>
+              <input className="input h-7 w-full text-caption" type="number" min={1} max={12} value={f.grade} onChange={(e) => setF({ ...f, grade: e.target.value })} />
             </label>
             <label className="block">
-              <span className="text-[11px] text-fg-muted">연락처</span>
-              <input className="input h-7 w-full text-[12px]" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />
+              <span className="text-micro text-fg-muted">연락처</span>
+              <input className="input h-7 w-full text-caption" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />
             </label>
           </div>
           {f.status === "canceled" && (
-            <p className="text-[11px] text-attention">퇴원(수강 자동 정리)은 학생·부모 탭의 "퇴원 처리"를 권장합니다 — 여기서는 상태 표기만 바뀝니다.</p>
+            <p className="text-micro text-attention">퇴원(수강 자동 정리)은 학생·부모 탭의 "퇴원 처리"를 권장합니다 — 여기서는 상태 표기만 바뀝니다.</p>
           )}
           <div className="flex gap-1.5 justify-end">
             <button className="btn btn-sm h-6" onClick={() => setEditing(false)}>취소</button>

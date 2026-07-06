@@ -49,13 +49,13 @@ export function OptionPick({
       {open && (
         <div className="absolute z-40 mt-1 w-44 card shadow-lg p-1.5 space-y-0.5">
           {options.map((o) => (
-            <label key={o.value} className="flex items-center gap-2 px-1.5 h-7 rounded hover:bg-canvas-subtle cursor-pointer text-[12px]">
+            <label key={o.value} className="flex items-center gap-2 px-1.5 h-7 rounded hover:bg-canvas-subtle cursor-pointer text-caption">
               <input type="checkbox" checked={picked.has(o.value)} onChange={() => onToggle(o.value)} />
               <span className="flex-1 truncate">{o.label}</span>
             </label>
           ))}
-          {!options.length && <div className="text-[11px] text-fg-subtle px-1.5 py-2">옵션 없음</div>}
-          {picked.size > 0 && <button className="btn btn-sm w-full h-6 text-[11px]" onClick={onClear}>전체(해제)</button>}
+          {!options.length && <div className="text-micro text-fg-subtle px-1.5 py-2">옵션 없음</div>}
+          {picked.size > 0 && <button className="btn btn-sm w-full h-6 text-micro" onClick={onClear}>전체(해제)</button>}
         </div>
       )}
     </div>
@@ -103,11 +103,11 @@ export function MultiPick({
       {open && (
         <div
           className="absolute left-0 top-full mt-1 z-40 card shadow-lg w-60 overflow-hidden"
-          style={{ borderColor: "var(--color-line)" }}
+         
         >
-          <div className="p-2 border-b" style={{ borderColor: "var(--color-line)" }}>
+          <div className="p-2 border-b">
             <input
-              className="input h-7 w-full text-[12px]"
+              className="input h-7 w-full text-caption"
               placeholder={`${meta.label} 검색`}
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -120,18 +120,18 @@ export function MultiPick({
               return (
                 <label
                   key={o.id}
-                  className={`flex items-center gap-2 px-2 h-8 rounded cursor-pointer text-[13px] ${on ? "bg-neutral-subtle" : "hover:bg-canvas-subtle"}`}
+                  className={`flex items-center gap-2 px-2 h-8 rounded cursor-pointer text-body ${on ? "bg-neutral-subtle" : "hover:bg-canvas-subtle"}`}
                 >
                   <input type="checkbox" checked={on} onChange={() => onToggle(o.id)} />
                   <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: o.color ?? "var(--color-line)" }} />
                   <span className="flex-1 truncate">{o.name}</span>
-                  {o.sub && <span className="text-[11px] text-fg-subtle">{o.sub}</span>}
+                  {o.sub && <span className="text-micro text-fg-subtle">{o.sub}</span>}
                 </label>
               );
             })}
-            {!filtered.length && <div className="text-[12px] text-fg-subtle text-center py-4">결과 없음</div>}
+            {!filtered.length && <div className="text-caption text-fg-subtle text-center py-4">결과 없음</div>}
           </div>
-          <div className="flex items-center justify-between px-2 h-8 border-t text-[12px]" style={{ borderColor: "var(--color-line)" }}>
+          <div className="flex items-center justify-between px-2 h-8 border-t text-caption">
             <span className="text-fg-subtle">
               {picked.size}/{options.length} 선택
               {picked.size > MAX_SPLIT ? ` · 스플릿은 ${MAX_SPLIT}개까지` : ""}
@@ -241,9 +241,9 @@ export function CalendarFilterBar({
           options={[{ value: "group", label: "그룹 수업만(2명 이상)" }]}
           picked={groupOnly ? new Set(["group"]) : new Set()}
           onToggle={() => onGroupOnly(!groupOnly)} onClear={() => onGroupOnly(false)} />
-        <span className="w-px h-5" style={{ background: "var(--color-line)" }} />
+        <span className="w-px h-5 bg-line" />
         {/* 기간: 우측 리스트·조회 범위 확장(뷰 기간 대신 사용) */}
-        <label className="flex items-center gap-1 text-[12px] text-fg-muted">
+        <label className="flex items-center gap-1 text-caption text-fg-muted">
           기간
           <input
             type="date"
@@ -275,12 +275,12 @@ export function CalendarFilterBar({
           )}
         </label>
         {/* [cherry-pick 2026-07-06] 원하는 날짜만 여러 개(불연속·최대 14) — 선택 시 기간보다 우선(표별 헤더와 동일 문법) */}
-        <label className="flex items-center gap-1 text-[12px] text-fg-muted" title="원하는 날짜만 골라 보기 — 고르면 기간(from~to) 대신 이 날짜들만 표시">
+        <label className="flex items-center gap-1 text-caption text-fg-muted" title="원하는 날짜만 골라 보기 — 고르면 기간(from~to) 대신 이 날짜들만 표시">
           날짜
           <input type="date" className="input h-8 w-[130px]" value="" onChange={(e) => e.target.value && onPickDate(e.target.value)} />
         </label>
         {pickedDates.map((d) => (
-          <span key={d} className="badge inline-flex items-center gap-1 mono text-[11px] cursor-pointer" title="클릭=이 날짜 제거" onClick={() => onUnpickDate(d)}>
+          <span key={d} className="badge inline-flex items-center gap-1 mono text-micro cursor-pointer" title="클릭=이 날짜 제거" onClick={() => onUnpickDate(d)}>
             {d.slice(5)} ✕
           </span>
         ))}
@@ -296,7 +296,7 @@ export function CalendarFilterBar({
           value={q}
           onChange={(e) => onQ(e.target.value)}
         />
-        <label className="flex items-center gap-1.5 text-[12px] text-fg-muted">
+        <label className="flex items-center gap-1.5 text-caption text-fg-muted">
           색 기준
           <select className="input h-8 w-24" value={colorBy} onChange={(e) => onColorBy(e.target.value as ColorBy)}>
             <option value="subject">과목</option>

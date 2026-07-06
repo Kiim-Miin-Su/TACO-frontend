@@ -8,3 +8,6 @@ build/
 .DS_Store
 next-env.d.ts.bak
 tsconfig.tsbuildinfo
+
+# FUSE 마운트 삭제 잔재 (샌드박스)
+**/.fuse_hidden*

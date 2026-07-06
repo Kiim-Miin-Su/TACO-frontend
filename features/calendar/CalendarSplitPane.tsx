@@ -40,10 +40,10 @@ export function CalendarSplitPane({
       {/* 표 헤더: 차원 선택 + 리소스 다중 체크(표별 독립 필터) + 제거 */}
       <div className="flex items-center gap-1.5 mb-1 px-0.5 flex-wrap">{/* [2026-07-06] 컨트롤 많아짐 — 두 줄 허용(대표: 두 줄 돼도 무관) */}
         {fixedDim ? (
-          <span className="text-[12px] font-semibold text-fg-muted px-1">{DIM_LABEL[pane.dim]}</span>
+          <span className="text-caption font-semibold text-fg-muted px-1">{DIM_LABEL[pane.dim]}</span>
         ) : (
           <select
-            className="input h-7 w-[76px] text-[12px]"
+            className="input h-7 w-[76px] text-caption"
             value={pane.dim}
             onChange={(e) => onChange({ dim: e.target.value as SplitDim, ids: [] })}
             title="이 표의 기준(강사/학생/강의실)"
@@ -62,14 +62,14 @@ export function CalendarSplitPane({
           }
           onClear={() => onChange({ ids: [] })}
         />
-        <span className="text-[12px] text-fg-muted truncate flex-1" title={names}>
+        <span className="text-caption text-fg-muted truncate flex-1" title={names}>
           {names || `${DIM_LABEL[pane.dim]}을 선택하세요`}
         </span>
         {headerExtra}
         <button className="btn btn-sm h-6 px-1.5" onClick={onRemove} title="이 표 닫기">✕</button>
       </div>
       {pane.ids.length === 0 ? (
-        <div className="card grid place-items-center text-[13px] text-fg-subtle" style={{ height: 200 }}>
+        <div className="card grid place-items-center text-body text-fg-subtle" style={{ height: 200 }}>
           위에서 {DIM_LABEL[pane.dim]}을 선택하면 시간표가 표시됩니다.
         </div>
       ) : (

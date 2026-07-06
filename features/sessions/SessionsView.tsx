@@ -38,8 +38,8 @@ export function SessionsView() {
   return (
     <div className="p-6 max-w-[1000px] mx-auto space-y-6">
       <div>
-        <h1 className="text-[20px] font-semibold">수업 (강사)</h1>
-        <p className="text-[13px] text-fg-muted mt-0.5">진행 수업 목록 · 출석·피드백은 상세에서</p>
+        <h1 className="text-title font-bold">수업 (강사)</h1>
+        <p className="text-body text-fg-muted mt-0.5">진행 수업 목록 · 출석·피드백은 상세에서</p>
       </div>
 
       <SectionCard title="신규 수업 개설">

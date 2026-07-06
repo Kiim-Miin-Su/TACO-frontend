@@ -1242,14 +1242,14 @@ export function ScheduleCalendar() {
     return (
               <div className="card overflow-x-auto">
                 {anyColTz && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 border-b text-[12px]" style={{ borderColor: "var(--color-line)", background: "var(--color-canvas-subtle)" }}>
+                  <div className="flex items-center gap-2 px-3 py-1.5 border-b text-caption bg-canvas-subtle">
                     <span>🌐</span>
                     <span className="font-semibold">학생 국가별 시간 표시 중</span>
                     <span className="badge text-[10px]" title="해외 학생 컬럼은 그 나라 시간으로 표시되며 보기 전용 — 편집은 한국(KST) 컬럼에서">국기 컬럼 = 그 나라 시간 · 보기 전용</span>
                   </div>
                 )}
                 {tzActive && tzc && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 border-b text-[12px]" style={{ borderColor: "var(--color-line)", background: "var(--color-canvas-subtle)" }}>
+                  <div className="flex items-center gap-2 px-3 py-1.5 border-b text-caption bg-canvas-subtle">
                     <span>{tzc.flag}</span>
                     <span className="font-semibold">{tzc.name} 시간</span>
                     <span className="text-fg-subtle mono">KST{offLabel}</span>
@@ -1264,7 +1264,7 @@ export function ScheduleCalendar() {
                       {Array.from({ length: endH - startH + 1 }, (_, i) => (
                         <span
                           key={i}
-                          className="absolute right-2 text-[11px] text-fg-subtle mono"
+                          className="absolute right-2 text-micro text-fg-subtle mono"
                           style={{ top: i * HOUR_H - 7 }}
                         >
                           {i < endH - startH ? `${pad(startH + i)}:00` : ""}
@@ -1303,7 +1303,7 @@ export function ScheduleCalendar() {
                           {/* 헤더: 스플릿=날짜+리소스명 · 주간=요일+날짜(오늘 강조) · 일간=강의실 */}
                           <div
                             className="flex flex-col items-center justify-center gap-0.5 border-b relative"
-                            style={{ height: HEADER_H, borderColor: "var(--color-line)" }}
+                            style={{ height: HEADER_H }}
                           >
                             {c.resType ? (
                               <>
@@ -1315,14 +1315,14 @@ export function ScheduleCalendar() {
                                 {/* 이름은 truncate, 국기 버튼은 truncate 밖(잘림·클릭 좌표 소실 방지) */}
                                 <span className="flex items-center gap-0.5 max-w-full px-1 min-w-0">
                                   <span
-                                    className="text-[12px] font-semibold truncate min-w-0"
+                                    className="text-caption font-semibold truncate min-w-0"
                                     title={`${c.label}${!tzActive && c.tzc ? ` — ${c.tzc.name} 시간(개별 시차)` : ""}`}
                                   >
                                     {c.label}
                                   </span>
                                   {canAdd && c.resType != null && c.resId != null && (
                                     <button
-                                      className="shrink-0 hover:opacity-70 text-[11px] leading-none px-0.5"
+                                      className="shrink-0 hover:opacity-70 text-micro leading-none px-0.5"
                                       title={`${c.label}에게 추가 — 수업·가용·불가(유저 프리필)`}
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -1340,7 +1340,7 @@ export function ScheduleCalendar() {
                                   {/* [피드백 #3] 학생 컬럼 시차 수동 변경 — 국기(현재 tz)/🌐(KST) 클릭 = 픽커 */}
                                   {!tzActive && c.resType === "student" && c.resId != null && (
                                     <button
-                                      className="shrink-0 hover:opacity-70 text-[12px] leading-none px-0.5 py-0.5 -my-0.5"
+                                      className="shrink-0 hover:opacity-70 text-caption leading-none px-0.5 py-0.5 -my-0.5"
                                       title={`${c.label} 컬럼 시차 변경(보기 전용 임시)`}
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -1355,7 +1355,7 @@ export function ScheduleCalendar() {
                                 {tzPickerFor?.colKey === c.key && (
                                   <span className="absolute left-0 top-full mt-0.5 z-40 card shadow-lg p-1.5 w-44 block" onClick={(e) => e.stopPropagation()}>
                                     <select
-                                      className="input h-7 w-full text-[11px]"
+                                      className="input h-7 w-full text-micro"
                                       autoFocus
                                       value={
                                         tzPickerFor.studentId in studentTzOverride
@@ -1384,18 +1384,18 @@ export function ScheduleCalendar() {
                               </>
                             ) : view === "week" ? (
                               <>
-                                <span className={`text-[11px] ${isToday ? "text-accent font-semibold" : "text-fg-subtle"}`}>
+                                <span className={`text-micro ${isToday ? "text-accent font-semibold" : "text-fg-subtle"}`}>
                                   {c.label}
                                 </span>
                                 <span
-                                  className={`grid place-items-center text-[15px] font-semibold rounded-full ${isToday ? "text-white" : "text-fg"}`}
+                                  className={`grid place-items-center text-section font-semibold rounded-full ${isToday ? "text-white" : "text-fg"}`}
                                   style={{ width: 28, height: 28, background: isToday ? "var(--color-accent)" : "transparent" }}
                                 >
                                   {Number(c.date.slice(8))}
                                 </span>
                               </>
                             ) : (
-                              <span className="text-[13px] font-semibold truncate px-1">{c.label}</span>
+                              <span className="text-body font-semibold truncate px-1">{c.label}</span>
                             )}
                           </div>
                           <div
@@ -1471,9 +1471,9 @@ export function ScheduleCalendar() {
                               >
                                 {on && (
                                   <>
-                                    <div onPointerDown={(e) => bDownResize(e, c, b, "top")} className="absolute left-1/2 -translate-x-1/2 top-0 w-6 h-2 rounded-b cursor-ns-resize" style={{ background: "var(--color-fg-muted)" }} />
-                                    <button onClick={(e) => { e.stopPropagation(); deleteBlock(b.id, c.date); }} className="absolute right-0.5 top-0.5 w-4 h-4 grid place-items-center rounded text-[10px] text-white" style={{ background: "var(--color-danger)" }} title="삭제">✕</button>
-                                    <div onPointerDown={(e) => bDownResize(e, c, b, "bottom")} className="absolute left-1/2 -translate-x-1/2 bottom-0 w-6 h-2 rounded-t cursor-ns-resize" style={{ background: "var(--color-fg-muted)" }} />
+                                    <div onPointerDown={(e) => bDownResize(e, c, b, "top")} className="absolute left-1/2 -translate-x-1/2 top-0 w-6 h-2 rounded-b cursor-ns-resize bg-fg-muted" />
+                                    <button onClick={(e) => { e.stopPropagation(); deleteBlock(b.id, c.date); }} className="absolute right-0.5 top-0.5 w-4 h-4 grid place-items-center rounded text-[10px] text-white bg-danger" title="삭제">✕</button>
+                                    <div onPointerDown={(e) => bDownResize(e, c, b, "bottom")} className="absolute left-1/2 -translate-x-1/2 bottom-0 w-6 h-2 rounded-t cursor-ns-resize bg-fg-muted" />
                                   </>
                                 )}
                               </div>
@@ -1490,8 +1490,8 @@ export function ScheduleCalendar() {
                             {/* 커서 셀(빈 공간 클릭): 시각 배지 + (클립보드 있으면) 붙여넣기 미리보기 고스트 */}
                             {cursor && cursor.colKey === c.key && (
                               <div className="absolute left-0 right-0 z-10 pointer-events-none" style={{ top: ((cursor.startMin - gridMin) / 60) * HOUR_H }}>
-                                <div className="h-0.5" style={{ background: "var(--color-accent)" }} />
-                                <span className="absolute left-1 -top-2.5 px-1 rounded text-[10px] text-white mono" style={{ background: "var(--color-accent)" }}>
+                                <div className="h-0.5 bg-accent" />
+                                <span className="absolute left-1 -top-2.5 px-1 rounded text-[10px] text-white mono bg-accent">
                                   {fromMin(cursor.startMin)}{clip ? " · Ctrl+V" : ""}
                                 </span>
                                 {clip && (
@@ -1507,7 +1507,7 @@ export function ScheduleCalendar() {
                             )}
                             {/* 이벤트 이동 라이브 고스트(30분 스냅) */}
                             {moveDrag && moveDrag.colKey === c.key && (
-                              <div className="absolute left-0.5 right-0.5 z-30 pointer-events-none rounded-lg text-white text-[11px] px-1.5 py-1 ring-2 ring-white" style={{
+                              <div className="absolute left-0.5 right-0.5 z-30 pointer-events-none rounded-lg text-white text-micro px-1.5 py-1 ring-2 ring-white" style={{
                                 top: ((moveDrag.start - gridMin) / 60) * HOUR_H + 1,
                                 height: Math.max(22, (moveDrag.dur / 60) * HOUR_H) - 2,
                                 background: moveDrag.color, opacity: 0.9,
@@ -1532,7 +1532,7 @@ export function ScheduleCalendar() {
                             {/* 현재 시각 인디케이터 */}
                             {!colTz && showNow && isToday && (
                               <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: nowTop }}>
-                                <div className="h-px" style={{ background: "var(--color-danger)" }} />
+                                <div className="h-px bg-danger" />
                                 <div
                                   className="absolute rounded-full"
                                   style={{ width: 8, height: 8, left: -4, top: -4, background: "var(--color-danger)" }}
@@ -1553,7 +1553,7 @@ export function ScheduleCalendar() {
                                   onClick={(e) => { e.stopPropagation(); if (suppressClickRef.current) { suppressClickRef.current = false; return; } setSelEvent(r.id); setSelBand(null); setDetailId(r.id); }}
                                   onDoubleClick={(e) => { e.stopPropagation(); openEditor(r, colTz ? colTzc : null); }}
                                   title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${(r as TzShiftedRow).tzOverflowEnd ? ` · 자정 넘김(+1일 ~${(r as TzShiftedRow).tzOverflowEnd})` : ""}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 드래그=이동 · 더블클릭=상세`}
-                                  className={`absolute rounded-lg text-white text-[11px] leading-tight px-1.5 py-1 cursor-grab overflow-hidden shadow-sm hover:brightness-105 transition ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
+                                  className={`absolute rounded-lg text-white text-micro leading-tight px-1.5 py-1 cursor-grab overflow-hidden shadow-sm hover:brightness-105 transition ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
                                   style={{
                                     top: top + 1,
                                     height: h - 2,
@@ -1624,8 +1624,8 @@ export function ScheduleCalendar() {
     <div className="p-6 max-w-[1560px] mx-auto">
       <div className="flex items-end justify-between flex-wrap gap-3 mb-4">
         <div>
-          <h1 className="text-[20px] font-semibold">스케줄 캘린더</h1>
-          <p className="text-[13px] text-fg-muted mt-0.5">
+          <h1 className="text-title font-bold">스케줄 캘린더</h1>
+          <p className="text-body text-fg-muted mt-0.5">
             드래그 이동 · Ctrl+드래그 복제 · Ctrl+C/V 복사·붙여넣기 · 빈 시간 클릭=커서 · {periodLabel}
             <span className="text-fg-subtle">
               {" "}
@@ -1642,7 +1642,7 @@ export function ScheduleCalendar() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex rounded-md overflow-hidden border" style={{ borderColor: "var(--color-line)" }}>
+          <div className="flex rounded-md overflow-hidden border">
             {(["month", "week", "day"] as View[]).map((v) => (
               <button
                 key={v}
@@ -1761,7 +1761,7 @@ export function ScheduleCalendar() {
             onClearAll={clearFilters}
           />
           {selected && selBlocks.length > 0 && (
-            <p className="text-[12px] text-fg-subtle inline-flex items-center gap-2 flex-wrap">
+            <p className="text-caption text-fg-subtle inline-flex items-center gap-2 flex-wrap">
               <span className="inline-flex items-center gap-1">
                 <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "rgba(26,127,55,.18)", borderLeft: "2px solid var(--color-success)" }} /> 가용
               </span>
@@ -1774,7 +1774,7 @@ export function ScheduleCalendar() {
 
           {msg && (
             <div
-              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg shadow-lg text-[13px] text-white flex items-center gap-2"
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg shadow-lg text-body text-white flex items-center gap-2"
               style={{ background: /(실패|없습니다|수 없|연결할 수|올바)/.test(msg) ? "var(--color-danger)" : "var(--color-success)" }}
               role="status"
             >
@@ -1819,20 +1819,20 @@ export function ScheduleCalendar() {
                     headerExtra={
                       <div className="flex items-center gap-1">
                         {/* [이슈3] 이 표의 날짜 범위 — 캘린더(from~to)로 표마다 다르게. 비우면 전역 기간. */}
-                        <input type="date" className="input h-7 text-[11px] px-1 w-[122px]" title="이 표 시작일"
+                        <input type="date" className="input h-7 text-micro px-1 w-[122px]" title="이 표 시작일"
                           value={paneRange[g.dim]?.from ?? (dates[0] ?? "")}
                           onChange={(e) => setPaneRange((prev) => ({ ...prev, [g.dim]: { from: e.target.value, to: prev[g.dim]?.to ?? e.target.value } }))} />
-                        <span className="text-[11px] text-fg-subtle">~</span>
-                        <input type="date" className="input h-7 text-[11px] px-1 w-[122px]" title="이 표 종료일"
+                        <span className="text-micro text-fg-subtle">~</span>
+                        <input type="date" className="input h-7 text-micro px-1 w-[122px]" title="이 표 종료일"
                           value={paneRange[g.dim]?.to ?? (dates[dates.length - 1] ?? "")}
                           min={paneRange[g.dim]?.from ?? dates[0]}
                           onChange={(e) => setPaneRange((prev) => ({ ...prev, [g.dim]: { from: prev[g.dim]?.from ?? (dates[0] ?? e.target.value), to: e.target.value } }))} />
                         {(paneRange[g.dim] || panePicked[g.dim]?.length) && (
-                          <button type="button" className="btn btn-sm h-6 px-1 text-[11px]" title="전역 기간으로(범위·선택 날짜 해제)"
+                          <button type="button" className="btn btn-sm h-6 px-1 text-micro" title="전역 기간으로(범위·선택 날짜 해제)"
                             onClick={() => { setPaneRange((prev) => { const n = { ...prev }; delete n[g.dim]; return n; }); setPanePicked((prev) => { const n = { ...prev }; delete n[g.dim]; return n; }); }}>↺</button>
                         )}
                         {/* [B-3 #5] cherry-pick: 원하는 날짜만 여러 개 — 선택 시 범위(from~to)보다 우선 */}
-                        <input type="date" className="input h-7 text-[11px] px-1 w-[122px]" title="날짜 추가(cherry-pick) — 고르면 그 날짜들만 표시"
+                        <input type="date" className="input h-7 text-micro px-1 w-[122px]" title="날짜 추가(cherry-pick) — 고르면 그 날짜들만 표시"
                           value=""
                           onChange={(e) => { const d = e.target.value; if (!d) return; setPaneRange((prev) => { const n = { ...prev }; delete n[g.dim]; return n; }); /* [배타] */ setPanePicked((prev) => { const cur = prev[g.dim] ?? []; if (cur.includes(d) || cur.length >= 14) return prev; return { ...prev, [g.dim]: [...cur, d].sort() }; }); }} />
                         {(panePicked[g.dim] ?? []).map((d) => (
@@ -1841,7 +1841,7 @@ export function ScheduleCalendar() {
                             {d.slice(5)} ✕
                           </span>
                         ))}
-                        <span className="w-px h-4" style={{ background: "var(--color-line)" }} />
+                        <span className="w-px h-4 bg-line" />
                         {/* [B-2 #2] 표별 종류(kind) 필터 — 이 표에만 적용(전역 필터바와 별개·빈 선택=전체) */}
                         {KIND_FILTERS.map((k) => (
                           <button key={k} type="button" className={`btn btn-sm h-6 px-1.5 text-[10px] ${paneKinds[g.dim]?.has(k) ? "badge-accent" : ""}`}
@@ -1868,7 +1868,7 @@ export function ScheduleCalendar() {
             )}
           </div>
           {isGrid && selected?.type === "instructor" && (
-            <p className="text-[12px] text-fg-subtle">
+            <p className="text-caption text-fg-subtle">
               개인 스케줄: {selected.name} · {inRange.length}개 수업 · 시수 {hrs.hours}h
             </p>
           )}
@@ -2059,7 +2059,7 @@ function BlockEditModal({
   const periodOk = !from || !to || from <= to;
   const valid = start < end && periodOk;
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-4" style={{ background: "rgba(0,0,0,.35)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/35" onClick={onClose}>
       <div className="card card-pad w-[380px] max-w-[95vw] max-h-[90vh] overflow-y-auto space-y-3" onClick={(e) => e.stopPropagation()}>
         <div className="font-semibold">{kind === "unavailable" ? "불가시간" : "가용시간"} 수정</div>
         <Field label="종류">
@@ -2081,10 +2081,10 @@ function BlockEditModal({
           <Field label="기간 시작 (선택)"><input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
           <Field label="기간 종료 (선택)"><input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
         </div>
-        <p className="text-[12px] text-fg-muted">매주 {WD[weekday]}요일 반복. 기간을 비우면 무기한, 지정하면 그 기간에만 적용.</p>
-        {!periodOk && <p className="text-[12px]" style={{ color: "var(--color-danger)" }}>기간 시작이 종료보다 늦을 수 없습니다.</p>}
+        <p className="text-caption text-fg-muted">매주 {WD[weekday]}요일 반복. 기간을 비우면 무기한, 지정하면 그 기간에만 적용.</p>
+        {!periodOk && <p className="text-caption text-danger">기간 시작이 종료보다 늦을 수 없습니다.</p>}
         <div className="flex justify-between gap-2 pt-1">
-          <button className="btn btn-sm" style={{ color: "var(--color-danger)" }} onClick={onDelete}>삭제</button>
+          <button className="btn btn-sm text-danger" onClick={onDelete}>삭제</button>
           <div className="flex gap-2">
             <button className="btn" onClick={onClose}>취소</button>
             <button className="btn btn-primary" disabled={!valid}
@@ -2135,11 +2135,11 @@ function MonthGrid({
 
   return (
     <div className="card overflow-hidden">
-      <div className="grid grid-cols-7 border-b" style={{ borderColor: "var(--color-line)" }}>
+      <div className="grid grid-cols-7 border-b">
         {WD.map((w, i) => (
           <div
             key={w}
-            className={`px-3 py-2 text-[12px] font-semibold ${i === 0 ? "text-danger" : i === 6 ? "text-accent" : "text-fg-muted"}`}
+            className={`px-3 py-2 text-caption font-semibold ${i === 0 ? "text-danger" : i === 6 ? "text-accent" : "text-fg-muted"}`}
           >
             {w}
           </div>
@@ -2156,7 +2156,7 @@ function MonthGrid({
           >
             {date && (
               <button
-                className={`text-[12px] mb-1 px-1 rounded hover:bg-canvas-subtle ${date === todayISO() ? "font-bold text-accent" : "text-fg-subtle"}`}
+                className={`text-caption mb-1 px-1 rounded hover:bg-canvas-subtle ${date === todayISO() ? "font-bold text-accent" : "text-fg-subtle"}`}
                 onClick={() => onPickDay(date)}
                 title="일간 보기"
               >
@@ -2170,7 +2170,7 @@ function MonthGrid({
                   data-evt
                   onClick={() => onPick(r)}
                   onDoubleClick={(e) => { e.stopPropagation(); onPick(r); }}
-                  className="block w-full text-left rounded px-1.5 py-0.5 text-[11px] text-white truncate"
+                  className="block w-full text-left rounded px-1.5 py-0.5 text-micro text-white truncate"
                   style={{ background: colorOf(r) }}
                   title={`${r.startTime ?? ""}–${r.endTime ?? ""} ${r.courseName} · ${r.instructorName}`}
                 >
@@ -2181,7 +2181,7 @@ function MonthGrid({
                 </button>
               ))}
               {date && (byDay.get(date)?.length ?? 0) > 4 && (
-                <button className="text-[11px] text-fg-muted hover:underline px-1" onClick={() => onPickDay(date)}>
+                <button className="text-micro text-fg-muted hover:underline px-1" onClick={() => onPickDay(date)}>
                   +{(byDay.get(date)?.length ?? 0) - 4} 더보기
                 </button>
               )}
@@ -2217,13 +2217,13 @@ function DetailModal({
   const isSeries = row.seriesId != null;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-4" style={{ background: "rgba(0,0,0,.35)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/35" onClick={onClose}>
       <div className="card card-pad w-[440px] max-w-[95vw] max-h-[90vh] overflow-y-auto space-y-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start gap-2">
           <span className="inline-block w-3 h-3 rounded-sm mt-1.5 shrink-0" style={{ background: colorOf(row) }} />
           <div className="flex-1">
             <div className="font-semibold">{row.courseName}</div>
-            <div className="text-fg-subtle text-[12px]">
+            <div className="text-fg-subtle text-caption">
               {row.subjectName} · {row.instructorName}
               {row.studentNames?.length ? ` · ${row.studentNames.join(", ")}` : ""}
             </div>
@@ -2233,7 +2233,7 @@ function DetailModal({
 
         {mode === "detail" ? (
           <>
-            <dl className="grid grid-cols-[64px_1fr] gap-y-1.5 text-[13px]">
+            <dl className="grid grid-cols-[64px_1fr] gap-y-1.5 text-body">
               <Dt>날짜</Dt>
               <dd>
                 {row.sessionDate} ({WD[weekdayOf(row.sessionDate)]})
@@ -2274,7 +2274,7 @@ function DetailModal({
         ) : (
           <>
             {ownerTz && ownerTz.tz !== KST_TZ && (
-              <p className="text-[12px] px-1" style={{ color: "var(--color-accent)" }}>
+              <p className="text-caption px-1 text-accent">
                 🌐 {ownerTz.name} 현지 시각으로 입력하세요 — 저장 시 한국 시간(KST)으로 변환됩니다.
               </p>
             )}
@@ -2304,10 +2304,10 @@ function RecurrencePrompt({
   onCancel: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center" style={{ background: "rgba(0,0,0,.35)" }} onClick={onCancel}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/35" onClick={onCancel}>
       <div className="card card-pad w-[360px] space-y-3" onClick={(e) => e.stopPropagation()}>
         <div className="font-semibold">반복 일정 수정</div>
-        <p className="text-[13px] text-fg-muted">{label} — 어디까지 적용할까요?</p>
+        <p className="text-body text-fg-muted">{label} — 어디까지 적용할까요?</p>
         <div className="grid gap-2">
           <button className="btn" onClick={() => onPick("this")}>
             이 일정만
@@ -2348,16 +2348,16 @@ function SearchableCheckList({ items, selected, onToggle, placeholder }: {
   const n = q.trim().toLowerCase();
   const filtered = n ? items.filter((it) => it.name.toLowerCase().includes(n)) : items;
   return (
-    <div className="border rounded-md overflow-hidden" style={{ borderColor: "var(--color-line)" }}>
-      <input className="input h-8 w-full text-[12px] rounded-none border-0 border-b" style={{ borderColor: "var(--color-line)" }}
+    <div className="border rounded-md overflow-hidden">
+      <input className="input h-8 w-full text-caption rounded-none border-0 border-b"
         placeholder={placeholder ?? "검색"} value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="max-h-[168px] overflow-y-auto p-1 space-y-0.5">
         {filtered.length === 0 ? (
-          <p className="text-[12px] text-fg-subtle text-center py-3">검색 결과 없음</p>
+          <p className="text-caption text-fg-subtle text-center py-3">검색 결과 없음</p>
         ) : filtered.map((it) => {
           const on = selected.has(it.id);
           return (
-            <label key={it.id} className={`flex items-center gap-2 px-2 h-7 rounded cursor-pointer text-[12px] ${on ? "badge-accent" : "hover:bg-canvas-subtle"}`}>
+            <label key={it.id} className={`flex items-center gap-2 px-2 h-7 rounded cursor-pointer text-caption ${on ? "badge-accent" : "hover:bg-canvas-subtle"}`}>
               <input type="checkbox" checked={on} onChange={() => onToggle(it.id)} />
               <span className="flex-1 truncate">{it.name}</span>
             </label>
@@ -2380,7 +2380,7 @@ function TimeRangeField({ start, end, onStart, onEnd, endHint }: {
         <Field label={`종료${endHint ? ` (${endHint})` : ""}`}><TimeSelect value={end} onChange={onEnd} /></Field>
       </div>
       <div className="flex flex-wrap gap-1">
-        <span className="text-[11px] text-fg-subtle self-center mr-0.5">빠른 선택</span>
+        <span className="text-micro text-fg-subtle self-center mr-0.5">빠른 선택</span>
         {DUR_PRESETS.map((m) => (
           <button key={m} type="button" onClick={() => onEnd(fromMin(toMin(start) + m))}
             className={`btn btn-sm ${dur === m ? "badge-accent" : ""}`}>{durLabel(m)}</button>
@@ -2399,7 +2399,7 @@ function RepeatField({ repeat, setRepeat, customWds, toggleWd, untilDate, setUnt
   return (
     <>
       <Field label="반복">
-        <div className="flex rounded-md overflow-hidden border" style={{ borderColor: "var(--color-line)" }}>
+        <div className="flex rounded-md overflow-hidden border">
           {([["none", noneLabel], ["weekly", "매주"], ["custom", "커스텀"]] as const).map(([v, lbl]) => (
             <button key={v} type="button" onClick={() => setRepeat(v)}
               className={`btn btn-sm flex-1 rounded-none border-0 ${repeat === v ? "badge-accent" : ""}`}>{lbl}</button>
@@ -2411,8 +2411,8 @@ function RepeatField({ repeat, setRepeat, customWds, toggleWd, untilDate, setUnt
           <div className="flex gap-1">
             {WD.map((w, d) => (
               <button key={d} type="button" onClick={() => toggleWd(d)}
-                className={`w-8 h-8 rounded text-[12px] border ${customWds.includes(d) ? "badge-accent" : ""}`}
-                style={{ borderColor: "var(--color-line)" }}>{w}</button>
+                className={`w-8 h-8 rounded text-caption border ${customWds.includes(d) ? "badge-accent" : ""}`}
+               >{w}</button>
             ))}
           </div>
         </Field>
@@ -2596,33 +2596,33 @@ function CreateModal({
 
   return (
     // TBO-09 #4: 모달이 화면보다 커져 "추가" 버튼이 가려지는 문제 — 최대 크기 명시 + 본문만 스크롤 + 푸터 고정.
-    <div className="fixed inset-0 z-50 grid place-items-center p-4" style={{ background: "rgba(0,0,0,.35)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/35" onClick={onClose}>
       <div
         className="card w-[460px] max-w-[95vw] flex flex-col overflow-hidden"
         style={{ maxHeight: "min(85vh, 720px)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="card-pad overflow-y-auto space-y-3 flex-1 min-h-0">
-        <div className="flex rounded-md overflow-hidden border" style={{ borderColor: "var(--color-line)" }}>
+        <div className="flex rounded-md overflow-hidden border">
           {([["session", "수업"], ["available", "가용"], ["unavailable", "불가"]] as const).map(([v, lbl]) => (
             <button key={v} className={`btn btn-sm flex-1 rounded-none border-0 ${type === v ? "badge-accent" : ""}`} onClick={() => setType(v)}>{lbl}</button>
           ))}
         </div>
         {requestMode && type === "session" && (
           /* [UX H1] 강사에게 실제 동작(승인 요청)을 사전 고지 — 버튼 라벨과 일치 */
-          <div className="rounded-md px-2.5 py-1.5 text-[12px]" style={{ background: "color-mix(in srgb, var(--color-accent) 10%, transparent)", color: "var(--color-accent)" }}>
+          <div className="rounded-md px-2.5 py-1.5 text-caption" style={{ background: "color-mix(in srgb, var(--color-accent) 10%, transparent)", color: "var(--color-accent)" }}>
             ⏳ 수업은 <b>매니저 승인 후</b> 캘린더에 확정됩니다 — 제출 시 승인 요청이 전송돼요. (가용·불가 시간은 바로 저장)
           </div>
         )}
         {tzActive && (
-          <p className="text-[12px] px-0.5" style={{ color: "var(--color-accent)" }}>
+          <p className="text-caption px-0.5 text-accent">
             🌐 {ownerTz!.name} 현지 시각으로 입력하세요 — 저장은 한국 시간(KST)으로 변환됩니다.
           </p>
         )}
 
         {type === "session" ? (
           <>
-            {lockedInstructorName && <div className="text-[12px] text-fg-muted">{lockedInstructorName} (내 수업)</div>}
+            {lockedInstructorName && <div className="text-caption text-fg-muted">{lockedInstructorName} (내 수업)</div>}
             <Field label="코스">
               <select className="input" value={courseId} onChange={(e) => pickCourse(Number(e.target.value))}>
                 {myCourses.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.subjectName}</option>)}
@@ -2650,7 +2650,7 @@ function CreateModal({
             {/* [이슈1] 학생 검색 리스트 — 인원이 많아도 검색으로 좁혀 선택. 전체/해제 빠른 버튼. */}
             <Field label={`학생 (${effPicked.size}/${courseRoster.length}명 — 기본 전원)`}>
               {courseRoster.length === 0 ? (
-                <p className="text-[12px] text-fg-subtle">이 코스의 활성 수강생이 없습니다 — 수강 등록 후 선택 가능</p>
+                <p className="text-caption text-fg-subtle">이 코스의 활성 수강생이 없습니다 — 수강 등록 후 선택 가능</p>
               ) : (
                 <div className="space-y-1">
                   <div className="flex gap-1">
@@ -2698,7 +2698,7 @@ function CreateModal({
           </>
         ) : (
           <>
-            {lockedInstructorName && <div className="text-[12px] text-fg-muted">{lockedInstructorName} (본인)</div>}
+            {lockedInstructorName && <div className="text-caption text-fg-muted">{lockedInstructorName} (본인)</div>}
             <div className="grid grid-cols-2 gap-3">
               <Field label="대상">
                 <select className="input" value={bType} disabled={lockOwner}
@@ -2719,12 +2719,12 @@ function CreateModal({
             <TimeRangeField start={start} end={end} onStart={changeStart} onEnd={setEnd} />
             <RepeatField repeat={repeat} setRepeat={setRepeat} customWds={customWds} toggleWd={toggleWd}
               untilDate={untilDate} setUntilDate={setUntilDate} date={date} occurrencesCount={occurrences().length} noneLabel="일회성" />
-            <p className="text-[12px] text-fg-muted">{repeat === "none" ? "일회성 — 이 날짜에 한 번만 적용." : "매주 반복 — 이 날짜부터 종료일까지."}</p>
+            <p className="text-caption text-fg-muted">{repeat === "none" ? "일회성 — 이 날짜에 한 번만 적용." : "매주 반복 — 이 날짜부터 종료일까지."}</p>
           </>
         )}
         </div>
         {/* 고정 푸터 — 스크롤과 무관하게 추가/취소 버튼 항상 노출 */}
-        <div className="px-4 py-3 border-t flex justify-end gap-2 shrink-0" style={{ borderColor: "var(--color-line)" }}>
+        <div className="px-4 py-3 border-t flex justify-end gap-2 shrink-0">
           <button className="btn" onClick={onClose}>취소</button>
           {type === "session" ? (
             <button className="btn btn-primary" disabled={!sessionValid || (repeat !== "none" && occurrences().length === 0)} onClick={submitSession}>

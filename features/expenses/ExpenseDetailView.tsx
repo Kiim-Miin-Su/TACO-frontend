@@ -20,7 +20,7 @@ export function ExpenseDetailView({ expenseId }: { expenseId: number }) {
   if (!expense) {
     return (
       <div className="p-6 max-w-[720px] mx-auto">
-        <Link href="/expenses" className="text-[12px] text-fg-muted hover:underline">← 지출 목록</Link>
+        <Link href="/expenses" className="text-caption text-fg-muted hover:underline">← 지출 목록</Link>
         <div className="mt-3 text-fg-muted">지출을 찾을 수 없습니다. (id: {expenseId})</div>
       </div>
     );
@@ -37,9 +37,9 @@ export function ExpenseDetailView({ expenseId }: { expenseId: number }) {
   return (
     <div className="p-6 max-w-[720px] mx-auto space-y-5">
       <div>
-        <Link href="/expenses" className="text-[12px] text-fg-muted hover:underline">← 지출 목록</Link>
+        <Link href="/expenses" className="text-caption text-fg-muted hover:underline">← 지출 목록</Link>
         <div className="flex items-center gap-2 mt-1">
-          <h1 className="text-[20px] font-semibold">{expense.title}</h1>
+          <h1 className="text-title font-bold">{expense.title}</h1>
           <Badge tone={categoryTone[expense.category]}>{categoryLabel[expense.category]}</Badge>
           <Badge tone={approvalTone[expense.status]}>{approvalLabel[expense.status]}</Badge>
         </div>
@@ -53,23 +53,23 @@ export function ExpenseDetailView({ expenseId }: { expenseId: number }) {
         </div>
       )}
       {expense.status === 'rejected' && (
-        <button className="text-[13px] text-danger hover:underline" onClick={() => setModal('viewReason')}>반려 사유 보기</button>
+        <button className="text-body text-danger hover:underline" onClick={() => setModal('viewReason')}>반려 사유 보기</button>
       )}
 
       <SectionCard title="지출 상세">
-        <div className="divide-y" style={{ borderColor: 'var(--color-line-muted)' }}>
+        <div className="divide-y border-line-muted">
           {rows.map(([k, v]) => (
-            <div key={k} className="flex px-4 py-3 text-[13px]">
+            <div key={k} className="flex px-4 py-3 text-body">
               <span className="w-32 text-fg-muted">{k}</span>
               <span className={k === '금액' ? 'mono font-medium' : ''}>{v}</span>
             </div>
           ))}
         </div>
         {expense.receiptUrl && (
-          <div className="p-4 border-t" style={{ borderColor: 'var(--color-line)' }}>
-            <div className="text-[12px] text-fg-muted mb-2">영수증</div>
+          <div className="p-4 border-t">
+            <div className="text-caption text-fg-muted mb-2">영수증</div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={expense.receiptUrl} alt="영수증" className="max-h-72 rounded border" style={{ borderColor: 'var(--color-line)' }} />
+            <img src={expense.receiptUrl} alt="영수증" className="max-h-72 rounded border" />
           </div>
         )}
       </SectionCard>

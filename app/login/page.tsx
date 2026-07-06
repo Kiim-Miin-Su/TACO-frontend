@@ -50,17 +50,17 @@ function LoginForm() {
         <AuthField label="비밀번호">
           <input className="input w-full" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
         </AuthField>
-        {err && <p className="text-[12px] text-danger">{err}</p>}
+        {err && <p className="text-caption text-danger">{err}</p>}
         <button className="btn btn-primary w-full h-10" disabled={busy}>{busy ? "로그인 중…" : "로그인"}</button>
       </form>
 
-      <div className="flex items-center justify-between text-[12px] text-fg-muted pt-1">
+      <div className="flex items-center justify-between text-caption text-fg-muted pt-1">
         <span>계정이 없으신가요?</span>
         <Link href="/signup" className="font-medium text-accent hover:underline">가입 신청 →</Link>
       </div>
 
-      <div className="border-t pt-3" style={{ borderColor: "var(--color-line-muted)" }}>
-        <div className="text-[11px] text-fg-subtle mb-1.5">데모 계정 (비밀번호: demo1234)</div>
+      <div className="border-t pt-3 border-line-muted">
+        <div className="text-micro text-fg-subtle mb-1.5">데모 계정 (비밀번호: demo1234)</div>
         <div className="flex flex-wrap gap-1.5">
           {DEMO.map((d) => (
             <button key={d.webId} type="button" onClick={() => { setWebId(d.webId); setPassword("demo1234"); }}

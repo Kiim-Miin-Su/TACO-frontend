@@ -158,7 +158,7 @@ export function SessionForm() {
             </Field>
           </div>
           <div>
-            <span className="block text-[12px] font-medium text-fg-muted mb-1">반복 요일 *</span>
+            <span className="block text-caption font-medium text-fg-muted mb-1">반복 요일 *</span>
             <div className="flex gap-1.5">
               {WEEK.map((w, i) => (
                 <button
@@ -187,7 +187,7 @@ export function SessionForm() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-[12px] font-medium text-fg-muted mb-1">{label}</span>
+      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
       {children}
     </label>
   );

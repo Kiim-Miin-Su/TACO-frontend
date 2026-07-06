@@ -20,11 +20,11 @@ export function ExpensesView() {
     <div className="p-6 max-w-[1100px] mx-auto space-y-6">
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-[20px] font-semibold">지출 · 비품</h1>
-          <p className="text-[13px] text-fg-muted mt-0.5">총 지출 {won(total)} · {expenses.length}건</p>
+          <h1 className="text-title font-bold">지출 · 비품</h1>
+          <p className="text-body text-fg-muted mt-0.5">총 지출 {won(total)} · {expenses.length}건</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-md overflow-hidden border" style={{ borderColor: 'var(--color-line)' }}>
+          <div className="flex rounded-md overflow-hidden border">
             <button className={`btn btn-sm rounded-none border-0 ${view === 'list' ? 'badge-accent' : ''}`} onClick={() => setView('list')}>리스트</button>
             <button className={`btn btn-sm rounded-none border-0 ${view === 'calendar' ? 'badge-accent' : ''}`} onClick={() => setView('calendar')}>캘린더</button>
           </div>
@@ -56,7 +56,7 @@ export function ExpensesView() {
                   <td>
                     <Badge tone={approvalTone[e.status]}>{approvalLabel[e.status]}</Badge>
                     {e.status === 'rejected' && (
-                      <button className="block text-[11px] text-danger mt-0.5 hover:underline" onClick={() => setViewReason(e.id)}>반려 사유 보기</button>
+                      <button className="block text-micro text-danger mt-0.5 hover:underline" onClick={() => setViewReason(e.id)}>반려 사유 보기</button>
                     )}
                   </td>
                   <td className="text-right mono text-fg-muted">{e.spentAt}</td>
@@ -75,8 +75,7 @@ export function ExpensesView() {
               .map((e) => (
                 <div
                   key={e.id}
-                  className="rounded px-1.5 py-1 text-[11px] font-medium truncate"
-                  style={{ backgroundColor: 'var(--color-attention-subtle)', color: 'var(--color-attention)' }}
+                  className="rounded px-1.5 py-1 text-micro font-medium truncate bg-attention-subtle text-attention"
                   title={`${e.title} · ${won(e.amount)}`}
                 >
                   {categoryLabel[e.category]} {won(e.amount)}

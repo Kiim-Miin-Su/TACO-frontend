@@ -23,11 +23,11 @@ export function PaymentsView() {
     <div className="p-6 max-w-[1100px] mx-auto space-y-6">
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-[20px] font-semibold">결제 · 수납</h1>
-          <p className="text-[13px] text-fg-muted mt-0.5">완납 {won(totalPaid)} · 미수 {won(totalDue)}</p>
+          <h1 className="text-title font-bold">결제 · 수납</h1>
+          <p className="text-body text-fg-muted mt-0.5">완납 {won(totalPaid)} · 미수 {won(totalDue)}</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-md overflow-hidden border" style={{ borderColor: 'var(--color-line)' }}>
+          <div className="flex rounded-md overflow-hidden border">
             <button className={`btn btn-sm rounded-none border-0 ${view === 'list' ? 'badge-accent' : ''}`} onClick={() => setView('list')}>리스트</button>
             <button className={`btn btn-sm rounded-none border-0 ${view === 'calendar' ? 'badge-accent' : ''}`} onClick={() => setView('calendar')}>캘린더</button>
           </div>
@@ -74,7 +74,7 @@ export function PaymentsView() {
                 <Link
                   key={p.id}
                   href={`/payments/${p.id}`}
-                  className="block rounded px-1.5 py-1 text-[11px] font-medium truncate"
+                  className="block rounded px-1.5 py-1 text-micro font-medium truncate"
                   style={{
                     backgroundColor: p.status === 'paid' ? 'var(--color-success-subtle)' : 'var(--color-attention-subtle)',
                     color: p.status === 'paid' ? 'var(--color-success)' : 'var(--color-attention)',

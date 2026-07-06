@@ -62,21 +62,21 @@ export function FeedbackFormView({ sessionId, studentId }: { sessionId: number; 
   return (
     <div className="p-6 max-w-[760px] mx-auto space-y-5">
       <div>
-        <Link href={`/sessions/${sessionId}`} className="text-[12px] text-fg-muted hover:underline">
+        <Link href={`/sessions/${sessionId}`} className="text-caption text-fg-muted hover:underline">
           ← 수업 상세
         </Link>
         <div className="flex items-center gap-2 mt-1">
-          <h1 className="text-[20px] font-semibold">{student.name} 피드백</h1>
+          <h1 className="text-title font-bold">{student.name} 피드백</h1>
           {report && <Badge tone={reportTone[report.status]}>{reportLabel[report.status]}</Badge>}
         </div>
-        <p className="text-[13px] text-fg-muted mt-0.5">
+        <p className="text-body text-fg-muted mt-0.5">
           {course?.name} · {session.sessionDate} · {session.topic ?? "주제 미정"}
         </p>
       </div>
 
       {/* 발송 대상(학부모) — join 확인 */}
       <SectionCard title="발송 대상 (학부모)">
-        <div className="p-4 text-[13px]">
+        <div className="p-4 text-body">
           {parent ? (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <span>
@@ -97,7 +97,7 @@ export function FeedbackFormView({ sessionId, studentId }: { sessionId: number; 
       <SectionCard title="피드백 작성">
         <div className="p-4 space-y-3">
           <div>
-            <span className="block text-[12px] font-medium text-fg-muted mb-1">학부모 피드백</span>
+            <span className="block text-caption font-medium text-fg-muted mb-1">학부모 피드백</span>
             <textarea
               className="input h-28 py-2 leading-relaxed"
               placeholder="오늘 수업 내용·태도·성취"
@@ -106,7 +106,7 @@ export function FeedbackFormView({ sessionId, studentId }: { sessionId: number; 
             />
           </div>
           <div>
-            <span className="block text-[12px] font-medium text-fg-muted mb-1">숙제</span>
+            <span className="block text-caption font-medium text-fg-muted mb-1">숙제</span>
             <textarea
               className="input h-20 py-2 leading-relaxed"
               placeholder="다음 수업 전까지"

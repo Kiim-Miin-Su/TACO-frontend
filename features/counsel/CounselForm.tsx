@@ -123,7 +123,7 @@ export function CounselForm() {
           <div className="flex items-center gap-2">
             <input type="date" className="input flex-1" value={f.nextContactAt} disabled={f.dateUndecided}
               onChange={(e) => set({ nextContactAt: e.target.value })} />
-            <label className="flex items-center gap-1 text-[12px] text-fg-muted whitespace-nowrap">
+            <label className="flex items-center gap-1 text-caption text-fg-muted whitespace-nowrap">
               <input type="checkbox" checked={f.dateUndecided} onChange={(e) => set({ dateUndecided: e.target.checked, nextContactAt: e.target.checked ? '' : f.nextContactAt })} />
               미정
             </label>
@@ -145,7 +145,7 @@ export function CounselForm() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-[12px] font-medium text-fg-muted mb-1">{label}</span>
+      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
       {children}
     </label>
   );

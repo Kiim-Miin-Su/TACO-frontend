@@ -15,8 +15,8 @@ export function CounselView() {
   return (
     <div className="p-6 max-w-[1100px] mx-auto space-y-6">
       <div>
-        <h1 className="text-[20px] font-semibold">상담</h1>
-        <p className="text-[13px] text-fg-muted mt-0.5">상담 신청 · 예약/내역 캘린더 · 상담카드 관리</p>
+        <h1 className="text-title font-bold">상담</h1>
+        <p className="text-body text-fg-muted mt-0.5">상담 신청 · 예약/내역 캘린더 · 상담카드 관리</p>
       </div>
 
       <CounselCalendar />
@@ -44,7 +44,7 @@ export function CounselView() {
                 <tr key={f.id}>
                   <td>
                     <div className="font-medium">{f.applicantName}</div>
-                    <div className="text-[12px] text-fg-subtle">{f.applicantPhone ?? ''}</div>
+                    <div className="text-caption text-fg-subtle">{f.applicantPhone ?? ''}</div>
                   </td>
                   <td className="text-fg-muted">{sourceLabel[f.source]}</td>
                   <td><Badge tone={statusTone[f.status]}>{statusLabel[f.status]}</Badge></td>

@@ -12,14 +12,14 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
           <div className="w-9 h-9 rounded-lg grid place-items-center font-bold bg-white/15 backdrop-blur">T</div>
           <div className="leading-tight">
             <div className="font-semibold">TACO ERP</div>
-            <div className="text-[12px] opacity-70">TnAcademy 백오피스</div>
+            <div className="text-caption opacity-70">TnAcademy 백오피스</div>
           </div>
         </div>
         <div className="space-y-3">
-          <h2 className="text-[28px] font-semibold leading-tight">학원 운영을<br />한 화면에서.</h2>
-          <p className="text-[13px] opacity-80 max-w-[360px]">스케줄·시수·정산·권한을 사내 담당자 전용으로 통합 관리합니다. 학생·학부모용 서비스는 별도 플랫폼에서 제공됩니다.</p>
+          <h2 className="text-stat font-semibold leading-tight">학원 운영을<br />한 화면에서.</h2>
+          <p className="text-body opacity-80 max-w-[360px]">스케줄·시수·정산·권한을 사내 담당자 전용으로 통합 관리합니다. 학생·학부모용 서비스는 별도 플랫폼에서 제공됩니다.</p>
         </div>
-        <div className="text-[11px] opacity-60">© 2026 TnAcademy · 내부 전용</div>
+        <div className="text-micro opacity-60">© 2026 TnAcademy · 내부 전용</div>
         <div className="absolute -right-16 -top-16 w-72 h-72 rounded-full bg-white/5" />
         <div className="absolute right-10 bottom-24 w-40 h-40 rounded-full bg-white/5" />
       </div>
@@ -32,8 +32,8 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
             <div className="font-semibold">TACO ERP</div>
           </div>
           <div>
-            <h1 className="text-[20px] font-semibold">{title}</h1>
-            {subtitle && <p className="text-[13px] text-fg-subtle mt-0.5">{subtitle}</p>}
+            <h1 className="text-title font-bold">{title}</h1>
+            {subtitle && <p className="text-body text-fg-subtle mt-0.5">{subtitle}</p>}
           </div>
           {children}
         </div>
@@ -45,7 +45,7 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
 export function AuthField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[12px] text-fg-muted">{label}</span>
+      <span className="text-caption text-fg-muted">{label}</span>
       <div className="mt-1">{children}</div>
     </label>
   );

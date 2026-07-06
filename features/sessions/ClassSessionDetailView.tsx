@@ -55,19 +55,19 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   return (
     <div className="p-6 max-w-[920px] mx-auto space-y-6">
       <div>
-        <a href="/sessions" className="text-[12px] text-fg-muted hover:underline">
+        <a href="/sessions" className="text-caption text-fg-muted hover:underline">
           ← 수업 목록
         </a>
-        <h1 className="text-[20px] font-semibold mt-1">
+        <h1 className="text-title font-bold mt-1">
           {course?.name ?? "수업"} · {shortDate(session.sessionDate)}
         </h1>
-        <p className="text-[13px] text-fg-muted mt-0.5">
+        <p className="text-body text-fg-muted mt-0.5">
           강사 {instructor?.name ?? "—"} · {session.durationMinutes}분 · {session.topic ?? "주제 미정"}
         </p>
       </div>
 
       <SectionCard title={`학생 출석 · 피드백 (${roster.length}명)`}>
-        <div className="divide-y" style={{ borderColor: "var(--color-line-muted)" }}>
+        <div className="divide-y border-line-muted">
           {roster.map((student) => {
             const att = attendance.find((a) => a.sessionId === sessionId && a.studentId === student.id);
             const report = sessionReports.find((r) => r.sessionId === sessionId && r.studentId === student.id);
@@ -76,7 +76,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <span className="font-medium">{student.name}</span>
-                    <span className="text-[12px] text-fg-subtle ml-2">{student.englishName}</span>
+                    <span className="text-caption text-fg-subtle ml-2">{student.englishName}</span>
                   </div>
                   {report && <Badge tone={reportTone[report.status]}>{reportLabel[report.status]}</Badge>}
                 </div>
@@ -101,7 +101,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
 
                 {/* 피드백은 상세 폼 페이지에서 작성 (학부모 join + 추후 항목 확장) */}
                 <div className="flex items-center justify-between">
-                  <span className="text-[12px] text-fg-subtle truncate max-w-[60%]">
+                  <span className="text-caption text-fg-subtle truncate max-w-[60%]">
                     {report?.content ? report.content : "작성된 피드백 없음"}
                   </span>
                   <Link href={`/sessions/${sessionId}/feedback/${student.id}`} className="btn btn-sm btn-primary">
