@@ -38,7 +38,7 @@ export function CalendarSplitPane({
   return (
     <div className="flex-1 min-w-[320px]">
       {/* 표 헤더: 차원 선택 + 리소스 다중 체크(표별 독립 필터) + 제거 */}
-      <div className="flex items-center gap-1.5 mb-1 px-0.5">
+      <div className="flex items-center gap-1.5 mb-1 px-0.5 flex-wrap">{/* [2026-07-06] 컨트롤 많아짐 — 두 줄 허용(대표: 두 줄 돼도 무관) */}
         {fixedDim ? (
           <span className="text-[12px] font-semibold text-fg-muted px-1">{DIM_LABEL[pane.dim]}</span>
         ) : (

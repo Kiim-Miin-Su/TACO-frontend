@@ -163,6 +163,16 @@ export function ScheduleCalendar() {
   const [period, setPeriod] = useState<Period | null>(null);
   // [이슈3] 표(패널)별 날짜 범위 — 캘린더(from/to)로 표마다 다르게(예: 왼쪽 7/6~7/8, 오른쪽 7/6~7/10).
   //  미설정=전역 기간을 따름. from만 있고 to 없으면 from 하루.
+  // [fit-to-width 2026-07-06] 그리드 폭 = 컨테이너 폭(가로 스크롤 제거 — 대표 지적 2·3, Lantiv 대응).
+  const mainRef = useRef<HTMLDivElement>(null);
+  const [mainW, setMainW] = useState(1100);
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((es) => { const w = es[0]?.contentRect.width; if (w) setMainW(w); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   // [전역 cherry-pick 2026-07-06] 원하는 날짜만 골라 보기(불연속, 최대 14) — 설정 시 기간(period)보다 우선.
   //  그리드 축(dates)·조회(range=min~max)·리스트/시수(filtered 날짜 술어)가 같은 집합을 쓴다(모집단 단일).
   const [pickedDates, setPickedDates] = useState<string[]>([]);
@@ -1176,7 +1186,7 @@ export function ScheduleCalendar() {
   //  minCol(스플릿 44px) 미만으로 좁아질 상황이면 가로 스크롤 발동(minWidth).
   // tzc: 이 그리드의 국가(시차 뷰). 비KST면 ① 행을 그 나라 로컬로 변환(표시 전용) ② 시간축 0~24h
   //  ③ 편집·드래그·복제·밴드 잠금(저장은 KST 단일 진실원 — 무결성). 표(스플릿)마다 다르게 지정 가능.
-  const renderTimeGrid = (cols: Col[], tzc?: CountryInfo | null, paneKindSet?: Set<SessionKindFilter>) => {
+  const renderTimeGrid = (cols: Col[], tzc?: CountryInfo | null, paneKindSet?: Set<SessionKindFilter>, availW?: number) => {
     const tzActive = !!tzc && tzc.tz !== KST_TZ;
     // 학생 개별 시차(피드백 2026-07-03 #1): 그리드 tz(전역/표별 — 명시 선택)가 없을 때만
     //  학생 컬럼의 country 파생 tz가 동작. 축은 컬럼 하나라도 tz면 0~24h(다른 나라 새벽 대비).
@@ -1219,7 +1229,11 @@ export function ScheduleCalendar() {
     //  서브분할(같은 크기 요일 열을 늘리는 게 아님 — 컴팩트). 일수가 적으면 flex로 화면을 채움.
     const dayCount = isSplitGrid ? new Set(cols.map((c) => c.date)).size : cols.length;
     const perDay = isSplitGrid ? Math.max(1, Math.round(cols.length / Math.max(1, dayCount))) : 1;
-    const subW = isSplitGrid ? Math.floor(colMinBase / perDay) : colMinBase;
+    // [fit 2026-07-06] 하루 열 폭 = min(상한 colMinBase, 컨테이너 균등분할) — 표가 컨테이너보다 길어지지 않게.
+    //  하한 18px까지 축소(그 밑에서만 가로 스크롤). densityOf가 실폭 기반으로 동작(좁으면 색상 라벨 단계).
+    const netW = Math.max(120, (availW ?? mainW) - GUTTER_W - 8);
+    const dayW = Math.max(18 * perDay, Math.min(colMinBase, Math.floor(netW / Math.max(1, dayCount))));
+    const subW = isSplitGrid ? Math.max(18, Math.floor(dayW / perDay)) : dayW;
     // 텍스트 밀도 단계(서브열 폭 기준) — 단일 함수 densityOf(lib/domain/lantiv, vitest)로 통일(R2)
     const textMode = densityOf(subW, isSplitGrid);
     const minCol = subW;
@@ -1240,7 +1254,7 @@ export function ScheduleCalendar() {
                     <span className="badge text-[10px]" title="저장 시간은 항상 한국 시간(KST) — 시차 표시는 변환본입니다">보기 전용 · 편집은 한국 시간에서</span>
                   </div>
                 )}
-                <div className="flex" style={{ minWidth: GUTTER_W + (isSplitGrid ? dayCount * colMinBase : cols.length * colMinBase) }}>
+                <div className="flex" style={{ minWidth: GUTTER_W + (isSplitGrid ? dayCount : cols.length) * 18 /* [fit] 하한만 강제 — 스크롤은 극단에서만 */ }}>
                   {/* 시간 거터 */}
                   <div className="shrink-0 sticky left-0 z-10 bg-canvas" style={{ width: GUTTER_W }}>
                     <div style={{ height: HEADER_H }} />
@@ -1277,12 +1291,12 @@ export function ScheduleCalendar() {
                       return (
                         <div
                           key={c.key}
-                          className="flex-1 border-l"
+                          className="flex-1 border-l overflow-hidden" /* [fit 2026-07-06] 헤더 nowrap 콘텐츠가 scrollWidth를 부풀려 가로 스크롤 유발하던 것 클립 */
                           style={{
                             borderColor: c.resType && c.firstOfDate ? "var(--color-line)" : "var(--color-line-muted)",
                             borderLeftWidth: c.resType && c.firstOfDate ? 2 : undefined,
                             minWidth: minCol,
-                            flex: `1 0 ${minCol}px`, // 비율 유지 + 남는 폭은 균등 확장(화면 채움 — 피드백)
+                            flex: `1 1 ${minCol}px`, // [fit] 축소 허용(1 1) — 컨테이너 폭에 맞춤
                           }}
                         >
                           {/* 헤더: 스플릿=날짜+리소스명 · 주간=요일+날짜(오늘 강조) · 일간=강의실 */}
@@ -1673,7 +1687,7 @@ export function ScheduleCalendar() {
       <div className="flex gap-4 items-start">
         {/* 좌측 추천 패널 제거(피드백 2026-07-02 #5) — 스플릿뷰로 강사·학생 스케줄을 직접 비교·배치. */}
         {/* 본문 */}
-        <div className="flex-1 min-w-0 space-y-4">
+        <div ref={mainRef} className="flex-1 min-w-0 space-y-4">
           {/* ── 뷰 프리셋 탭(TBO-12 P1): 필터·기간·국가 조합 저장/적용 — DB 자산(직원 공용) ── */}
           <button
             type="button"
@@ -1735,9 +1749,9 @@ export function ScheduleCalendar() {
             groupOnly={groupOnly}
             onGroupOnly={setGroupOnly}
             period={period}
-            onPeriod={setPeriod}
+            onPeriod={(p) => { if (p) setPickedDates([]); /* [배타] 기간 설정 시 체리픽 해제 */ setPeriod(p); }}
             pickedDates={pickedDates}
-            onPickDate={(d) => setPickedDates((prev) => (prev.includes(d) || prev.length >= 14 ? prev : [...prev, d].sort()))}
+            onPickDate={(d) => { setPeriod(null); /* [배타 2026-07-06] 체리픽 전환 시 기간 초기화(대표 지적 4) */ setPickedDates((prev) => (prev.includes(d) || prev.length >= 14 ? prev : [...prev, d].sort())); }}
             onUnpickDate={(d) => setPickedDates((prev) => prev.filter((x) => x !== d))}
             onClearPicked={() => setPickedDates([])}
             anyFilter={!!anyFilter}
@@ -1817,7 +1831,7 @@ export function ScheduleCalendar() {
                         {/* [B-3 #5] cherry-pick: 원하는 날짜만 여러 개 — 선택 시 범위(from~to)보다 우선 */}
                         <input type="date" className="input h-7 text-[11px] px-1 w-[122px]" title="날짜 추가(cherry-pick) — 고르면 그 날짜들만 표시"
                           value=""
-                          onChange={(e) => { const d = e.target.value; if (!d) return; setPanePicked((prev) => { const cur = prev[g.dim] ?? []; if (cur.includes(d) || cur.length >= 14) return prev; return { ...prev, [g.dim]: [...cur, d].sort() }; }); }} />
+                          onChange={(e) => { const d = e.target.value; if (!d) return; setPaneRange((prev) => { const n = { ...prev }; delete n[g.dim]; return n; }); /* [배타] */ setPanePicked((prev) => { const cur = prev[g.dim] ?? []; if (cur.includes(d) || cur.length >= 14) return prev; return { ...prev, [g.dim]: [...cur, d].sort() }; }); }} />
                         {(panePicked[g.dim] ?? []).map((d) => (
                           <span key={d} className="badge text-[10px] mono cursor-pointer" title="클릭=이 날짜 제거"
                             onClick={() => setPanePicked((prev) => { const cur = (prev[g.dim] ?? []).filter((x) => x !== d); const n = { ...prev }; if (cur.length) n[g.dim] = cur; else delete n[g.dim]; return n; })}>
@@ -1842,7 +1856,7 @@ export function ScheduleCalendar() {
                       </div>
                     }
                   >
-                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim), paneKinds[g.dim])}
+                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim), paneKinds[g.dim], panes.length >= 2 ? Math.max(320, (mainW - 16) / panes.length) : mainW)}
                   </CalendarSplitPane>
                 ))}
               </div>
