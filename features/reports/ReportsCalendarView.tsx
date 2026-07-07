@@ -4,7 +4,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { Badge, SectionCard, type Tone } from '@/components/ui';
+import { Badge, SectionCard, PageHeader, type Tone } from '@/components/ui';
 import {
   useSchedule, useCourses, useInstructors, useEnrollments, useStudents, useReports, useAttendance,
 } from '@/lib/queries';
@@ -69,14 +69,12 @@ export function ReportsCalendarView() {
     : [];
 
   return (
-    <div className="p-6 max-w-[1100px] mx-auto space-y-6">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-title font-bold">수업 보고서</h1>
-          <p className="text-body text-fg-muted mt-0.5">캘린더·리스트에서 수업을 선택해 확인하거나, 한 페이지에서 바로 작성하세요.</p>
-        </div>
-        <Link href="/reports/write" className="btn btn-primary">리포트 작성하기</Link>
-      </div>
+    <div className="p-6 max-w-page mx-auto space-y-6">
+      <PageHeader
+        title="수업 보고서"
+        sub="캘린더·리스트에서 수업을 선택해 확인하거나, 한 페이지에서 바로 작성하세요."
+        actions={<Link href="/reports/write" className="btn btn-primary">리포트 작성하기</Link>}
+      />
 
       <SectionCard
         title={`${ym.y}년 ${ym.m + 1}월`}

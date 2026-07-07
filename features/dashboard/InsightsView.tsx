@@ -3,7 +3,7 @@
 //  - transactions(입·출금 원장)에서 입금 합/출금 합, payments에서 미수금 파생 — TanStack Query.
 //  - 매출 시각화(RevenueCharts) + 입·출금 원장 리스트. 비-CEO 접근 시 안내만. role만 zustand(클라 상태).
 import Link from 'next/link';
-import { StatCard, SectionCard, IconArrowDown, IconArrowUp, IconReceipt } from '@/components/ui';
+import { StatCard, SectionCard, PageHeader, IconArrowDown, IconArrowUp, IconReceipt } from '@/components/ui';
 import { won, shortDate } from '@/lib/format';
 import { useTacoStore } from '@/lib/store';
 import { useTransactions, usePayments } from '@/lib/queries';
@@ -17,10 +17,9 @@ export function InsightsView() {
 
   if (!isCEO(role)) {
     return (
-      <div className="p-6 max-w-[760px] mx-auto">
-        <h1 className="text-title font-bold">경영 지표</h1>
-        <p className="text-body text-fg-muted mt-1">경영 지표(수입·지출·매출 추이)는 대표(super_admin)만 열람할 수 있습니다. (현재: {roleLabel[role]})</p>
-        <div className="mt-4"><Link href="/" className="btn btn-primary">대시보드로</Link></div>
+      <div className="p-6 max-w-page-form mx-auto">
+        <PageHeader title="경영 지표" sub={`수입·지출·매출 추이는 대표(super_admin)만 열람할 수 있습니다. (현재: ${roleLabel[role]})`} />
+        <div><Link href="/" className="btn btn-primary">대시보드로</Link></div>
       </div>
     );
   }
@@ -30,14 +29,12 @@ export function InsightsView() {
   const unpaid = payments.filter((p) => p.status === 'pending').reduce((a, p) => a + p.amount, 0);
 
   return (
-    <div className="p-6 max-w-[1200px] mx-auto space-y-6">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-title font-bold">경영 지표</h1>
-          <p className="text-body text-fg-muted mt-0.5">수입·지출·매출 추이 (대표 전용)</p>
-        </div>
-        <Link href="/" className="btn btn-sm">← 대시보드</Link>
-      </div>
+    <div className="p-6 max-w-page mx-auto space-y-6">
+      <PageHeader
+        title="경영 지표"
+        sub="수입·지출·매출 추이 (대표 전용)"
+        actions={<Link href="/" className="btn btn-sm">← 대시보드</Link>}
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard label="이번 달 입금" value={won(inbound)} tone="success" icon={<IconArrowDown />} sub="신규·재수강" />
