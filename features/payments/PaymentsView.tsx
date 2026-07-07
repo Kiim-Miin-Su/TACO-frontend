@@ -1,7 +1,7 @@
 'use client';
 // 데이터 소스: TanStack Query 훅(usePayments/useStudents)에서 조회.
 import Link from 'next/link';
-import { Badge, SectionCard, MonthCalendar } from '@/components/ui';
+import { Badge, SectionCard, MonthCalendar, PageHeader, EmptyState, TableWrap } from '@/components/ui';
 import { usePayments, useStudents } from '@/lib/queries';
 import { usePersistedState } from '@/lib/usePersistedState';
 import { won } from '@/lib/format';
@@ -21,23 +21,27 @@ export function PaymentsView() {
   const totalDue = payments.filter((p) => p.status === 'pending').reduce((a, p) => a + p.amount, 0);
 
   return (
-    <div className="p-6 max-w-[1100px] mx-auto space-y-6">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-title font-bold">결제 · 수납</h1>
-          <p className="text-body text-fg-muted mt-0.5">완납 {won(totalPaid)} · 미수 {won(totalDue)}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-md overflow-hidden border">
-            <button className={`btn btn-sm rounded-none border-0 ${view === 'list' ? 'badge-accent' : ''}`} onClick={() => setView('list')}>리스트</button>
-            <button className={`btn btn-sm rounded-none border-0 ${view === 'calendar' ? 'badge-accent' : ''}`} onClick={() => setView('calendar')}>캘린더</button>
+    <div className="p-6 max-w-page mx-auto space-y-6">
+      <PageHeader
+        title="결제 · 수납"
+        sub={`완납 ${won(totalPaid)} · 미수 ${won(totalDue)}`}
+        actions={
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-md overflow-hidden border">
+              <button className={`btn btn-sm rounded-none border-0 ${view === 'list' ? 'badge-accent' : ''}`} onClick={() => setView('list')}>리스트</button>
+              <button className={`btn btn-sm rounded-none border-0 ${view === 'calendar' ? 'badge-accent' : ''}`} onClick={() => setView('calendar')}>캘린더</button>
+            </div>
+            <Link href="/payments/new" className="btn btn-primary btn-sm">신규 청구</Link>
           </div>
-          <Link href="/payments/new" className="btn btn-primary btn-sm">신규 청구</Link>
-        </div>
-      </div>
+        }
+      />
 
       {view === 'list' ? (
-        <SectionCard title="결제 목록">
+        <SectionCard title={`결제 목록 (${payments.length})`}>
+          {payments.length === 0 ? (
+            <EmptyState message="등록된 결제가 없습니다. “신규 청구”로 등록하세요." />
+          ) : (
+          <TableWrap>
           <table className="table">
             <thead>
               <tr>
@@ -64,6 +68,8 @@ export function PaymentsView() {
               ))}
             </tbody>
           </table>
+          </TableWrap>
+          )}
         </SectionCard>
       ) : (
         <MonthCalendar

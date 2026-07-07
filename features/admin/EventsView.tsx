@@ -5,7 +5,7 @@
 'use client';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Badge, SectionCard } from '@/components/ui';
+import { Badge, SectionCard, EmptyState, TableWrap } from '@/components/ui';
 import { api } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
 import { useAcademyEvents } from '@/lib/queries';
@@ -17,10 +17,14 @@ export function EventsView() {
   const { data: events = [] } = useAcademyEvents();
   return (
     <AdminGuard>
-      <div className="p-6 max-w-[1100px] mx-auto space-y-6">
+      <div className="p-6 max-w-page mx-auto space-y-6">
         <AdminHeader />
         <SectionCard title="학원 이벤트 발행"><EventForm /></SectionCard>
-        <SectionCard title="이벤트 목록">
+        <SectionCard title={`이벤트 목록 (${events.length})`}>
+          {events.length === 0 ? (
+            <EmptyState message="발행된 이벤트가 없습니다. 위에서 이벤트를 발행하세요." />
+          ) : (
+          <TableWrap>
           <table className="table">
             <thead><tr><th>제목</th><th>유형</th><th>우선순위</th><th>기간</th></tr></thead>
             <tbody>
@@ -34,6 +38,8 @@ export function EventsView() {
               ))}
             </tbody>
           </table>
+          </TableWrap>
+          )}
         </SectionCard>
       </div>
     </AdminGuard>

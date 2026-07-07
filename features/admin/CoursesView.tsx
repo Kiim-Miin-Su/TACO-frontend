@@ -3,7 +3,7 @@
 'use client';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { SectionCard } from '@/components/ui';
+import { SectionCard, EmptyState, TableWrap } from '@/components/ui';
 import { api } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
 import { useCourses, useSubjects, useInstructors } from '@/lib/queries';
@@ -19,13 +19,17 @@ export function CoursesView() {
 
   return (
     <AdminGuard>
-      <div className="p-6 max-w-[1100px] mx-auto space-y-6">
+      <div className="p-6 max-w-page mx-auto space-y-6">
         <AdminHeader />
         <div className="grid lg:grid-cols-2 gap-6">
           <SectionCard title="코스 추가"><CourseForm /></SectionCard>
           <SectionCard title="과목 추가"><SubjectForm /></SectionCard>
         </div>
-        <SectionCard title="코스 목록">
+        <SectionCard title={`코스 목록 (${courses.length})`}>
+          {courses.length === 0 ? (
+            <EmptyState message="등록된 코스가 없습니다. 위에서 코스를 추가하세요." />
+          ) : (
+          <TableWrap>
           <table className="table">
             <thead><tr><th>코스</th><th>과목</th><th>강사</th><th className="text-right">정가</th></tr></thead>
             <tbody>
@@ -42,6 +46,8 @@ export function CoursesView() {
               ))}
             </tbody>
           </table>
+          </TableWrap>
+          )}
         </SectionCard>
       </div>
     </AdminGuard>

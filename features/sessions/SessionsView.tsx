@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Badge, SectionCard, type Tone } from "@/components/ui";
+import { Badge, SectionCard, PageHeader, EmptyState, TableWrap, type Tone } from "@/components/ui";
 import { useSchedule, useCourses, useInstructors } from "@/lib/queries";
 import type { SessionStatus } from "@/types";
 import { shortDate } from "@/lib/format";
@@ -36,11 +36,8 @@ export function SessionsView() {
   });
 
   return (
-    <div className="p-6 max-w-[1000px] mx-auto space-y-6">
-      <div>
-        <h1 className="text-title font-bold">수업 (강사)</h1>
-        <p className="text-body text-fg-muted mt-0.5">진행 수업 목록 · 출석·피드백은 상세에서</p>
-      </div>
+    <div className="p-6 max-w-page mx-auto space-y-6">
+      <PageHeader title="수업 (강사)" sub="진행 수업 목록 · 출석·피드백은 상세에서" />
 
       <SectionCard title="신규 수업 개설">
         {/* TODO: check 'is-admin?' */}
@@ -48,7 +45,7 @@ export function SessionsView() {
       </SectionCard>
 
       <SectionCard
-        title="수업 목록"
+        title={`수업 목록 (${rows.length})`}
         action={
           <input
             className="input w-56 h-7"
@@ -58,6 +55,10 @@ export function SessionsView() {
           />
         }
       >
+        {rows.length === 0 ? (
+          <EmptyState message={kw ? '검색 결과가 없습니다.' : '수업이 없습니다.'} />
+        ) : (
+        <TableWrap>
         <table className="table">
           <thead>
             <tr>
@@ -92,6 +93,8 @@ export function SessionsView() {
             })}
           </tbody>
         </table>
+        </TableWrap>
+        )}
       </SectionCard>
     </div>
   );

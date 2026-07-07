@@ -4,7 +4,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Badge, SectionCard, type Tone } from '@/components/ui';
+import { Badge, SectionCard, PromptModal, type Tone } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
 import {
   useSchedule, useCourses, useInstructors, useEnrollments, useStudents, useReports,
@@ -174,10 +174,11 @@ function StudentReportRow({ session, student }: { session: ClassSession; student
     setContent((c) => (c.trim() ? c + '\n' + t.content : t.content));
     if (t.homework) setHomework((h) => h || t.homework!);
   };
-  const saveAsTemplate = () => {
-    if (!content.trim()) return;
-    const name = window.prompt('템플릿 이름');
-    if (name?.trim()) createTemplate.mutate({ name: name.trim(), content, homework: homework || undefined });
+  // [C-1] window.prompt → PromptModal
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const saveTemplate = (name: string) => {
+    setTemplateOpen(false);
+    if (name.trim() && content.trim()) createTemplate.mutate({ name: name.trim(), content, homework: homework || undefined });
   };
 
   const save = (submit: boolean) => {
@@ -218,7 +219,7 @@ function StudentReportRow({ session, student }: { session: ClassSession; student
           <option value="">템플릿 적용…</option>
           {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
-        <button type="button" className="btn btn-sm" onClick={saveAsTemplate} disabled={!content.trim()}>현재 내용을 템플릿으로</button>
+        <button type="button" className="btn btn-sm" onClick={() => setTemplateOpen(true)} disabled={!content.trim()}>현재 내용을 템플릿으로</button>
       </div>
       <textarea
         className="input h-24 py-2 leading-relaxed"
@@ -236,6 +237,15 @@ function StudentReportRow({ session, student }: { session: ClassSession; student
         <button className="btn btn-sm" onClick={() => save(false)}>임시 저장</button>
         <button className="btn btn-sm btn-primary" disabled={!content.trim()} onClick={() => save(true)}>제출</button>
       </div>
+      {templateOpen && (
+        <PromptModal
+          title="템플릿으로 저장"
+          fields={[{ name: 'name', label: '템플릿 이름', required: true, placeholder: '예: 정규수업 기본' }]}
+          submitLabel="저장"
+          onClose={() => setTemplateOpen(false)}
+          onSubmit={(v) => saveTemplate(v.name)}
+        />
+      )}
     </div>
   );
 }

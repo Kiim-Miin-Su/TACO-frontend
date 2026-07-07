@@ -32,6 +32,9 @@ export function SessionForm() {
   const [startDate, setStartDate] = useState(todayStr());
   const [endDate, setEndDate] = useState(todayStr());
   const [weekdays, setWeekdays] = useState<number[]>([]);
+  // [C-1] alert 대체 — 인라인 검증(err)·완료(notice) 메시지
+  const [err, setErr] = useState("");
+  const [notice, setNotice] = useState("");
 
   // 이미 사용된 주제 라벨(중복 제거)
   const topicSuggestions = useMemo(
@@ -67,11 +70,12 @@ export function SessionForm() {
       startTime: "09:00",
       status: "scheduled" as const,
     };
+    setErr(""); setNotice("");
     if (mode === "single") {
-      createSchedule.mutate({ ...common, sessionDate }, { onSuccess: resetForm });
+      createSchedule.mutate({ ...common, sessionDate }, { onSuccess: () => { resetForm(); setNotice("수업이 생성되었습니다."); } });
     } else {
       if (weekdays.length === 0) {
-        alert("반복 요일을 1개 이상 선택하세요.");
+        setErr("반복 요일을 1개 이상 선택하세요.");
         return;
       }
       const dates = expandRecurringDates({ startDate, endDate, weekdays });
@@ -79,7 +83,7 @@ export function SessionForm() {
       for (const iso of dates) {
         createSchedule.mutate({ ...common, sessionDate: iso, seriesId });
       }
-      alert(`${dates.length}개의 수업이 생성되었습니다.`);
+      setNotice(`${dates.length}개의 수업이 생성되었습니다.`);
       resetForm();
     }
   };
@@ -175,7 +179,9 @@ export function SessionForm() {
         </div>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-3">
+        {err && <span className="text-caption text-danger">{err}</span>}
+        {notice && <span className="text-caption text-success">{notice}</span>}
         <button type="submit" className="btn btn-primary">
           {mode === "single" ? "수업 개설" : "반복 수업 생성"}
         </button>

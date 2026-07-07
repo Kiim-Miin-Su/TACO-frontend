@@ -35,6 +35,7 @@ export function StudentForm() {
   const [f, setF] = useState<FormState>(empty);
   const [studentWeb, setStudentWeb] = useState<VerifyState>({ state: 'idle' });
   const [parentWeb, setParentWeb] = useState<VerifyState>({ state: 'idle' });
+  const [err, setErr] = useState(''); // [C-1] alert 대체 — 인라인 검증 메시지
   const set = (p: Partial<FormState>) => setF((prev) => ({ ...prev, ...p }));
 
   const verify = async (webId: string, setV: (v: VerifyState) => void) => {
@@ -51,13 +52,14 @@ export function StudentForm() {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!f.name.trim()) return;
+    setErr('');
     // web id를 입력했다면 반드시 "확인"으로 검증된 것만 허용
     if (f.webId.trim() && studentWeb.state !== 'valid') {
-      alert('학생 Web ID를 확인해 주세요.');
+      setErr('학생 Web ID를 확인해 주세요.');
       return;
     }
     if (f.parentName.trim() && f.parentWebId.trim() && parentWeb.state !== 'valid') {
-      alert('학부모 Web ID를 확인해 주세요.');
+      setErr('학부모 Web ID를 확인해 주세요.');
       return;
     }
     // 학부모 정보(parentName/parentPhone/parentWebId/relation)는 백엔드 생성
@@ -126,7 +128,8 @@ export function StudentForm() {
         />
       </Group>
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-3">
+        {err && <span className="text-caption text-danger">{err}</span>}
         <button type="submit" className="btn btn-primary">학생 등록</button>
       </div>
     </form>

@@ -80,10 +80,11 @@ export function PayoutsView() {
     [instructors],
   );
 
-  // mutation 훅 — 공통 에러 알림. 리로드는 invalidateQueries가 담당.
+  // [C-1] alert 대체 — 하단 토스트(에러/검증). 리로드는 invalidateQueries가 담당.
+  const [toast, setToast] = useState('');
   const onErr = (e: unknown) => {
     const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-    alert(`처리 실패: ${msg ?? String(e)}`);
+    setToast(`처리 실패: ${msg ?? String(e)}`);
   };
   const generateM = useGeneratePayout();
   const confirmM = useConfirmPayout();
@@ -353,11 +354,19 @@ export function PayoutsView() {
           onSubmit={(v) => {
             const p = adjustModal;
             const amount = Number(v.amount);
-            if (!Number.isFinite(amount) || amount < 0) { alert('금액이 올바르지 않습니다'); return; }
+            if (!Number.isFinite(amount) || amount < 0) { setToast('금액이 올바르지 않습니다'); return; }
             setAdjustModal(null);
             adjustM.mutate({ id: p.id, amount, reason: v.reason || undefined }, { onError: onErr });
           }}
         />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg shadow-lg text-body text-white flex items-center gap-2"
+          style={{ background: 'var(--color-danger)' }} role="status">
+          <span>{toast}</span>
+          <button onClick={() => setToast('')} className="opacity-80 hover:opacity-100" aria-label="닫기">✕</button>
+        </div>
       )}
     </div>
   );

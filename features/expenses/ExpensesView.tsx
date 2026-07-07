@@ -1,8 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { Badge, SectionCard, MonthCalendar } from '@/components/ui';
-import { useTacoStore } from '@/lib/store';
+import { Badge, SectionCard, MonthCalendar, PageHeader, EmptyState, TableWrap } from '@/components/ui';
 import { useExpenses } from '@/lib/queries';
 import { won } from '@/lib/format';
 import { categoryLabel, categoryTone, approvalLabel, approvalTone } from './labels';
@@ -17,23 +16,27 @@ export function ExpensesView() {
   const total = expenses.reduce((a, e) => a + e.amount, 0);
 
   return (
-    <div className="p-6 max-w-[1100px] mx-auto space-y-6">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-title font-bold">지출 · 비품</h1>
-          <p className="text-body text-fg-muted mt-0.5">총 지출 {won(total)} · {expenses.length}건</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-md overflow-hidden border">
-            <button className={`btn btn-sm rounded-none border-0 ${view === 'list' ? 'badge-accent' : ''}`} onClick={() => setView('list')}>리스트</button>
-            <button className={`btn btn-sm rounded-none border-0 ${view === 'calendar' ? 'badge-accent' : ''}`} onClick={() => setView('calendar')}>캘린더</button>
+    <div className="p-6 max-w-page mx-auto space-y-6">
+      <PageHeader
+        title="지출 · 비품"
+        sub={`총 지출 ${won(total)} · ${expenses.length}건`}
+        actions={
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-md overflow-hidden border">
+              <button className={`btn btn-sm rounded-none border-0 ${view === 'list' ? 'badge-accent' : ''}`} onClick={() => setView('list')}>리스트</button>
+              <button className={`btn btn-sm rounded-none border-0 ${view === 'calendar' ? 'badge-accent' : ''}`} onClick={() => setView('calendar')}>캘린더</button>
+            </div>
+            <Link href="/expenses/new" className="btn btn-primary btn-sm">지출 등록</Link>
           </div>
-          <Link href="/expenses/new" className="btn btn-primary btn-sm">지출 등록</Link>
-        </div>
-      </div>
+        }
+      />
 
       {view === 'list' ? (
-        <SectionCard title="지출 목록">
+        <SectionCard title={`지출 목록 (${expenses.length})`}>
+          {expenses.length === 0 ? (
+            <EmptyState message="등록된 지출이 없습니다. “지출 등록”으로 등록하세요." />
+          ) : (
+          <TableWrap>
           <table className="table">
             <thead>
               <tr>
@@ -65,6 +68,8 @@ export function ExpensesView() {
               ))}
             </tbody>
           </table>
+          </TableWrap>
+          )}
         </SectionCard>
       ) : (
         <MonthCalendar
