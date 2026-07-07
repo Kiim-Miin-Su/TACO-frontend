@@ -66,6 +66,15 @@ export const useInstructorContracts = () => {
   const role = useTacoStore((s) => s.currentRole);
   return useQuery({ queryKey: ["instructor-contracts", "list"] as const, queryFn: () => api.instructorContracts.list(), enabled: isAdmin(role), staleTime: CATALOG_STALE });
 };
+// [R-6] 세션 변경 이력(audit_log) — ADMIN. 세션 상세 '변경 이력' 패널 소비처. entity='class_sessions'.
+export const useSessionAudit = (sessionId: number | null) => {
+  const role = useTacoStore((s) => s.currentRole);
+  return useQuery({
+    queryKey: ["audit", "class_sessions", sessionId ?? 0] as const,
+    queryFn: () => api.audit.list("class_sessions", sessionId as number),
+    enabled: isAdmin(role) && sessionId != null,
+  });
+};
 // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터. 서버 집계(DB 이관 시 GROUP BY 승격).
 export const useInstructorAttendanceSummary = (from?: string, to?: string, instructorId?: number) => {
   const role = useTacoStore((s) => s.currentRole);

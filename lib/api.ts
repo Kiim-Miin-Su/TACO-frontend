@@ -20,6 +20,7 @@ import type {
   Transaction,
   AcademyEvent,
   CreateEventInput,
+  AuditLog,
   Attendance,
   AttendanceStatus,
   Roadmap,
@@ -271,6 +272,11 @@ export const api = {
   // [TBO-19 Sprint4] 강사 계약(읽기 전용 — 매니저) — 백엔드 로컬 타입(contracts 미포함)
   instructorContracts: {
     list: () => http.get<InstructorContract[]>("/instructor-contracts").then((r) => r.data),
+  },
+  // [R-6] 변경 이력(audit_log) — ADMIN. entity/entityId로 개별 세션 등의 이력 조회(최신순).
+  audit: {
+    list: (entity: string, entityId: number, limit?: number) =>
+      http.get<AuditLog[]>("/audit", { params: { entity, entityId, limit } }).then((r) => r.data),
   },
   attendance: {
     list: () => http.get<Attendance[]>("/attendance").then((r) => r.data),

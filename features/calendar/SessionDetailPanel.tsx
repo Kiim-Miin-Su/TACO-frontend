@@ -15,6 +15,7 @@ import { SessionEditFields } from "./SessionEditFields";
 import { useStudents, useInstructors } from "@/lib/queries";
 import { CountryBadge } from "./CountryInput";
 import { STUDENT_STATUS_LABEL } from "@/lib/domain/students";
+import { ChangeHistory } from "./ChangeHistory"; // [R-6] 변경 이력(audit) — 관리자
 
 export function SessionDetailPanel({
   row, rooms, instructors, canEdit, colorOf, onPatch, onOpenModal, onPickStudent, onPickInstructor,
@@ -32,6 +33,8 @@ export function SessionDetailPanel({
   // 참여자 정보(피드백 2026-07-03): 세션의 학생(국가·상태·학년)·강사(담당 과목) 요약을 함께 표시.
   const { data: allStudents = [] } = useStudents();
   const { data: allInstructors = [] } = useInstructors();
+  // [R-6] audit 행위자 id → 이름(강사면 이름, 그 외 관리자). 강사 식별자 통일(id=users.id).
+  const actorName = (id: number) => allInstructors.find((i) => Number(i.id) === id)?.name ?? `관리자 #${id}`;
   // 편집 모드(TBO-10 #3): DetailModal과 동일한 SessionEditFields 공통 폼 — 모든 input 편집 가능.
   const [editing, setEditing] = useState(false);
   useEffect(() => setEditing(false), [row?.id]); // 선택 세션 변경 시 보기 모드로
@@ -156,6 +159,16 @@ export function SessionDetailPanel({
             모달로 크게…
           </button>
         </div>
+
+        {/* [R-6] 변경 이력(audit) — 관리자만. 접이식(기본 접힘). 세션 CRUD·강사 출결 변경 추적. */}
+        {canEdit && (
+          <details className="mt-1 border-t pt-2">
+            <summary className="text-caption text-fg-muted cursor-pointer select-none">변경 이력</summary>
+            <div className="mt-2 max-h-[220px] overflow-y-auto">
+              <ChangeHistory sessionId={row.id} actorName={actorName} />
+            </div>
+          </details>
+        )}
           </>
         )}
       </div>
