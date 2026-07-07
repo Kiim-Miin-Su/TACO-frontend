@@ -5,15 +5,15 @@
 //   · instructorId 유효성 검증(강사 목록에 없으면 '찾을 수 없음') — 유령 참조 차단.
 //   · 카운트/시수는 정산과 동일 규칙(countsForPay/paidTeachingHours) — 이중 기준 없음.
 //   · 읽기 전용(진실원은 세션·출석부) — 편집은 출석부/캘린더에서.
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Badge, EmptyState, PageHeader, SectionCard, StatCard, TableWrap, type Tone } from '@/components/ui';
-import { useInstructors, useInstructorSessions } from '@/lib/queries';
+import type { AttendanceStatus, InstructorAttendanceStatus } from '@/types';
+import { EmptyState, PageHeader, SectionCard, StatCard, TableWrap } from '@/components/ui';
+import { useInstructors, useInstructorSessions, useUpdateSchedule, useAttendance, useUpsertAttendance } from '@/lib/queries';
 import { useTacoStore } from '@/lib/store';
 import { isAdmin } from '@/lib/roles';
-import { paidTeachingHours, countsForPay } from '@/lib/domain/schedule';
-import { INSTRUCTOR_ATT_LABEL } from '@/lib/domain/lantiv';
-import { WEEKDAYS_KO as WD } from '@/lib/domain/schedule';
+import { paidTeachingHours, countsForPay, WEEKDAYS_KO as WD } from '@/lib/domain/schedule';
+import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from './AttMarker';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const thisYm = () => new Date().toISOString().slice(0, 7);
@@ -22,12 +22,20 @@ const monthRange = (ym: string) => {
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
   return { from: `${ym}-01`, to: `${ym}-${pad(last)}` };
 };
-const ATT_TONE: Record<string, Tone> = { present: 'success', late: 'attention', absent: 'danger', makeup: 'neutral' };
-
 export function InstructorAttendanceDetailView({ instructorId }: { instructorId: number }) {
   const role = useTacoStore((s) => s.currentRole);
   const admin = isAdmin(role);
   const { data: instructors = [], isLoading: loadingInst } = useInstructors();
+  // [req3] 매니저 CRUD — 강사 출결(세션 PATCH)·학생 출결(attendance upsert). 상세=지난 회차 편집 진입점.
+  const updateSchedule = useUpdateSchedule();
+  const { data: attendance = [] } = useAttendance();
+  const upsert = useUpsertAttendance();
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const toggleExpand = (id: number) => setExpanded((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const markInst = (sid: number, st: InstructorAttendanceStatus) => updateSchedule.mutate({ id: sid, body: { instructorAttendance: st } });
+  const clearInst = (sid: number) => updateSchedule.mutate({ id: sid, body: { clearInstructorAttendance: true } });
+  const attOf = (sid: number, stuId: number): AttendanceStatus | undefined => attendance.find((a) => a.sessionId === sid && a.studentId === stuId)?.status;
+  const markStu = (sid: number, stuId: number, st: AttendanceStatus) => upsert.mutate({ sessionId: sid, studentId: stuId, status: st });
   const [mode, setMode] = useState<'month' | 'custom'>('month');
   const [ym, setYm] = useState(thisYm());
   const [custom, setCustom] = useState(() => monthRange(thisYm()));
@@ -139,27 +147,53 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
               <tbody>
                 {held.map((s) => {
                   const paid = countsForPay(s);
+                  const isOpen = expanded.has(s.id);
+                  const cohort = (s.studentIds ?? []).map((id, i) => ({ id: Number(id), name: s.studentNames?.[i] ?? `학생#${id}` }));
                   return (
-                    <tr key={s.id}>
-                      <td className="mono">{s.sessionDate} <span className="text-fg-subtle">({WD[s.weekday]})</span></td>
-                      <td className="mono text-fg-muted">{s.startTime ?? '—'}</td>
-                      <td>{s.subjectName} · <span className="text-fg-muted">{s.courseName}</span></td>
-                      <td className="text-fg-muted">{s.roomName ?? '—'}</td>
-                      <td className="text-center">
-                        {s.instructorAttendance ? (
-                          <Badge tone={ATT_TONE[s.instructorAttendance] ?? 'neutral'}>{INSTRUCTOR_ATT_LABEL[s.instructorAttendance]}</Badge>
-                        ) : (
-                          <span className="text-fg-subtle text-caption">미표시</span>
-                        )}
-                      </td>
-                      <td className="text-center">
-                        {paid ? (
-                          <span className="mono text-success">{Math.round((s.durationMinutes / 60) * 100) / 100}h</span>
-                        ) : (
-                          <span className="text-fg-subtle text-caption">제외{s.instructorAttendance === 'absent' ? '(결석)' : s.status === 'makeup' ? '(보강)' : ''}</span>
-                        )}
-                      </td>
-                    </tr>
+                    <Fragment key={s.id}>
+                      <tr>
+                        <td className="mono">
+                          <button type="button" className="mr-1 text-fg-subtle hover:text-accent" onClick={() => toggleExpand(s.id)} title={`학생 출결 ${isOpen ? '접기' : '펼치기'} (${cohort.length}명)`}>{isOpen ? '▾' : '▸'}</button>
+                          {s.sessionDate} <span className="text-fg-subtle">({WD[s.weekday]})</span>
+                        </td>
+                        <td className="mono text-fg-muted">{s.startTime ?? '—'}</td>
+                        <td>{s.subjectName} · <span className="text-fg-muted">{s.courseName}</span></td>
+                        <td className="text-fg-muted">{s.roomName ?? '—'}</td>
+                        <td className="text-center">
+                          {/* [req3] 강사 출결 CRUD(버튼·원클릭·수정하기) — 관리자만 */}
+                          <AttMarker value={s.instructorAttendance} options={INSTRUCTOR_ATT_OPTIONS} canEdit={admin} pending={updateSchedule.isPending} onMark={(st) => markInst(s.id, st)} onClear={() => clearInst(s.id)} />
+                        </td>
+                        <td className="text-center">
+                          {paid ? (
+                            <span className="mono text-success">{Math.round((s.durationMinutes / 60) * 100) / 100}h</span>
+                          ) : (
+                            <span className="text-fg-subtle text-caption">제외{s.instructorAttendance === 'absent' ? '(결석)' : s.status === 'makeup' ? '(보강)' : ''}</span>
+                          )}
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr>
+                          <td colSpan={6} className="bg-canvas-subtle">
+                            {/* [req3] 이 회차의 학생 출결 CRUD(관리자) — 코호트=세션 studentIds(enrollment 파생·단일 소스) */}
+                            <div className="p-2 space-y-1.5">
+                              <div className="text-caption font-semibold text-fg-muted">학생 출결 ({cohort.length}명)</div>
+                              {!cohort.length ? (
+                                <div className="text-caption text-fg-subtle">배정된 학생이 없습니다.</div>
+                              ) : (
+                                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                                  {cohort.map((st) => (
+                                    <span key={st.id} className="inline-flex items-center gap-1.5 text-caption">
+                                      <span className="min-w-[64px] truncate font-medium">{st.name}</span>
+                                      <AttMarker value={attOf(s.id, st.id)} options={STUDENT_ATT_OPTIONS} canEdit={admin} pending={upsert.isPending} onMark={(v) => markStu(s.id, st.id, v)} />
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>
