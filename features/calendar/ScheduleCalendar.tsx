@@ -14,7 +14,7 @@ import {
   type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick, densityOf, expandAxis,
   MODE_FILTERS, MODE_FILTER_LABEL, type SessionModeFilter,
   matchesSubjectFilter, SUBJECT_KIND_OPTIONS } from "@/lib/domain/lantiv";
-import { useAttendance, useStudents, useEnrollments, useCourses, useSubjects, useCreateViewPreset, useScheduleRequests } from "@/lib/queries";
+import { useAttendance, useStudents, useEnrollments, useCourses, useSubjects, useCreateViewPreset, useScheduleRequests, useCalendarSchedule } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
 import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, kstPatchTimes, type CountryInfo, type TzShiftedRow, splitKstBand } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
@@ -393,25 +393,26 @@ export function ScheduleCalendar() {
     ? { from: addDaysISO(baseRange.from, -1), to: addDaysISO(baseRange.to, 1) }
     : baseRange;
 
-  const roomsLoadedRef = useRef(false); // [L2] 클로저가 초기 rooms를 봐서 매번 재요청하던 문제
-  const load = useCallback(async () => {
-    try {
-      const [sc, rm] = await Promise.all([
-        api.schedule.list({ ...fetchRange, ...selQuery }),
-        roomsLoadedRef.current ? Promise.resolve(null) : api.rooms.list(),
-      ]);
-      setRows(sc);
-      if (rm) { setRooms(rm); roomsLoadedRef.current = true; }
-      setMsg("");
-    } catch {
-      setMsg("백엔드 API에 연결할 수 없습니다. 서버 상태와 API 주소(NEXT_PUBLIC_API_URL) 설정을 확인하세요.");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchRange.from, fetchRange.to, selQuery]);
-
+  // [TBO-14] 스케줄 데이터층 = TanStack Query 단일 소스(useCalendarSchedule). 기간·선택자원 키.
+  //  · rows(로컬)는 이 쿼리를 feed 받아 낙관적 편집(드래그·리사이즈·생성·삭제)에만 사용 — 즉시 반영 유지.
+  //  · 세션 변경(PATCH/생성/삭제·강사출결)은 qk.schedule.all 무효화 → 이 쿼리 자동 refetch → rows 재동기화.
+  //    → 출석부/상세에서 강사 출결을 바꿔도 캘린더가 자동 갱신(M1 invalidate 단절 근본 해소).
+  const scheduleQ = useCalendarSchedule({ ...fetchRange, ...selQuery });
   useEffect(() => {
-    load();
-  }, [load]);
+    if (scheduleQ.data) setRows(scheduleQ.data); // 서버 데이터 → rows 동기화(리페치 시 reconcile)
+  }, [scheduleQ.data]);
+  useEffect(() => {
+    if (scheduleQ.isError) setMsg("백엔드 API에 연결할 수 없습니다. 서버 상태를 확인하세요.");
+  }, [scheduleQ.isError]);
+  // load() = 스케줄 쿼리 무효화(refetch→위 useEffect가 rows reconcile). 낙관적 커밋 후 서버 확정에 사용.
+  const load = useCallback(async () => {
+    await qc.invalidateQueries({ queryKey: qk.schedule.all });
+  }, [qc]);
+
+  // 강의실 목록(준정적·1회) — 캘린더 컬럼/드롭. (자원·가용은 C2에서 Query 이관 예정)
+  useEffect(() => {
+    api.rooms.list().then(setRooms).catch(() => {});
+  }, []);
 
   // 자원 목록(1회)
   useEffect(() => {

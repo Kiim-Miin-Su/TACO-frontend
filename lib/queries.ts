@@ -35,6 +35,10 @@ export const useSubjects = () => useQuery({ queryKey: qk.subjects.list(), queryF
 export const useCourses = () => useQuery({ queryKey: qk.courses.list(), queryFn: () => api.courses.list(), staleTime: CATALOG_STALE });
 export const useEnrollments = () => useQuery({ queryKey: qk.enrollments.list(), queryFn: () => api.enrollments.list(), staleTime: CATALOG_STALE });
 export const useSchedule = () => useQuery({ queryKey: qk.schedule.list({}), queryFn: () => api.schedule.list({}) });
+// [TBO-14] 캘린더 데이터층 — 기간·선택자원 파라미터 스케줄 조회. qk.schedule 하위키라 세션 변경(PATCH/생성/삭제·
+//  강사출결)이 qk.schedule.all 무효화로 자동 반영(M1 invalidate 단절 해소). 뷰는 이 데이터를 rows로 feed.
+export const useCalendarSchedule = (params: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number }) =>
+  useQuery({ queryKey: qk.schedule.list(params), queryFn: () => api.schedule.list(params) });
 export const useAttendance = () => useQuery({ queryKey: qk.attendance.list(), queryFn: () => api.attendance.list() });
 export const usePayments = () => useQuery({ queryKey: qk.payments.list(), queryFn: () => api.payments.list() });
 export const useTransactions = () => useQuery({ queryKey: qk.transactions.list(), queryFn: () => api.transactions.list() });
