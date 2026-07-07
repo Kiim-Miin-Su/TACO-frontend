@@ -8,7 +8,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Room, ScheduleResources } from "@/types";
 import { MAX_SPLIT, STATUS_FILTERS, STATUS_FILTER_LABEL, MODE_FILTERS, MODE_FILTER_LABEL, type StatusFilter, type SessionModeFilter } from "@/lib/domain/lantiv";
 
-export type FilterDim = "instructor" | "student" | "room";
+// [#2 2026-07-06] subject 추가 — 수동 표 빌더의 과목 차원 MultiPick 지원.
+export type FilterDim = "instructor" | "student" | "room" | "subject";
 export type ColorBy = "subject" | "instructor" | "room" | "student";
 export type Period = { from: string; to: string };
 
@@ -16,6 +17,7 @@ const DIM_META: Record<FilterDim, { icon: string; label: string }> = {
   instructor: { icon: "👓", label: "강사" },
   student: { icon: "🎓", label: "학생" },
   room: { icon: "🚪", label: "강의실" },
+  subject: { icon: "📚", label: "과목" },
 };
 
 type Option = { id: number; name: string; color?: string; sub?: string };

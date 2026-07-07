@@ -111,7 +111,8 @@ export function groupSessions(rows: ScheduleRow[], by: ListGroupBy): ListGroup[]
 }
 
 // ── 스플릿 뷰 컬럼(날짜 × 리소스) — Lantiv 다중 선택 시 하루를 리소스별 서브컬럼으로 ──
-export type SplitDim = 'instructor' | 'student' | 'room';
+//  [#2 2026-07-06] subject 추가 — 수동 표 빌더에서 과목별 split(강사·학생·강의실·과목 4차원).
+export type SplitDim = 'instructor' | 'student' | 'room' | 'subject';
 export type SplitPick = { id: number; name: string };
 export type SplitCol = {
   key: string;
@@ -287,14 +288,20 @@ export function resolvePasteCourseId(
   return pick ? Number(pick.courseId) : null;
 }
 
-/** 행이 컬럼 리소스에 속하는가 — 학생은 코호트(studentIds) 포함 여부(참조 무결성: enrollment 파생). */
+/**
+ * 행이 컬럼 리소스에 속하는가 — 학생은 코호트(studentIds) 포함 여부(참조 무결성: enrollment 파생).
+ * [#2] 과목(subject): ScheduleRow엔 subjectId가 없고 subjectName만 있으므로(subjectId=Course 소유),
+ *  courseId→subjectId 리졸버(subjectIdOf)를 주입받아 매칭. 리졸버 없으면 미매칭(A안 — 순수 유지).
+ */
 export function rowInResource(
-  r: Pick<ScheduleRow, 'instructorId' | 'roomId' | 'studentIds'>,
+  r: Pick<ScheduleRow, 'instructorId' | 'roomId' | 'studentIds' | 'courseId'>,
   type: SplitDim,
   id: number,
+  subjectIdOf?: (courseId: number) => number | undefined,
 ): boolean {
   if (type === 'instructor') return r.instructorId === id;
   if (type === 'room') return r.roomId === id;
+  if (type === 'subject') return subjectIdOf != null && subjectIdOf(Number(r.courseId)) === id;
   return (r.studentIds ?? []).includes(id);
 }
 

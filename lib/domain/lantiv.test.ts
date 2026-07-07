@@ -261,6 +261,13 @@ describe('rowInResource — 컬럼 소속 판정(참조 무결성: 학생=코호
     expect(rowInResource(r, 'student', 9)).toBe(false);
     expect(rowInResource(row({ studentIds: undefined as unknown as number[] }), 'student', 1)).toBe(false);
   });
+  it('[#2] 과목(subject)은 courseId→subjectId 리졸버로 매칭 — 리졸버 없으면 미매칭', () => {
+    const subjectIdOf = (cid: number) => (cid === 10 ? 7 : undefined);
+    expect(rowInResource(row({ courseId: 10 }), 'subject', 7, subjectIdOf)).toBe(true);
+    expect(rowInResource(row({ courseId: 10 }), 'subject', 8, subjectIdOf)).toBe(false);
+    expect(rowInResource(row({ courseId: 99 }), 'subject', 7, subjectIdOf)).toBe(false);
+    expect(rowInResource(row({ courseId: 10 }), 'subject', 7)).toBe(false); // 리졸버 미주입
+  });
 });
 
 describe('resolvePasteCourseId — 학생 컬럼 붙여넣기 코스 재배정(버그수정 2026-07-02)', () => {

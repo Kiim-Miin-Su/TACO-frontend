@@ -9,16 +9,19 @@ import type { SplitDim } from "@/lib/domain/lantiv";
 import { MultiPick, type FilterDim } from "./CalendarFilterBar";
 
 export type SplitPaneDef = { uid: number; dim: SplitDim; ids: number[] };
+export type SubjectOption = { id: number; name: string; color?: string };
 
-const DIM_LABEL: Record<SplitDim, string> = { instructor: "강사", student: "학생", room: "강의실" };
+// [#2 2026-07-06] 과목(subject) 차원 추가 — 4차원 수동 표 빌더.
+const DIM_LABEL: Record<SplitDim, string> = { instructor: "강사", student: "학생", room: "강의실", subject: "과목" };
 
 export function CalendarSplitPane({
-  pane, resources, rooms, onChange, onRemove, children, fixedDim, headerExtra,
+  pane, resources, rooms, subjects = [], onChange, onRemove, children, fixedDim, headerExtra,
 }: {
   pane: SplitPaneDef;
   fixedDim?: boolean; // 자동 스플릿 모드 — 차원은 필터에서 파생(변경 UI 숨김)
   resources: ScheduleResources | null;
   rooms: Room[];
+  subjects?: SubjectOption[]; // [#2] 과목 차원 옵션(useSubjects 파생)
   onChange: (patch: Partial<SplitPaneDef>) => void;
   onRemove: () => void;
   children: React.ReactNode; // 부모가 renderTimeGrid(colsFor(pane))로 주입한 그리드
@@ -29,7 +32,9 @@ export function CalendarSplitPane({
       ? (resources?.instructors ?? []).map((r) => ({ id: Number(r.id), name: r.name, color: r.color, sub: r.sub }))
       : pane.dim === "student"
         ? (resources?.students ?? []).map((r) => ({ id: Number(r.id), name: r.name, color: r.color, sub: r.sub }))
-        : rooms.map((r) => ({ id: Number(r.id), name: r.name, color: r.color }));
+        : pane.dim === "subject"
+          ? subjects.map((s) => ({ id: Number(s.id), name: s.name, color: s.color }))
+          : rooms.map((r) => ({ id: Number(r.id), name: r.name, color: r.color }));
   const picked = new Set(pane.ids);
   const names = pane.ids
     .map((id) => options.find((o) => o.id === id)?.name ?? `#${id}`)

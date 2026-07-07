@@ -14,7 +14,7 @@ import {
   type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick, densityOf, expandAxis,
   MODE_FILTERS, MODE_FILTER_LABEL, type SessionModeFilter,
   matchesSubjectFilter, SUBJECT_KIND_OPTIONS } from "@/lib/domain/lantiv";
-import { useAttendance, useStudents, useEnrollments, useCourses, useCreateViewPreset, useScheduleRequests } from "@/lib/queries";
+import { useAttendance, useStudents, useEnrollments, useCourses, useSubjects, useCreateViewPreset, useScheduleRequests } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
 import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, kstPatchTimes, type CountryInfo, type TzShiftedRow, splitKstBand } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
@@ -188,6 +188,14 @@ export function ScheduleCalendar() {
   const [panePicked, setPanePicked] = useState<Partial<Record<SplitDim, string[]>>>({});
   // [오류2 2026-07-06] 표별 수업방식(대면/비대면) 필터 — 전역 fModes와 별개로 그 표에만 적용(빈 Set=전체).
   const [paneModes, setPaneModes] = useState<Partial<Record<SplitDim, Set<SessionModeFilter>>>>({});
+  // [#2 2026-07-06] 수동 표 빌더 — 강사·학생·강의실·과목 임의 조합(학생×학생 등 동일차원 2표 허용).
+  //  자동 스플릿(강사+학생 필터)과 병행: manualPanes가 있으면 그것을 우선 렌더, 없으면 기존 자동 동작.
+  //  per-pane 필터(국가·수업방식)는 dim이 아닌 **uid 키**(동일차원 중복 시 충돌 방지 — §14 P1 대칭).
+  const [manualPanes, setManualPanes] = useState<{ uid: number; dim: SplitDim; ids: number[] }[]>([]);
+  const paneUidRef = useRef(1);
+  const [paneCountryU, setPaneCountryU] = useState<Record<number, CountryInfo | null>>({});
+  const [paneModesU, setPaneModesU] = useState<Record<number, Set<SessionModeFilter>>>({});
+  const addManualPane = () => setManualPanes((p) => [...p, { uid: paneUidRef.current++, dim: "instructor", ids: [] }]);
   // 우측 패널: 리스트에서 클릭한 세션(아래 상세) + 그룹 토글
   const [detailId, setDetailId] = useState<number | null>(null);
   const [listGrouped, setListGrouped] = useState(false);
@@ -206,6 +214,16 @@ export function ScheduleCalendar() {
   const { data: allStudents = [] } = useStudents();
   const { data: allEnrollments = [] } = useEnrollments();
   const { data: allCourses = [] } = useCourses();
+  // [#2 2026-07-06] 과목 split — 옵션(useSubjects) + courseId→subjectId 리졸버(A안: ScheduleRow엔 subjectId 없음).
+  const { data: allSubjects = [] } = useSubjects();
+  const subjectOpts = useMemo(
+    () => allSubjects.map((s) => ({ id: Number(s.id), name: s.name, color: (s as { color?: string }).color })),
+    [allSubjects],
+  );
+  const subjectIdOf = useMemo(() => {
+    const m = new Map(allCourses.map((c) => [Number(c.id), c.subjectId != null ? Number(c.subjectId) : undefined]));
+    return (courseId: number) => m.get(courseId);
+  }, [allCourses]);
   const [country, setCountry] = useState<CountryInfo | null>(null);
   const [paneCountry, setPaneCountry] = useState<Partial<Record<SplitDim, CountryInfo | null>>>({});
   const paneTzOf = (dim: SplitDim) => (dim in paneCountry ? (paneCountry[dim] ?? null) : country);
@@ -583,7 +601,7 @@ export function ScheduleCalendar() {
       (r) =>
         r.sessionDate === c.date &&
         (c.resType != null
-          ? rowInResource(r, c.resType, c.resId!)
+          ? rowInResource(r, c.resType, c.resId!, subjectIdOf) // [#2] 과목 컬럼은 리졸버로 매칭
           : c.noRoom
             ? r.roomId == null // [L1] 미지정 컬럼 = 강의실 없는 세션만
             : c.roomId == null || r.roomId === c.roomId),
@@ -1126,6 +1144,9 @@ export function ScheduleCalendar() {
     const reassignStudent = dropStudent != null && !curCohort.includes(dropStudent) && curCohort.length === 1;
     if (dropStudent != null && !curCohort.includes(dropStudent) && curCohort.length > 1)
       setMsg("단체 수업은 학생 재배정 없이 시간만 이동합니다(코호트 유지)");
+    // [#2] 과목 컬럼 드롭 — 과목은 코스 파생이라 변경 불가(무결성). 다른 과목 표에 놓으면 시간만 이동.
+    if (d.resType === "subject" && d.resId != null && subjectIdOf(Number(orig.courseId)) !== Number(d.resId))
+      setMsg("과목은 변경할 수 없어 시간만 이동합니다");
     if (kst.date === orig.sessionDate && kst.startMin === startMinOf(orig) && newRoom === orig.roomId && newInstructor === orig.instructorId && !reassignStudent)
       return;
     requestChange(
@@ -1809,6 +1830,15 @@ export function ScheduleCalendar() {
                   onMsg={setMsg}
                 />
                 <span className="w-px h-5 bg-line" />
+                {/* [#2 2026-07-06] 수동 표 빌더 — 강사·학생·강의실·과목 임의 조합(동일차원 2표 허용) */}
+                <button
+                  type="button"
+                  className={`btn btn-sm ${manualPanes.length ? "badge-accent" : ""}`}
+                  title="원하는 기준(강사·학생·강의실·과목)으로 표를 나눠 나란히 보기 — 표를 여러 개 추가 가능(학생×학생 등)"
+                  onClick={addManualPane}
+                  disabled={view === "month"}
+                >⊞ 표 나누기{manualPanes.length ? ` (${manualPanes.length})` : ""}</button>
+                <span className="w-px h-5 bg-line" />
               </>
             }
             resources={resources}
@@ -1905,6 +1935,47 @@ export function ScheduleCalendar() {
                 }}
                 onCreateDay={(d) => canAdd && setCreating({ date: d })}
               />
+            ) : manualPanes.length > 0 ? (
+              /* [#2 2026-07-06] 수동 표 빌더 — 임의 차원(강사·학생·강의실·과목) 조합·동일차원 2표 허용.
+                 자동 스플릿보다 우선. 각 표는 자체 dim 선택 + 리소스 다중선택 + 국가/수업방식(uid 키). */
+              <div className="flex gap-3 items-start pb-1 flex-wrap">
+                {manualPanes.map((mp) => {
+                  const opts =
+                    mp.dim === "instructor" ? (resources?.instructors ?? []).map((r) => ({ id: Number(r.id), name: r.name }))
+                      : mp.dim === "student" ? (resources?.students ?? []).map((r) => ({ id: Number(r.id), name: r.name }))
+                        : mp.dim === "room" ? rooms.map((r) => ({ id: Number(r.id), name: r.name }))
+                          : subjectOpts.map((s) => ({ id: s.id, name: s.name }));
+                  const picks: MixedPick[] = mp.ids.map((id) => ({ id, name: opts.find((o) => o.id === id)?.name ?? `#${id}`, type: mp.dim }));
+                  const w = manualPanes.length >= 2 ? Math.max(320, (mainW - 16) / manualPanes.length) : mainW;
+                  return (
+                    <CalendarSplitPane
+                      key={mp.uid}
+                      pane={{ uid: mp.uid, dim: mp.dim, ids: mp.ids }}
+                      resources={resources}
+                      rooms={rooms}
+                      subjects={subjectOpts}
+                      onChange={(patch) => setManualPanes((prev) => prev.map((x) => (x.uid === mp.uid ? { ...x, ...patch } : x)))}
+                      onRemove={() => {
+                        setManualPanes((prev) => prev.filter((x) => x.uid !== mp.uid));
+                        setPaneCountryU((prev) => { const n = { ...prev }; delete n[mp.uid]; return n; });
+                        setPaneModesU((prev) => { const n = { ...prev }; delete n[mp.uid]; return n; });
+                      }}
+                      headerExtra={
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <OptionPick icon="🖥️" label="수업방식" title="이 표에만 적용 (복수=합집합·빈 선택=전체)"
+                            options={MODE_FILTERS.map((k) => ({ value: k, label: MODE_FILTER_LABEL[k] }))}
+                            picked={(paneModesU[mp.uid] ?? new Set()) as unknown as Set<string>}
+                            onToggle={(v) => setPaneModesU((prev) => { const k = v as SessionModeFilter; const cur = new Set(prev[mp.uid] ?? []); if (cur.has(k)) cur.delete(k); else cur.add(k); const n = { ...prev }; if (cur.size) n[mp.uid] = cur; else delete n[mp.uid]; return n; })}
+                            onClear={() => setPaneModesU((prev) => { const n = { ...prev }; delete n[mp.uid]; return n; })} />
+                          <CountryInput compact value={paneCountryU[mp.uid] ?? null} onSelect={(c) => setPaneCountryU((prev) => ({ ...prev, [mp.uid]: c }))} placeholder="🌐 국가" />
+                        </div>
+                      }
+                    >
+                      {renderTimeGrid(colsFor(picks, `m${mp.uid}|`), paneCountryU[mp.uid] ?? null, paneModesU[mp.uid], w)}
+                    </CalendarSplitPane>
+                  );
+                })}
+              </div>
             ) : twoPanes ? (
               /* 강사+학생 동시 필터 → 표 2개 자동(각 표 = 날짜×선택 데일리 스플릿). ✕=표 닫기(필터 유지) */
               <div className="flex gap-3 items-start pb-1">{/* [정렬 2026-07-06] 표 자체가 고정폭 fit — wrapper 스크롤 불필요 */}
