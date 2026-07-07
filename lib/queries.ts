@@ -39,6 +39,9 @@ export const useSchedule = () => useQuery({ queryKey: qk.schedule.list({}), quer
 //  강사출결)이 qk.schedule.all 무효화로 자동 반영(M1 invalidate 단절 해소). 뷰는 이 데이터를 rows로 feed.
 export const useCalendarSchedule = (params: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number }) =>
   useQuery({ queryKey: qk.schedule.list(params), queryFn: () => api.schedule.list(params) });
+// [TBO-14 C2] 캘린더 준정적 카탈로그 — 강의실·자원 피커. staleTime 5분(변경 빈도 낮음·쓰기 시 invalidate).
+export const useRooms = () => useQuery({ queryKey: qk.rooms.all(), queryFn: () => api.rooms.list(), staleTime: CATALOG_STALE });
+export const useScheduleResources = () => useQuery({ queryKey: qk.schedule.resources(), queryFn: () => api.schedule.resources(), staleTime: CATALOG_STALE });
 export const useAttendance = () => useQuery({ queryKey: qk.attendance.list(), queryFn: () => api.attendance.list() });
 export const usePayments = () => useQuery({ queryKey: qk.payments.list(), queryFn: () => api.payments.list() });
 export const useTransactions = () => useQuery({ queryKey: qk.transactions.list(), queryFn: () => api.transactions.list() });

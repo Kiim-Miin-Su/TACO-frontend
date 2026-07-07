@@ -14,7 +14,7 @@ import {
   type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick, densityOf, expandAxis,
   MODE_FILTERS, MODE_FILTER_LABEL, type SessionModeFilter,
   matchesSubjectFilter, SUBJECT_KIND_OPTIONS } from "@/lib/domain/lantiv";
-import { useAttendance, useStudents, useEnrollments, useCourses, useSubjects, useCreateViewPreset, useScheduleRequests, useCalendarSchedule } from "@/lib/queries";
+import { useAttendance, useStudents, useEnrollments, useCourses, useSubjects, useCreateViewPreset, useScheduleRequests, useCalendarSchedule, useRooms, useScheduleResources } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
 import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, kstPatchTimes, type CountryInfo, type TzShiftedRow, splitKstBand } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
@@ -96,7 +96,7 @@ export function ScheduleCalendar() {
   const [view, setView] = usePersistedState<View>("taco.cal.view", "week");
   const [anchor, setAnchor] = useState(todayISO());
   const [rows, setRows] = useState<ScheduleRow[]>([]);
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const { data: rooms = [] } = useRooms(); // [TBO-14 C2] 강의실 카탈로그 = Query(로컬 state·1회 fetch 대체)
   const [editing, setEditing] = useState<ScheduleRow | null>(null);
   // [이슈1] 편집 대상이 비KST 컬럼(현지 시각 표시)이면 그 tz — 저장 시 현지→KST 역변환 기준. KST면 null.
   const [editingTz, setEditingTz] = useState<CountryInfo | null>(null);
@@ -116,7 +116,7 @@ export function ScheduleCalendar() {
   }, [msg]);
 
   // ── 자원(레일)·가용 ──
-  const [resources, setResources] = useState<ScheduleResources | null>(null);
+  const { data: resources = null } = useScheduleResources(); // [TBO-14 C2] 자원 피커 = Query(로컬 state·effect 대체)
   // [A안 통합 2026-07-03] "유저별 스케줄"과 상단 필터바 = **단일 선택 모델**.
   //  이전엔 selected(서버 파라미터)와 필터바(클라 필터)가 독립이라 겹치면 암묵적 교집합이 됐음.
   //  이제 selected는 별도 상태가 아니라 **필터에서 파생**: 리소스 선택 합계가 정확히 1명이면
@@ -408,19 +408,7 @@ export function ScheduleCalendar() {
   const load = useCallback(async () => {
     await qc.invalidateQueries({ queryKey: qk.schedule.all });
   }, [qc]);
-
-  // 강의실 목록(준정적·1회) — 캘린더 컬럼/드롭. (자원·가용은 C2에서 Query 이관 예정)
-  useEffect(() => {
-    api.rooms.list().then(setRooms).catch(() => {});
-  }, []);
-
-  // 자원 목록(1회)
-  useEffect(() => {
-    api.schedule
-      .resources()
-      .then(setResources)
-      .catch(() => {});
-  }, []);
+  // [TBO-14 C2] rooms·resources는 useRooms()·useScheduleResources() Query로 이관 — 로컬 fetch effect 제거.
 
   // 선택 자원의 불가시간(밴드)
   useEffect(() => {
