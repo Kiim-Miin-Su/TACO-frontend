@@ -48,6 +48,7 @@ import type {
   ScheduleRequest,
   CreateScheduleRequestInput,
   SessionKind,
+  InstructorAttendanceStatus,
 } from "@kms545487/contracts";
 
 export type ScheduleQuery = { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number };
@@ -66,6 +67,7 @@ export type SchedulePatchBody = {
   sessionDate?: string; startTime?: string; endTime?: string; durationMinutes?: number;
   roomId?: number; instructorId?: number; courseId?: number; status?: string; topic?: string; memo?: string; color?: string;
   kind?: SessionKind; price?: number; // [v0.1.14] 종류·세션 단건 가격
+  instructorAttendance?: InstructorAttendanceStatus; // [TBO-19] 강사 출결(매니저 CRUD) — BE PATCH 수용, manager+ 게이트
   // 반복 편집 범위(this=이 일정만 · this_and_following=이후 전부 · all=시리즈 전체). seriesId가 있을 때만 의미.
   scope?: "this" | "this_and_following" | "all"; force?: boolean;
 };
