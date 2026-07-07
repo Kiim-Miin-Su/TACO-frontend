@@ -97,7 +97,7 @@ function MemberApprovals() {
   );
 }
 
-// 승인은 대표(super_admin) 전용
+// 승인 센터 = 관리자(매니저 이상). 단 가입 승인은 대표(super_admin) 전용.
 export function ApprovalsView() {
   const currentRole = useTacoStore((s) => s.currentRole);
   const { data: instructors = [] } = useInstructors();
@@ -200,20 +200,14 @@ export function ApprovalsView() {
     </SectionCard>
   );
 
-  if (!isSuper) {
+  // [TBO-20 M2] 승인 센터 = 관리자(매니저 이상, BE ADMIN_ROLES 정합). 가입 승인만 대표(super_admin) 전용(BE SuperAdminGuard).
+  if (!isAdmin(currentRole)) {
     return (
       <div className="p-6 max-w-page mx-auto space-y-6">
         <AdminHeader />
-        {isAdmin(currentRole) ? (
-          <>
-            {requestsSection}
-            <div className="card card-pad text-body text-fg-muted">그 외 승인(가입·보고서·지출·페이)은 <b>대표(CEO)</b> 전용입니다. 현재 역할: {roleLabel[currentRole]}</div>
-          </>
-        ) : (
-          <div className="card card-pad text-section text-fg-muted">
-            🔒 승인 센터는 <b>관리자</b> 전용입니다. 현재 역할: {roleLabel[currentRole]} — 우측 상단에서 전환하세요.
-          </div>
-        )}
+        <div className="card card-pad text-section text-fg-muted">
+          🔒 승인 센터는 <b>관리자</b> 전용입니다. 현재 역할: {roleLabel[currentRole]} — 우측 상단에서 전환하세요.
+        </div>
       </div>
     );
   }
@@ -307,7 +301,8 @@ export function ApprovalsView() {
     <div className="p-6 max-w-page mx-auto space-y-6">
       <AdminHeader />
 
-      <MemberApprovals />
+      {/* 가입 승인 = 대표 전용(BE SuperAdminGuard). 매니저는 보고서·지출·페이·수업요청 승인만. */}
+      {isSuper && <MemberApprovals />}
 
       {activeSections.map((s) => <div key={s.key}>{s.node}</div>)}
 
