@@ -8,7 +8,13 @@ import { api, type SessionReport as ApiReport } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useTacoStore } from "@/lib/store";
 import { isAdmin } from "@/lib/roles";
-import type { Instructor, SessionReport } from "@/types";
+import { currentClaims } from "@/lib/auth";
+import type { AccountRole, Instructor, SessionReport } from "@/types";
+
+// [TBO-21 B1] 정산 조회는 admin 전용(403). 스토어 currentRole 기본값('super_admin')이 새로고침 직후
+//  JWT 하이드레이트 전에 admin으로 잡혀 강사가 /payouts를 호출→403 나던 문제 → **토큰 역할**로 게이트.
+//  currentClaims()는 localStorage 토큰을 읽어 실제 로그인 역할을 즉시 반영(서버선 null→비활성, 쿼리는 클라에서만 실행).
+const tokenIsAdmin = () => (currentClaims()?.roles ?? []).some((r) => isAdmin(r as AccountRole));
 
 // 백엔드 보고서(draft|submitted|approved|rejected)를 store 모델로 정규화.
 //  approved→'sent'(작성완료 집계) · rejected→'draft'(재작성=미작성 집계). 실제 상태는 approvalStatus에 보존.
@@ -51,7 +57,8 @@ export const useExpenses = () => useQuery({ queryKey: qk.expenses.list(), queryF
 // [코드리뷰 2026-07-03 M1] 정산 조회는 백엔드 관리자 전용(403) — 비관리자는 fetch 비활성(빈 배열 유지, 403 재시도 노이즈 방지)
 export const usePayouts = () => {
   const role = useTacoStore((s) => s.currentRole);
-  return useQuery({ queryKey: qk.payouts.list(), queryFn: () => api.payouts.list(), enabled: isAdmin(role) });
+  // [TBO-21 B1] 스토어 role + 토큰 role 둘 다 admin일 때만 — 새로고침 직후 기본값(super_admin)으로 강사가 403 나던 것 차단.
+  return useQuery({ queryKey: qk.payouts.list(), queryFn: () => api.payouts.list(), enabled: isAdmin(role) && tokenIsAdmin() });
 };
 // [상태 무결성 2026-07-06] 산정 미리보기(읽기전용) — 강사·기간 키 캐시(PayoutsView 로컬 fetch 대체).
 //  mutation 성공 시 qk.payouts.all 무효화가 preview 키도 접두사로 포함 → 자동 재계산.
@@ -60,7 +67,7 @@ export const usePayoutPreview = (instructorId: number | null, from: string, to: 
   return useQuery({
     queryKey: qk.payouts.preview(instructorId ?? 0, from, to),
     queryFn: () => api.payouts.preview(instructorId as number, from, to),
-    enabled: isAdmin(role) && instructorId != null && !!from && !!to,
+    enabled: isAdmin(role) && tokenIsAdmin() && instructorId != null && !!from && !!to,
   });
 };
 // [TBO-16 #9] 수업 요청 — 승인센터·배지(tasks)·캘린더가 **같은 queryKey를 구독**(단일 이벤트 객체).

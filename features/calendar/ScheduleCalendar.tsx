@@ -95,6 +95,10 @@ export function ScheduleCalendar() {
   //  anchor(기준일)는 항상 오늘로 시작(과거 날짜 고정 방지). 내용 필터(Set)는 후속(setCodec)으로 확장.
   const [view, setView] = usePersistedState<View>("taco.cal.view", "week");
   const [anchor, setAnchor] = useState(todayISO());
+  // [TBO-21 B2] 현재시각선은 new Date()를 렌더 중 계산 → SSR HTML과 클라 하이드레이션 시각이 달라
+  //  React #418(hydration text mismatch)이 났다. mount 후에만 렌더해 서버·클라 첫 렌더를 일치시킴.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [rows, setRows] = useState<ScheduleRow[]>([]);
   const { data: rooms = [] } = useRooms(); // [TBO-14 C2] 강의실 카탈로그 = Query(로컬 state·1회 fetch 대체)
   const [editing, setEditing] = useState<ScheduleRow | null>(null);
@@ -1228,7 +1232,7 @@ export function ScheduleCalendar() {
   const _now = new Date();
   const nowMin = _now.getHours() * 60 + _now.getMinutes();
   const nowTop = ((nowMin - GRID_MIN) / 60) * HOUR_H;
-  const showNow = nowMin >= GRID_MIN && nowMin <= END_H * 60;
+  const showNow = mounted && nowMin >= GRID_MIN && nowMin <= END_H * 60; // [TBO-21 B2] mount 후에만(하이드레이션 불일치 방지)
 
   // ── 우측 패널 데이터: 위=필터 결과 리스트(날짜 오름차순) · 아래=클릭 세션 상세(ScheduleRow DTO) ──
   const listRows = useMemo(() => sortByDateAsc(inRange), [inRange]);
