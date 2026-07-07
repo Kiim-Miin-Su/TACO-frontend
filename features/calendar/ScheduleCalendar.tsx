@@ -50,6 +50,10 @@ const GRID_H = (END_H - START_H) * HOUR_H;
 // 시수 미측정·충돌 제외·회색 표시 대상(결강/취소)
 const CANCELED_GRAY = "#8c959f";
 const isCanceledStatus = (s?: string) => s === "canceled" || s === "no_show";
+// [TBO-19] 강사 결석(instructorAttendance='absent')도 '결강'처럼 시각화(회색·취소선) — status는 바꾸지 않고 표시만.
+//  (결석 시수 제외는 백엔드 payouts.measure가 담당. 여기선 캘린더 렌더만.)
+const isSessionCanceled = (r: { status?: string; instructorAttendance?: string | null }) =>
+  isCanceledStatus(r.status) || r.instructorAttendance === "absent";
 
 const snap = (mm: number) => Math.round(mm / SNAP) * SNAP;
 
@@ -432,7 +436,7 @@ export function ScheduleCalendar() {
   // ── 색/라벨 ──
   const colorOf = useCallback(
     (r: ScheduleRow) =>
-      isCanceledStatus(r.status) // 결강·취소 → 회색(시수 미측정·충돌 제외 시각화)
+      isSessionCanceled(r) // 결강·취소·강사결석 → 회색(시수 미측정·충돌 제외 시각화)
         ? CANCELED_GRAY
         : colorBy === "subject"
           ? (r.color ?? hashColor(r.subjectName))
@@ -1692,10 +1696,10 @@ export function ScheduleCalendar() {
                                   {(textMode === "full" || textMode === "title") && (
                                     <>
                                       <div
-                                        className={`font-semibold truncate ${isCanceledStatus(r.status) ? "line-through opacity-90" : ""}`}
+                                        className={`font-semibold truncate ${isSessionCanceled(r) ? "line-through opacity-90" : ""}`}
                                         style={textMode === "title" ? { fontSize: 10 } : undefined}
                                       >
-                                        {labelOf(r)}{isCanceledStatus(r.status) ? ` (${STATUS_LABEL[r.status]})` : ""}
+                                        {labelOf(r)}{isSessionCanceled(r) ? ` (${isCanceledStatus(r.status) ? STATUS_LABEL[r.status] : "강사 결강"})` : ""}
                                       </div>
                                       <div className="opacity-90 mono truncate" style={textMode === "title" ? { fontSize: 9.5 } : undefined}>
                                         {fromMin(s)}–{fromMin(Math.min(en, 1440))}
