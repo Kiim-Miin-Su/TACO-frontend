@@ -78,6 +78,17 @@ export type InstructorContract = {
   periodStart: string; periodEnd?: string; active: boolean; memo?: string;
   createdAt: string; updatedAt: string;
 };
+// [TBO-19] 강사 출결 현황 집계 응답
+export type InstructorAttendanceRow = {
+  instructorId: number; instructorName: string;
+  held: number; present: number; late: number; absent: number; makeup: number; unmarked: number;
+  attendanceRate: number | null; teachingMinutes: number; teachingHours: number;
+};
+export type InstructorAttendanceSummary = {
+  from?: string; to?: string;
+  rows: InstructorAttendanceRow[];
+  totals: { instructors: number; held: number; present: number; late: number; absent: number; makeup: number; unmarked: number; teachingHours: number };
+};
 export type ConflictCheckBody = {
   sessionDate: string; startTime: string; endTime?: string; durationMinutes?: number;
   instructorId?: number; roomId?: number; ignoreSessionId?: number;
@@ -286,6 +297,9 @@ export const api = {
       http.get<ScheduleRow[]>("/schedule", { params: q }).then((r) => r.data),
     // 자원 피커(강사·강의실·학생)
     resources: () => http.get<ScheduleResources>("/schedule/resources").then((r) => r.data),
+    // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터
+    instructorAttendanceSummary: (from?: string, to?: string, instructorId?: number) =>
+      http.get<InstructorAttendanceSummary>("/schedule/instructor-attendance-summary", { params: { from, to, instructorId } }).then((r) => r.data),
     // 추천→배정·수동 추가 → { row, conflicts }. 충돌 시 409 → force로 재시도.
     create: (body: ScheduleCreateBody) =>
       http.post<{ row: ScheduleRow; conflicts: Conflict[] }>("/schedule", body).then((r) => r.data),

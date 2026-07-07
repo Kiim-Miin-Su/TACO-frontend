@@ -20,6 +20,7 @@ import { useAppData } from '@/lib/queries';
 import { isCEO, isAdmin, roleLabel } from '@/lib/roles';
 import { buildTasks, type TaskItem } from '@/lib/tasks';
 import { myInstructorId } from '@/lib/auth';
+import { InstructorAttendanceSummary } from './InstructorAttendanceSummary';
 import type { EnrollmentStatus } from '@/types';
 
 // To-do 항목 리스트 — 알림/대시보드 공용 표현. 항목 클릭 시 해당 화면으로.
@@ -234,6 +235,9 @@ export function DashboardView() {
           </table>
         </TableWrap>
       </SectionCard>
+
+      {/* [TBO-19] 관리자 대시보드 — 강사 출결 현황(월/기간/강사 필터). manager 이상만. */}
+      {admin && <InstructorAttendanceSummary />}
     </div>
   );
 }
