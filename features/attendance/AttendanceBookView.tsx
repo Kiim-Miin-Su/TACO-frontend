@@ -7,7 +7,7 @@ import { useMemo, useState } from "react";
 import type { AttendanceStatus, InstructorAttendanceStatus, ScheduleRow } from "@/types";
 import { useSchedule, useAttendance, useUpsertAttendance, useStudents, useCourses, useUpdateSchedule } from "@/lib/queries";
 import { buildAttendanceBook, hoursLabel, nextAttendanceStatus } from "@/lib/domain/attendanceBook";
-import { teachingHours } from "@/lib/domain/schedule";
+import { paidTeachingHours } from "@/lib/domain/schedule";
 import { INSTRUCTOR_ATT_LABEL } from "@/lib/domain/lantiv";
 import { useTacoStore } from "@/lib/store";
 import { isAdmin } from "@/lib/roles";
@@ -95,8 +95,9 @@ export function AttendanceBookView() {
     });
     return [...byInst.entries()].map(([id, list]) => {
       const name = list[0]?.instructorName ?? `강사 ${id}`;
+      // [TBO-19] 진행 회차 표시는 held·makeup 모두(출결 마킹 대상), 시수는 정산 규칙(countsForPay=held·비결석)만.
       const heldList = list.filter((r) => r.status === "held" || r.status === "makeup");
-      const hrs = teachingHours(list as never, { instructorId: id, statuses: ["held", "makeup"] });
+      const hrs = paidTeachingHours(list as never, { instructorId: id });
       return { id, name, sessions: [...heldList].sort((a, b) => a.sessionDate.localeCompare(b.sessionDate)), hours: hrs.hours };
     });
   }, [rows, ym, manager, myInstId]);
@@ -288,7 +289,7 @@ export function AttendanceBookView() {
             {canEditInstructorAtt
               ? "매니저: 회차별 강사 출결을 직접 변경합니다(출석/지각/결석/보강). "
               : "본인 출결은 읽기 전용입니다. 정정이 필요하면 매니저에게 요청하세요. "}
-            누적 강의 시수는 정산(강사 페이)과 동일한 teachingHours 규칙(진행·보강 회차)입니다.
+            <b>시수 인정</b>: 진행(held)이고 강사 결석 아님만 — <b>미진행·보강·결석은 제외</b>(정산과 동일 규칙, 잠정).
           </p>
         </SectionCard>
       )}

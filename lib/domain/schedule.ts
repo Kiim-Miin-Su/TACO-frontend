@@ -156,6 +156,30 @@ export function teachingHours(
   return { sessions: rows.length, minutes, hours: Math.round((minutes / 60) * 100) / 100 };
 }
 
+// ── [TBO-19 시수 정책 · 2026-07-07 — ⚠ 잠정 비즈니스 로직, 추후 변경] ──────────────────────────
+//  강사 **정산 시수(급여 인정)** 규칙 = 실제 진행(held) AND 강사 결석 아님.
+//  제외: 미진행(예정·취소·노쇼)·보강(makeup)·강사 결석(absent). 지각=인정(감산 없음).
+//  ⚠ 이 규칙은 백엔드 payouts.service.measure()의 게이트와 **한 쌍**(단일 규칙). 변경 시 양쪽 동시 수정.
+//  정책 배경·변경 이력 = docs/TODO.md TBO-19. (generic teachingHours는 '뷰/계획 시수'로 별개 — 이건 급여용)
+export const countsForPay = (s: Pick<ClassSession, 'status' | 'instructorAttendance'>): boolean =>
+  s.status === 'held' && s.instructorAttendance !== 'absent';
+
+/** 강사 정산 시수(급여 인정분) 집계 — countsForPay 규칙. AttendanceBook 강사 시수·정산 표기 단일 소스. */
+export function paidTeachingHours(
+  sessions: ClassSession[],
+  opts: { from?: string; to?: string; instructorId?: ID } = {},
+): TeachingHours {
+  const rows = sessions.filter(
+    (s) =>
+      (opts.from ? s.sessionDate >= opts.from : true) &&
+      (opts.to ? s.sessionDate <= opts.to : true) &&
+      (opts.instructorId != null ? s.instructorId === opts.instructorId : true) &&
+      countsForPay(s),
+  );
+  const minutes = rows.reduce((a, s) => a + (s.durationMinutes || 0), 0);
+  return { sessions: rows.length, minutes, hours: Math.round((minutes / 60) * 100) / 100 };
+}
+
 // ── 이동(드래그)·리사이즈 → 충돌검사용 후보 + PATCH 페이로드 ──
 export type SchedulePatch = {
   sessionDate?: string;
