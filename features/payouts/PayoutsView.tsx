@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { Fragment, useCallback, useState } from 'react';
 import { Badge, EmptyState, Field, PageHeader, PromptModal, SectionCard, TableWrap, type Tone } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
@@ -245,6 +246,8 @@ export function PayoutsView() {
                   <button className="hover:underline" onClick={() => setExpanded(expanded === p.id ? null : p.id)} title="정산 근거 보기">
                     {expanded === p.id ? '▾' : '▸'} {instructorName(p.instructorId)}
                   </button>
+                  {/* [TBO-20 20-B] 강사별 정산 상세(회차 내역·이번 달 미리보기) */}
+                  <Link href={`/payouts/${p.instructorId}`} className="ml-1.5 text-caption text-accent hover:underline" title="이 강사 정산 상세">상세</Link>
                 </td>
                 <td className="mono text-fg-muted">{p.periodStart} ~ {p.periodEnd}</td>
                 <td className="text-right mono">{hours(p.totalMinutes)} · {p.sessionCount}회</td>
