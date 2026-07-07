@@ -61,6 +61,11 @@ export const useScheduleRequests = () =>
 export const useCounselForms = () => useQuery({ queryKey: qk.counsel.forms(), queryFn: () => api.counsel.forms() });
 export const useCounselRounds = () => useQuery({ queryKey: qk.counsel.rounds(), queryFn: () => api.counsel.rounds() });
 export const useAcademyEvents = () => useQuery({ queryKey: qk.events.list(), queryFn: () => api.events.list() });
+// [TBO-19 Sprint4] 강사 계약(매니저 전용 — 계약 대비 실제 시수). 백엔드 GET이 ADMIN 게이트라 비관리자는 비활성.
+export const useInstructorContracts = () => {
+  const role = useTacoStore((s) => s.currentRole);
+  return useQuery({ queryKey: ["instructor-contracts", "list"] as const, queryFn: () => api.instructorContracts.list(), enabled: isAdmin(role), staleTime: CATALOG_STALE });
+};
 export const useRoadmaps = () => useQuery({ queryKey: qk.roadmaps.list(), queryFn: () => api.roadmaps.list() });
 export const useRoadmapCourses = () => useQuery({ queryKey: qk.roadmaps.courses(), queryFn: () => api.roadmaps.courses() });
 

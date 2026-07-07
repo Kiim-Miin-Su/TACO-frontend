@@ -5,7 +5,7 @@
 //  권한: 강사=본인 담당 코스만(마킹 가능) · 매니저/관리자=[학생 출석]+[강사 출석](강사 시수=teachingHours 재사용).
 import { useMemo, useState } from "react";
 import type { AttendanceStatus, InstructorAttendanceStatus, ScheduleRow } from "@/types";
-import { useSchedule, useAttendance, useUpsertAttendance, useStudents, useCourses, useUpdateSchedule } from "@/lib/queries";
+import { useSchedule, useAttendance, useUpsertAttendance, useStudents, useCourses, useUpdateSchedule, useInstructorContracts } from "@/lib/queries";
 import { buildAttendanceBook, hoursLabel, nextAttendanceStatus } from "@/lib/domain/attendanceBook";
 import { paidTeachingHours } from "@/lib/domain/schedule";
 import { INSTRUCTOR_ATT_LABEL } from "@/lib/domain/lantiv";
@@ -38,6 +38,8 @@ export function AttendanceBookView() {
   const upsert = useUpsertAttendance();
   // [TBO-19] 강사 출결 마킹(매니저 CRUD) — 세션 PATCH(manager+ 게이트)로 저장, 강사는 API상 read-only.
   const updateSchedule = useUpdateSchedule();
+  // [TBO-19 Sprint4] 강사 계약(매니저 전용) — 계약 대비 실제 시수. 비관리자는 훅이 비활성(빈 배열).
+  const { data: contracts = [] } = useInstructorContracts();
 
   const [tab, setTab] = useState<"student" | "instructor">("student");
   const [ym, setYm] = useState(thisYm());
@@ -107,9 +109,13 @@ export function AttendanceBookView() {
       });
       const denom = counts.present + counts.late + counts.absent;
       const rate = denom ? Math.round(((counts.present + counts.late) / denom) * 100) : null;
-      return { id, name, sessions: [...heldList].sort((a, b) => a.sessionDate.localeCompare(b.sessionDate)), hours: hrs.hours, counts, rate };
+      // [TBO-19 Sprint4] 계약 대비 실제 시수(매니저) — 계약 월 시수 대비 이번 달 인정 시수.
+      const contract = contracts.find((c) => c.instructorId === id);
+      const contractHours = contract?.monthlyHours ?? null;
+      const contractPct = contractHours ? Math.round((hrs.hours / contractHours) * 100) : null;
+      return { id, name, sessions: [...heldList].sort((a, b) => a.sessionDate.localeCompare(b.sessionDate)), hours: hrs.hours, counts, rate, contractHours, contractPct };
     });
-  }, [rows, ym, manager, myInstId]);
+  }, [rows, ym, manager, myInstId, contracts]);
 
   // [TBO-19 Sprint2] 강사 출결 상태 필터 — 결석·지각 등 시수 갭 식별용. 세션 표시 + 행 노출을 함께 좁힌다.
   const [attFilter, setAttFilter] = useState<"all" | "absent" | "late" | "issue" | "unmarked">("all");
@@ -292,6 +298,7 @@ export function AttendanceBookView() {
                     <th className="text-center min-w-[70px]">출석률</th>
                     <th className="text-center min-w-[70px]">진행 수</th>
                     <th className="text-center min-w-[100px]">인정 시수</th>
+                    {manager && <th className="text-center min-w-[140px]">계약 대비(월)</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -336,6 +343,28 @@ export function AttendanceBookView() {
                       <td className="text-center mono">{r.rate == null ? "—" : `${r.rate}%`}</td>
                       <td className="text-center mono">{r.sessions.length}회</td>
                       <td className="text-center mono font-semibold">{r.hours}h</td>
+                      {manager && (
+                        <td>
+                          {r.contractHours == null ? (
+                            <span className="text-fg-subtle text-caption">계약 없음</span>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <div className="flex-1 h-2 rounded-full overflow-hidden bg-line-muted">
+                                <div
+                                  className="h-full rounded-full"
+                                  style={{
+                                    width: `${Math.min(100, r.contractPct ?? 0)}%`,
+                                    background: (r.contractPct ?? 0) >= 100 ? "var(--color-success)" : "var(--color-accent)",
+                                  }}
+                                />
+                              </div>
+                              <span className="mono text-micro whitespace-nowrap">
+                                {r.hours}/{r.contractHours}h ({r.contractPct}%)
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

@@ -72,6 +72,12 @@ export type SchedulePatchBody = {
   // 반복 편집 범위(this=이 일정만 · this_and_following=이후 전부 · all=시리즈 전체). seriesId가 있을 때만 의미.
   scope?: "this" | "this_and_following" | "all"; force?: boolean;
 };
+// [TBO-19 Sprint4] 강사 계약(백엔드 로컬 타입 — @kms545487/contracts 미포함). DB 이관 시 contracts로 승격 검토.
+export type InstructorContract = {
+  id: number; instructorId: number; monthlyHours: number; hourlyRate: number;
+  periodStart: string; periodEnd?: string; active: boolean; memo?: string;
+  createdAt: string; updatedAt: string;
+};
 export type ConflictCheckBody = {
   sessionDate: string; startTime: string; endTime?: string; durationMinutes?: number;
   instructorId?: number; roomId?: number; ignoreSessionId?: number;
@@ -250,6 +256,10 @@ export const api = {
   events: {
     list: () => http.get<AcademyEvent[]>("/events").then((r) => r.data),
     create: (input: CreateEventInput) => http.post<AcademyEvent>("/events", input).then((r) => r.data),
+  },
+  // [TBO-19 Sprint4] 강사 계약(읽기 전용 — 매니저) — 백엔드 로컬 타입(contracts 미포함)
+  instructorContracts: {
+    list: () => http.get<InstructorContract[]>("/instructor-contracts").then((r) => r.data),
   },
   attendance: {
     list: () => http.get<Attendance[]>("/attendance").then((r) => r.data),
