@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { Field } from '@/components/ui';
 // 읽기(subjects·courses)/쓰기(상담 생성·수정)는 TanStack Query 훅 경유(zustand store 대체).
 import { useSubjects, useCourses, useCreateCounsel } from '@/lib/queries';
 import type {
@@ -119,7 +120,7 @@ export function CounselForm() {
         </Field>
         <Field label="약점"><input className="input" value={f.weakness} onChange={(e) => set({ weakness: e.target.value })} placeholder="독해 속도 등" /></Field>
 
-        <Field label="다음 상담일">
+        <Field label="다음 상담일" hint="신청 후 상담카드 상세에서 예약일·회차로 관리됩니다">
           <div className="flex items-center gap-2">
             <input type="date" className="input flex-1" value={f.nextContactAt} disabled={f.dateUndecided}
               onChange={(e) => set({ nextContactAt: e.target.value })} />
@@ -139,14 +140,5 @@ export function CounselForm() {
         <button type="submit" className="btn btn-primary">상담 신청</button>
       </div>
     </form>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
-      {children}
-    </label>
   );
 }

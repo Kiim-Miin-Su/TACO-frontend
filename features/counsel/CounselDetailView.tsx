@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { Badge, SectionCard } from '@/components/ui';
+import { Badge, SectionCard, PageHeader, EmptyState, Field } from '@/components/ui';
 // 읽기(폼·회차·과목·코스)/쓰기(수정·상태변경·회차추가)는 TanStack Query 훅 경유(zustand store 대체).
 import {
   useCounselForms, useCounselRounds, useSubjects, useCourses,
@@ -33,7 +33,7 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
 
   if (!form) {
     return (
-      <div className="p-6 max-w-[820px] mx-auto">
+      <div className="p-6 max-w-page-form mx-auto">
         <Link href="/counsel" className="text-caption text-fg-muted hover:underline">← 상담 목록</Link>
         <div className="mt-3 text-fg-muted">상담카드를 찾을 수 없습니다. (id: {counselId})</div>
       </div>
@@ -67,14 +67,16 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
   };
 
   return (
-    <div className="p-6 max-w-[920px] mx-auto space-y-6">
+    <div className="p-6 max-w-page mx-auto space-y-6">
       <div>
         <Link href="/counsel" className="text-caption text-fg-muted hover:underline">← 상담 목록</Link>
-        <div className="flex items-center gap-2 mt-1">
-          <h1 className="text-title font-bold">{form.applicantName} 상담카드</h1>
-          <Badge tone={statusTone[form.status]}>{statusLabel[form.status]}</Badge>
+        <div className="mt-1">
+          <PageHeader
+            title={`${form.applicantName} 상담카드`}
+            sub={`${sourceLabel[form.source]} · 접수 ${form.createdAt}`}
+            actions={<Badge tone={statusTone[form.status]}>{statusLabel[form.status]}</Badge>}
+          />
         </div>
-        <p className="text-body text-fg-muted mt-0.5">{sourceLabel[form.source]} · 접수 {form.createdAt}</p>
       </div>
 
       {/* 편집 가능한 상담카드 */}
@@ -87,6 +89,8 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
           </select>
         }
       >
+        {/* [TBO-17] 저장 지원 필드 명시 — 백엔드 UpdateCounselInput 미지원 항목은 표시용(DB 이관 후 확장 예정) */}
+        <div className="px-4 pt-3 text-caption text-fg-subtle">ⓘ 현재 저장: 상태·담당·관심 과목/코스·약점·학원 기대. 이름·연락처·예약일·희망시기·분위기·의향은 표시용(DB 이관 후 저장 지원).</div>
         <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Field label="신청자 이름"><input className="input" value={form.applicantName} onChange={(e) => patch({ applicantName: e.target.value })} /></Field>
           <Field label="연락처"><input className="input" value={form.applicantPhone ?? ''} onChange={(e) => patch({ applicantPhone: e.target.value })} /></Field>
@@ -154,7 +158,7 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
               {r.nextAction && <div className="text-caption text-accent mt-1">다음 액션 · {r.nextAction}</div>}
             </div>
           ))}
-          {formRounds.length === 0 && <div className="p-4 text-body text-fg-subtle">아직 상담 회차가 없습니다.</div>}
+          {formRounds.length === 0 && <EmptyState message="아직 상담 회차가 없습니다." />}
         </div>
 
         {/* 회차 추가 */}
@@ -175,14 +179,5 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
         </div>
       </SectionCard>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
-      {children}
-    </label>
   );
 }

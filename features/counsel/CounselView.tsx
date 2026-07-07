@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { Badge, SectionCard } from '@/components/ui';
+import { Badge, SectionCard, PageHeader, EmptyState, TableWrap } from '@/components/ui';
 // 서버 상태(상담 폼·회차)는 TanStack Query 훅에서 구독한다(zustand store 대체).
 import { useCounselForms, useCounselRounds } from '@/lib/queries';
 import { CounselForm } from './CounselForm';
@@ -13,11 +13,8 @@ export function CounselView() {
   const roundCount = (formId: number) => rounds.filter((r) => r.counselFormId === formId).length;
 
   return (
-    <div className="p-6 max-w-[1100px] mx-auto space-y-6">
-      <div>
-        <h1 className="text-title font-bold">상담</h1>
-        <p className="text-body text-fg-muted mt-0.5">상담 신청 · 예약/내역 캘린더 · 상담카드 관리</p>
-      </div>
+    <div className="p-6 max-w-page mx-auto space-y-6">
+      <PageHeader title="상담" sub="상담 신청 · 예약/내역 캘린더 · 상담카드 관리" />
 
       <CounselCalendar />
 
@@ -25,8 +22,11 @@ export function CounselView() {
         <CounselForm />
       </SectionCard>
 
-      <SectionCard title="상담카드 목록">
-        <div className="overflow-x-auto">
+      <SectionCard title={`상담카드 목록 (${forms.length})`}>
+        {forms.length === 0 ? (
+          <EmptyState message="접수된 상담카드가 없습니다. 위 양식으로 상담을 신청하세요." />
+        ) : (
+        <TableWrap>
           <table className="table">
             <thead>
               <tr>
@@ -58,7 +58,8 @@ export function CounselView() {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableWrap>
+        )}
       </SectionCard>
     </div>
   );
