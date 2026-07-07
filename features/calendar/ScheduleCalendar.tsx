@@ -1670,7 +1670,7 @@ export function ScheduleCalendar() {
                                   onClick={(e) => { e.stopPropagation(); if (suppressClickRef.current) { suppressClickRef.current = false; return; } setSelEvent(r.id); setSelBand(null); setDetailId(r.id); }}
                                   onDoubleClick={(e) => { e.stopPropagation(); openEditor(r, colTz ? colTzc : null); }}
                                   title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${ovEnd ? ` · 자정 넘김(+1일 ~${ovEnd})` : ""}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 드래그=이동 · 더블클릭=상세`}
-                                  className={`absolute rounded-lg text-white text-micro leading-tight px-1.5 py-1 cursor-grab overflow-hidden shadow-sm hover:brightness-105 transition ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
+                                  className={`absolute rounded-lg text-white text-micro leading-tight cursor-grab overflow-hidden shadow-sm hover:brightness-105 transition ${textMode === "vtitle" || textMode === "color" ? "px-0.5 py-0.5" : "px-1.5 py-1"} ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
                                   style={{
                                     top: top + 1,
                                     height: h - 2,
@@ -1714,9 +1714,12 @@ export function ScheduleCalendar() {
                                     </div>
                                   )}
                                   {textMode === "vtitle" && (
+                                    // [세로 글씨 최적화 2026-07-07] px-0.5 py-0.5로 padding 축소 → 높이 여유 확보(maxHeight h-4).
+                                    //  촘촘한 자간·lineHeight 1로 더 많은 글자 표시, 단일 열(nowrap)로 좌측 wrap 클립 방지.
+                                    //  전체 이름은 title 툴팁으로 항상 보존(넘치면 세로 방향으로만 자연 클립).
                                     <div
-                                      className="font-semibold overflow-hidden"
-                                      style={{ writingMode: "vertical-rl", fontSize: 9, lineHeight: 1.1, maxHeight: Math.max(8, h - 14), overflow: "hidden" }} /* [B-6] py·보더 감안 클립 — 박스 밖 삐짐 방지 */
+                                      className="font-semibold overflow-hidden text-center"
+                                      style={{ writingMode: "vertical-rl", textOrientation: "mixed", fontSize: 9, lineHeight: 1, letterSpacing: "-0.3px", whiteSpace: "nowrap", maxHeight: Math.max(10, h - 4), overflow: "hidden" }}
                                       title={`${labelOf(r)} ${fromMin(s)}–${fromMin(Math.min(en, 1440))}${ovEnd ? ` (+1일 ~${ovEnd})` : ""}`}
                                     >
                                       {labelOf(r)}
