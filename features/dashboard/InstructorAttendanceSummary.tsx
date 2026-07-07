@@ -66,6 +66,15 @@ export function InstructorAttendanceSummary() {
         </div>
       }
     >
+      {/* [TBO-19] 임계 경고 — 이번 기간 강사 결석·지각 발생 시 상단 스트립으로 즉시 인지 */}
+      {totals && totals.absent + totals.late > 0 && (
+        <div
+          className="mb-3 px-3 py-2 rounded-md text-caption flex items-center gap-2"
+          style={{ background: 'var(--color-attention-subtle)', color: 'var(--color-attention)' }}
+        >
+          ⚠ 이번 기간 강사 <b>결석 {totals.absent}건</b> · 지각 {totals.late}건 — 아래 표에서 강사별 확인.
+        </div>
+      )}
       {isLoading ? (
         <EmptyState message="집계 중…" />
       ) : !rows.length ? (
@@ -88,8 +97,15 @@ export function InstructorAttendanceSummary() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.instructorId}>
-                  <td className="font-medium">{r.instructorName}</td>
+                <tr key={r.instructorId} style={r.absent > 0 ? { background: 'var(--color-danger-subtle)' } : undefined}>
+                  <td className="font-medium">
+                    <span className="inline-flex items-center gap-1">
+                      {r.instructorName}
+                      {/* 결석 있는 강사 강조 배지 — 계약·시수 관리 주의 대상 */}
+                      {r.absent > 0 && <span className="badge text-micro" style={{ background: 'var(--color-danger)', color: '#fff' }} title="결석 발생">⚠ 결석 {r.absent}</span>}
+                      {r.absent === 0 && r.late > 0 && <span className="badge text-micro" style={{ background: 'var(--color-attention)', color: '#fff' }} title="지각 발생">지각 {r.late}</span>}
+                    </span>
+                  </td>
                   <td className="text-center mono">{r.held}</td>
                   <td className="text-center mono text-success">{r.present}</td>
                   <td className="text-center mono text-attention">{r.late}</td>
