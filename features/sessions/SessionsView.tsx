@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { Badge, SectionCard, PageHeader, EmptyState, TableWrap, type Tone } from "@/components/ui";
 import { useSchedule, useCourses, useInstructors } from "@/lib/queries";
+import { useTacoStore } from "@/lib/store";
+import { isAdmin } from "@/lib/roles";
 import type { SessionStatus } from "@/types";
 import { shortDate } from "@/lib/format";
 import { SessionForm } from "./SessionForm";
@@ -22,6 +24,9 @@ const label: Record<SessionStatus, string> = {
 };
 
 export function SessionsView() {
+  // [권한 정합] 수업 직접 개설(POST /schedule)은 BE ADMIN 전용 → 매니저 이상만 폼 노출(강사=403 방지).
+  //  강사는 캘린더의 수업요청(schedule-requests) 경로로 개설.
+  const admin = isAdmin(useTacoStore((s) => s.currentRole));
   const { data: classSessions = [] } = useSchedule();
   const { data: courses = [] } = useCourses();
   const { data: instructors = [] } = useInstructors();
@@ -39,10 +44,11 @@ export function SessionsView() {
     <div className="p-6 max-w-page mx-auto space-y-6">
       <PageHeader title="수업 (강사)" sub="진행 수업 목록 · 출석·피드백은 상세에서" />
 
-      <SectionCard title="신규 수업 개설">
-        {/* TODO: check 'is-admin?' */}
-        <SessionForm />
-      </SectionCard>
+      {admin && (
+        <SectionCard title="신규 수업 개설">
+          <SessionForm />
+        </SectionCard>
+      )}
 
       <SectionCard
         title={`수업 목록 (${rows.length})`}

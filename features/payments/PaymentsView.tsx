@@ -4,10 +4,14 @@ import Link from 'next/link';
 import { Badge, SectionCard, MonthCalendar, PageHeader, EmptyState, TableWrap } from '@/components/ui';
 import { usePayments, useStudents } from '@/lib/queries';
 import { usePersistedState } from '@/lib/usePersistedState';
+import { useTacoStore } from '@/lib/store';
+import { isAdmin } from '@/lib/roles';
 import { won } from '@/lib/format';
 import { statusLabel, statusTone, methodLabel } from './labels';
 
 export function PaymentsView() {
+  // [권한 정합] 결제 청구 생성(POST /payments)은 BE ADMIN 전용 → 신규 청구 버튼은 관리자만(403 방지).
+  const admin = isAdmin(useTacoStore((s) => s.currentRole));
   const { data: payments = [] } = usePayments();
   const { data: students = [] } = useStudents();
   // [C-2 2026-07-06] 목록/달력 보기 토글 localStorage 복원(새로고침에도 유지).
@@ -31,7 +35,7 @@ export function PaymentsView() {
               <button className={`btn btn-sm rounded-none border-0 ${view === 'list' ? 'badge-accent' : ''}`} onClick={() => setView('list')}>리스트</button>
               <button className={`btn btn-sm rounded-none border-0 ${view === 'calendar' ? 'badge-accent' : ''}`} onClick={() => setView('calendar')}>캘린더</button>
             </div>
-            <Link href="/payments/new" className="btn btn-primary btn-sm">신규 청구</Link>
+            {admin && <Link href="/payments/new" className="btn btn-primary btn-sm">신규 청구</Link>}
           </div>
         }
       />
