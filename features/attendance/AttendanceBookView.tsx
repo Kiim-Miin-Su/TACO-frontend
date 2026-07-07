@@ -98,13 +98,44 @@ export function AttendanceBookView() {
       // [TBO-19] 진행 회차 표시는 held·makeup 모두(출결 마킹 대상), 시수는 정산 규칙(countsForPay=held·비결석)만.
       const heldList = list.filter((r) => r.status === "held" || r.status === "makeup");
       const hrs = paidTeachingHours(list as never, { instructorId: id });
-      return { id, name, sessions: [...heldList].sort((a, b) => a.sessionDate.localeCompare(b.sessionDate)), hours: hrs.hours };
+      // [TBO-19 Sprint2] 강사별 출결 요약 — 카운트·출석률(출석+지각)/(출석+지각+결석).
+      const counts = { present: 0, late: 0, absent: 0, makeup: 0, unmarked: 0 };
+      heldList.forEach((s) => {
+        const a = s.instructorAttendance;
+        if (a === "present" || a === "late" || a === "absent" || a === "makeup") counts[a]++;
+        else counts.unmarked++;
+      });
+      const denom = counts.present + counts.late + counts.absent;
+      const rate = denom ? Math.round(((counts.present + counts.late) / denom) * 100) : null;
+      return { id, name, sessions: [...heldList].sort((a, b) => a.sessionDate.localeCompare(b.sessionDate)), hours: hrs.hours, counts, rate };
     });
   }, [rows, ym, manager, myInstId]);
+
+  // [TBO-19 Sprint2] 강사 출결 상태 필터 — 결석·지각 등 시수 갭 식별용. 세션 표시 + 행 노출을 함께 좁힌다.
+  const [attFilter, setAttFilter] = useState<"all" | "absent" | "late" | "issue" | "unmarked">("all");
+  const matchAttFilter = (s: ScheduleRow): boolean => {
+    if (attFilter === "all") return true;
+    const a = s.instructorAttendance;
+    if (attFilter === "unmarked") return !a;
+    if (attFilter === "issue") return a === "absent" || a === "late";
+    return a === attFilter;
+  };
+  const filteredInstructorBook = useMemo(
+    () =>
+      attFilter === "all"
+        ? instructorBook
+        : instructorBook
+            .map((r) => ({ ...r, sessions: r.sessions.filter(matchAttFilter) }))
+            .filter((r) => r.sessions.length > 0),
+    [instructorBook, attFilter],
+  );
 
   // [TBO-19] 강사 출결 저장(매니저) — 세션 PATCH. 성공 시 schedule·reports·payouts 무효화(useUpdateSchedule).
   const markInstructor = (sessionId: number, status: InstructorAttendanceStatus) =>
     updateSchedule.mutate({ id: sessionId, body: { instructorAttendance: status } });
+  // [TBO-19 Sprint2] 강사 출결 초기화(미표시) — clear sentinel(BE mergeFields 우회).
+  const clearInstructor = (sessionId: number) =>
+    updateSchedule.mutate({ id: sessionId, body: { clearInstructorAttendance: true } });
 
   return (
     <div className="p-6 max-w-page-wide mx-auto space-y-4">
@@ -231,9 +262,25 @@ export function AttendanceBookView() {
           </p>
         </SectionCard>
       ) : (
-        <SectionCard title={`${manager ? "강사 출석" : "내 출석"} — ${ym} 진행 회차`}>
-          {!instructorBook.length ? (
-            <EmptyState message={`${ym}에 진행된 회차가 없습니다.`} />
+        <SectionCard
+          title={`${manager ? "강사 출석" : "내 출석"} — ${ym} 진행 회차`}
+          action={
+            <select
+              className="input h-7 w-32 text-caption"
+              value={attFilter}
+              onChange={(e) => setAttFilter(e.target.value as typeof attFilter)}
+              title="강사 출결 상태로 회차 필터 — 결석·지각 등 시수 갭 식별"
+            >
+              <option value="all">전체 보기</option>
+              <option value="issue">결석·지각만</option>
+              <option value="absent">결석만</option>
+              <option value="late">지각만</option>
+              <option value="unmarked">미표시만</option>
+            </select>
+          }
+        >
+          {!filteredInstructorBook.length ? (
+            <EmptyState message={attFilter === "all" ? `${ym}에 진행된 회차가 없습니다.` : "해당 출결 상태의 회차가 없습니다."} />
           ) : (
             <TableWrap>
               <table className="table text-body">
@@ -241,26 +288,28 @@ export function AttendanceBookView() {
                   <tr>
                     <th className="min-w-[110px]">강사</th>
                     <th>진행 회차(날짜 · 강사 출결{canEditInstructorAtt ? " · 클릭 변경" : ""})</th>
-                    <th className="text-center min-w-[90px]">진행 수</th>
-                    <th className="text-center min-w-[110px]">누적 강의 시수</th>
+                    <th className="text-center min-w-[128px]">출결(출/지/결/보강)</th>
+                    <th className="text-center min-w-[70px]">출석률</th>
+                    <th className="text-center min-w-[70px]">진행 수</th>
+                    <th className="text-center min-w-[100px]">인정 시수</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {instructorBook.map((r) => (
+                  {filteredInstructorBook.map((r) => (
                     <tr key={r.id}>
                       <td className="font-medium">{r.name}</td>
                       <td>
                         <div className="flex flex-wrap gap-1.5">
                           {r.sessions.map((s) =>
                             canEditInstructorAtt ? (
-                              // 매니저: 출결 편집(set/change) — 세션 PATCH. '미표시'는 값 유지(초기화는 후속).
+                              // 매니저: 출결 편집(set/change/clear) — 세션 PATCH. '미표시' 선택=초기화.
                               <label key={s.id} className="inline-flex items-center gap-1 badge text-[10.5px]" title={`${s.courseName} ${s.startTime ?? ""}`}>
                                 <span className="mono">{s.sessionDate.slice(5)}</span>
                                 <select
                                   className="input h-6 px-1 py-0 text-[10.5px]"
                                   value={s.instructorAttendance ?? ""}
                                   disabled={updateSchedule.isPending}
-                                  onChange={(e) => e.target.value && markInstructor(s.id, e.target.value as InstructorAttendanceStatus)}
+                                  onChange={(e) => (e.target.value ? markInstructor(s.id, e.target.value as InstructorAttendanceStatus) : clearInstructor(s.id))}
                                 >
                                   <option value="">미표시</option>
                                   {INSTRUCTOR_ATT_ORDER.map((st) => (
@@ -277,6 +326,14 @@ export function AttendanceBookView() {
                           )}
                         </div>
                       </td>
+                      <td className="text-center mono text-[11px]">
+                        <span className="text-success">{r.counts.present}</span>/
+                        <span className="text-attention">{r.counts.late}</span>/
+                        <span className="text-danger">{r.counts.absent}</span>/
+                        <span className="text-fg-muted">{r.counts.makeup}</span>
+                        {r.counts.unmarked > 0 && <span className="text-fg-subtle"> ·미{r.counts.unmarked}</span>}
+                      </td>
+                      <td className="text-center mono">{r.rate == null ? "—" : `${r.rate}%`}</td>
                       <td className="text-center mono">{r.sessions.length}회</td>
                       <td className="text-center mono font-semibold">{r.hours}h</td>
                     </tr>
@@ -289,7 +346,7 @@ export function AttendanceBookView() {
             {canEditInstructorAtt
               ? "매니저: 회차별 강사 출결을 직접 변경합니다(출석/지각/결석/보강). "
               : "본인 출결은 읽기 전용입니다. 정정이 필요하면 매니저에게 요청하세요. "}
-            <b>시수 인정</b>: 진행(held)이고 강사 결석 아님만 — <b>미진행·보강·결석은 제외</b>(정산과 동일 규칙, 잠정).
+            출석률=(출석+지각)/(출석+지각+결석). <b>인정 시수</b>: 진행(held)·강사 결석 아님만 — <b>미진행·보강·결석 제외</b>(정산과 동일, 잠정).
           </p>
         </SectionCard>
       )}
