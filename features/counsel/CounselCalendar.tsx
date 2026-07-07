@@ -12,7 +12,8 @@ const pad = (n: number) => String(n).padStart(2, '0');
 export function CounselCalendar() {
   const { data: forms = [] } = useCounselForms();
   const { data: rounds = [] } = useCounselRounds();
-  const [ym, setYm] = useState({ y: 2026, m: 5 });
+  // [수정 2026-07-07] 하드코딩 2026-05 → 오늘 기준 동적 월(시드 상대 날짜와 정합).
+  const [ym, setYm] = useState(() => { const n = new Date(); return { y: n.getFullYear(), m: n.getMonth() }; });
 
   const startWeekday = new Date(ym.y, ym.m, 1).getDay();
   const daysInMonth = new Date(ym.y, ym.m + 1, 0).getDate();

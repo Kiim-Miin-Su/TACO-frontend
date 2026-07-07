@@ -1,66 +1,104 @@
 'use client';
+// [IA 3분할 2026-07-07] 상담 허브 — 탭 [목록 | 예약 캘린더]. 신청 폼은 별도 페이지(/counsel/new).
+//  종전엔 한 페이지에 캘린더+폼+목록이 쌓여 가독성이 낮았음 → 목록(검색)·예약(캘린더)·폼(페이지)으로 분리.
+import { useState } from 'react';
 import Link from 'next/link';
 import { Badge, SectionCard, PageHeader, EmptyState, TableWrap } from '@/components/ui';
 // 서버 상태(상담 폼·회차)는 TanStack Query 훅에서 구독한다(zustand store 대체).
 import { useCounselForms, useCounselRounds } from '@/lib/queries';
-import { CounselForm } from './CounselForm';
 import { CounselCalendar } from './CounselCalendar';
 import { statusLabel, statusTone, sourceLabel } from './labels';
+
+type Tab = 'list' | 'calendar';
 
 export function CounselView() {
   const { data: forms = [] } = useCounselForms();
   const { data: rounds = [] } = useCounselRounds();
   const roundCount = (formId: number) => rounds.filter((r) => r.counselFormId === formId).length;
 
+  const [tab, setTab] = useState<Tab>('list');
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const filtered = needle
+    ? forms.filter((f) => `${f.applicantName} ${f.applicantPhone ?? ''}`.toLowerCase().includes(needle))
+    : forms;
+
   return (
     <div className="p-6 max-w-page mx-auto space-y-6">
-      <PageHeader title="상담" sub="상담 신청 · 예약/내역 캘린더 · 상담카드 관리" />
+      <PageHeader
+        title="상담"
+        sub="상담카드 목록 · 예약 캘린더 · 신청"
+        actions={<Link href="/counsel/new" className="btn btn-primary">+ 상담 신청</Link>}
+      />
 
-      <CounselCalendar />
+      {/* 탭 */}
+      <div className="flex gap-1 border-b border-line">
+        {([['list', '목록'], ['calendar', '예약 캘린더']] as const).map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setTab(k)}
+            className={`px-3 h-9 text-body -mb-px border-b-2 transition-colors ${
+              tab === k ? 'border-accent font-semibold text-fg' : 'border-transparent text-fg-muted hover:text-fg'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      <SectionCard title="상담 신청 (학생·학부모 또는 상담실장 작성)">
-        <CounselForm />
-      </SectionCard>
-
-      <SectionCard title={`상담카드 목록 (${forms.length})`}>
-        {forms.length === 0 ? (
-          <EmptyState message="접수된 상담카드가 없습니다. 위 양식으로 상담을 신청하세요." />
-        ) : (
-        <TableWrap>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>신청자</th>
-                <th>유입</th>
-                <th>상태</th>
-                <th>회차</th>
-                <th>다음 상담</th>
-                <th>접수일</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {forms.map((f) => (
-                <tr key={f.id}>
-                  <td>
-                    <div className="font-medium">{f.applicantName}</div>
-                    <div className="text-caption text-fg-subtle">{f.applicantPhone ?? ''}</div>
-                  </td>
-                  <td className="text-fg-muted">{sourceLabel[f.source]}</td>
-                  <td><Badge tone={statusTone[f.status]}>{statusLabel[f.status]}</Badge></td>
-                  <td className="mono">{roundCount(f.id)}회</td>
-                  <td className="mono text-fg-muted">{f.nextContactAt ?? '—'}</td>
-                  <td className="mono text-fg-muted">{f.createdAt}</td>
-                  <td className="text-right">
-                    <Link href={`/counsel/${f.id}`} className="btn btn-sm">열기 · 수정</Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableWrap>
-        )}
-      </SectionCard>
+      {tab === 'calendar' ? (
+        <CounselCalendar />
+      ) : (
+        <SectionCard
+          title={`상담카드 (${filtered.length}${needle ? ` / ${forms.length}` : ''})`}
+          action={
+            <input
+              className="input h-8 w-56 text-caption"
+              placeholder="이름·연락처 검색"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          }
+        >
+          {filtered.length === 0 ? (
+            <EmptyState message={needle ? '검색 결과가 없습니다.' : '접수된 상담카드가 없습니다. 우측 상단 “+ 상담 신청”으로 시작하세요.'} />
+          ) : (
+            <TableWrap>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>신청자</th>
+                    <th>유입</th>
+                    <th>상태</th>
+                    <th>회차</th>
+                    <th>다음 상담</th>
+                    <th>접수일</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((f) => (
+                    <tr key={f.id}>
+                      <td>
+                        <div className="font-medium">{f.applicantName}</div>
+                        <div className="text-caption text-fg-subtle">{f.applicantPhone ?? ''}</div>
+                      </td>
+                      <td className="text-fg-muted">{sourceLabel[f.source]}</td>
+                      <td><Badge tone={statusTone[f.status]}>{statusLabel[f.status]}</Badge></td>
+                      <td className="mono">{roundCount(f.id)}회</td>
+                      <td className="mono text-fg-muted">{f.nextContactAt ?? '—'}</td>
+                      <td className="mono text-fg-muted">{f.createdAt}</td>
+                      <td className="text-right">
+                        <Link href={`/counsel/${f.id}`} className="btn btn-sm">열기 · 수정</Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+          )}
+        </SectionCard>
+      )}
     </div>
   );
 }

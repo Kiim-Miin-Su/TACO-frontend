@@ -37,7 +37,7 @@ const empty: FormState = {
 // 작성 주체 → source 매핑 (학생/학부모 = 내부폼, 상담실장 = 수기접수)
 const sourceOf = (a: Author): CounselSource => (a === 'staff' ? 'manual' : 'internal_form');
 
-export function CounselForm() {
+export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) {
   const createCounsel = useCreateCounsel();
   const { data: subjects = [] } = useSubjects();
   const { data: courses = [] } = useCourses();
@@ -64,13 +64,15 @@ export function CounselForm() {
         // 다음 상담일(nextContactAt)은 백엔드에서 상담 회차(round)로 관리 → 상담 신청 단계 update 대상 아님.
         //  (백엔드 UpdateCounselInput 미지원 필드) 날짜 UI는 유지하되, 상세 화면에서 회차 기록 시 반영.
         setF({ ...empty, author: f.author });
+        onSubmitted?.(); // [IA 3분할] 폼 페이지에서 제출 후 목록으로 이동
       },
     });
   };
 
   return (
-    <form onSubmit={submit} className="p-4 space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+    <form onSubmit={submit} className="space-y-8">
+      {/* 종이 서식처럼 섹션으로 나눠 여백을 넉넉히 — 입력 항목이 많아도 한눈에 */}
+      <Section title="신청자 정보">
         <Field label="작성 주체">
           <select className="input" value={f.author} onChange={(e) => set({ author: e.target.value as Author })}>
             <option value="parent">학부모</option>
@@ -80,7 +82,9 @@ export function CounselForm() {
         </Field>
         <Field label="신청자 이름 *"><input className="input" value={f.applicantName} onChange={(e) => set({ applicantName: e.target.value })} placeholder="한서진" /></Field>
         <Field label="연락처"><input className="input" value={f.applicantPhone} onChange={(e) => set({ applicantPhone: e.target.value })} placeholder="010-0000-0000" /></Field>
+      </Section>
 
+      <Section title="관심 · 희망">
         <Field label="관심 과목">
           <select className="input" value={f.interestSubjectId} onChange={(e) => set({ interestSubjectId: e.target.value })}>
             <option value="">선택 안 함</option>
@@ -102,6 +106,9 @@ export function CounselForm() {
             <option value="undecided">미정</option>
           </select>
         </Field>
+      </Section>
+
+      <Section title="학습 성향">
         <Field label="학습 분위기">
           <select className="input" value={f.learningAtmosphere} onChange={(e) => set({ learningAtmosphere: e.target.value })}>
             <option value="">선택 안 함</option>
@@ -119,7 +126,9 @@ export function CounselForm() {
           </select>
         </Field>
         <Field label="약점"><input className="input" value={f.weakness} onChange={(e) => set({ weakness: e.target.value })} placeholder="독해 속도 등" /></Field>
+      </Section>
 
+      <Section title="예약 · 기대">
         <Field label="다음 상담일" hint="신청 후 상담카드 상세에서 예약일·회차로 관리됩니다">
           <div className="flex items-center gap-2">
             <input type="date" className="input flex-1" value={f.nextContactAt} disabled={f.dateUndecided}
@@ -130,15 +139,28 @@ export function CounselForm() {
             </label>
           </div>
         </Field>
-      </div>
+        <div className="sm:col-span-2 lg:col-span-3">
+          <Field label="학원에 바라는 점">
+            <textarea className="input h-24 py-2" value={f.academyExpectation} onChange={(e) => set({ academyExpectation: e.target.value })} placeholder="기대하는 점을 자유롭게 적어주세요" />
+          </Field>
+        </div>
+      </Section>
 
-      <Field label="학원에 바라는 점">
-        <textarea className="input h-16 py-2" value={f.academyExpectation} onChange={(e) => set({ academyExpectation: e.target.value })} placeholder="기대하는 점을 적어주세요" />
-      </Field>
-
-      <div className="flex justify-end">
-        <button type="submit" className="btn btn-primary">상담 신청</button>
+      <div className="flex justify-end pt-2 border-t border-line-muted">
+        <button type="submit" className="btn btn-primary" disabled={createCounsel.isPending || !f.applicantName.trim()}>
+          {createCounsel.isPending ? '접수 중…' : '상담 신청'}
+        </button>
       </div>
     </form>
+  );
+}
+
+// 종이 서식 섹션 — 제목 + 넉넉한 그리드(입력 항목이 많은 상담 폼의 가독성)
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3">
+      <h3 className="text-caption font-semibold text-fg-muted uppercase tracking-wide">{title}</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-4">{children}</div>
+    </section>
   );
 }
