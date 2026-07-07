@@ -225,6 +225,9 @@ export function ScheduleCalendar() {
     return (courseId: number) => m.get(courseId);
   }, [allCourses]);
   const [country, setCountry] = useState<CountryInfo | null>(null);
+  // [KST 고정 축 2026-07-07] on=모든 컬럼을 KST 위치로 그림(같은 가로선=같은 실제 순간, 비교 최적).
+  //  해외 컬럼은 칩에 현지시각 병기. off=컬럼별 현지 시각(자연스러움). 시차 편집·변환은 off일 때만.
+  const [kstFixed, setKstFixed] = usePersistedState<boolean>("taco.cal.kstFixed", false);
   const [paneCountry, setPaneCountry] = useState<Partial<Record<SplitDim, CountryInfo | null>>>({});
   const paneTzOf = (dim: SplitDim) => (dim in paneCountry ? (paneCountry[dim] ?? null) : country);
   // ── 뷰 프리셋(TBO-12 P1) — DB 자산(calendar_view_presets). 직렬화는 lib/domain/presets 단일 소스 ──
@@ -1246,8 +1249,9 @@ export function ScheduleCalendar() {
   //  높이가 어긋나지 않도록, 호출부에서 여러 표의 축을 unionAxis로 합쳐 axisOverride로 넘긴다.
   //  시차 표(tz)·개별 시차 컬럼은 0~24h로 확장(expandAxis) — 시차까지 고려한 공통 축이 됨.
   const computeAxis = (cols: Col[], tzc?: CountryInfo | null): { startH: number; endH: number } => {
-    const tzActive = !!tzc && tzc.tz !== KST_TZ;
-    const anyColTz = !tzActive && cols.some((c) => c.tzc != null);
+    // [KST 고정] kstFixed면 시차 반영 안 함(전 컬럼 KST 축) → 축이 08~22 + 콘텐츠 확장.
+    const tzActive = !kstFixed && !!tzc && tzc.tz !== KST_TZ;
+    const anyColTz = !kstFixed && !tzActive && cols.some((c) => c.tzc != null);
     const axisTz = tzActive || anyColTz;
     let contentLo = START_H * 60, contentHi = END_H * 60;
     if (!axisTz) {
@@ -1270,10 +1274,11 @@ export function ScheduleCalendar() {
     list.length ? { startH: Math.min(...list.map((a) => a.startH)), endH: Math.max(...list.map((a) => a.endH)) } : { startH: START_H, endH: END_H };
 
   const renderTimeGrid = (cols: Col[], tzc?: CountryInfo | null, paneModeSet?: Set<SessionModeFilter>, availW?: number, axisOverride?: { startH: number; endH: number }) => {
-    const tzActive = !!tzc && tzc.tz !== KST_TZ;
+    // [KST 고정] kstFixed면 tz 위치 변환·편집 변환 없음(전 컬럼 KST). 국가정보는 칩 현지시각 라벨용으로만 유지.
+    const tzActive = !kstFixed && !!tzc && tzc.tz !== KST_TZ;
     // 학생 개별 시차(피드백 2026-07-03 #1): 그리드 tz(전역/표별 — 명시 선택)가 없을 때만
     //  학생 컬럼의 country 파생 tz가 동작. 축은 컬럼 하나라도 tz면 0~24h(다른 나라 새벽 대비).
-    const anyColTz = !tzActive && cols.some((c) => c.tzc != null);
+    const anyColTz = !kstFixed && !tzActive && cols.some((c) => c.tzc != null);
     // [스플릿 높이 정렬] 축은 공통(axisOverride) 우선 — 없으면 이 표 자체 축. 시차·심야 콘텐츠 확장은 computeAxis가 처리.
     const { startH, endH } = axisOverride ?? computeAxis(cols, tzc);
     const gridMin = startH * 60, gridMax = endH * 60, gridH = (endH - startH) * HOUR_H;
@@ -1352,11 +1357,16 @@ export function ScheduleCalendar() {
                     {cols.map((c) => {
                       // 컬럼 유효 tz: 그리드(전역/표별) > 학생 개별(country) > KST
                       const colTzc = tzActive ? tzc : (c.tzc ?? null);
-                      const colTz = !!colTzc && colTzc.tz !== KST_TZ;
-                      // [다중 시차 UX 2026-07-07] 한 표에 여러 시차가 섞이면(anyColTz) 컬럼별로 표시 시각이 현지라
-                      //  세로 눈금의 의미가 컬럼마다 다르다 → 각 시차 컬럼 헤더에 KST 오프셋 배지로 명시.
-                      const colOff = colTz ? tzOffsetFromKst(colTzc!.tz, c.date) : 0;
-                      const colOffLabel = colTz ? `KST${colOff >= 0 ? "+" : "-"}${Math.floor(Math.abs(colOff) / 60)}${Math.abs(colOff) % 60 ? ":" + pad(Math.abs(colOff) % 60) : ""}h` : "";
+                      // [KST 고정] kstFixed면 위치·편집 변환 없음(colTz=false) → 전 컬럼 KST 좌표. 국가는 라벨용으로만.
+                      const colTz = !kstFixed && !!colTzc && colTzc.tz !== KST_TZ;
+                      // 표시용 국가(kstFixed 무관) — 그리드 tz 또는 컬럼 개별 country.
+                      const colCountry = (tzc && tzc.tz !== KST_TZ ? tzc : null) ?? (c.tzc ?? null);
+                      const colIsOverseas = !!colCountry && colCountry.tz !== KST_TZ;
+                      // [다중 시차 UX] 세로 눈금 의미를 명확히 — KST 오프셋. off-모드 개별시차 컬럼 헤더 배지 + kstFixed 칩 현지시각.
+                      const colOff = colIsOverseas ? tzOffsetFromKst(colCountry!.tz, c.date) : 0;
+                      const colOffLabel = colIsOverseas ? `KST${colOff >= 0 ? "+" : "-"}${Math.floor(Math.abs(colOff) / 60)}${Math.abs(colOff) % 60 ? ":" + pad(Math.abs(colOff) % 60) : ""}h` : "";
+                      // kstFixed일 때 칩에 병기할 현지시각 = KST분 + 오프셋(자정 넘김은 24h 모듈로).
+                      const toLocal = (mm: number) => ((mm + colOff) % 1440 + 1440) % 1440;
                       // [오류2] 표별 수업방식 필터(빈 Set=전체) — 전역 fModes는 filtered 단계에서 이미 적용
                       const kindPass = (r: ScheduleRow) => !paneModeSet?.size || paneModeSet.has((r.mode ?? "in_person") as SessionModeFilter);
                       const colRows = rowsOfColumn(c, colTz ? rowsForTz(colTzc.tz) : filtered).filter(kindPass);
@@ -1398,10 +1408,10 @@ export function ScheduleCalendar() {
                                     {c.sub}
                                   </span>
                                 )}
-                                {/* [다중 시차 UX] 표별 tz 배너가 없는 개별 시차 컬럼에만 오프셋 배지(눈금=현지 시각임을 명시) */}
-                                {!tzActive && colTz && minCol > 46 && (
-                                  <span className="text-[9px] mono text-fg-subtle leading-none" title={`${colTzc!.name} 현지 시각으로 표시 · 세로 눈금은 이 컬럼 현지 기준(${colOffLabel})`}>
-                                    {colTzc!.flag} {colOffLabel}
+                                {/* [다중 시차 UX] 해외 컬럼 오프셋 배지 — off-모드(개별 시차, 눈금=현지) 또는 kstFixed(눈금=KST, 칩=현지) */}
+                                {colIsOverseas && (colTz || kstFixed) && minCol > 46 && (
+                                  <span className="text-[9px] mono text-fg-subtle leading-none" title={kstFixed ? `${colCountry!.name} · 눈금은 KST, 칩에 현지시각 병기(${colOffLabel})` : `${colCountry!.name} 현지 시각으로 표시 · 세로 눈금은 이 컬럼 현지 기준(${colOffLabel})`}>
+                                    {colCountry!.flag} {colOffLabel}
                                   </span>
                                 )}
                                 {/* 이름은 truncate, 국기 버튼은 truncate 밖(잘림·클릭 좌표 소실 방지) */}
@@ -1713,6 +1723,12 @@ export function ScheduleCalendar() {
                                             +1일 ~{ovEnd}
                                           </span>
                                         )}
+                                        {/* [KST 고정] 해외 컬럼 칩에 현지시각 병기 — 눈금은 KST, 실제 순간은 세로 정렬 */}
+                                        {kstFixed && colIsOverseas && (
+                                          <span className="ml-1 px-1 rounded bg-black/20 text-[9px] font-semibold not-italic" title={`${colCountry!.name} 현지 ${fromMin(toLocal(s))}–${fromMin(toLocal(Math.min(en, 1440)))}`}>
+                                            현지 {fromMin(toLocal(s))}
+                                          </span>
+                                        )}
                                       </div>
                                     </>
                                   )}
@@ -1818,6 +1834,14 @@ export function ScheduleCalendar() {
             )}
             {/* 국가 시차 뷰(전역): 선택 시 그 국가 학생 세션 필터 + 그리드가 그 나라 시간으로 — PNG로 그대로 추출 */}
             <CountryInput value={country} onSelect={setCountry} />
+            {/* [KST 고정 축] 여러 시차를 나란히 비교할 때 — 모든 컬럼을 KST 위치로(같은 가로선=같은 순간). 해외 칩엔 현지시각 병기 */}
+            <button
+              className={`btn btn-sm ${kstFixed ? "badge-accent" : ""}`}
+              onClick={() => setKstFixed((v) => !v)}
+              title="KST 고정 축 — 모든 컬럼을 한국시간 위치로 그려 시차 간 '같은 순간'을 세로로 정렬(해외 컬럼은 칩에 현지시각 병기). 끄면 컬럼별 현지시각 표시."
+            >
+              🇰🇷 KST 고정{kstFixed ? " ✓" : ""}
+            </button>
             <button className="btn btn-sm" disabled={busyImg} onClick={() => saveImage("png")} title="현재 화면을 PNG로 저장(시차 뷰면 그 국가 시간 기준)">
               PNG
             </button>
