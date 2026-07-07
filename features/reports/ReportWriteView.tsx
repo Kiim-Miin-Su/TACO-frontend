@@ -4,19 +4,15 @@
 'use client';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Badge, SectionCard, PromptModal, type Tone } from '@/components/ui';
+import { Badge, SectionCard, type Tone } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
-import {
-  useSchedule, useCourses, useInstructors, useEnrollments, useStudents, useReports,
-  useCreateReport, useSubmitReport, useReportTemplates, useCreateReportTemplate,
-} from '@/lib/queries';
+import { useSchedule, useCourses, useInstructors, useEnrollments, useStudents, useReports } from '@/lib/queries';
+import { SessionFeedbackForm } from '@/features/reports/SessionFeedbackForm';
 import { DEMO_INSTRUCTOR_ID } from '@/lib/tasks';
 import { myInstructorId } from '@/lib/auth';
 import { pendingReportSummary, rosterStudentIds, sessionNeedsReport } from '@/lib/reports';
-import type { ClassSession, ReportStatus, Student } from '@/types';
+import type { ClassSession, Student } from '@/types';
 
-const reportTone: Record<ReportStatus, Tone> = { draft: 'neutral', submitted: 'accent', sent: 'success' };
-const reportLabel: Record<ReportStatus, string> = { draft: '작성중', submitted: '작성완료', sent: '발송됨' };
 const sessionTone: Record<string, Tone> = { held: 'success', scheduled: 'accent', canceled: 'danger', no_show: 'danger', makeup: 'attention' };
 const sessionLabel: Record<string, string> = { held: '진행완료', scheduled: '예정', canceled: '취소', no_show: '노쇼', makeup: '보강' };
 
@@ -144,7 +140,7 @@ export function ReportWriteView() {
               )}
               <div className="divide-y border-line-muted">
                 {roster.map((student) => (
-                  <StudentReportRow key={`${selected.id}:${student.id}`} session={selected} student={student} />
+                  <SessionFeedbackForm key={`${selected.id}:${student.id}`} session={selected} student={student} />
                 ))}
                 {roster.length === 0 && <div className="p-4 text-body text-fg-subtle">수강생이 없습니다.</div>}
               </div>
@@ -152,102 +148,6 @@ export function ReportWriteView() {
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// 학생 1명 인라인 작성 행 — 페이지 이동 없이 저장/제출.
-function StudentReportRow({ session, student }: { session: ClassSession; student: Student }) {
-  const { data: sessionReports = [] } = useReports();
-  // [자산화 2차 2026-07-03] 템플릿은 DB 컬렉션(report_templates) — 강사 공용 자산(브라우저 휘발 제거).
-  const { data: templates = [] } = useReportTemplates();
-  const createTemplate = useCreateReportTemplate();
-  const createReport = useCreateReport();
-  const submitReport = useSubmitReport();
-  const report = sessionReports.find((r) => r.sessionId === session.id && r.studentId === student.id);
-  const [content, setContent] = useState(report?.content ?? '');
-  const [homework, setHomework] = useState(report?.homework ?? '');
-  const [savedAt, setSavedAt] = useState<string | null>(null);
-  const status: ReportStatus = report?.status ?? 'draft';
-
-  const applyTemplate = (id: number) => {
-    const t = templates.find((x) => x.id === id);
-    if (!t) return;
-    setContent((c) => (c.trim() ? c + '\n' + t.content : t.content));
-    if (t.homework) setHomework((h) => h || t.homework!);
-  };
-  // [C-1] window.prompt → PromptModal
-  const [templateOpen, setTemplateOpen] = useState(false);
-  const saveTemplate = (name: string) => {
-    setTemplateOpen(false);
-    if (name.trim() && content.trim()) createTemplate.mutate({ name: name.trim(), content, homework: homework || undefined });
-  };
-
-  const save = (submit: boolean) => {
-    // 기존 보고서가 있으면 제출(submit by id). 없으면 신규 생성(create). 백엔드가 (session,student) 단일화.
-    if (report) {
-      if (submit && report.approvalStatus !== 'submitted' && report.approvalStatus !== 'approved') {
-        submitReport.mutate(report.id);
-      }
-    } else {
-      createReport.mutate({
-        sessionId: session.id,
-        studentId: student.id,
-        instructorId: session.instructorId,
-        content,
-        homework: homework || undefined,
-        status: submit ? 'submitted' : 'draft',
-      });
-    }
-    setSavedAt(new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }));
-  };
-
-  return (
-    <div className="p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="font-medium">{student.name}</span>
-        {student.englishName && <span className="text-caption text-fg-subtle">{student.englishName}</span>}
-        <Badge tone={reportTone[status]}>{reportLabel[status]}</Badge>
-        {report?.approvalStatus === 'approved' && <Badge tone="success">승인됨 · 시수 반영</Badge>}
-        {report?.approvalStatus === 'rejected' && <Badge tone="danger">반려</Badge>}
-        {savedAt && <span className="text-micro text-fg-subtle ml-auto">저장됨 {savedAt}</span>}
-      </div>
-      {report?.approvalStatus === 'rejected' && report.rejectedReason && (
-        <div className="mb-2 text-caption text-danger">반려 사유: {report.rejectedReason}</div>
-      )}
-      {/* 템플릿 적용/저장 */}
-      <div className="flex items-center gap-2 mb-2">
-        <select className="input h-8 w-44 text-caption" value="" onChange={(e) => e.target.value && applyTemplate(Number(e.target.value))}>
-          <option value="">템플릿 적용…</option>
-          {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-        <button type="button" className="btn btn-sm" onClick={() => setTemplateOpen(true)} disabled={!content.trim()}>현재 내용을 템플릿으로</button>
-      </div>
-      <textarea
-        className="input h-24 py-2 leading-relaxed"
-        placeholder="오늘 수업 내용·태도·성취 (학부모 발송용)"
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-      />
-      <input
-        className="input mt-2"
-        placeholder="숙제 (다음 수업 전까지)"
-        value={homework}
-        onChange={(e) => setHomework(e.target.value)}
-      />
-      <div className="flex justify-end gap-2 mt-2">
-        <button className="btn btn-sm" onClick={() => save(false)}>임시 저장</button>
-        <button className="btn btn-sm btn-primary" disabled={!content.trim()} onClick={() => save(true)}>제출</button>
-      </div>
-      {templateOpen && (
-        <PromptModal
-          title="템플릿으로 저장"
-          fields={[{ name: 'name', label: '템플릿 이름', required: true, placeholder: '예: 정규수업 기본' }]}
-          submitLabel="저장"
-          onClose={() => setTemplateOpen(false)}
-          onSubmit={(v) => saveTemplate(v.name)}
-        />
-      )}
     </div>
   );
 }

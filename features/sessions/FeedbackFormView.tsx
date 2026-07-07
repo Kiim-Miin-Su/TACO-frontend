@@ -1,14 +1,11 @@
-// [참조/처리] 수업 피드백(보고서) 작성 — 읽기=TanStack Query 단일 소스, 쓰기=useCreateReport/useSubmitReport.
-//  보고서는 (sessionId,studentId)로 최대 1건(백엔드 단일 소스 규칙). 신규면 create(POST /reports),
-//  기존 draft 제출은 submit(id). 성공 시 qk.reports 무효화 → 목록 자동 갱신.
+// [참조/처리] 수업 피드백(보고서) 작성 전용 페이지 — 학부모 발송대상 확인 + 공용 SessionFeedbackForm.
+//  [TBO-20 20-0] 작성 폼은 `<SessionFeedbackForm>`(reports)로 단일화 — ReportWriteView·세션 허브와 동일 컴포넌트.
+//  이 페이지의 고유 역할 = 학부모 join(발송 대상) 표시. 보고서는 (sessionId,studentId) 최대 1건.
 "use client";
-import { useState } from "react";
 import Link from "next/link";
 import { Badge, SectionCard, type Tone } from "@/components/ui";
-import {
-  useSchedule, useStudents, useReports, useParentStudents, useParents, useCourses,
-  useCreateReport, useSubmitReport,
-} from "@/lib/queries";
+import { useSchedule, useStudents, useReports, useParentStudents, useParents, useCourses } from "@/lib/queries";
+import { SessionFeedbackForm } from "@/features/reports/SessionFeedbackForm";
 import type { ReportStatus } from "@/types";
 
 const reportTone: Record<ReportStatus, Tone> = { draft: "neutral", submitted: "accent", sent: "success" };
@@ -21,8 +18,6 @@ export function FeedbackFormView({ sessionId, studentId }: { sessionId: number; 
   const { data: parentStudents = [] } = useParentStudents();
   const { data: parents = [] } = useParents();
   const { data: courses = [] } = useCourses();
-  const createReport = useCreateReport();
-  const submitReport = useSubmitReport();
   const session = classSessions.find((s) => s.id === sessionId);
   const student = students.find((s) => s.id === studentId);
   const report = sessionReports.find((r) => r.sessionId === sessionId && r.studentId === studentId);
@@ -33,31 +28,11 @@ export function FeedbackFormView({ sessionId, studentId }: { sessionId: number; 
     parentStudents.find((ps) => ps.studentId === studentId);
   const parent = link ? parents.find((p) => p.id === link.parentId) : undefined;
 
-  const [content, setContent] = useState(report?.content ?? "");
-  const [homework, setHomework] = useState(report?.homework ?? "");
-
   if (!session || !student) {
     return <div className="p-6 max-w-[760px] mx-auto text-fg-muted">대상을 찾을 수 없습니다.</div>;
   }
 
   const course = courses.find((c) => c.id === session.courseId);
-  const save = (submit: boolean) => {
-    // 기존 draft가 있으면 제출(submit by id). 없으면 신규 생성(create). 백엔드가 (session,student) 단일화.
-    if (report) {
-      if (submit && report.approvalStatus !== "submitted" && report.approvalStatus !== "approved") {
-        submitReport.mutate(report.id);
-      }
-      return;
-    }
-    createReport.mutate({
-      sessionId,
-      studentId,
-      instructorId: session.instructorId,
-      content,
-      homework: homework || undefined,
-      status: submit ? "submitted" : "draft",
-    });
-  };
 
   return (
     <div className="p-6 max-w-[760px] mx-auto space-y-5">
@@ -93,36 +68,9 @@ export function FeedbackFormView({ sessionId, studentId }: { sessionId: number; 
         </div>
       </SectionCard>
 
-      {/* 피드백 폼 (추후 교육실장이 항목 확정 시 이 폼을 확장) */}
+      {/* 피드백 작성 — 공용 컴포넌트(템플릿·상태·저장/제출 포함) */}
       <SectionCard title="피드백 작성">
-        <div className="p-4 space-y-3">
-          <div>
-            <span className="block text-caption font-medium text-fg-muted mb-1">학부모 피드백</span>
-            <textarea
-              className="input h-28 py-2 leading-relaxed"
-              placeholder="오늘 수업 내용·태도·성취"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-            />
-          </div>
-          <div>
-            <span className="block text-caption font-medium text-fg-muted mb-1">숙제</span>
-            <textarea
-              className="input h-20 py-2 leading-relaxed"
-              placeholder="다음 수업 전까지"
-              value={homework}
-              onChange={(e) => setHomework(e.target.value)}
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <button className="btn" onClick={() => save(false)}>
-              임시 저장
-            </button>
-            <button className="btn btn-primary" disabled={!content.trim()} onClick={() => save(true)}>
-              제출 (발송 대기)
-            </button>
-          </div>
-        </div>
+        <SessionFeedbackForm session={session} student={student} />
       </SectionCard>
     </div>
   );
