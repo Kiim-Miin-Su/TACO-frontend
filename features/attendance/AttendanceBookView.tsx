@@ -4,6 +4,7 @@
 //  행 끝 누적(출석/지각/결석·출석률·**누적 시수/총 시수 진도바**). 계산은 lib/domain/attendanceBook 단일 소스.
 //  권한: 강사=본인 담당 코스만(마킹 가능) · 매니저/관리자=[학생 출석]+[강사 출석](강사 시수=teachingHours 재사용).
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import type { AttendanceStatus, InstructorAttendanceStatus, ScheduleRow } from "@/types";
 import { useSchedule, useAttendance, useUpsertAttendance, useStudents, useCourses, useUpdateSchedule, useInstructorContracts } from "@/lib/queries";
 import { buildAttendanceBook, hoursLabel, nextAttendanceStatus } from "@/lib/domain/attendanceBook";
@@ -304,7 +305,13 @@ export function AttendanceBookView() {
                 <tbody>
                   {filteredInstructorBook.map((r) => (
                     <tr key={r.id}>
-                      <td className="font-medium">{r.name}</td>
+                      <td className="font-medium">
+                        {canEditInstructorAtt ? (
+                          <Link href={`/attendance/instructor/${r.id}`} className="text-accent hover:underline" title="출결 상세 보기">{r.name}</Link>
+                        ) : (
+                          r.name
+                        )}
+                      </td>
                       <td>
                         <div className="flex flex-wrap gap-1.5">
                           {r.sessions.map((s) =>

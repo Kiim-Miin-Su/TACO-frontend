@@ -66,6 +66,16 @@ export const useInstructorContracts = () => {
   const role = useTacoStore((s) => s.currentRole);
   return useQuery({ queryKey: ["instructor-contracts", "list"] as const, queryFn: () => api.instructorContracts.list(), enabled: isAdmin(role), staleTime: CATALOG_STALE });
 };
+// [강사 출결 상세] 특정 강사의 기간 세션 — **권위 소스 /schedule 서버 필터**(instructorId·from·to). 참조 무결성:
+//  세션 데이터를 복제하지 않고 단일 소스에서 조회, qk.schedule 하위 키라 세션 변경 시 자동 무효화.
+export const useInstructorSessions = (instructorId: number | null, from?: string, to?: string) => {
+  const role = useTacoStore((s) => s.currentRole);
+  return useQuery({
+    queryKey: qk.schedule.list({ instructorId: instructorId ?? undefined, from, to }),
+    queryFn: () => api.schedule.list({ instructorId: instructorId as number, from, to }),
+    enabled: isAdmin(role) && instructorId != null && !!from && !!to,
+  });
+};
 // [R-6] 세션 변경 이력(audit_log) — ADMIN. 세션 상세 '변경 이력' 패널 소비처. entity='class_sessions'.
 export const useSessionAudit = (sessionId: number | null) => {
   const role = useTacoStore((s) => s.currentRole);

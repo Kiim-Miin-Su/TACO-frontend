@@ -2,6 +2,7 @@
 // [TBO-19] 관리자 대시보드 — 강사 출결 현황. 월/기간/강사 필터 + 강사별 카운트·출석률·인정 시수 + 총계.
 //  집계는 서버(GET /schedule/instructor-attendance-summary) — DB 이관 시 SQL GROUP BY로 승격(프론트 무변경).
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { SectionCard, EmptyState, TableWrap } from '@/components/ui';
 import { useInstructors, useInstructorAttendanceSummary } from '@/lib/queries';
 
@@ -100,7 +101,8 @@ export function InstructorAttendanceSummary() {
                 <tr key={r.instructorId} style={r.absent > 0 ? { background: 'var(--color-danger-subtle)' } : undefined}>
                   <td className="font-medium">
                     <span className="inline-flex items-center gap-1">
-                      {r.instructorName}
+                      {/* 클릭 → 강사 출결 상세(회차별) */}
+                      <Link href={`/attendance/instructor/${r.instructorId}`} className="text-accent hover:underline" title="출결 상세 보기">{r.instructorName}</Link>
                       {/* 결석 있는 강사 강조 배지 — 계약·시수 관리 주의 대상 */}
                       {r.absent > 0 && <span className="badge text-micro" style={{ background: 'var(--color-danger)', color: '#fff' }} title="결석 발생">⚠ 결석 {r.absent}</span>}
                       {r.absent === 0 && r.late > 0 && <span className="badge text-micro" style={{ background: 'var(--color-attention)', color: '#fff' }} title="지각 발생">지각 {r.late}</span>}
