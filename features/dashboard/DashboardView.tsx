@@ -19,6 +19,7 @@ import { useTacoStore } from '@/lib/store';
 import { useAppData } from '@/lib/queries';
 import { isCEO, isAdmin, roleLabel } from '@/lib/roles';
 import { buildTasks, type TaskItem } from '@/lib/tasks';
+import { myInstructorId } from '@/lib/auth';
 import type { EnrollmentStatus } from '@/types';
 
 // To-do 항목 리스트 — 알림/대시보드 공용 표현. 항목 클릭 시 해당 화면으로.
@@ -77,7 +78,7 @@ export function DashboardView() {
   const role = useTacoStore((s) => s.currentRole);
   const ceo = isCEO(role); // 경영 지표(총액·미수금·원장)
   const admin = isAdmin(role); // 운영 데이터
-  const { items: tasks, count: taskCount } = buildTasks({ ...appData, currentRole: role }, role);
+  const { items: tasks, count: taskCount } = buildTasks({ ...appData, currentRole: role }, role, myInstructorId() ?? undefined);
 
   // 강사: 내 수업·리포트 중심 To-do 대시보드
   if (role === 'instructor') {

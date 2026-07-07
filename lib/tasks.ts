@@ -201,10 +201,11 @@ function instructorTasks(s: StoreSlice, instructorId: number): TaskItem[] {
   return out;
 }
 
-export function buildTasks(s: StoreSlice, role: AccountRole = s.currentRole): { items: TaskItem[]; count: number } {
+// [버그수정 2026-07-07] instructorId = 로그인 강사의 도메인 강사 id(auth.myInstructorId). 미지정 시 DEMO 폴백(테스트·미배선 대비).
+export function buildTasks(s: StoreSlice, role: AccountRole = s.currentRole, instructorId: number = DEMO_INSTRUCTOR_ID): { items: TaskItem[]; count: number } {
   let items: TaskItem[] = [];
   if (isAdmin(role)) items = adminTasks(s);
-  else if (role === 'instructor') items = instructorTasks(s, DEMO_INSTRUCTOR_ID);
+  else if (role === 'instructor') items = instructorTasks(s, instructorId);
   // 학생/학부모는 운영 할 일 없음(일정은 캘린더에서)
   const count = items.filter((t) => t.counts).length;
   return { items, count };
@@ -213,16 +214,16 @@ export function buildTasks(s: StoreSlice, role: AccountRole = s.currentRole): { 
 // 사이드바 탭별 빨간 배지 개수 — 탭마다 명시적 기준(권한 반영). 0인 탭은 키 없음.
 // 기준(요구사항): 상담=다음 만남 날짜 미정 / 결제=미수 / 강사페이=미정산 / 지출=승인대기 /
 //   수업보고서=미작성(작성해야 할 세션당 1) / 관리자=미승인(승인 대기) 모두.
-export function navBadges(s: StoreSlice, role: AccountRole = s.currentRole): Record<string, number> {
+export function navBadges(s: StoreSlice, role: AccountRole = s.currentRole, instructorId: number = DEMO_INSTRUCTOR_ID): Record<string, number> {
   const out: Record<string, number> = {};
   const put = (nav: string, n: number) => { if (n > 0) out[nav] = n; };
 
   // 강사: 본인 수업보고서 미작성(보고서 건수) + 취소·미진행 보강 필요(캘린더 탭)
   // ⚠ 배지와 /reports 탭 리스트는 pendingReportSummary(같은 모집단)를 공유해야 한다(불일치 재발 방지).
   if (role === 'instructor') {
-    put('/reports', pendingReportSummary(s, DEMO_INSTRUCTOR_ID).itemCount);
+    put('/reports', pendingReportSummary(s, instructorId).itemCount);
     // 보강 필요 + 반려된 내 수업 요청(재요청 필요) — 캘린더 탭
-    put('/calendar', makeupNeededCount(s, DEMO_INSTRUCTOR_ID) + s.scheduleRequests.filter((r) => r.status === 'rejected').length);
+    put('/calendar', makeupNeededCount(s, instructorId) + s.scheduleRequests.filter((r) => r.status === 'rejected').length);
     return out;
   }
   if (!isAdmin(role)) return out; // 학생/학부모 등은 알림 없음

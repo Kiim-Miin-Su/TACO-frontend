@@ -9,7 +9,7 @@ import { useAppData } from '@/lib/queries';
 import { ROLES, roleLabel } from '@/lib/roles';
 import { buildTasks } from '@/lib/tasks';
 import { api } from '@/lib/api';
-import { currentClaims, clearToken, setToken } from '@/lib/auth';
+import { currentClaims, clearToken, setToken, myInstructorId } from '@/lib/auth';
 import { DEV_ROLE_ACCOUNTS } from '@/lib/dev-roles'; // [임시/실험용]
 import type { AccountRole } from '@/types';
 
@@ -25,7 +25,7 @@ export default function Topbar() {
   const [switching, setSwitching] = useState(false);
 
   // 알림 항목 — 서버 데이터는 TanStack Query(useAppData) 단일 소스에서 조립.
-  const { items, count } = buildTasks({ ...useAppData(), currentRole }, currentRole);
+  const { items, count } = buildTasks({ ...useAppData(), currentRole }, currentRole, myInstructorId() ?? undefined);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 

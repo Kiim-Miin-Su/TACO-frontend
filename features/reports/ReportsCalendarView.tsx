@@ -11,6 +11,7 @@ import {
 import { pendingReportSummary, rosterStudentIds } from '@/lib/reports';
 import { useTacoStore } from '@/lib/store';
 import { DEMO_INSTRUCTOR_ID } from '@/lib/tasks';
+import { myInstructorId } from '@/lib/auth';
 import type { AttendanceStatus, ReportStatus } from '@/types';
 
 const attLabel: Record<AttendanceStatus, string> = { present: '출석', late: '지각', absent: '결석', excused: '인정결석' };
@@ -31,7 +32,7 @@ export function ReportsCalendarView() {
   const reportSlice = { classSessions, enrollments, sessionReports };
   // 역할 스코프: 강사는 본인 수업만(배지와 동일). 관리자·매니저는 전체.
   const role = useTacoStore((s) => s.currentRole);
-  const scopeInstructorId = role === 'instructor' ? DEMO_INSTRUCTOR_ID : undefined;
+  const scopeInstructorId = role === 'instructor' ? (myInstructorId() ?? DEMO_INSTRUCTOR_ID) : undefined;
   // 배지와 동일 모집단(전체 기간 + 역할 스코프): sessions=목록, itemCount=배지 숫자.
   const pending = pendingReportSummary(reportSlice, scopeInstructorId);
   const pendingIds = new Set(pending.sessions.map((s) => s.id));

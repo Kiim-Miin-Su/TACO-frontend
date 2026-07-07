@@ -5,6 +5,8 @@ export interface TokenClaims {
   sub: number; // user id
   name: string;
   roles: string[]; // user_roles
+  // [버그수정 2026-07-07] 강사 계정이면 도메인 강사 id(courses/sessions 참조). 강사 아니면 없음.
+  instructorId?: number;
   exp: number; // epoch seconds
   iat: number;
 }
@@ -64,4 +66,10 @@ export function currentClaims(): TokenClaims | null {
   const t = getToken();
   if (!t || isExpired(t)) return null;
   return decodeToken(t);
+}
+
+// [버그수정 2026-07-07] 로그인 강사의 도메인 강사 id(courses/sessions 참조). 강사 아님·미로그인이면 null.
+//  강사 계정↔도메인 강사 링크(users.instructorId → JWT claim)를 해석 — DEMO_INSTRUCTOR_ID 하드코딩 대체 진입점.
+export function myInstructorId(): number | null {
+  return currentClaims()?.instructorId ?? null;
 }

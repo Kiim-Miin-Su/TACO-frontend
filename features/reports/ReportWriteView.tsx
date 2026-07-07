@@ -11,6 +11,7 @@ import {
   useCreateReport, useSubmitReport, useReportTemplates, useCreateReportTemplate,
 } from '@/lib/queries';
 import { DEMO_INSTRUCTOR_ID } from '@/lib/tasks';
+import { myInstructorId } from '@/lib/auth';
 import { pendingReportSummary, rosterStudentIds, sessionNeedsReport } from '@/lib/reports';
 import type { ClassSession, ReportStatus, Student } from '@/types';
 
@@ -32,7 +33,8 @@ export function ReportWriteView() {
     () => ({ classSessions, enrollments, sessionReports }),
     [classSessions, enrollments, sessionReports],
   );
-  const instructorId = DEMO_INSTRUCTOR_ID; // 데모: 로그인 강사(추후 세션 user.id)
+  // [버그수정 2026-07-07] 로그인 강사의 도메인 강사 id(계정 링크). 미로그인/미링크 시 DEMO 폴백.
+  const instructorId = myInstructorId() ?? DEMO_INSTRUCTOR_ID;
   const instructorName = instructors.find((i) => i.id === instructorId)?.name ?? '강사';
   const courseName = (id: number) => courses.find((c) => c.id === id)?.name ?? '수업';
 

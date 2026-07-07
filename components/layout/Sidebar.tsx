@@ -6,7 +6,7 @@ import { useTacoStore } from "@/lib/store";
 import { useAppData } from "@/lib/queries";
 import { roleLabel, isCEO, isAdmin } from "@/lib/roles";
 import { navBadges } from "@/lib/tasks";
-import { decodeToken, getToken } from "@/lib/auth";
+import { decodeToken, getToken, myInstructorId } from "@/lib/auth";
 import { api } from "@/lib/api";
 import {
   IconHome,
@@ -66,7 +66,7 @@ export default function Sidebar() {
   const role = useTacoStore((s) => s.currentRole);
   // 탭별 알림 배지 — 서버 데이터는 TanStack Query(useAppData) 단일 소스에서 조립해 navBadges에 넘긴다.
   //  처리(리포트 작성·승인 등) 시 관련 쿼리가 invalidate되면 배지도 함께 갱신됨.
-  const badges = navBadges({ ...useAppData(), currentRole: role }, role);
+  const badges = navBadges({ ...useAppData(), currentRole: role }, role, myInstructorId() ?? undefined);
   // 로그인 토큰이 있으면 디코딩해 실제 이름을 사용(직책 대신). 없으면 데모 이름.
   const [tokenName, setTokenName] = useState<string | null>(null);
   // 강사/학생 역할은 백엔드 자원에서 대표 인물명을 가져와 표시(참조 무결성: 역할↔표시 일치)
