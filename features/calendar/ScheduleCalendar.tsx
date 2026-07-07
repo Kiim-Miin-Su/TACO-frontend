@@ -1242,24 +1242,19 @@ export function ScheduleCalendar() {
   //  minCol(스플릿 44px) 미만으로 좁아질 상황이면 가로 스크롤 발동(minWidth).
   // tzc: 이 그리드의 국가(시차 뷰). 비KST면 ① 행을 그 나라 로컬로 변환(표시 전용) ② 시간축 0~24h
   //  ③ 편집·드래그·복제·밴드 잠금(저장은 KST 단일 진실원 — 무결성). 표(스플릿)마다 다르게 지정 가능.
-  const renderTimeGrid = (cols: Col[], tzc?: CountryInfo | null, paneModeSet?: Set<SessionModeFilter>, availW?: number) => {
+  // [스플릿 높이 정렬 2026-07-07] 한 표(그리드)의 시간축(startH~endH)을 산출(순수). 스플릿 표들이 서로
+  //  높이가 어긋나지 않도록, 호출부에서 여러 표의 축을 unionAxis로 합쳐 axisOverride로 넘긴다.
+  //  시차 표(tz)·개별 시차 컬럼은 0~24h로 확장(expandAxis) — 시차까지 고려한 공통 축이 됨.
+  const computeAxis = (cols: Col[], tzc?: CountryInfo | null): { startH: number; endH: number } => {
     const tzActive = !!tzc && tzc.tz !== KST_TZ;
-    // 학생 개별 시차(피드백 2026-07-03 #1): 그리드 tz(전역/표별 — 명시 선택)가 없을 때만
-    //  학생 컬럼의 country 파생 tz가 동작. 축은 컬럼 하나라도 tz면 0~24h(다른 나라 새벽 대비).
     const anyColTz = !tzActive && cols.some((c) => c.tzc != null);
     const axisTz = tzActive || anyColTz;
-    // [버그수정 2026-07-06 2단] KST 축(08~22) 밖 콘텐츠 자동 확장 — 해외 학생의 가용/불가·세션은
-    //  KST로 보면 심야·새벽이 일상(예: 미국 오전=KST 23시). 축 고정 탓에 잘려 "사라지던" 것을,
-    //  이 그리드에 실제로 축 밖 밴드·세션이 있으면 그 시간까지만 축을 늘려 항상 보이게 한다.
     let contentLo = START_H * 60, contentHi = END_H * 60;
     if (!axisTz) {
       const colDates = new Set(cols.map((c) => c.date));
       for (const r of filtered) {
-        if (colDates.has(r.sessionDate)) {
-          contentLo = Math.min(contentLo, startMinOf(r)); contentHi = Math.max(contentHi, endMinOf(r));
-        }
-        // [R-9] 전일 자정 크로스 세션의 익일 잔여(00:00~) — 다음날 컬럼이 보이면 축을 0시까지 열어
-        //  연속 블록(표시 전용)이 잘리지 않게 한다(expandAxis가 contentLo=0을 startH=0으로 반영).
+        if (colDates.has(r.sessionDate)) { contentLo = Math.min(contentLo, startMinOf(r)); contentHi = Math.max(contentHi, endMinOf(r)); }
+        // [R-9] 전일 자정 크로스 세션의 익일 잔여(00:00~) — 다음날 컬럼이 보이면 축을 0시까지.
         if (endMinOf(r) > 1440 && colDates.has(addDaysISO(r.sessionDate, 1))) contentLo = 0;
       }
       const owners = cols.filter((c) => c.resType != null && c.resId != null);
@@ -1268,7 +1263,19 @@ export function ScheduleCalendar() {
         : selBlocks;
       for (const b of blockSrc) { contentLo = Math.min(contentLo, toMin(b.startTime)); contentHi = Math.max(contentHi, toMin(b.endTime)); }
     }
-    const { startH, endH } = expandAxis(axisTz, contentLo, contentHi, START_H, END_H); // 순수 함수(vitest) — 시차는 전일 축
+    return expandAxis(axisTz, contentLo, contentHi, START_H, END_H); // 순수 함수(vitest) — 시차는 전일 축
+  };
+  // 여러 표의 축을 합쳐 가장 넓은 공통 축(모든 표 동일 높이 → 나란히 비교 가능).
+  const unionAxis = (list: { startH: number; endH: number }[]): { startH: number; endH: number } =>
+    list.length ? { startH: Math.min(...list.map((a) => a.startH)), endH: Math.max(...list.map((a) => a.endH)) } : { startH: START_H, endH: END_H };
+
+  const renderTimeGrid = (cols: Col[], tzc?: CountryInfo | null, paneModeSet?: Set<SessionModeFilter>, availW?: number, axisOverride?: { startH: number; endH: number }) => {
+    const tzActive = !!tzc && tzc.tz !== KST_TZ;
+    // 학생 개별 시차(피드백 2026-07-03 #1): 그리드 tz(전역/표별 — 명시 선택)가 없을 때만
+    //  학생 컬럼의 country 파생 tz가 동작. 축은 컬럼 하나라도 tz면 0~24h(다른 나라 새벽 대비).
+    const anyColTz = !tzActive && cols.some((c) => c.tzc != null);
+    // [스플릿 높이 정렬] 축은 공통(axisOverride) 우선 — 없으면 이 표 자체 축. 시차·심야 콘텐츠 확장은 computeAxis가 처리.
+    const { startH, endH } = axisOverride ?? computeAxis(cols, tzc);
     const gridMin = startH * 60, gridMax = endH * 60, gridH = (endH - startH) * HOUR_H;
     const clampAxis = (mm: number) => clampToAxis(mm, gridMin, gridMax); // [이슈2] 이 그리드 축 경계
     // 변환 캐시(같은 filtered·tz면 재사용) — 표 2개/컬럼별 tz/리렌더에서 tz별 1회만 O(n) 변환(감사 M4)
@@ -1322,7 +1329,12 @@ export function ScheduleCalendar() {
                 <div className="flex" /* [고정폭] minWidth 강제 제거 — 스크롤 없음 */>
                   {/* 시간 거터 */}
                   <div className="shrink-0 sticky left-0 z-10 bg-canvas" style={{ width: GUTTER_W }}>
-                    <div style={{ height: HEADER_H }} />
+                    {/* [다중 시차 UX] 세로 눈금의 기준을 명시 — 개별 시차 혼재 시 "현지"(컬럼별), 표 전체 tz면 그 국기, 아니면 KST */}
+                    <div style={{ height: HEADER_H }} className="flex items-end justify-end pr-1.5 pb-1">
+                      <span className="text-[9px] text-fg-subtle mono" title={tzActive ? "이 표는 선택 국가 현지 시각" : anyColTz ? "컬럼마다 현지 시각(헤더 오프셋 배지 참고)" : "한국 표준시"}>
+                        {tzActive ? tzc!.flag : anyColTz ? "현지" : "KST"}
+                      </span>
+                    </div>
                     <div className="relative" style={{ height: gridH }}>
                       {Array.from({ length: endH - startH + 1 }, (_, i) => (
                         <span
@@ -1341,6 +1353,10 @@ export function ScheduleCalendar() {
                       // 컬럼 유효 tz: 그리드(전역/표별) > 학생 개별(country) > KST
                       const colTzc = tzActive ? tzc : (c.tzc ?? null);
                       const colTz = !!colTzc && colTzc.tz !== KST_TZ;
+                      // [다중 시차 UX 2026-07-07] 한 표에 여러 시차가 섞이면(anyColTz) 컬럼별로 표시 시각이 현지라
+                      //  세로 눈금의 의미가 컬럼마다 다르다 → 각 시차 컬럼 헤더에 KST 오프셋 배지로 명시.
+                      const colOff = colTz ? tzOffsetFromKst(colTzc!.tz, c.date) : 0;
+                      const colOffLabel = colTz ? `KST${colOff >= 0 ? "+" : "-"}${Math.floor(Math.abs(colOff) / 60)}${Math.abs(colOff) % 60 ? ":" + pad(Math.abs(colOff) % 60) : ""}h` : "";
                       // [오류2] 표별 수업방식 필터(빈 Set=전체) — 전역 fModes는 filtered 단계에서 이미 적용
                       const kindPass = (r: ScheduleRow) => !paneModeSet?.size || paneModeSet.has((r.mode ?? "in_person") as SessionModeFilter);
                       const colRows = rowsOfColumn(c, colTz ? rowsForTz(colTzc.tz) : filtered).filter(kindPass);
@@ -1380,6 +1396,12 @@ export function ScheduleCalendar() {
                                 {c.sub && (
                                   <span className={`text-[10px] ${isToday ? "text-accent font-semibold" : "text-fg-subtle"}`}>
                                     {c.sub}
+                                  </span>
+                                )}
+                                {/* [다중 시차 UX] 표별 tz 배너가 없는 개별 시차 컬럼에만 오프셋 배지(눈금=현지 시각임을 명시) */}
+                                {!tzActive && colTz && minCol > 46 && (
+                                  <span className="text-[9px] mono text-fg-subtle leading-none" title={`${colTzc!.name} 현지 시각으로 표시 · 세로 눈금은 이 컬럼 현지 기준(${colOffLabel})`}>
+                                    {colTzc!.flag} {colOffLabel}
                                   </span>
                                 )}
                                 {/* 이름은 truncate, 국기 버튼은 truncate 밖(잘림·클릭 좌표 소실 방지) */}
@@ -1727,6 +1749,24 @@ export function ScheduleCalendar() {
     );
   };
 
+  // [스플릿 높이 정렬 2026-07-07] 스플릿(수동/자동 2표) 렌더 전에 모든 표의 축을 union → 공통 축으로 렌더.
+  //  각 표가 제 콘텐츠·시차로 축을 따로 잡아 높이가 어긋나던 문제 해소(나란히 비교 가능). 시차 표는 0~24h로
+  //  확장되어 union에 반영 = 시차까지 고려한 공통 눈금.
+  const manualPanesAxis = manualPanes.length
+    ? unionAxis(manualPanes.map((mp) => {
+        const opts =
+          mp.dim === "instructor" ? (resources?.instructors ?? []).map((r) => ({ id: Number(r.id), name: r.name }))
+            : mp.dim === "student" ? (resources?.students ?? []).map((r) => ({ id: Number(r.id), name: r.name }))
+              : mp.dim === "room" ? rooms.map((r) => ({ id: Number(r.id), name: r.name }))
+                : subjectOpts.map((s) => ({ id: s.id, name: s.name }));
+        const picks: MixedPick[] = mp.ids.map((id) => ({ id, name: opts.find((o) => o.id === id)?.name ?? `#${id}`, type: mp.dim }));
+        return computeAxis(colsFor(picks, `m${mp.uid}|`), paneCountryU[mp.uid] ?? null);
+      }))
+    : undefined;
+  const twoPanesAxis = twoPanes
+    ? unionAxis(panes.map((g) => computeAxis(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim))))
+    : undefined;
+
   return (
     <div className="p-6 max-w-page-wide mx-auto">
       {/* [DESIGN §5.5] 조작 설명서는 부제에서 제거 → ⓘ 팝오버. 부제는 상태 정보만. */}
@@ -1960,7 +2000,7 @@ export function ScheduleCalendar() {
                         </div>
                       }
                     >
-                      {renderTimeGrid(colsFor(picks, `m${mp.uid}|`), paneCountryU[mp.uid] ?? null, paneModesU[mp.uid], w)}
+                      {renderTimeGrid(colsFor(picks, `m${mp.uid}|`), paneCountryU[mp.uid] ?? null, paneModesU[mp.uid], w, manualPanesAxis)}
                     </CalendarSplitPane>
                   );
                 })}
@@ -2028,7 +2068,7 @@ export function ScheduleCalendar() {
                       </div>
                     }
                   >
-                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim), paneModes[g.dim], panes.length >= 2 ? Math.max(320, (mainW - 16) / panes.length) : mainW)}
+                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim), paneModes[g.dim], panes.length >= 2 ? Math.max(320, (mainW - 16) / panes.length) : mainW, twoPanesAxis)}
                   </CalendarSplitPane>
                 ))}
               </div>
