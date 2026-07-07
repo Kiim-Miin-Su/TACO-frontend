@@ -2,11 +2,9 @@ import { jwtDecode } from 'jwt-decode';
 
 // 프론트는 토큰을 "읽기"만 합니다. 서명/검증은 백엔드(NestJS) 책임.
 export interface TokenClaims {
-  sub: number; // user id
+  sub: number; // user id (= 강사면 도메인 강사 식별자 — 통일 2026-07-07)
   name: string;
   roles: string[]; // user_roles
-  // [버그수정 2026-07-07] 강사 계정이면 도메인 강사 id(courses/sessions 참조). 강사 아니면 없음.
-  instructorId?: number;
   exp: number; // epoch seconds
   iat: number;
 }
@@ -68,8 +66,9 @@ export function currentClaims(): TokenClaims | null {
   return decodeToken(t);
 }
 
-// [버그수정 2026-07-07] 로그인 강사의 도메인 강사 id(courses/sessions 참조). 강사 아님·미로그인이면 null.
-//  강사 계정↔도메인 강사 링크(users.instructorId → JWT claim)를 해석 — DEMO_INSTRUCTOR_ID 하드코딩 대체 진입점.
+// [강사 식별자 통일 2026-07-07] 강사의 도메인 강사 id = users.id = JWT sub. 강사 아님·미로그인이면 null.
+//  (별도 instructorId 브리지 폐기 — sub가 곧 강사 식별자. courses/sessions.instructorId가 이 값을 참조.)
 export function myInstructorId(): number | null {
-  return currentClaims()?.instructorId ?? null;
+  const c = currentClaims();
+  return c && c.roles?.includes('instructor') ? c.sub : null;
 }
