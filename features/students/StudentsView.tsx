@@ -6,12 +6,16 @@ import { Badge, ConfirmModal, EmptyState, PageHeader, SectionCard, StatusDot, Ta
 import { useStudents, useEnrollments, useCourses, useParentStudents, useParents, useRemoveStudent } from "@/lib/queries";
 import { isActiveStudent, activeCourseNamesOf, STUDENT_STATUS_LABEL as label, STUDENT_STATUS_TONE } from "@/lib/domain/students";
 import { CountryBadge } from "@/features/calendar/CountryInput";
+import { useTacoStore } from "@/lib/store";
+import { isAdmin } from "@/lib/roles";
 import type { Student } from "@/types";
 import { StudentForm } from "./StudentForm";
 import { useState } from "react";
 
 
 export function StudentsView() {
+  // [TBO-20 M1] 학생 등록·퇴원 = 관리자 전용(BE students POST/DELETE=ADMIN 정합). 강사엔 쓰기 버튼 숨김(403 방지).
+  const admin = isAdmin(useTacoStore((s) => s.currentRole));
   const { data: students = [] } = useStudents();
   const { data: enrollments = [] } = useEnrollments();
   const { data: courses = [] } = useCourses();
@@ -51,14 +55,16 @@ export function StudentsView() {
         title="학생 · 부모"
         sub={`활성 ${activeCount}명`}
         actions={
-          <button className={showForm ? "btn" : "btn btn-primary"} onClick={() => setShowForm((v) => !v)}>
-            {showForm ? "등록 닫기" : "+ 학생 등록"}
-          </button>
+          admin && (
+            <button className={showForm ? "btn" : "btn btn-primary"} onClick={() => setShowForm((v) => !v)}>
+              {showForm ? "등록 닫기" : "+ 학생 등록"}
+            </button>
+          )
         }
       />
 
       {/* 등록 폼 — 접이식(기본 접힘). 목록이 항상 첫 화면. */}
-      {showForm && (
+      {showForm && admin && (
         <SectionCard title="학생 등록" action={<button className="btn btn-sm" onClick={() => setShowForm(false)}>닫기</button>}>
           <StudentForm />
         </SectionCard>
@@ -79,7 +85,7 @@ export function StudentsView() {
         {filtered.length === 0 ? (
           <EmptyState
             message={kw ? "검색 결과가 없습니다." : "등록된 학생이 없습니다."}
-            action={!kw && <button className="btn btn-sm" onClick={() => setShowForm(true)}>+ 학생 등록</button>}
+            action={!kw && admin && <button className="btn btn-sm" onClick={() => setShowForm(true)}>+ 학생 등록</button>}
           />
         ) : (
         <TableWrap minWidth={880}>
@@ -117,13 +123,15 @@ export function StudentsView() {
                       </Badge>
                     </td>
                     <td className="text-right">
-                      {isActiveStudent(s) ? (
-                        // [DESIGN §5.5] 파괴적 액션 확인은 ConfirmModal(danger)
+                      {!isActiveStudent(s) ? (
+                        <span className="text-caption text-fg-subtle">퇴원됨</span>
+                      ) : admin ? (
+                        // [DESIGN §5.5] 파괴적 액션 확인은 ConfirmModal(danger) · 관리자 전용(BE DELETE=ADMIN)
                         <button className="btn btn-sm btn-danger" onClick={() => setDropTarget(s)}>
                           퇴원 처리
                         </button>
                       ) : (
-                        <span className="text-caption text-fg-subtle">퇴원됨</span>
+                        <span className="text-caption text-fg-subtle">—</span>
                       )}
                     </td>
                   </tr>
