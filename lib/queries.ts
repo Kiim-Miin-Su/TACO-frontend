@@ -42,6 +42,8 @@ export const useCalendarSchedule = (params: { from?: string; to?: string; instru
 // [TBO-14 C2] 캘린더 준정적 카탈로그 — 강의실·자원 피커. staleTime 5분(변경 빈도 낮음·쓰기 시 invalidate).
 export const useRooms = () => useQuery({ queryKey: qk.rooms.all(), queryFn: () => api.rooms.list(), staleTime: CATALOG_STALE });
 export const useScheduleResources = () => useQuery({ queryKey: qk.schedule.resources(), queryFn: () => api.schedule.resources(), staleTime: CATALOG_STALE });
+// [TBO-14 C2b] 전체 가용/불가 블록 — 캘린더 밴드 단일 소스(selBlocks는 뷰에서 owner 파생). 밴드 편집 시 invalidate.
+export const useAllAvailability = () => useQuery({ queryKey: qk.availability.all, queryFn: () => api.availability.all() });
 export const useAttendance = () => useQuery({ queryKey: qk.attendance.list(), queryFn: () => api.attendance.list() });
 export const usePayments = () => useQuery({ queryKey: qk.payments.list(), queryFn: () => api.payments.list() });
 export const useTransactions = () => useQuery({ queryKey: qk.transactions.list(), queryFn: () => api.transactions.list() });

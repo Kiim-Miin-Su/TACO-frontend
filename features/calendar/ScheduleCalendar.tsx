@@ -14,7 +14,7 @@ import {
   type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick, densityOf, expandAxis,
   MODE_FILTERS, MODE_FILTER_LABEL, type SessionModeFilter,
   matchesSubjectFilter, SUBJECT_KIND_OPTIONS } from "@/lib/domain/lantiv";
-import { useAttendance, useStudents, useEnrollments, useCourses, useSubjects, useCreateViewPreset, useScheduleRequests, useCalendarSchedule, useRooms, useScheduleResources } from "@/lib/queries";
+import { useAttendance, useStudents, useEnrollments, useCourses, useSubjects, useCreateViewPreset, useScheduleRequests, useCalendarSchedule, useRooms, useScheduleResources, useAllAvailability } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
 import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, kstPatchTimes, type CountryInfo, type TzShiftedRow, splitKstBand } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
@@ -123,13 +123,9 @@ export function ScheduleCalendar() {
   //  그 유저 = 개인 모드(서버 파라미터 조회·가용밴드·상세 카드·PNG 이름). 필터바 칩에 항상 표시되어
   //  "지금 무엇으로 걸러져 있는지"가 한 곳에 보인다. 우측 패널 클릭 = 그 차원 필터를 1명으로 세팅.
   // (selected 정의는 필터 상태 아래 — 파생 useMemo)
-  const [selBlocks, setSelBlocks] = useState<AvailabilityBlock[]>([]); // 선택 자원의 불가시간(밴드 표시)
-  // [피드백 2026-07-03] 스플릿 컬럼별 가용·불가 시각화 — 전체 availability(단일 소스, 컬럼 유저 매칭)
-  const [allBlocks, setAllBlocks] = useState<AvailabilityBlock[]>([]);
-  const reloadAllBlocks = useCallback(() => {
-    api.availability.all().then(setAllBlocks).catch(() => {});
-  }, []);
-  useEffect(() => { reloadAllBlocks(); }, [reloadAllBlocks]);
+  // [TBO-14 C2b] 가용/불가 = TanStack Query 단일 소스(allBlocks). selBlocks(선택 유저)는 selected 정의 후 owner 파생.
+  //  밴드 편집(upsert/remove)은 reloadSelBlocks=invalidate(qk.availability.all)로 refetch→파생 자동 재계산.
+  const { data: allBlocks = [] } = useAllAvailability();
 
   // 이미지(PNG/JPEG) 내보내기
   const captureRef = useRef<HTMLDivElement>(null);
@@ -350,6 +346,13 @@ export function ScheduleCalendar() {
     return resources.rooms.find((r) => Number(r.id) === id) ?? null;
   }, [fInstructors, fStudents, fRooms, resources]);
 
+  // [TBO-14 C2b] 선택 자원의 불가/가용 블록 = allBlocks에서 owner 파생(단일 소스 — 별도 fetch 제거).
+  //  api.availability.list(type,id)와 동치(백엔드 list=all의 owner 필터). 밴드 편집→invalidate→allBlocks 재조회→자동 재계산.
+  const selBlocks = useMemo(
+    () => (selected ? allBlocks.filter((b) => b.ownerType === selected.type && Number(b.ownerId) === Number(selected.id)) : []),
+    [allBlocks, selected],
+  );
+
   // [A안 조정 2026-07-03] 유저 클릭 = **정보 카드만**(캘린더 뷰·필터 불변 — "뷰가 바뀌면 안 됨" 피드백).
   //  개인 필터 적용은 카드의 "이 유저 스케줄만 보기" 버튼으로 명시적으로만.
   const [infoTarget, setInfoTarget] = useState<ScheduleResource | null>(null);
@@ -410,17 +413,7 @@ export function ScheduleCalendar() {
   }, [qc]);
   // [TBO-14 C2] rooms·resources는 useRooms()·useScheduleResources() Query로 이관 — 로컬 fetch effect 제거.
 
-  // 선택 자원의 불가시간(밴드)
-  useEffect(() => {
-    if (!selected) {
-      setSelBlocks([]);
-      return;
-    }
-    api.availability
-      .list(selected.type, selected.id)
-      .then(setSelBlocks)
-      .catch(() => setSelBlocks([]));
-  }, [selected]);
+  // [TBO-14 C2b] selBlocks fetch effect 제거 — 위 selBlocks useMemo가 allBlocks에서 파생(단일 소스).
 
   // ── 색/라벨 ──
   const colorOf = useCallback(
@@ -632,10 +625,10 @@ export function ScheduleCalendar() {
   };
 
   // ── 가용/불가(Block) — 밴드 표시 + 클릭 삭제. 생성은 "스케줄 추가" 모달의 '가용·불가' 탭에서. ──
+  // [TBO-14 C2b] 밴드 편집 후 가용/불가 쿼리 무효화 → allBlocks refetch → selBlocks 파생 자동 재계산.
   const reloadSelBlocks = useCallback(() => {
-    if (selected) api.availability.list(selected.type, selected.id).then(setSelBlocks).catch(() => {});
-    reloadAllBlocks(); // 스플릿 컬럼 밴드(전체 소스)도 동기화
-  }, [selected, reloadAllBlocks]);
+    qc.invalidateQueries({ queryKey: qk.availability.all });
+  }, [qc]);
 
   // 가용/불가 블록 생성(모달에서 호출)
   async function createBlock(body: AvailabilityUpsertBody) {
@@ -644,7 +637,7 @@ export function ScheduleCalendar() {
       setCreating(null);
       // [버그수정 2026-07-03 이슈3·4] 스플릿 컬럼 밴드는 allBlocks 소스라 항상 갱신해야 새 블록(학생 불가·
       //  가용 초록)이 즉시 렌더됨. 기존엔 selected==owner일 때만 갱신 → 다른 유저 컬럼에 추가하면 미표시.
-      reloadSelBlocks(); // 내부에서 reloadAllBlocks(전체) + selBlocks(선택 유저) 동시 갱신
+      reloadSelBlocks(); // invalidate(qk.availability.all) → allBlocks refetch → 전체 컬럼·선택 유저 밴드 동시 갱신
     } catch (e) {
       // 겹침(409) 등 백엔드 메시지를 그대로 노출 — "이미 지정된 불가시간과 겹칩니다" 경고.
       const err = e as { response?: { data?: { message?: string } } };
