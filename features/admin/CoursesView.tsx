@@ -1,6 +1,7 @@
 // [참조/처리] 관리자 코스/과목 카탈로그. 읽기=TanStack Query(useCourses·useSubjects·useInstructors),
 //  쓰기=api.courses/subjects.create → 성공 시 해당 queryKey invalidate로 목록 자동 갱신(단일 소스).
 'use client';
+import Link from 'next/link';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { SectionCard, EmptyState, TableWrap } from '@/components/ui';
@@ -37,7 +38,8 @@ export function CoursesView() {
                 <tr key={c.id}>
                   <td className="font-medium">
                     {c.color && <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ background: c.color }} />}
-                    {c.name}
+                    {/* [TBO-20 20-C] 코스명 클릭 → 코스 상세(수강생·세션·로드맵) */}
+                    <Link href={`/admin/courses/${c.id}`} className="text-accent hover:underline">{c.name}</Link>
                   </td>
                   <td className="text-fg-muted">{subjectName(c.subjectId)}</td>
                   <td className="text-fg-muted">{instructorName(c.instructorId)}</td>
