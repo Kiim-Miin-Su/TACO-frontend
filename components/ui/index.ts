@@ -12,6 +12,7 @@ export { StatCard } from './StatCard';
 export { SectionCard } from './SectionCard';
 export { MonthCalendar } from './MonthCalendar';
 export { Combobox } from './Combobox';
+export { Select } from './Select'; // [재사용] enum/데이터 셀렉트 공용(enumOptions와 조합)
 export { Chart } from './Chart';
 export { toneBg, toneFg } from './tokens';
 export type { Tone } from './tokens';
