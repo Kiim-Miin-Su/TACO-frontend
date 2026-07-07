@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 // 목록 데이터(students·enrollments·courses·parentStudents·parents)는 TanStack Query로 읽고,
 // 퇴원(소프트삭제)은 useRemoveStudent 훅(백엔드 DELETE /students/:id)으로 처리한다.
 // [DESIGN §8·§5.5] 첫 화면 = 목록(조회 우선). 등록 폼은 접이식 패널(기본 접힘) — 헤더 버튼 토글.
@@ -108,7 +109,8 @@ export function StudentsView() {
                 return (
                   <tr key={s.id}>
                     <td>
-                      <div className="font-medium">{s.name}</div>
+                      {/* [TBO-20 20-A] 이름 클릭 → 학생 상세(프로필 허브) */}
+                      <Link href={`/students/${s.id}`} className="font-medium text-accent hover:underline">{s.name}</Link>
                       <div className="text-caption text-fg-subtle">{s.englishName ?? ""}</div>
                     </td>
                     <td className="mono">{s.grade ?? "—"}</td>
