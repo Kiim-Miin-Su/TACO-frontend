@@ -80,7 +80,7 @@ export const useAcademyEvents = () => useQuery({ queryKey: qk.events.list(), que
 // [TBO-19 Sprint4] 강사 계약(매니저 전용 — 계약 대비 실제 시수). 백엔드 GET이 ADMIN 게이트라 비관리자는 비활성.
 export const useInstructorContracts = () => {
   const role = useTacoStore((s) => s.currentRole);
-  return useQuery({ queryKey: ["instructor-contracts", "list"] as const, queryFn: () => api.instructorContracts.list(), enabled: isAdmin(role), staleTime: CATALOG_STALE });
+  return useQuery({ queryKey: ["instructor-contracts", "list"] as const, queryFn: () => api.instructorContracts.list(), enabled: isAdmin(role) && tokenIsAdmin(), staleTime: CATALOG_STALE });
 };
 // [강사 출결 상세] 특정 강사의 기간 세션 — **권위 소스 /schedule 서버 필터**(instructorId·from·to). 참조 무결성:
 //  세션 데이터를 복제하지 않고 단일 소스에서 조회, qk.schedule 하위 키라 세션 변경 시 자동 무효화.
@@ -98,7 +98,7 @@ export const useSessionAudit = (sessionId: number | null) => {
   return useQuery({
     queryKey: ["audit", "class_sessions", sessionId ?? 0] as const,
     queryFn: () => api.audit.list("class_sessions", sessionId as number),
-    enabled: isAdmin(role) && sessionId != null,
+    enabled: isAdmin(role) && tokenIsAdmin() && sessionId != null,
   });
 };
 // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터. 서버 집계(DB 이관 시 GROUP BY 승격).
@@ -107,7 +107,7 @@ export const useInstructorAttendanceSummary = (from?: string, to?: string, instr
   return useQuery({
     queryKey: ["instructor-attendance-summary", from ?? null, to ?? null, instructorId ?? null] as const,
     queryFn: () => api.schedule.instructorAttendanceSummary(from, to, instructorId),
-    enabled: isAdmin(role) && !!from && !!to,
+    enabled: isAdmin(role) && tokenIsAdmin() && !!from && !!to,
   });
 };
 export const useRoadmaps = () => useQuery({ queryKey: qk.roadmaps.list(), queryFn: () => api.roadmaps.list() });
