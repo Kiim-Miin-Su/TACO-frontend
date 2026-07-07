@@ -9,7 +9,7 @@ import type { AttendanceStatus, InstructorAttendanceStatus, ScheduleRow } from "
 import { useSchedule, useAttendance, useUpsertAttendance, useStudents, useCourses, useUpdateSchedule, useInstructorContracts } from "@/lib/queries";
 import { buildAttendanceBook, hoursLabel, nextAttendanceStatus } from "@/lib/domain/attendanceBook";
 import { paidTeachingHours } from "@/lib/domain/schedule";
-import { INSTRUCTOR_ATT_LABEL } from "@/lib/domain/lantiv";
+import { AttMarker, INSTRUCTOR_ATT_OPTIONS } from "./AttMarker";
 import { useTacoStore } from "@/lib/store";
 import { isAdmin } from "@/lib/roles";
 import { myInstructorId as loginInstructorId } from "@/lib/auth";
@@ -24,7 +24,6 @@ const CELL: Record<AttendanceStatus, { label: string; bg: string }> = {
 };
 
 // [TBO-19] 강사 출결 선택 순서(매니저 편집 select).
-const INSTRUCTOR_ATT_ORDER: InstructorAttendanceStatus[] = ["present", "late", "absent", "makeup"];
 
 const ymOf = (iso: string) => iso.slice(0, 7);
 const thisYm = () => new Date().toISOString().slice(0, 7);
@@ -118,9 +117,16 @@ export function AttendanceBookView() {
     });
   }, [rows, ym, manager, myInstId, contracts]);
 
-  // [TBO-19 Sprint2] 강사 출결 상태 필터 — 결석·지각 등 시수 갭 식별용. 세션 표시 + 행 노출을 함께 좁힌다.
+  // [TBO-19 Sprint2] 강사 출결 상태 필터 + [req2] 과목 필터(학생 출석처럼) — 세션·행 노출을 함께 좁힌다.
   const [attFilter, setAttFilter] = useState<"all" | "absent" | "late" | "issue" | "unmarked">("all");
-  const matchAttFilter = (s: ScheduleRow): boolean => {
+  const [attSubject, setAttSubject] = useState<string>("all");
+  // 과목 옵션 = 강사 회차의 실제 과목명(단일 소스).
+  const attSubjects = useMemo(
+    () => [...new Set(instructorBook.flatMap((r) => r.sessions.map((s) => s.subjectName)).filter(Boolean))].sort(),
+    [instructorBook],
+  );
+  const matchAtt = (s: ScheduleRow): boolean => {
+    if (attSubject !== "all" && s.subjectName !== attSubject) return false;
     if (attFilter === "all") return true;
     const a = s.instructorAttendance;
     if (attFilter === "unmarked") return !a;
@@ -129,12 +135,13 @@ export function AttendanceBookView() {
   };
   const filteredInstructorBook = useMemo(
     () =>
-      attFilter === "all"
+      attFilter === "all" && attSubject === "all"
         ? instructorBook
         : instructorBook
-            .map((r) => ({ ...r, sessions: r.sessions.filter(matchAttFilter) }))
+            .map((r) => ({ ...r, sessions: r.sessions.filter(matchAtt) }))
             .filter((r) => r.sessions.length > 0),
-    [instructorBook, attFilter],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [instructorBook, attFilter, attSubject],
   );
 
   // [TBO-19] 강사 출결 저장(매니저) — 세션 PATCH. 성공 시 schedule·reports·payouts 무효화(useUpdateSchedule).
@@ -272,22 +279,36 @@ export function AttendanceBookView() {
         <SectionCard
           title={`${manager ? "강사 출석" : "내 출석"} — ${ym} 진행 회차`}
           action={
-            <select
-              className="input h-7 w-32 text-caption"
-              value={attFilter}
-              onChange={(e) => setAttFilter(e.target.value as typeof attFilter)}
-              title="강사 출결 상태로 회차 필터 — 결석·지각 등 시수 갭 식별"
-            >
-              <option value="all">전체 보기</option>
-              <option value="issue">결석·지각만</option>
-              <option value="absent">결석만</option>
-              <option value="late">지각만</option>
-              <option value="unmarked">미표시만</option>
-            </select>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* [req2] 과목 필터(학생 출석처럼) */}
+              <select
+                className="input h-7 w-28 text-caption"
+                value={attSubject}
+                onChange={(e) => setAttSubject(e.target.value)}
+                title="과목별 보기"
+              >
+                <option value="all">과목 전체</option>
+                {attSubjects.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              <select
+                className="input h-7 w-28 text-caption"
+                value={attFilter}
+                onChange={(e) => setAttFilter(e.target.value as typeof attFilter)}
+                title="강사 출결 상태로 회차 필터 — 결석·지각 등 시수 갭 식별"
+              >
+                <option value="all">전체 보기</option>
+                <option value="issue">결석·지각만</option>
+                <option value="absent">결석만</option>
+                <option value="late">지각만</option>
+                <option value="unmarked">미표시만</option>
+              </select>
+            </div>
           }
         >
           {!filteredInstructorBook.length ? (
-            <EmptyState message={attFilter === "all" ? `${ym}에 진행된 회차가 없습니다.` : "해당 출결 상태의 회차가 없습니다."} />
+            <EmptyState message={attFilter === "all" && attSubject === "all" ? `${ym}에 진행된 회차가 없습니다.` : "해당 조건(과목·출결 상태)의 회차가 없습니다."} />
           ) : (
             <TableWrap>
               <table className="table text-body">
@@ -313,31 +334,21 @@ export function AttendanceBookView() {
                         )}
                       </td>
                       <td>
-                        <div className="flex flex-wrap gap-1.5">
-                          {r.sessions.map((s) =>
-                            canEditInstructorAtt ? (
-                              // 매니저: 출결 편집(set/change/clear) — 세션 PATCH. '미표시' 선택=초기화.
-                              <label key={s.id} className="inline-flex items-center gap-1 badge text-[10.5px]" title={`${s.courseName} ${s.startTime ?? ""}`}>
-                                <span className="mono">{s.sessionDate.slice(5)}</span>
-                                <select
-                                  className="input h-6 px-1 py-0 text-[10.5px]"
-                                  value={s.instructorAttendance ?? ""}
-                                  disabled={updateSchedule.isPending}
-                                  onChange={(e) => (e.target.value ? markInstructor(s.id, e.target.value as InstructorAttendanceStatus) : clearInstructor(s.id))}
-                                >
-                                  <option value="">미표시</option>
-                                  {INSTRUCTOR_ATT_ORDER.map((st) => (
-                                    <option key={st} value={st}>{INSTRUCTOR_ATT_LABEL[st]}</option>
-                                  ))}
-                                </select>
-                              </label>
-                            ) : (
-                              // 강사: 본인 출결 읽기 전용 배지
-                              <span key={s.id} className="badge text-[10.5px] mono" title={`${s.courseName} ${s.startTime ?? ""}`}>
-                                {s.sessionDate.slice(5)} {s.instructorAttendance ? INSTRUCTOR_ATT_LABEL[s.instructorAttendance] : "—"}
-                              </span>
-                            ),
-                          )}
+                        {/* [req4] 버튼 마킹(원클릭 저장·수정하기). canEdit=강사탭은 매니저만(강사는 읽기 배지). */}
+                        <div className="flex flex-wrap gap-x-2 gap-y-1">
+                          {r.sessions.map((s) => (
+                            <span key={s.id} className="inline-flex items-center gap-1 text-[10.5px]" title={`${s.courseName} ${s.startTime ?? ""}`}>
+                              <span className="mono text-fg-muted">{s.sessionDate.slice(5)}</span>
+                              <AttMarker
+                                value={s.instructorAttendance}
+                                options={INSTRUCTOR_ATT_OPTIONS}
+                                canEdit={canEditInstructorAtt}
+                                pending={updateSchedule.isPending}
+                                onMark={(st) => markInstructor(s.id, st)}
+                                onClear={() => clearInstructor(s.id)}
+                              />
+                            </span>
+                          ))}
                         </div>
                       </td>
                       <td className="text-center mono text-[11px]">
