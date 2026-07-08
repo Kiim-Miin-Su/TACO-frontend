@@ -5,7 +5,15 @@
 // ──────────────────────────────────────────────────────────────
 import type { CalendarViewPreset, CreateViewPresetInput } from '@/types';
 import { countryByCode, type CountryInfo } from './tz';
-import type { SplitDim, StatusFilter, SessionKindFilter } from './lantiv';
+import type { SplitDim, StatusFilter, SessionKindFilter, SessionModeFilter } from './lantiv';
+
+export type CalendarPaneState = {
+  uid?: number;
+  dim: SplitDim;
+  ids: number[];
+  country: CountryInfo | null;
+  modes: Set<SessionModeFilter>;
+};
 
 export type CalendarViewState = {
   view: 'month' | 'week' | 'day';
@@ -17,11 +25,30 @@ export type CalendarViewState = {
   fRooms: Set<number>;
   fSubjects: Set<string>;
   fStatuses: Set<StatusFilter>;
+  fModes: Set<SessionModeFilter>;
   fKinds: Set<SessionKindFilter>; // [v0.1.14 #2] 종류 필터(전역)
   groupOnly: boolean;
   country: CountryInfo | null;
   paneCountry: Partial<Record<SplitDim, CountryInfo | null>>;
+  kstFixed?: boolean;
+  compactCols?: boolean;
+  manualPanes?: CalendarPaneState[];
 };
+
+type ViewPresetExtras = {
+  modeFilters?: SessionModeFilter[];
+  kstFixed?: boolean;
+  compactCols?: boolean;
+  manualPanes?: {
+    uid?: number;
+    dim: SplitDim;
+    ids: number[];
+    countryCode?: string;
+    modeFilters?: SessionModeFilter[];
+  }[];
+};
+
+type ViewPresetWithExtras = CalendarViewPreset & ViewPresetExtras;
 
 /** 현재 캘린더 상태 → 저장용 프리셋 본문. */
 export function serializeViewPreset(name: string, s: CalendarViewState): CreateViewPresetInput {
@@ -38,17 +65,28 @@ export function serializeViewPreset(name: string, s: CalendarViewState): CreateV
     subjects: [...s.fSubjects],
     statuses: [...s.fStatuses],
     kinds: s.fKinds.size ? [...s.fKinds] : undefined, // 빈 선택=미저장(전체)
+    modeFilters: s.fModes.size ? [...s.fModes] : undefined,
     groupOnly: s.groupOnly,
     q: s.q.trim() || undefined,
     colorBy: s.colorBy,
     countryCode: s.country?.code,
     paneCountryInstructor: pane('instructor'),
     paneCountryStudent: pane('student'),
-  };
+    kstFixed: s.kstFixed,
+    compactCols: s.compactCols,
+    manualPanes: s.manualPanes?.map((p) => ({
+      uid: p.uid,
+      dim: p.dim,
+      ids: p.ids,
+      countryCode: p.country?.code,
+      modeFilters: p.modes.size ? [...p.modes] : undefined,
+    })),
+  } as CreateViewPresetInput & ViewPresetExtras;
 }
 
 /** 프리셋 → 적용용 상태(컴포넌트가 각 setter로 흘려보냄). 미지의 국가 코드는 무시(목록 변경 내성). */
 export function presetToState(p: CalendarViewPreset): CalendarViewState {
+  const extra = p as ViewPresetWithExtras;
   const pane: CalendarViewState['paneCountry'] = {};
   if (p.paneCountryInstructor) pane.instructor = countryByCode(p.paneCountryInstructor) ?? null;
   if (p.paneCountryStudent) pane.student = countryByCode(p.paneCountryStudent) ?? null;
@@ -62,9 +100,19 @@ export function presetToState(p: CalendarViewPreset): CalendarViewState {
     fRooms: new Set(p.roomIds.map(Number)),
     fSubjects: new Set(p.subjects),
     fStatuses: new Set(p.statuses as StatusFilter[]),
+    fModes: new Set((extra.modeFilters ?? []).filter((k): k is SessionModeFilter => k === 'in_person' || k === 'online')),
     fKinds: new Set((p.kinds ?? []).filter((k): k is SessionKindFilter => k === 'class' || k === 'level_test' || k === 'counsel')), // 미지 값 내성
     groupOnly: p.groupOnly,
     country: p.countryCode ? (countryByCode(p.countryCode) ?? null) : null,
     paneCountry: pane,
+    kstFixed: extra.kstFixed,
+    compactCols: extra.compactCols,
+    manualPanes: extra.manualPanes?.map((mp) => ({
+      uid: mp.uid == null ? undefined : Number(mp.uid),
+      dim: mp.dim,
+      ids: mp.ids.map(Number),
+      country: mp.countryCode ? (countryByCode(mp.countryCode) ?? null) : null,
+      modes: new Set((mp.modeFilters ?? []).filter((k): k is SessionModeFilter => k === 'in_person' || k === 'online')),
+    })),
   };
 }

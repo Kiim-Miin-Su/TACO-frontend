@@ -7,7 +7,7 @@ import { countryByCode } from './tz';
 const state = (over: Partial<CalendarViewState> = {}): CalendarViewState => ({
   view: 'week', period: { from: '2026-07-01', to: '2026-07-03' }, q: ' SAT ', colorBy: 'subject',
   fInstructors: new Set([1, 2]), fStudents: new Set([1]), fRooms: new Set(),
-  fSubjects: new Set(['영어']), fStatuses: new Set(['attended', 'late']), fKinds: new Set(), groupOnly: true,
+  fSubjects: new Set(['영어']), fStatuses: new Set(['attended', 'late']), fModes: new Set(), fKinds: new Set(), groupOnly: true,
   country: countryByCode('US') ?? null,
   paneCountry: { instructor: null, student: countryByCode('US') ?? null }, // 강사 표=강제 KST
   ...over,
@@ -58,6 +58,35 @@ describe('serializeViewPreset ↔ presetToState (round-trip)', () => {
     expect(r.period).toBeNull();
     expect(r.country).toBeNull();
     expect(Object.keys(r.paneCountry)).toHaveLength(0);
+  });
+
+  it('[v0.1.17] 수동 표·표별 국가·수업방식·KST 고정 상태를 함께 저장한다', () => {
+    const body = serializeViewPreset('비교 뷰', state({
+      fModes: new Set(['online']),
+      kstFixed: true,
+      compactCols: true,
+      manualPanes: [
+        { uid: 10, dim: 'student', ids: [3], country: countryByCode('GB') ?? null, modes: new Set(['online']) },
+        { uid: 11, dim: 'instructor', ids: [2], country: null, modes: new Set() },
+      ],
+    })) as CalendarViewPreset & {
+      modeFilters?: string[];
+      manualPanes?: { uid?: number; dim: string; ids: number[]; countryCode?: string; modeFilters?: string[] }[];
+      kstFixed?: boolean;
+      compactCols?: boolean;
+    };
+    expect(body.modeFilters).toEqual(['online']);
+    expect(body.kstFixed).toBe(true);
+    expect(body.compactCols).toBe(true);
+    expect(body.manualPanes?.[0]).toMatchObject({ uid: 10, dim: 'student', ids: [3], countryCode: 'GB', modeFilters: ['online'] });
+    const restored = presetToState({ ...body, id: 7 } as CalendarViewPreset);
+    expect([...restored.fModes]).toEqual(['online']);
+    expect(restored.kstFixed).toBe(true);
+    expect(restored.compactCols).toBe(true);
+    expect(restored.manualPanes?.map((p) => [p.uid, p.dim, p.ids[0], p.country?.code, [...p.modes][0] ?? null])).toEqual([
+      [10, 'student', 3, 'GB', 'online'],
+      [11, 'instructor', 2, undefined, null],
+    ]);
   });
 
   it('미지의 국가 코드는 null로 강등(국가 목록 변경 내성 — 크래시 없음)', () => {

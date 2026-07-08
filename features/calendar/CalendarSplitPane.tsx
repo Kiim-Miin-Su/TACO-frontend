@@ -15,7 +15,7 @@ export type SubjectOption = { id: number; name: string; color?: string };
 const DIM_LABEL: Record<SplitDim, string> = { instructor: "강사", student: "학생", room: "강의실", subject: "과목" };
 
 export function CalendarSplitPane({
-  pane, resources, rooms, subjects = [], onChange, onRemove, children, fixedDim, headerExtra,
+  pane, resources, rooms, subjects = [], onChange, onRemove, onMoveLeft, onMoveRight, children, fixedDim, headerExtra,
 }: {
   pane: SplitPaneDef;
   fixedDim?: boolean; // 자동 스플릿 모드 — 차원은 필터에서 파생(변경 UI 숨김)
@@ -24,6 +24,8 @@ export function CalendarSplitPane({
   subjects?: SubjectOption[]; // [#2] 과목 차원 옵션(useSubjects 파생)
   onChange: (patch: Partial<SplitPaneDef>) => void;
   onRemove: () => void;
+  onMoveLeft?: () => void;
+  onMoveRight?: () => void;
   children: React.ReactNode; // 부모가 renderTimeGrid(colsFor(pane))로 주입한 그리드
   headerExtra?: React.ReactNode; // 표별 국가(시차) 픽커 등 — 헤더 우측 슬롯(피드백 2026-07-02 #6)
 }) {
@@ -71,6 +73,8 @@ export function CalendarSplitPane({
           {names || `${DIM_LABEL[pane.dim]}을 선택하세요`}
         </span>
         {headerExtra}
+        {onMoveLeft && <button className="btn btn-sm h-7 px-1.5" onClick={onMoveLeft} title="왼쪽으로 이동">←</button>}
+        {onMoveRight && <button className="btn btn-sm h-7 px-1.5" onClick={onMoveRight} title="오른쪽으로 이동">→</button>}
         <button className="btn btn-sm h-7 px-1.5" onClick={onRemove} title="이 표 닫기">✕</button>
       </div>
       {pane.ids.length === 0 ? (
