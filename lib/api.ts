@@ -87,6 +87,15 @@ export type CreateScheduleRequestBody = Partial<CreateScheduleRequestInput> & {
   availabilityEffectiveTo?: string;
   mode?: "in_person" | "online"; // [C2D] 요청 payload 수업방식(session_create)
 };
+// [C2C-b 청크2] pending 요청 수정(관리자) — 불변 필드(requestKind·target·owner) 제외 부분 패치
+export type UpdateScheduleRequestBody = {
+  courseId?: number; instructorId?: number; roomId?: number;
+  sessionDate?: string; startTime?: string; endTime?: string; durationMinutes?: number;
+  studentIds?: number[]; topic?: string; kind?: SessionKind; mode?: "in_person" | "online";
+  availabilityKind?: AvailabilityKindEx; availabilityWeekday?: number;
+  availabilityStartTime?: string; availabilityEndTime?: string;
+  availabilityEffectiveFrom?: string; availabilityEffectiveTo?: string;
+};
 export type ScheduleCreateBody = {
   courseId: number; instructorId?: number; roomId?: number; sessionDate: string;
   startTime: string; endTime?: string; durationMinutes?: number; topic?: string; memo?: string; color?: string;
@@ -367,6 +376,8 @@ export const api = {
       http.post<{ request: ScheduleRequestEx; conflicts: Conflict[] }>(`/schedule-requests/${id}/approve`, {}, { params: force ? { force: "true" } : {} }).then((r) => r.data),
     reject: (id: number, reason: string) => // 사유 필수(Q2)
       http.post<ScheduleRequestEx>(`/schedule-requests/${id}/reject`, { reason }).then((r) => r.data),
+    update: (id: number, body: UpdateScheduleRequestBody) => // [C2C-b] pending 수정(관리자)
+      http.patch<ScheduleRequestEx>(`/schedule-requests/${id}`, body).then((r) => r.data),
     withdraw: (id: number) =>
       http.delete<{ id: number; deleted: boolean }>(`/schedule-requests/${id}`).then((r) => r.data),
   },
