@@ -10,7 +10,7 @@ import { useState } from "react";
 import type { Room, ScheduleRow, RecurrenceScope } from "@/types";
 import type { SchedulePatchBody } from "@/lib/api";
 import { fromMin, toMin, pad2, WEEKDAYS_KO as WD } from "@/lib/domain/schedule";
-import { PALETTE, STATUS_LABEL, sessionEditPatch, KIND_FILTERS, KIND_FILTER_LABEL, type SessionDraft } from "@/lib/domain/lantiv";
+import { PALETTE, STATUS_LABEL, sessionEditPatch, KIND_FILTERS, KIND_FILTER_LABEL, MODE_FILTERS, MODE_FILTER_LABEL, type SessionDraft } from "@/lib/domain/lantiv";
 
 // ── 시간 선택기(24시간 · 시/분 드롭다운) — 브라우저 type=time의 AM/PM(로케일 의존) 불편 해소.
 //  실제 앱처럼 시(00~23)·분(5분 단위)을 직접 고른다. 값·onChange는 "HH:mm" 문자열(기존 계약 유지).
@@ -89,6 +89,7 @@ export function SessionEditFields({
     color: row.color,
     kind: (row.kind ?? "class") as SessionDraft["kind"], // [v0.1.14]
     price: row.price,
+    mode: (row.mode ?? "in_person") as SessionDraft["mode"],
     scope: "this",
   });
   const set = <K extends keyof SessionDraft>(k: K, v: SessionDraft[K]) => setD((x) => ({ ...x, [k]: v }));
@@ -144,6 +145,11 @@ export function SessionEditFields({
           <ColorPicker value={d.color} onChange={(c) => set("color", c)} />
         </Field>
       </div>
+      <Field label="수업방식">
+        <select className={input} value={d.mode ?? "in_person"} onChange={(e) => set("mode", e.target.value as SessionDraft["mode"])}>
+          {MODE_FILTERS.map((m) => <option key={m} value={m}>{MODE_FILTER_LABEL[m]}</option>)}
+        </select>
+      </Field>
       <Field label="주제">
         <input className={input} placeholder="비우면 기존 주제 유지" value={d.topic} onChange={(e) => set("topic", e.target.value)} />
       </Field>

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, AvailabilityBlock, AccountRole, Attendance } from "@/types";
-import { api, type SchedulePatchBody, type ScheduleCreateBody, type AvailabilityUpsertBody } from "@/lib/api";
+import { api, type SchedulePatchBody, type ScheduleCreateBody, type AvailabilityUpsertBody, type CreateScheduleRequestBody } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/queryKeys";
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 D — 파일별 중복 toMin/fromMin/pad/WD 제거)
@@ -90,6 +90,19 @@ type ManualPaneState = { uid: number; dim: SplitDim; ids: number[] };
 type Resizing = { id: number; edge: "top" | "bottom"; startClientY: number; origStart: number; origEnd: number;
   gm: number; gmax: number; tz?: string; dateLocal: string }; // [이슈2] 시차 뷰 리사이즈: 축 경계·tz·현지날짜
 type Pending = { row: ScheduleRow; patch: SchedulePatchBody; label: string };
+type AvailabilityImpact = { sessionId: number; sessionDate: string; startTime?: string; endTime?: string; reason?: string };
+type AvailabilityApprovalDraft =
+  | { action: "upsert"; body: AvailabilityUpsertBody; impacted: AvailabilityImpact[]; summary: string }
+  | { action: "delete"; targetAvailabilityId: number; impacted: AvailabilityImpact[]; summary: string };
+type AvailabilityApprovalSeed =
+  | { action: "upsert"; body: AvailabilityUpsertBody; summary: string }
+  | { action: "delete"; targetAvailabilityId: number; summary: string };
+
+const AVAILABILITY_KIND_LABEL: Record<AvailabilityBlock["kind"] | "online_only", string> = {
+  available: "가용시간",
+  unavailable: "불가시간",
+  online_only: "온라인만 가능",
+};
 
 export function ScheduleCalendar() {
   // [C-2 2026-07-06] 뷰 프리셋(월/주/일·색 기준·열 좁게)만 localStorage 복원 — 새로고침에도 유지.
@@ -113,6 +126,7 @@ export function ScheduleCalendar() {
   //  시차 표에서도 미리보기가 그 나라 시간 기준으로 정확히 보인다(종전: 현지 분을 그대로 적용해 KST 표기 오염).
   const [preview, setPreview] = useState<{ id: number; start: number; end: number; dStart: number; dEnd: number } | null>(null);
   const [msg, setMsg] = useState("");
+  const [availabilityApproval, setAvailabilityApproval] = useState<AvailabilityApprovalDraft | null>(null);
   // 토스트 자동 사라짐(성공·정보 알림이 화면에 계속 남지 않도록)
   useEffect(() => {
     if (!msg) return;
@@ -676,7 +690,7 @@ export function ScheduleCalendar() {
     );
 
   // 가용/불가(Block) 밴드 — 선택 자원 기준. week=요일 매칭 모든 컬럼, day=룸이면 해당 컬럼만/그 외 전체.
-  type Band = { id: number; kind: string; startMin: number; endMin: number; top: number; h: number; editable: boolean };
+  type Band = { id: number; kind: AvailabilityBlock["kind"] | "online_only"; startMin: number; endMin: number; top: number; h: number; editable: boolean };
   // gridMin: 렌더 그리드의 시작 분(개별 시차로 축이 0~24h일 때 top 정합 — renderTimeGrid가 전달)
   // tz: 컬럼이 비KST(해외 학생 등)면 그 tz — KST 블록을 그 나라 로컬로 변환해 표시(이슈1). KST·tz 모두
   //  kstBlockToTzWindow 단일 함수로 매칭·변환(세션 엔진 재사용·단위테스트 — 이슈3).
@@ -712,18 +726,73 @@ export function ScheduleCalendar() {
     qc.invalidateQueries({ queryKey: qk.availability.all });
   }, [qc]);
 
+  function approvalImpactOf(e: unknown): AvailabilityImpact[] | null {
+    const data = (e as { response?: { data?: { approvalRequired?: boolean; impactedSessions?: AvailabilityImpact[] } } })?.response?.data;
+    return data?.approvalRequired ? (data.impactedSessions ?? []) : null;
+  }
+
+  function availabilitySummary(body: AvailabilityUpsertBody): string {
+    return `${AVAILABILITY_KIND_LABEL[body.kind ?? "available"]} · ${WD[body.weekday]} ${body.startTime}~${body.endTime}`;
+  }
+
+  function alertAvailabilityError(message: string) {
+    alert(message);
+    setMsg(message);
+  }
+
+  function openAvailabilityApprovalFromError(e: unknown, draft: AvailabilityApprovalSeed): boolean {
+    const impacted = approvalImpactOf(e);
+    if (!impacted) return false;
+    setAvailabilityApproval({ ...draft, impacted } as AvailabilityApprovalDraft);
+    setMsg("이미 잡힌 수업에 영향이 있어 승인 요청이 필요합니다.");
+    return true;
+  }
+
+  async function submitAvailabilityApproval(draft: AvailabilityApprovalDraft) {
+    const input: CreateScheduleRequestBody =
+      draft.action === "delete"
+        ? { requestKind: "availability_delete", targetAvailabilityId: draft.targetAvailabilityId }
+        : {
+            requestKind: "availability_upsert",
+            targetAvailabilityId: draft.body.id,
+            availabilityOwnerType: draft.body.ownerType,
+            availabilityOwnerId: draft.body.ownerId,
+            availabilityKind: draft.body.kind ?? "available",
+            availabilityWeekday: draft.body.weekday,
+            availabilityStartTime: draft.body.startTime,
+            availabilityEndTime: draft.body.endTime,
+            availabilityEffectiveFrom: draft.body.effectiveFrom,
+            availabilityEffectiveTo: draft.body.effectiveTo,
+          };
+    try {
+      await api.scheduleRequests.create(input);
+      setAvailabilityApproval(null);
+      setCreating(null);
+      reloadSelBlocks();
+      qc.invalidateQueries({ queryKey: qk.scheduleRequests.all });
+      setMsg("승인 요청을 보냈습니다 — 승인센터에서 처리됩니다.");
+    } catch (e) {
+      const serverMsg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      const detail = Array.isArray(serverMsg) ? serverMsg[0] : serverMsg;
+      alertAvailabilityError(`요청 실패${detail ? ` — ${detail}` : ""}`);
+    }
+  }
+
   // 가용/불가 블록 생성(모달에서 호출)
-  async function createBlock(body: AvailabilityUpsertBody) {
+  async function createBlock(body: AvailabilityUpsertBody, options: { closeOnSuccess?: boolean } = {}): Promise<boolean> {
     try {
       await api.availability.upsert(body);
-      setCreating(null);
+      if (options.closeOnSuccess !== false) setCreating(null);
       // [버그수정 2026-07-03 이슈3·4] 스플릿 컬럼 밴드는 allBlocks 소스라 항상 갱신해야 새 블록(학생 불가·
       //  가용 초록)이 즉시 렌더됨. 기존엔 selected==owner일 때만 갱신 → 다른 유저 컬럼에 추가하면 미표시.
       reloadSelBlocks(); // invalidate(qk.availability.all) → allBlocks refetch → 전체 컬럼·선택 유저 밴드 동시 갱신
+      return true;
     } catch (e) {
+      if (openAvailabilityApprovalFromError(e, { action: "upsert", body, summary: availabilitySummary(body) })) return false;
       // 겹침(409) 등 백엔드 메시지를 그대로 노출 — "이미 지정된 불가시간과 겹칩니다" 경고.
       const err = e as { response?: { data?: { message?: string } } };
-      setMsg(err.response?.data?.message ?? "가용/불가 저장 실패");
+      alertAvailabilityError(err.response?.data?.message ?? "가용/불가 저장 실패");
+      return false;
     }
   }
   // [스플릿 자체 편집 2026-07-03] 블록 조회는 전체(allBlocks) 우선 — 어느 컬럼의 밴드든 동일 편집 체인.
@@ -736,7 +805,10 @@ export function ScheduleCalendar() {
     const singleWeek = !!(b?.effectiveFrom && b.effectiveFrom === b.effectiveTo);
     if (b && weekDate && !singleWeek) { setBlockDelScope({ id, kind: b.kind, date: weekDate }); return; }
     if (!confirm("이 시간 블록을 삭제할까요?")) return;
-    try { await api.availability.remove(id); reloadSelBlocks(); } catch { setMsg("삭제 실패"); }
+    try { await api.availability.remove(id); reloadSelBlocks(); } catch (e) {
+      if (openAvailabilityApprovalFromError(e, { action: "delete", targetAvailabilityId: id, summary: `${AVAILABILITY_KIND_LABEL[b?.kind ?? "available"]} 삭제` })) return;
+      alertAvailabilityError("삭제 실패");
+    }
   }
   // 삭제 범위 적용: 전체=행 삭제 · 이후=이번 주 직전까지로 컷 · 이번 주만=원본 분할(이번 주만 제거).
   async function applyBlockDeleteScope(scope: "this" | "this_and_following" | "all") {
@@ -757,8 +829,19 @@ export function ScheduleCalendar() {
       }
       reloadSelBlocks();
     } catch (e) {
+      if (orig) {
+        const fallback =
+          scope === "all" || !orig
+            ? ({ action: "delete", targetAvailabilityId: c.id, summary: `${AVAILABILITY_KIND_LABEL[orig.kind]} 삭제` } as const)
+            : ({
+                action: "upsert",
+                body: { id: c.id, ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: orig.effectiveFrom, effectiveTo: addDaysISO(c.date, -1) },
+                summary: `${AVAILABILITY_KIND_LABEL[orig.kind]} 기간 변경`,
+              } as const);
+        if (openAvailabilityApprovalFromError(e, fallback)) return;
+      }
       const err = e as { response?: { data?: { message?: string } } };
-      setMsg(err.response?.data?.message ?? "삭제 실패"); reloadSelBlocks();
+      alertAvailabilityError(err.response?.data?.message ?? "삭제 실패"); reloadSelBlocks();
     }
   }
   // 블록 이동 반복 범위 적용(주간 반복 규칙을 기간으로 분할). origDate=이번 주 원위치, newDate=드롭 위치.
@@ -785,8 +868,16 @@ export function ScheduleCalendar() {
       }
       reloadSelBlocks();
     } catch (e) {
+      if (orig) {
+        const fallback = {
+          action: "upsert",
+          body: { id: c.id, ...newPos, effectiveFrom: orig.effectiveFrom, effectiveTo: orig.effectiveTo },
+          summary: `${AVAILABILITY_KIND_LABEL[c.kind]} 변경`,
+        } as const;
+        if (openAvailabilityApprovalFromError(e, fallback)) return;
+      }
       const err = e as { response?: { data?: { message?: string } } };
-      setMsg(err.response?.data?.message ?? "적용 실패");
+      alertAvailabilityError(err.response?.data?.message ?? "적용 실패");
       reloadSelBlocks();
     }
   }
@@ -1624,7 +1715,7 @@ export function ScheduleCalendar() {
                                   if (b.editable) { e.stopPropagation(); setSelBand(on ? null : b.id); setSelEvent(null); }
                                 }}
                                 onDoubleClick={(e) => { e.stopPropagation(); const blk = findBlock(b.id); if (blk) setEditingBlock(blk); }}
-                                title={b.kind === "unavailable" ? "불가시간 — 클릭 선택 · 드래그 이동 · 끝 드래그 시간조절 · 더블클릭 수정" : "가용시간 — 클릭 선택 · 드래그 이동 · 더블클릭 수정"}
+                                title={`${AVAILABILITY_KIND_LABEL[b.kind]} — 클릭 선택 · 드래그 이동 · 끝 드래그 시간조절 · 더블클릭 수정`}
                                 className={`absolute left-0 right-0 ${!b.editable ? "pointer-events-none" : on ? "cursor-move" : "cursor-pointer"}`}
                                 style={
                                   b.kind === "unavailable"
@@ -1634,7 +1725,14 @@ export function ScheduleCalendar() {
                                           "repeating-linear-gradient(45deg, rgba(110,118,129,.16) 0 6px, rgba(110,118,129,.28) 6px 12px)",
                                         outline: on ? "2px solid var(--color-fg-muted)" : undefined,
                                       }
-                                    : {
+                                    : b.kind === "online_only"
+                                      ? {
+                                          top: b.top, height: b.h,
+                                          background: "color-mix(in srgb, var(--color-accent) 14%, transparent)",
+                                          borderLeft: "2px solid var(--color-accent)",
+                                          outline: on ? "2px solid var(--color-accent)" : undefined,
+                                        }
+                                      : {
                                         top: b.top, height: b.h,
                                         background: "rgba(26,127,55,.10)",
                                         borderLeft: "2px solid var(--color-success)",
@@ -2382,7 +2480,7 @@ export function ScheduleCalendar() {
 
       {blockScope && (
         <RecurrencePrompt
-          label={`${blockScope.kind === "unavailable" ? "불가시간" : "가용시간"} 변경`}
+          label={`${AVAILABILITY_KIND_LABEL[blockScope.kind]} 변경`}
           onPick={applyBlockScope}
           onCancel={() => { setBlockScope(null); reloadSelBlocks(); }}
         />
@@ -2390,11 +2488,65 @@ export function ScheduleCalendar() {
 
       {blockDelScope && (
         <RecurrencePrompt
-          label={`${blockDelScope.kind === "unavailable" ? "불가시간" : "가용시간"} 삭제`}
+          label={`${AVAILABILITY_KIND_LABEL[blockDelScope.kind]} 삭제`}
           onPick={applyBlockDeleteScope}
           onCancel={() => setBlockDelScope(null)}
         />
       )}
+
+      {availabilityApproval && (
+        <AvailabilityApprovalModal
+          draft={availabilityApproval}
+          rows={rows}
+          onClose={() => setAvailabilityApproval(null)}
+          onSubmit={() => submitAvailabilityApproval(availabilityApproval)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AvailabilityApprovalModal({
+  draft, rows, onClose, onSubmit,
+}: {
+  draft: AvailabilityApprovalDraft;
+  rows: ScheduleRow[];
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const impacted = draft.impacted.map((x) => {
+    const row = rows.find((r) => r.id === x.sessionId);
+    return {
+      id: x.sessionId,
+      title: row ? `${row.courseName} · ${row.instructorName}` : `수업 #${x.sessionId}`,
+      time: `${x.sessionDate} ${x.startTime ?? row?.startTime ?? ""}${x.endTime ?? row?.endTime ? `~${x.endTime ?? row?.endTime}` : ""}`,
+    };
+  });
+  return (
+    <div className="fixed inset-0 z-[55] grid place-items-center p-4 bg-black/35" onClick={onClose}>
+      <div className="card card-pad w-[480px] max-w-[95vw] max-h-[85vh] flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
+        <div className="font-semibold">승인 요청 필요</div>
+        <div className="space-y-2 min-h-0 overflow-y-auto">
+          <p className="text-body text-fg-muted">
+            {draft.summary} 변경은 이미 잡힌 수업에 영향을 줍니다. 승인센터로 요청을 보냅니다.
+          </p>
+          <div className="rounded-md border overflow-hidden">
+            <div className="px-3 py-2 text-caption font-medium bg-canvas-subtle">영향 수업 {impacted.length}건</div>
+            <div className="divide-y max-h-48 overflow-y-auto">
+              {impacted.map((x) => (
+                <div key={x.id} className="px-3 py-2">
+                  <div className="text-body font-medium">{x.title}</div>
+                  <div className="text-caption text-fg-muted mono">{x.time}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-1 shrink-0">
+          <button className="btn btn-sm" onClick={onClose}>취소</button>
+          <button className="btn btn-sm btn-primary" onClick={onSubmit}>승인 요청 보내기</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2408,7 +2560,7 @@ function BlockEditModal({
   onSave: (body: AvailabilityUpsertBody) => void;
   onDelete: () => void;
 }) {
-  const [kind, setKind] = useState<"available" | "unavailable">(block.kind);
+  const [kind, setKind] = useState<AvailabilityBlock["kind"] | "online_only">(block.kind);
   const [weekday, setWeekday] = useState<number>(block.weekday);
   const [start, setStart] = useState(block.startTime);
   const [end, setEnd] = useState(block.endTime);
@@ -2419,11 +2571,12 @@ function BlockEditModal({
   return (
     <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/35" onClick={onClose}>
       <div className="card card-pad w-[380px] max-w-[95vw] max-h-[90vh] overflow-y-auto space-y-3" onClick={(e) => e.stopPropagation()}>
-        <div className="font-semibold">{kind === "unavailable" ? "불가시간" : "가용시간"} 수정</div>
+        <div className="font-semibold">{AVAILABILITY_KIND_LABEL[kind]} 수정</div>
         <Field label="종류">
           <select className="input" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
             <option value="unavailable">불가(차단)</option>
             <option value="available">가용</option>
+            <option value="online_only">온라인만 가능</option>
           </select>
         </Field>
         <Field label="요일">
@@ -2813,13 +2966,13 @@ function CreateModal({
   onClose: () => void;
   onCreate: (body: ScheduleCreateBody) => void;
   onCreateSeries: (bodies: ScheduleCreateBody[]) => void;
-  onCreateBlock: (body: AvailabilityUpsertBody) => void;
+  onCreateBlock: (body: AvailabilityUpsertBody, options?: { closeOnSuccess?: boolean }) => Promise<boolean>;
 }) {
   // [이슈1] 현지 tz의 (date, HH:mm) → KST 저장값. KST면 그대로. 저장은 항상 KST 단일 진실원.
   const tzActive = !!ownerTz && ownerTz.tz !== KST_TZ;
   const toKst = (dLocal: string, t: string) => (tzActive ? tzLocalToKst(dLocal, t, ownerTz!.tz) : { date: dLocal, time: t });
   // 유형: 수업 / 가용 / 불가 — 셋 다 같은 날짜·시간·반복(그날만=일회성 / 매주 / 커스텀) UX.
-  const [type, setType] = useState<"session" | "available" | "unavailable">("session");
+  const [type, setType] = useState<"session" | "available" | "unavailable" | "online_only">("session");
 
   // ── 수업 탭 ──
   const myCourses = lockInstructorId != null ? resources.courses.filter((c) => c.instructorId === lockInstructorId) : resources.courses;
@@ -2838,6 +2991,7 @@ function CreateModal({
   // [v0.1.14] 종류(수업/진단고사/상담 — 캘린더 필터 축) + 상담 등 단건 가격(Q1: 담당자=강사 재사용)
   const [kind, setKind] = useState<"class" | "level_test" | "counsel">("class");
   const [price, setPrice] = useState("");
+  const [sessionMode, setSessionMode] = useState<"in_person" | "online">("in_person");
   // 색상 라벨: 생성 시 기본값은 개설 때 고른 코스 색(미지정 시 비움 → 백엔드가 코스/과목 색 폴백)
   const [color, setColor] = useState<string | undefined>(myCourses[0]?.color);
   const [status, setStatus] = useState<string>("scheduled");
@@ -2921,26 +3075,44 @@ function CreateModal({
   // 블록 생성: 반복 규칙(그날만=일회성 / 매주 / 커스텀)을 effectiveFrom·effectiveTo로 변환.
   //  - 일회성: 그 날짜 한 주만(effectiveFrom=effectiveTo=date).
   //  - 매주/커스텀: 선택 요일마다 date부터 종료일(untilDate)까지 반복.
-  function submitBlocks() {
-    const kind = type === "unavailable" ? "unavailable" : "available";
+  async function submitBlocks() {
+    const kind = type === "unavailable" ? "unavailable" : type === "online_only" ? "online_only" : "available";
     // [이슈1] 비KST 입력: 현지 (date,시각)을 KST로 변환 후 요일·시각 확정. 반복은 KST 시각·요일 기준.
     // [버그수정 2026-07-06] 현지→KST 변환이 자정을 넘으면 두 블록으로 분할(splitKstBand) —
     //  이전엔 end<start로 저장돼 KST 뷰(축·렌더 모두 KST)에서 밴드가 사라졌다.
     const ks = toKst(date, start), ke = toKst(date, end);
     const parts = splitKstBand(ks, ke);
+    const bodies: AvailabilityUpsertBody[] = [];
     if (repeat === "none") {
-      parts.forEach((pt) =>
-        onCreateBlock({ ownerType: bType, ownerId: Number(bId), kind, startTime: pt.startTime, endTime: pt.endTime, weekday: pt.weekday, effectiveFrom: pt.date, effectiveTo: pt.date }));
+      for (const pt of parts) {
+        bodies.push({ ownerType: bType, ownerId: Number(bId), kind, startTime: pt.startTime, endTime: pt.endTime, weekday: pt.weekday, effectiveFrom: pt.date, effectiveTo: pt.date });
+      }
     } else {
       // 반복: 현지 요일 각각에 대해 (KST 요일 델타 + 분할) 적용. 종료일도 델타만큼 보정(미보정이던 것 정정).
       const wdShift = tzActive ? (weekdayOf(ks.date) - weekdayOf(date) + 7) % 7 : 0;
       const dayShift = tzActive ? Math.round((Date.parse(ks.date) - Date.parse(date)) / 86_400_000) : 0;
       const effTo = addDaysISO(untilDate, dayShift);
       const wds = repeat === "weekly" ? [weekdayOf(date)] : customWds;
-      wds.forEach((wd) => parts.forEach((pt, i) =>
-        onCreateBlock({ ownerType: bType, ownerId: Number(bId), kind, startTime: pt.startTime, endTime: pt.endTime,
-          weekday: (wd + wdShift + i) % 7, effectiveFrom: pt.date, effectiveTo: addDaysISO(effTo, i) })));
+      for (const wd of wds) {
+        for (const [i, pt] of parts.entries()) {
+          bodies.push({
+            ownerType: bType,
+            ownerId: Number(bId),
+            kind,
+            startTime: pt.startTime,
+            endTime: pt.endTime,
+            weekday: (wd + wdShift + i) % 7,
+            effectiveFrom: pt.date,
+            effectiveTo: addDaysISO(effTo, i),
+          });
+        }
+      }
     }
+    for (const body of bodies) {
+      const ok = await onCreateBlock(body, { closeOnSuccess: false });
+      if (!ok) return;
+    }
+    onClose();
   }
   function submitSession() {
     const seriesId = repeat === "none" ? undefined : Date.now();
@@ -2951,7 +3123,7 @@ function CreateModal({
     const mk = (dLocal: string): ScheduleCreateBody => {
       const ks = toKst(dLocal, start), ke = toKst(dLocal, end);
       return { courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: ks.date, startTime: ks.time, endTime: ke.time, memo: memo || undefined, color, status, seriesId, studentIds,
-        kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined };
+        kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined, mode: requestMode ? undefined : sessionMode };
     };
     const days = occurrences();
     if (days.length <= 1) onCreate(mk(days[0] ?? date));
@@ -2968,14 +3140,14 @@ function CreateModal({
       >
         <div className="card-pad overflow-y-auto space-y-3 flex-1 min-h-0">
         <div className="flex rounded-md overflow-hidden border">
-          {([["session", "수업"], ["available", "가용"], ["unavailable", "불가"]] as const).map(([v, lbl]) => (
+          {([["session", "수업"], ["available", "가용"], ["unavailable", "불가"], ["online_only", "온라인만"]] as const).map(([v, lbl]) => (
             <button key={v} className={`btn btn-sm flex-1 rounded-none border-0 ${type === v ? "badge-accent" : ""}`} onClick={() => setType(v)}>{lbl}</button>
           ))}
         </div>
         {requestMode && type === "session" && (
           /* [UX H1] 강사에게 실제 동작(승인 요청)을 사전 고지 — 버튼 라벨과 일치 */
           <div className="rounded-md px-2.5 py-1.5 text-caption" style={{ background: "color-mix(in srgb, var(--color-accent) 10%, transparent)", color: "var(--color-accent)" }}>
-            ⏳ 수업은 <b>매니저 승인 후</b> 캘린더에 확정됩니다 — 제출 시 승인 요청이 전송돼요. (가용·불가 시간은 바로 저장)
+            수업은 매니저 승인 후 캘린더에 확정됩니다. 가용시간 변경이 기존 수업에 영향을 주면 승인 요청으로 전환됩니다.
           </div>
         )}
         {tzActive && (
@@ -3058,6 +3230,14 @@ function CreateModal({
                   ))}
                 </select>
               </Field>
+              {!requestMode && (
+                <Field label="수업방식">
+                  <select className="input" value={sessionMode} onChange={(e) => setSessionMode(e.target.value as typeof sessionMode)}>
+                    <option value="in_person">대면</option>
+                    <option value="online">비대면</option>
+                  </select>
+                </Field>
+              )}
               <Field label="색상"><ColorPicker value={color} onChange={setColor} /></Field>
             </div>
             <Field label="메모"><textarea className="input min-h-[52px] py-1.5" rows={2} placeholder="선택 — 메모" value={memo} onChange={(e) => setMemo(e.target.value)} /></Field>
@@ -3100,7 +3280,7 @@ function CreateModal({
             </button>
           ) : (
             <button className="btn btn-primary" disabled={!blockValid} onClick={submitBlocks}>
-              {type === "unavailable" ? "불가시간" : "가용시간"} 추가
+              {AVAILABILITY_KIND_LABEL[type === "unavailable" ? "unavailable" : type === "online_only" ? "online_only" : "available"]} 추가
             </button>
           )}
         </div>

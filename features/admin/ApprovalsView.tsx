@@ -23,12 +23,17 @@ import { won } from '@/lib/format';
 import { isAdmin, roleLabel } from '@/lib/roles';
 import { AdminHeader } from './AdminShell';
 import { categoryLabel } from '@/features/expenses/labels';
-import { api, type PendingAccount } from '@/lib/api';
+import { api, type PendingAccount, type ScheduleRequestEx } from '@/lib/api';
 import { getToken } from '@/lib/auth';
 import { ReasonModal } from '@/components/ReasonModal';
 import type { AccountRole } from '@/types';
 
 const ROLE_OPTS: AccountRole[] = ['instructor', 'manager', 'admin', 'super_admin'];
+const AVAILABILITY_KIND_LABEL: Record<string, string> = {
+  available: '가용시간',
+  unavailable: '불가시간',
+  online_only: '온라인만 가능',
+};
 
 // 가입 승인 대기(백엔드 계정) — 이메일 인증 완료 후 대표가 승인하면 로그인 가능.
 function MemberApprovals() {
@@ -113,7 +118,7 @@ export function ApprovalsView() {
   const rejectExpense = useRejectExpense();
   const confirmPayout = useConfirmPayout();
   const isSuper = currentRole === 'super_admin';
-  const instructorName = (id: number) => instructors.find((i) => i.id === id)?.name ?? '—';
+  const instructorName = (id?: number) => id != null ? instructors.find((i) => i.id === id)?.name ?? '—' : '—';
 
   const [expenseReject, setExpenseReject] = useState<number | null>(null);
   // ── 수업 요청(TBO-16 #9) — 배지(lib/tasks)와 같은 useScheduleRequests 모집단(단일 구독) ──
@@ -126,12 +131,12 @@ export function ApprovalsView() {
   const [forceApprove, setForceApprove] = useState<number | null>(null);
   const pendingRequests = scheduleRequests.filter((r) => r.status === 'pending');
   // 승인 — 충돌 409면 force 재시도 확인(세션 생성과 동일 규약: 서버 createSession 재검사)
-  const onApproveRequest = (id: number) => {
-    approveRequest.mutate({ id }, {
-      onSuccess: () => setRequestMsg('승인 — 캘린더에 세션이 생성되었습니다.'),
+  const onApproveRequest = (r: ScheduleRequestEx) => {
+    approveRequest.mutate({ id: r.id }, {
+      onSuccess: () => setRequestMsg(r.requestKind === 'availability_upsert' || r.requestKind === 'availability_delete' ? '승인 — 가용시간 변경이 반영되었습니다.' : '승인 — 캘린더에 세션이 생성되었습니다.'),
       onError: (e) => {
         const err = e as { response?: { status?: number } };
-        if (err.response?.status === 409) setForceApprove(id);
+        if (err.response?.status === 409 && (!r.requestKind || r.requestKind === 'session_create')) setForceApprove(r.id);
         else setRequestMsg('승인 보류 — 충돌을 확인하세요.');
       },
     });
@@ -147,6 +152,27 @@ export function ApprovalsView() {
     const c = courses.find((x) => x.id === s.courseId)?.name ?? '수업';
     return `${c} · ${s.sessionDate} ${s.startTime ?? ''}`;
   };
+  const requestTitle = (r: ScheduleRequestEx) => {
+    if (r.requestKind === 'availability_upsert') {
+      return `${AVAILABILITY_KIND_LABEL[r.availabilityKind ?? 'available']} 변경`;
+    }
+    if (r.requestKind === 'availability_delete') return '가용시간 삭제';
+    return r.topic ?? courses.find((x) => x.id === r.courseId)?.name ?? '수업';
+  };
+  const requestWhen = (r: ScheduleRequestEx) => {
+    if (r.requestKind === 'availability_upsert') {
+      return `${r.availabilityWeekday != null ? ['일', '월', '화', '수', '목', '금', '토'][r.availabilityWeekday] : '-'} ${r.availabilityStartTime ?? ''}~${r.availabilityEndTime ?? ''}`;
+    }
+    if (r.requestKind === 'availability_delete') return `블록 #${r.targetAvailabilityId ?? '-'}`;
+    return `${r.sessionDate ?? '-'} ${r.startTime ?? ''}${r.endTime ? `~${r.endTime}` : ''}`;
+  };
+  const requestDetail = (r: ScheduleRequestEx) => {
+    if (r.requestKind === 'availability_upsert' || r.requestKind === 'availability_delete') {
+      const n = r.impactSessionIds?.length ?? 0;
+      return r.changeSummary ?? `영향 수업 ${n}건`;
+    }
+    return r.kind && r.kind !== 'class' ? (r.kind === 'level_test' ? '진단고사' : '상담') : '수업';
+  };
 
   // 수업 요청 승인/반려는 BE가 manager 이상 허용(ADMIN_ROLES) — 섹션 컴포넌트로 분리해 재사용.
   const requestsSection = (
@@ -157,16 +183,16 @@ export function ApprovalsView() {
       ) : (
         <TableWrap minWidth={720}>
         <table className="table">
-          <thead><tr><th>강사</th><th>일시</th><th>수업</th><th>인원</th><th className="text-right"></th></tr></thead>
+          <thead><tr><th>요청자/대상</th><th>일시/범위</th><th>요청</th><th>상세</th><th className="text-right"></th></tr></thead>
           <tbody>
             {pendingRequests.map((r) => (
               <tr key={r.id}>
-                <td className="font-medium">{instructorName(r.instructorId)}</td>
-                <td className="mono text-fg-muted">{r.sessionDate} {r.startTime}{r.endTime ? `~${r.endTime}` : ''}</td>
-                <td className="text-fg-muted">{r.topic ?? courses.find((x) => x.id === r.courseId)?.name ?? '수업'}{r.kind && r.kind !== 'class' ? ` · ${r.kind === 'level_test' ? '진단고사' : '상담'}` : ''}</td>
-                <td className="text-fg-muted">{r.studentIds?.length ? `${r.studentIds.length}명(지정)` : '코스 전원'}</td>
+                <td className="font-medium">{instructorName(r.instructorId ?? r.availabilityOwnerId)}</td>
+                <td className="mono text-fg-muted">{requestWhen(r)}</td>
+                <td className="text-fg-muted">{requestTitle(r)}</td>
+                <td className="text-fg-muted">{r.requestKind === 'session_create' || !r.requestKind ? (r.studentIds?.length ? `${r.studentIds.length}명(지정)` : '코스 전원') : requestDetail(r)}</td>
                 <td className="text-right whitespace-nowrap">
-                  <button className="btn btn-sm btn-primary mr-1.5" onClick={() => onApproveRequest(r.id)}>승인</button>
+                  <button className="btn btn-sm btn-primary mr-1.5" onClick={() => onApproveRequest(r)}>승인</button>
                   <button className="btn btn-sm btn-danger" onClick={() => setRequestReject(r.id)}>반려</button>
                 </td>
               </tr>

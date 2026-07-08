@@ -184,6 +184,7 @@ export type SessionDraft = {
   color?: string;
   kind?: SessionKindFilter; // [v0.1.14] 종류(일반/진단고사/상담)
   price?: number; // [v0.1.14] 세션 단건 가격(상담 등)
+  mode?: SessionModeFilter; // [v0.1.16] 수업방식(대면/비대면)
   scope: RecurrenceScope; // 반복 적용 범위 — 이 수업만 / 이 이후 / 시리즈 전체
 };
 
@@ -202,7 +203,7 @@ export function sessionEditPatch(
 ): {
   sessionDate: string; startTime: string; endTime: string; instructorId?: number; roomId?: number;
   status: ScheduleRow['status']; topic?: string; memo?: string; color?: string; scope?: RecurrenceScope;
-  kind?: SessionKindFilter; price?: number;
+  kind?: SessionKindFilter; price?: number; mode?: SessionModeFilter;
 } {
   if (d.startTime === d.endTime) throw new Error('종료 시각이 시작과 같을 수 없습니다'); // [R-9] end<start=익일 종료 허용
   return {
@@ -217,6 +218,7 @@ export function sessionEditPatch(
     color: d.color,
     kind: d.kind,
     price: d.price,
+    mode: d.mode,
     ...(isSeries ? { scope: d.scope } : {}),
   };
 }

@@ -54,15 +54,44 @@ import type {
 } from "@kms545487/contracts";
 
 export type ScheduleQuery = { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number };
+export type AvailabilityKindEx = AvailabilityKind | "online_only";
+export type ScheduleRequestKindEx = "session_create" | "availability_upsert" | "availability_delete";
+export type ScheduleRequestEx = ScheduleRequest & {
+  requestKind?: ScheduleRequestKindEx;
+  targetAvailabilityId?: number;
+  availabilityOwnerType?: AvailabilityOwner;
+  availabilityOwnerId?: number;
+  availabilityKind?: AvailabilityKindEx;
+  availabilityWeekday?: number;
+  availabilityStartTime?: string;
+  availabilityEndTime?: string;
+  availabilityEffectiveFrom?: string;
+  availabilityEffectiveTo?: string;
+  impactSessionIds?: number[];
+  changeSummary?: string;
+};
+export type CreateScheduleRequestBody = Partial<CreateScheduleRequestInput> & {
+  requestKind?: ScheduleRequestKindEx;
+  targetAvailabilityId?: number;
+  availabilityOwnerType?: AvailabilityOwner;
+  availabilityOwnerId?: number;
+  availabilityKind?: AvailabilityKindEx;
+  availabilityWeekday?: number;
+  availabilityStartTime?: string;
+  availabilityEndTime?: string;
+  availabilityEffectiveFrom?: string;
+  availabilityEffectiveTo?: string;
+};
 export type ScheduleCreateBody = {
   courseId: number; instructorId?: number; roomId?: number; sessionDate: string;
   startTime: string; endTime?: string; durationMinutes?: number; topic?: string; memo?: string; color?: string;
   studentIds?: number[]; // 명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원(단체=여러 명 선택)
   seriesId?: number; status?: string; force?: boolean;
   kind?: SessionKind; price?: number; // [v0.1.14] 종류(진단고사/상담)·세션 단건 가격
+  mode?: "in_person" | "online";
 };
 export type AvailabilityUpsertBody = {
-  id?: number; ownerType: AvailabilityOwner; ownerId: number; kind?: AvailabilityKind;
+  id?: number; ownerType: AvailabilityOwner; ownerId: number; kind?: AvailabilityKindEx;
   weekday: number; startTime: string; endTime: string; effectiveFrom?: string; effectiveTo?: string;
 };
 export type SchedulePatchBody = {
@@ -71,6 +100,7 @@ export type SchedulePatchBody = {
   kind?: SessionKind; price?: number; // [v0.1.14] 종류·세션 단건 가격
   instructorAttendance?: InstructorAttendanceStatus; // [TBO-19] 강사 출결(매니저 CRUD) — BE PATCH 수용, manager+ 게이트
   clearInstructorAttendance?: boolean; // [TBO-19 Sprint2] 강사 출결 미표시로 초기화(clear)
+  mode?: "in_person" | "online";
   // 반복 편집 범위(this=이 일정만 · this_and_following=이후 전부 · all=시리즈 전체). seriesId가 있을 때만 의미.
   scope?: "this" | "this_and_following" | "all"; force?: boolean;
 };
@@ -325,13 +355,13 @@ export const api = {
   // 강사 수업 요청 → 매니저 승인/반려(TBO-16 #9). 승인=서버가 createSession 재사용(409+force 동일 규약).
   scheduleRequests: {
     list: (status?: ScheduleRequest["status"]) =>
-      http.get<ScheduleRequest[]>("/schedule-requests", { params: status ? { status } : {} }).then((r) => r.data),
-    create: (input: CreateScheduleRequestInput) =>
-      http.post<{ row: ScheduleRequest; conflicts: Conflict[] }>("/schedule-requests", input).then((r) => r.data),
+      http.get<ScheduleRequestEx[]>("/schedule-requests", { params: status ? { status } : {} }).then((r) => r.data),
+    create: (input: CreateScheduleRequestBody) =>
+      http.post<{ row: ScheduleRequestEx; conflicts: Conflict[] }>("/schedule-requests", input).then((r) => r.data),
     approve: (id: number, force?: boolean) =>
-      http.post<{ request: ScheduleRequest; conflicts: Conflict[] }>(`/schedule-requests/${id}/approve`, {}, { params: force ? { force: "true" } : {} }).then((r) => r.data),
+      http.post<{ request: ScheduleRequestEx; conflicts: Conflict[] }>(`/schedule-requests/${id}/approve`, {}, { params: force ? { force: "true" } : {} }).then((r) => r.data),
     reject: (id: number, reason: string) => // 사유 필수(Q2)
-      http.post<ScheduleRequest>(`/schedule-requests/${id}/reject`, { reason }).then((r) => r.data),
+      http.post<ScheduleRequestEx>(`/schedule-requests/${id}/reject`, { reason }).then((r) => r.data),
     withdraw: (id: number) =>
       http.delete<{ id: number; deleted: boolean }>(`/schedule-requests/${id}`).then((r) => r.data),
   },

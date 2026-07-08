@@ -268,7 +268,7 @@ export const useCreateScheduleRequest = () =>
 export const useApproveScheduleRequest = () =>
   useMutation({
     mutationFn: (v: { id: number; force?: boolean }) => api.scheduleRequests.approve(v.id, v.force),
-    onSuccess: useInvalidator([qk.scheduleRequests.all, qk.schedule.all]),
+    onSuccess: useInvalidator([qk.scheduleRequests.all, qk.schedule.all, qk.availability.all]),
   });
 export const useRejectScheduleRequest = () =>
   useMutation({
