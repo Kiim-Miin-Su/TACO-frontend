@@ -187,7 +187,7 @@ export function ApprovalsView() {
           <tbody>
             {pendingRequests.map((r) => (
               <tr key={r.id}>
-                <td className="font-medium">{instructorName(r.instructorId ?? r.availabilityOwnerId)}</td>
+                <td className="font-medium">{instructorName(r.instructorId ?? r.availabilityOwnerId ?? r.requesterId)}</td>
                 <td className="mono text-fg-muted">{requestWhen(r)}</td>
                 <td className="text-fg-muted">{requestTitle(r)}</td>
                 <td className="text-fg-muted">{r.requestKind === 'session_create' || !r.requestKind ? (r.studentIds?.length ? `${r.studentIds.length}명(지정)` : '코스 전원') : requestDetail(r)}</td>
