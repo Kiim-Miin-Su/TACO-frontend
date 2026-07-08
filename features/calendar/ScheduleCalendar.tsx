@@ -1789,9 +1789,11 @@ export function ScheduleCalendar() {
                             )}
                             {/* [B-4] 승인 대기 요청 고스트 — 점선·반투명·클릭 불가(승인 시 실제 세션으로 대체) */}
                             {colGhosts.map((g) => {
-                              const gs = toMin(g.startTime);
+                              // [0.1.18] 요청 필드 optional화(availability 요청 수용) — 고스트는 sessionDate 매칭이라
+                              //  session_create만 도달하지만 타입 방어(기본 00:00/60분).
+                              const gs = toMin(g.startTime ?? "00:00");
                               // [R-9] 요청의 endTime<start = 익일 종료(자정 크로스) — 래핑해 높이 정상화
-                              const ge = sessionEndMin({ startTime: g.startTime, endTime: g.endTime, durationMinutes: g.durationMinutes });
+                              const ge = sessionEndMin({ startTime: g.startTime, endTime: g.endTime, durationMinutes: g.durationMinutes ?? 60 });
                               return (
                                 <div key={`ghost-${g.id}`} className="absolute left-0.5 right-0.5 z-10 pointer-events-none rounded-lg px-1.5 py-1 text-[10px] leading-tight"
                                   style={{ top: ((clampAxis(gs) - gridMin) / 60) * HOUR_H + 1, height: Math.max(20, ((clampAxis(ge) - clampAxis(gs)) / 60) * HOUR_H) - 2,

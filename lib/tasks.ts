@@ -120,10 +120,13 @@ function adminTasks(s: StoreSlice): TaskItem[] {
 
   // ── 수업 요청(강사→매니저) 승인 대기 — TBO-16 #9. 승인센터와 같은 모집단(pending) ──
   for (const r of s.scheduleRequests.filter((x) => x.status === 'pending')) {
+    // [0.1.18] availability 요청(requestKind) 분기 — 세션 필드가 없어 changeSummary로 표기.
+    //  요청자 표기 폴백은 승인센터(ApprovalsView)와 동일 규칙(instructorId ?? owner ?? requesterId).
+    const isAvail = r.requestKind === 'availability_upsert' || r.requestKind === 'availability_delete';
     out.push({
       id: `schedule-request-${r.id}`, group: 'schedule', tone: 'attention', counts: true,
-      title: `수업 요청 승인 대기 — ${iname(r.instructorId)}`,
-      detail: `${r.sessionDate} ${r.startTime} · ${r.topic ?? '수업'}`,
+      title: `${isAvail ? '가용시간 변경 승인 대기' : '수업 요청 승인 대기'} — ${iname(r.instructorId ?? r.availabilityOwnerId ?? r.requesterId)}`,
+      detail: isAvail ? (r.changeSummary ?? '가용/불가 변경 요청') : `${r.sessionDate} ${r.startTime} · ${r.topic ?? '수업'}`,
       href: '/admin/approvals',
     });
   }
@@ -168,18 +171,20 @@ function instructorTasks(s: StoreSlice, instructorId: number): TaskItem[] {
 
   // 내 수업 요청 결과 — 반려=조치 필요(카운트), 대기=정보성. 서버가 본인 것만 반환(수평 권한).
   for (const r of s.scheduleRequests) {
+    const isAvail = r.requestKind === 'availability_upsert' || r.requestKind === 'availability_delete';
+    const what = isAvail ? (r.changeSummary ?? '가용/불가 변경') : `${r.sessionDate} ${r.startTime}`;
     if (r.status === 'rejected') {
       out.push({
         id: `my-request-${r.id}`, group: 'schedule', tone: 'danger', counts: true,
-        title: `수업 요청 반려 — ${r.topic ?? '수업'}`,
-        detail: `${r.sessionDate} ${r.startTime} · 사유: ${r.reason ?? '-'}`,
+        title: `${isAvail ? '가용시간 변경 반려' : '수업 요청 반려'} — ${isAvail ? '' : r.topic ?? '수업'}`.replace(/ — $/, ''),
+        detail: `${what} · 사유: ${r.reason ?? '-'}`,
         href: '/calendar',
       });
     } else if (r.status === 'pending') {
       out.push({
         id: `my-request-${r.id}`, group: 'schedule', tone: 'neutral', counts: false,
-        title: `수업 요청 승인 대기 중 — ${r.topic ?? '수업'}`,
-        detail: `${r.sessionDate} ${r.startTime}`,
+        title: `${isAvail ? '가용시간 변경 승인 대기 중' : `수업 요청 승인 대기 중 — ${r.topic ?? '수업'}`}`,
+        detail: what,
         href: '/calendar',
       });
     }
