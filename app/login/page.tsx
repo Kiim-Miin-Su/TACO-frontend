@@ -9,9 +9,10 @@ import { AuthShell, AuthField } from "@/components/auth/AuthShell";
 import type { AccountRole } from "@/types";
 
 const DEMO = [
-  { webId: "admin", label: "대표 · 김민수" },
-  { webId: "manager", label: "매니저 · 이지원" },
-  { webId: "park_inst", label: "강사 · 박지훈" },
+  { role: "대표", name: "김민수", webId: "admin", password: "demo1234" },
+  { role: "매니저", name: "이지원", webId: "manager", password: "demo1234" },
+  { role: "강사", name: "박지훈", webId: "park_inst", password: "demo1234" },
+  { role: "강사", name: "정유진", webId: "jung_inst", password: "demo1234" },
 ];
 
 function LoginForm() {
@@ -62,11 +63,26 @@ function LoginForm() {
       </div>
 
       <div className="border-t pt-3 border-line-muted">
-        <div className="text-micro text-fg-subtle mb-1.5">데모 계정 (비밀번호: demo1234)</div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="text-caption font-medium text-fg-muted mb-2">테스트 계정</div>
+        <div className="overflow-hidden rounded-md border border-line-muted">
           {DEMO.map((d) => (
-            <button key={d.webId} type="button" onClick={() => { setWebId(d.webId); setPassword("demo1234"); }}
-              className="badge badge-neutral hover:bg-canvas-subtle" title={d.webId}>{d.label}</button>
+            <button
+              key={d.webId}
+              type="button"
+              onClick={() => { setWebId(d.webId); setPassword(d.password); }}
+              className="grid w-full grid-cols-[64px_1fr] gap-x-3 border-b border-line-muted px-3 py-2 text-left text-caption last:border-b-0 hover:bg-canvas-subtle"
+              title={`${d.webId} / ${d.password}`}
+            >
+              <span className="font-medium text-fg-muted">{d.role}</span>
+              <span className="min-w-0">
+                <span className="block font-medium text-fg">{d.name}</span>
+                <span className="block text-fg-subtle">
+                  ID <span className="mono text-fg-muted">{d.webId}</span>
+                  <span className="px-1.5">·</span>
+                  PW <span className="mono text-fg-muted">{d.password}</span>
+                </span>
+              </span>
+            </button>
           ))}
         </div>
       </div>
