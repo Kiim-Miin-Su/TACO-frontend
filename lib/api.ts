@@ -69,6 +69,9 @@ export type ScheduleRequestEx = ScheduleRequest & {
   availabilityEffectiveTo?: string;
   impactSessionIds?: number[];
   changeSummary?: string;
+  // [C2C-b] 상세 모달 표시용 — BE BaseRow가 항상 내려주는 시각(contracts 0.1.16엔 미표기, 로컬 확장)
+  createdAt?: string;
+  updatedAt?: string;
 };
 export type CreateScheduleRequestBody = Partial<CreateScheduleRequestInput> & {
   requestKind?: ScheduleRequestKindEx;

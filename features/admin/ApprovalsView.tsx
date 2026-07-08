@@ -26,6 +26,7 @@ import { categoryLabel } from '@/features/expenses/labels';
 import { api, type PendingAccount, type ScheduleRequestEx } from '@/lib/api';
 import { getToken } from '@/lib/auth';
 import { ReasonModal } from '@/components/ReasonModal';
+import { RequestDetailModal } from './RequestDetailModal';
 import type { AccountRole } from '@/types';
 
 const ROLE_OPTS: AccountRole[] = ['instructor', 'manager', 'admin', 'super_admin'];
@@ -129,6 +130,8 @@ export function ApprovalsView() {
   const [requestMsg, setRequestMsg] = useState<string | null>(null);
   // [DESIGN §5.5] 충돌 강제 승인 확인 — window.confirm 대신 ConfirmModal
   const [forceApprove, setForceApprove] = useState<number | null>(null);
+  // [C2C-b] 행 클릭 상세 모달(대표 지시) — 승인/반려는 아래 기존 핸들러를 그대로 전달(단일 구현)
+  const [detailReq, setDetailReq] = useState<ScheduleRequestEx | null>(null);
   const pendingRequests = scheduleRequests.filter((r) => r.status === 'pending');
   // 승인 — 충돌 409면 force 재시도 확인(세션 생성과 동일 규약: 서버 createSession 재검사)
   const onApproveRequest = (r: ScheduleRequestEx) => {
@@ -186,14 +189,14 @@ export function ApprovalsView() {
           <thead><tr><th>요청자/대상</th><th>일시/범위</th><th>요청</th><th>상세</th><th className="text-right"></th></tr></thead>
           <tbody>
             {pendingRequests.map((r) => (
-              <tr key={r.id}>
+              <tr key={r.id} className="cursor-pointer hover:bg-canvas-subtle" onClick={() => setDetailReq(r)} title="클릭 — 요청 상세(변경 내용·영향 수업·이력)">
                 <td className="font-medium">{instructorName(r.instructorId ?? r.availabilityOwnerId ?? r.requesterId)}</td>
                 <td className="mono text-fg-muted">{requestWhen(r)}</td>
                 <td className="text-fg-muted">{requestTitle(r)}</td>
                 <td className="text-fg-muted">{r.requestKind === 'session_create' || !r.requestKind ? (r.studentIds?.length ? `${r.studentIds.length}명(지정)` : '코스 전원') : requestDetail(r)}</td>
                 <td className="text-right whitespace-nowrap">
-                  <button className="btn btn-sm btn-primary mr-1.5" onClick={() => onApproveRequest(r)}>승인</button>
-                  <button className="btn btn-sm btn-danger" onClick={() => setRequestReject(r.id)}>반려</button>
+                  <button className="btn btn-sm btn-primary mr-1.5" onClick={(e) => { e.stopPropagation(); onApproveRequest(r); }}>승인</button>
+                  <button className="btn btn-sm btn-danger" onClick={(e) => { e.stopPropagation(); setRequestReject(r.id); }}>반려</button>
                 </td>
               </tr>
             ))}
@@ -221,6 +224,17 @@ export function ApprovalsView() {
             setForceApprove(null);
             approveRequest.mutate({ id, force: true }, { onSuccess: () => setRequestMsg('강제 승인 — 세션 생성됨(충돌 무시).') });
           }}
+        />
+      )}
+      {/* [C2C-b] 행 클릭 상세 — 승인/반려는 리스트 버튼과 동일 핸들러 재사용(force 분기·사유 모달 포함) */}
+      {detailReq && (
+        <RequestDetailModal
+          request={detailReq}
+          instructorName={instructorName}
+          courseName={(id) => (id != null ? courses.find((x) => x.id === id)?.name ?? '—' : '—')}
+          onClose={() => setDetailReq(null)}
+          onApprove={(r) => { setDetailReq(null); onApproveRequest(r); }}
+          onReject={(r) => { setDetailReq(null); setRequestReject(r.id); }}
         />
       )}
     </SectionCard>

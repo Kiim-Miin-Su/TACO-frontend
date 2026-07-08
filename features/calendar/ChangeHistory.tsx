@@ -1,11 +1,13 @@
 "use client";
-// [R-6] 세션 변경 이력 — audit_log(entity='class_sessions') 소비. 관리자만(훅이 ADMIN 게이트).
-//  누가·언제·무엇을 바꿨는지: 행위(생성/수정/삭제)·행위자·시각·필드 diff(before→after)·사유.
-import { useSessionAudit } from "@/lib/queries";
+// [R-6] 변경 이력 — audit_log 소비. 관리자만(훅이 ADMIN 게이트).
+//  누가·언제·무엇을 바꿨는지: 행위(생성/수정/삭제/승인/반려)·행위자·시각·필드 diff(before→after)·사유.
+// [C2C-b] entity/entityId/fieldLabels prop으로 일반화 — 세션 상세(class_sessions)와 승인센터 상세
+//  모달(schedule_requests)이 같은 컴포넌트를 공유(기존 sessionId 소비처 하위호환).
+import { useEntityAudit } from "@/lib/queries";
 import { INSTRUCTOR_ATT_LABEL, STATUS_LABEL } from "@/lib/domain/lantiv";
 import { EmptyState } from "@/components/ui";
 
-const ACTION_LABEL: Record<string, string> = { create: "생성", update: "수정", delete: "삭제", restore: "복원" };
+const ACTION_LABEL: Record<string, string> = { create: "생성", update: "수정", delete: "삭제", restore: "복원", approve: "승인", reject: "반려" };
 const FIELD_LABEL: Record<string, string> = {
   instructorAttendance: "강사 출결", status: "상태", sessionDate: "날짜", startTime: "시작", endTime: "종료",
   durationMinutes: "시간(분)", roomId: "강의실", instructorId: "강사", courseId: "코스", topic: "주제", memo: "메모",
@@ -24,8 +26,17 @@ const fmtAt = (at: string) => {
   return isNaN(+d) ? at : d.toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 };
 
-export function ChangeHistory({ sessionId, actorName }: { sessionId: number; actorName: (id: number) => string }) {
-  const { data: entries = [], isLoading } = useSessionAudit(sessionId);
+export function ChangeHistory({
+  sessionId, entity = "class_sessions", entityId, actorName, fieldLabels,
+}: {
+  sessionId?: number;                       // 하위호환 — entity 기본값(class_sessions)과 함께 사용
+  entity?: string;                          // audit_log.entity (예: 'schedule_requests')
+  entityId?: number;                        // entity의 행 id (sessionId보다 우선)
+  actorName: (id: number) => string;
+  fieldLabels?: Record<string, string>;     // entity별 필드 라벨(기본 세션 라벨에 병합)
+}) {
+  const { data: entries = [], isLoading } = useEntityAudit(entity, entityId ?? sessionId ?? null);
+  const LABELS = fieldLabels ? { ...FIELD_LABEL, ...fieldLabels } : FIELD_LABEL;
   if (isLoading) return <div className="text-caption text-fg-subtle p-2">이력 불러오는 중…</div>;
   if (!entries.length) return <EmptyState compact message="변경 이력이 없습니다." />;
   return (
@@ -45,7 +56,7 @@ export function ChangeHistory({ sessionId, actorName }: { sessionId: number; act
               <div className="mt-0.5 space-y-0.5">
                 {fields.map((f) => (
                   <div key={f} className="text-fg-subtle">
-                    <b className="text-fg-muted">{FIELD_LABEL[f] ?? f}</b>: {fmtVal(f, changes[f].before)} → <b>{fmtVal(f, changes[f].after)}</b>
+                    <b className="text-fg-muted">{LABELS[f] ?? f}</b>: {fmtVal(f, changes[f].before)} → <b>{fmtVal(f, changes[f].after)}</b>
                   </div>
                 ))}
               </div>

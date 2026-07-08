@@ -130,15 +130,18 @@ export const useInstructorSessions = (instructorId: number | null, from?: string
     enabled: isAdmin(role) && instructorId != null && !!from && !!to,
   });
 };
-// [R-6] 세션 변경 이력(audit_log) — ADMIN. 세션 상세 '변경 이력' 패널 소비처. entity='class_sessions'.
-export const useSessionAudit = (sessionId: number | null) => {
+// [R-6·C2C-b] 엔티티 변경 이력(audit_log) — ADMIN(토큰 게이트 동반). 세션 상세·승인센터 상세 모달 공용.
+//  entity = audit_log.entity 값('class_sessions'·'schedule_requests'·'availability_blocks' 등).
+export const useEntityAudit = (entity: string, entityId: number | null) => {
   const role = useTacoStore((s) => s.currentRole);
   return useQuery({
-    queryKey: ["audit", "class_sessions", sessionId ?? 0] as const,
-    queryFn: () => api.audit.list("class_sessions", sessionId as number),
-    enabled: isAdmin(role) && tokenIsAdmin() && sessionId != null,
+    queryKey: ["audit", entity, entityId ?? 0] as const,
+    queryFn: () => api.audit.list(entity, entityId as number),
+    enabled: isAdmin(role) && tokenIsAdmin() && entityId != null,
   });
 };
+// [R-6] 세션 변경 이력 — entity='class_sessions' 별칭(기존 소비처 유지, 단일 구현=useEntityAudit).
+export const useSessionAudit = (sessionId: number | null) => useEntityAudit("class_sessions", sessionId);
 // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터. 서버 집계(DB 이관 시 GROUP BY 승격).
 export const useInstructorAttendanceSummary = (from?: string, to?: string, instructorId?: number) => {
   const role = useTacoStore((s) => s.currentRole);
