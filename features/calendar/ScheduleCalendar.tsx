@@ -1073,6 +1073,7 @@ export function ScheduleCalendar() {
           courseId: body.courseId, instructorId: myInstructorId ?? body.instructorId, roomId: body.roomId,
           sessionDate: body.sessionDate, startTime: body.startTime, endTime: body.endTime,
           durationMinutes: body.durationMinutes, studentIds: body.studentIds, topic: body.topic, kind: body.kind,
+          mode: body.mode, // [C2D] 수업방식 보존 — 승인 시 세션 mode로 반영
         });
         setCreating(null);
         setMsg("승인 요청을 보냈습니다 — 매니저 승인 시 캘린더에 반영됩니다.");
@@ -3123,7 +3124,7 @@ function CreateModal({
     const mk = (dLocal: string): ScheduleCreateBody => {
       const ks = toKst(dLocal, start), ke = toKst(dLocal, end);
       return { courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: ks.date, startTime: ks.time, endTime: ke.time, memo: memo || undefined, color, status, seriesId, studentIds,
-        kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined, mode: requestMode ? undefined : sessionMode };
+        kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined, mode: sessionMode }; // [C2D] 강사 요청도 mode 보존
     };
     const days = occurrences();
     if (days.length <= 1) onCreate(mk(days[0] ?? date));
@@ -3230,14 +3231,13 @@ function CreateModal({
                   ))}
                 </select>
               </Field>
-              {!requestMode && (
-                <Field label="수업방식">
-                  <select className="input" value={sessionMode} onChange={(e) => setSessionMode(e.target.value as typeof sessionMode)}>
-                    <option value="in_person">대면</option>
-                    <option value="online">비대면</option>
-                  </select>
-                </Field>
-              )}
+              {/* [C2D] 강사 요청 모드에서도 수업방식 노출 — 요청→승인까지 mode 보존 */}
+              <Field label="수업방식">
+                <select className="input" value={sessionMode} onChange={(e) => setSessionMode(e.target.value as typeof sessionMode)}>
+                  <option value="in_person">대면</option>
+                  <option value="online">비대면</option>
+                </select>
+              </Field>
               <Field label="색상"><ColorPicker value={color} onChange={setColor} /></Field>
             </div>
             <Field label="메모"><textarea className="input min-h-[52px] py-1.5" rows={2} placeholder="선택 — 메모" value={memo} onChange={(e) => setMemo(e.target.value)} /></Field>

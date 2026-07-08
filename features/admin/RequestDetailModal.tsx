@@ -119,9 +119,9 @@ export function RequestDetailModal({
                 <MetaRow label="시간"><span className="mono">{r.startTime ?? '—'}{r.endTime ? `~${r.endTime}` : ''}{r.durationMinutes ? ` (${r.durationMinutes}분)` : ''}</span></MetaRow>
                 <MetaRow label="강의실">{roomName(r.roomId)}</MetaRow>
                 <MetaRow label="종류">{SESSION_KIND_LABEL[r.kind ?? 'class'] ?? r.kind}</MetaRow>
+                <MetaRow label="수업방식">{(r.mode ?? 'in_person') === 'online' ? '비대면' : '대면'}</MetaRow>
                 <div className="col-span-2"><MetaRow label="학생">{studentNames(r.studentIds)}</MetaRow></div>
                 {r.topic && <div className="col-span-2"><MetaRow label="주제">{r.topic}</MetaRow></div>}
-                <div className="col-span-2 text-caption text-fg-subtle">수업방식(대면/비대면)은 요청 단계에서 보존되지 않습니다 — 승인 시 대면 기본(C2D 결정 대기).</div>
               </div>
             )}
           </section>
