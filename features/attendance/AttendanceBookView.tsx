@@ -45,11 +45,11 @@ export function AttendanceBookView() {
   const [ym, setYm] = useState(thisYm());
   const [courseId, setCourseId] = useState<number | null>(null);
 
-  // [TBO-19] 로그인 강사의 도메인 강사 id(=JWT sub, 강사 식별자 통일 2026-07-07). 미링크 시 첫 코스 강사 폴백.
-  const myInstId = role === "instructor" ? (loginInstructorId() ?? Number(courses[0]?.instructorId ?? 1)) : null;
+  // [TBO-21 P1] 로그인 강사의 도메인 강사 id(=JWT sub)만 신뢰한다. 해석 실패 시 전체 코스 폴백 금지.
+  const myInstId = role === "instructor" ? loginInstructorId() : null;
   const visibleCourses = useMemo(
-    () => (myInstId != null ? courses.filter((c) => Number(c.instructorId) === myInstId) : courses),
-    [courses, myInstId],
+    () => (role === "instructor" ? (myInstId != null ? courses.filter((c) => Number(c.instructorId) === myInstId) : []) : courses),
+    [courses, myInstId, role],
   );
   const curCourse = visibleCourses.find((c) => Number(c.id) === courseId) ?? visibleCourses[0];
 

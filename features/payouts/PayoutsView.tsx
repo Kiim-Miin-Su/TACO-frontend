@@ -5,10 +5,10 @@ import { Badge, EmptyState, Field, PageHeader, PromptModal, SectionCard, TableWr
 import { useTacoStore } from '@/lib/store';
 import {
   useSchedule, useCourses, useSubjects, useEnrollments, useStudents,
-  useInstructors, usePayouts, usePayoutPreview,
+  useInstructors, usePayouts, usePayoutPreview, useMyPayouts, useMyPayoutPreview,
   useGeneratePayout, useConfirmPayout, usePayPayout, useAdjustPayout, useRejectPayout,
 } from '@/lib/queries';
-import { isAdmin } from '@/lib/roles';
+import { canAccessFinance } from '@/lib/roles';
 import { won } from '@/lib/format';
 import type { PayoutRow, PayoutRowStatus, PayoutLine } from '@/lib/api';
 import { ReasonModal } from '@/components/ReasonModal';
@@ -34,7 +34,8 @@ const monthRange = () => {
 
 export function PayoutsView() {
   const role = useTacoStore((s) => s.currentRole);
-  const admin = isAdmin(role);
+  const finance = canAccessFinance(role);
+  const instructorSelf = role === 'instructor';
   // 정산 근거를 사람이 읽을 수 있게 — 세션→시각, 코스→과목, 코스→수강 학생 조인(Query 훅).
   const { data: classSessions = [] } = useSchedule();
   const { data: courses = [] } = useCourses();
@@ -56,12 +57,13 @@ export function PayoutsView() {
   // [상태 무결성 2026-07-06] 서버 데이터는 TanStack Query 단일 소스 — 로컬 useState 복사 제거.
   //  usePayouts는 관리자 게이트(비관리자 fetch 생략), mutation 성공 시 qk.payouts.all 무효화로 자동 최신화.
   const payoutsQ = usePayouts();
+  const myPayoutsQ = useMyPayouts();
   const instructorsQ = useInstructors();
-  const payouts = payoutsQ.data ?? [];
+  const payouts = finance ? (payoutsQ.data ?? []) : instructorSelf ? (myPayoutsQ.data ?? []) : [];
   const instructors = instructorsQ.data ?? [];
   const conn: 'checking' | 'online' | 'offline' =
-    payoutsQ.isError || instructorsQ.isError ? 'offline'
-    : payoutsQ.isSuccess ? 'online' : 'checking';
+    (finance && payoutsQ.isError) || (instructorSelf && myPayoutsQ.isError) || instructorsQ.isError ? 'offline'
+    : (finance && payoutsQ.isSuccess) || (instructorSelf && myPayoutsQ.isSuccess) ? 'online' : 'checking';
 
   const [instructorId, setInstructorId] = useState('');
   const [{ from: defFrom, to: defTo }] = useState(monthRange);
@@ -69,6 +71,7 @@ export function PayoutsView() {
   const [end, setEnd] = useState(defTo);
   // 산정 미리보기(읽기전용) — 강사·기간 키의 쿼리(캐시·중복요청 제거)
   const previewQ = usePayoutPreview(instructorId ? Number(instructorId) : null, start, end);
+  const myPreviewQ = useMyPayoutPreview(start, end);
   const preview = previewQ.data ?? null;
 
   // 필터 — 정산 목록(강사·상태) / 적격 수업 내역(수업)
@@ -104,14 +107,11 @@ export function PayoutsView() {
   // 반려 사유 모달(입력/보기)
   const [reasonModal, setReasonModal] = useState<{ mode: 'input' | 'view'; payout: PayoutRow } | null>(null);
 
-  // [코드리뷰 2026-07-03 M1] 비관리자 접근 안내 — 백엔드 403과 일치하는 프론트 게이트(메뉴는 Sidebar에서 숨김, 직접 URL 접근 대비)
-  if (!admin) {
+  if (!finance && !instructorSelf) {
     return (
       <div className="p-6 max-w-page mx-auto">
         <PageHeader title="강사 페이" />
-        <div className="p-4 rounded-lg border text-body text-fg-muted border-line-muted">
-          정산 정보는 관리자 전용입니다. 본인 정산 조회 기능은 준비 중입니다.
-        </div>
+        <EmptyState message="강사 페이는 대표와 본인 강사만 조회할 수 있습니다." />
       </div>
     );
   }
@@ -120,9 +120,51 @@ export function PayoutsView() {
     return (
       <div className="p-6 max-w-page mx-auto">
         <PageHeader title="강사 페이" />
-        <div className="p-4 rounded-lg border text-body text-fg-muted border-line-muted">
-          백엔드 API에 연결할 수 없습니다. 로컬은 <span className="mono">cd backend &amp;&amp; npm run dev</span>, 배포는 <span className="mono">NEXT_PUBLIC_API_URL</span>를 확인하세요.
-        </div>
+        <EmptyState message="정산 정보를 불러오지 못했습니다." />
+      </div>
+    );
+  }
+
+  if (instructorSelf && !finance) {
+    const minePreview = myPreviewQ.data ?? null;
+    return (
+      <div className="p-6 max-w-page mx-auto space-y-6">
+        <PageHeader
+          title="내 페이"
+          sub="진행 완료 수업 중 승인된 보고서 기준으로 시수와 페이가 산정됩니다."
+          actions={<Badge tone={conn === 'online' ? 'success' : 'neutral'}>{conn === 'online' ? '조회 가능' : '확인 중'}</Badge>}
+        />
+        <SectionCard title="이번 달 산정 미리보기">
+          <div className="p-4 text-body text-fg-muted">
+            {minePreview && minePreview.sessionCount > 0 ? (
+              <>적격 수업 <b>{minePreview.sessionCount}</b>회 · 시수 <b>{hours(minePreview.totalMinutes)}</b> · 예상 페이 <b className="text-fg">{won(minePreview.computedAmount)}</b></>
+            ) : (
+              <span className="text-fg-subtle">이번 달 정산 대상 수업이 없습니다.</span>
+            )}
+          </div>
+        </SectionCard>
+        <SectionCard title={`내 정산서 (${payouts.length})`}>
+          {payouts.length === 0 ? (
+            <EmptyState message="아직 생성된 정산서가 없습니다." />
+          ) : (
+            <TableWrap minWidth={720}>
+              <table className="table">
+                <thead><tr><th>기간</th><th>상태</th><th className="text-right">시수</th><th className="text-right">금액</th><th>지급일</th></tr></thead>
+                <tbody>
+                  {payouts.map((p) => (
+                    <tr key={p.id}>
+                      <td className="mono text-fg-muted">{p.periodStart} ~ {p.periodEnd}</td>
+                      <td><Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge></td>
+                      <td className="text-right mono">{hours(p.totalMinutes)}</td>
+                      <td className="text-right mono">{won(p.amount)}</td>
+                      <td className="mono text-fg-muted">{p.paidAt ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+          )}
+        </SectionCard>
       </div>
     );
   }
@@ -266,8 +308,8 @@ export function PayoutsView() {
                   )}
                 </td>
                 <td className="text-right">
-                  {!admin ? (
-                    <span className="text-caption text-fg-subtle">{p.status === 'pending' ? '관리자 승인 대기' : '—'}</span>
+                  {!finance ? (
+                    <span className="text-caption text-fg-subtle">{p.status === 'pending' ? '대표 승인 대기' : '—'}</span>
                   ) : (
                     <div className="inline-flex gap-1.5 justify-end flex-wrap">
                       {p.status === 'pending' && (
@@ -331,7 +373,7 @@ export function PayoutsView() {
       <p className="text-caption text-fg-subtle">
         시수는 <b>진행 완료(held) + 보고서 승인</b>분만 채워지며, 세션은 한 정산서에만 연결됩니다(이중 계상 방지).
         지급 시 출금 거래 원장과 대시보드에 반영됩니다.
-        {!admin && ' 승인·지급·수정은 관리자(대표) 역할에서 가능합니다.'}
+        {!finance && ' 승인·지급·수정은 대표(CEO) 역할에서 가능합니다.'}
       </p>
 
       {reasonModal && (

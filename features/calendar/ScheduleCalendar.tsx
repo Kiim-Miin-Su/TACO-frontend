@@ -25,7 +25,7 @@ import { exportNodeAsImage } from "@/lib/export";
 import { useTacoStore } from "@/lib/store";
 import { usePersistedState } from "@/lib/usePersistedState";
 import { isAdmin, roleLabel } from "@/lib/roles";
-import { currentClaims } from "@/lib/auth";
+import { currentClaims, myInstructorId as loginInstructorId } from "@/lib/auth";
 import { ResourcePanel } from "./ResourcePanel";
 import { ResourceDetailCard } from "./ResourceDetailCard";
 import { ParticipantsCard } from "./ParticipantsCard";
@@ -143,8 +143,7 @@ export function ScheduleCalendar() {
   const role = useTacoStore((s) => s.currentRole);
   const canManage = isAdmin(role); // 대표/매니저/관리자 — 모든 스케줄 추가
   const isInstructor = role === "instructor"; // 강사 — 본인 스케줄만 추가
-  // 데모 본인 강사 식별(실제로는 JWT sub) — 사이드바와 동일하게 첫 강사를 '나'로 간주
-  const myInstructorId = isInstructor ? resources?.instructors[0]?.id : undefined;
+  const myInstructorId = isInstructor ? loginInstructorId() ?? undefined : undefined;
   const canAdd = canManage || (isInstructor && myInstructorId != null);
   // start가 있으면 그 시각으로 프리필(빈 곳 더블클릭 — 피드백 2026-07-02 #4).
   // [유저별 추가 2026-07-03] 전역 "+ 스케줄 추가"(현행)와 별개로, 스플릿 컬럼(유저)에서 그 유저
@@ -377,11 +376,12 @@ export function ScheduleCalendar() {
 
   // 선택 자원 → 서버 필터(개인 스케줄) — 파생 selected 기반(필터와 항상 일치, 교집합 혼동 제거)
   const selQuery = useMemo(() => {
+    if (isInstructor && myInstructorId != null) return { instructorId: myInstructorId };
     if (!selected) return {};
     if (selected.type === "instructor") return { instructorId: selected.id };
     if (selected.type === "room") return { roomId: selected.id };
     return { studentId: selected.id };
-  }, [selected]);
+  }, [isInstructor, myInstructorId, selected]);
 
   // 기간 필터가 설정되면 뷰 파생 기간 대신 사용(우측 리스트가 기간 전체를 봄).
   // [L3] 월간 뷰는 월 그리드가 기준 — 기간 override를 무시(그리드-데이터 불일치 방지)

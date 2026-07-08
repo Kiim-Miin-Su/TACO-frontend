@@ -6,14 +6,26 @@ import { useExpenses } from '@/lib/queries';
 import { won } from '@/lib/format';
 import { categoryLabel, categoryTone, approvalLabel, approvalTone } from './labels';
 import { ReasonModal } from '@/components/ReasonModal';
+import { useTacoStore } from '@/lib/store';
+import { canAccessFinance } from '@/lib/roles';
 
 export function ExpensesView() {
   // 지출 목록은 TanStack Query에서 가져오고, 반려 사유는 클라이언트 전용 store에 유지.
+  const finance = canAccessFinance(useTacoStore((s) => s.currentRole));
   const { data: expenses = [] } = useExpenses();
   const [view, setView] = useState<'list' | 'calendar'>('list');
   const [viewReason, setViewReason] = useState<number | null>(null);
 
   const total = expenses.reduce((a, e) => a + e.amount, 0);
+
+  if (!finance) {
+    return (
+      <div className="p-6 max-w-page mx-auto">
+        <PageHeader title="지출 · 비품" />
+        <EmptyState message="지출 정보는 대표 권한에서만 조회할 수 있습니다." />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-page mx-auto space-y-6">

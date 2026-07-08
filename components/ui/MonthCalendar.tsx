@@ -4,11 +4,15 @@ import { SectionCard } from './SectionCard';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const pad = (n: number) => String(n).padStart(2, '0');
+const currentMonth = () => {
+  const d = new Date();
+  return { y: d.getFullYear(), m: d.getMonth() };
+};
 
 // 재사용 월 캘린더. 각 날짜 셀 내용은 renderDay(dateStr)로 주입.
 export function MonthCalendar({
-  initialYear = 2026,
-  initialMonth = 5, // 0-based (June)
+  initialYear,
+  initialMonth,
   titlePrefix,
   renderDay,
 }: {
@@ -17,7 +21,10 @@ export function MonthCalendar({
   titlePrefix?: string;
   renderDay: (dateStr: string, day: number) => ReactNode;
 }) {
-  const [ym, setYm] = useState({ y: initialYear, m: initialMonth });
+  const [ym, setYm] = useState(() => {
+    const now = currentMonth();
+    return { y: initialYear ?? now.y, m: initialMonth ?? now.m };
+  });
   const startWeekday = new Date(ym.y, ym.m, 1).getDay();
   const daysInMonth = new Date(ym.y, ym.m + 1, 0).getDate();
   const monthStr = `${ym.y}-${pad(ym.m + 1)}`;

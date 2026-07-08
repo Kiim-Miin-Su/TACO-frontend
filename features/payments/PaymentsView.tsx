@@ -5,13 +5,12 @@ import { Badge, SectionCard, MonthCalendar, PageHeader, EmptyState, TableWrap } 
 import { usePayments, useStudents } from '@/lib/queries';
 import { usePersistedState } from '@/lib/usePersistedState';
 import { useTacoStore } from '@/lib/store';
-import { isAdmin } from '@/lib/roles';
+import { canAccessFinance } from '@/lib/roles';
 import { won } from '@/lib/format';
 import { statusLabel, statusTone, methodLabel } from './labels';
 
 export function PaymentsView() {
-  // [권한 정합] 결제 청구 생성(POST /payments)은 BE ADMIN 전용 → 신규 청구 버튼은 관리자만(403 방지).
-  const admin = isAdmin(useTacoStore((s) => s.currentRole));
+  const finance = canAccessFinance(useTacoStore((s) => s.currentRole));
   const { data: payments = [] } = usePayments();
   const { data: students = [] } = useStudents();
   // [C-2 2026-07-06] 목록/달력 보기 토글 localStorage 복원(새로고침에도 유지).
@@ -24,6 +23,15 @@ export function PaymentsView() {
   const totalPaid = payments.filter((p) => p.status === 'paid').reduce((a, p) => a + p.amount, 0);
   const totalDue = payments.filter((p) => p.status === 'pending').reduce((a, p) => a + p.amount, 0);
 
+  if (!finance) {
+    return (
+      <div className="p-6 max-w-page mx-auto">
+        <PageHeader title="결제 · 수납" />
+        <EmptyState message="결제·수납 정보는 대표 권한에서만 조회할 수 있습니다." />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-page mx-auto space-y-6">
       <PageHeader
@@ -35,7 +43,7 @@ export function PaymentsView() {
               <button className={`btn btn-sm rounded-none border-0 ${view === 'list' ? 'badge-accent' : ''}`} onClick={() => setView('list')}>리스트</button>
               <button className={`btn btn-sm rounded-none border-0 ${view === 'calendar' ? 'badge-accent' : ''}`} onClick={() => setView('calendar')}>캘린더</button>
             </div>
-            {admin && <Link href="/payments/new" className="btn btn-primary btn-sm">신규 청구</Link>}
+            <Link href="/payments/new" className="btn btn-primary btn-sm">신규 청구</Link>
           </div>
         }
       />

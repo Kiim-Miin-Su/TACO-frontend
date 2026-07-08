@@ -6,8 +6,8 @@ import type { AvailabilityOwner } from "@/types";
 export const qk = {
   schedule: {
     all: ["schedule"] as const,
-    list: (q: ScheduleQuery) => ["schedule", "list", q] as const,
-    resources: () => ["schedule", "resources"] as const,
+    list: (q: ScheduleQuery, scope = "global") => ["schedule", "list", scope, q] as const,
+    resources: (scope = "global") => ["schedule", "resources", scope] as const,
   },
   availability: {
     all: ["availability"] as const,
@@ -19,9 +19,11 @@ export const qk = {
   payouts: {
     all: ["payouts"] as const,
     list: () => ["payouts", "list"] as const,
+    mine: (scope = "global") => ["payouts", "mine", scope] as const,
     preview: (instructorId: number, from: string, to: string) => ["payouts", "preview", instructorId, from, to] as const,
+    previewMine: (scope: string, from: string, to: string) => ["payouts", "previewMine", scope, from, to] as const,
   },
-  reports: { all: ["reports"] as const, list: (sessionId?: number) => ["reports", "list", sessionId ?? null] as const },
+  reports: { all: ["reports"] as const, list: (sessionId?: number, scope = "global") => ["reports", "list", scope, sessionId ?? null] as const },
   students: { all: ["students"] as const, list: () => ["students", "list"] as const },
   payments: { all: ["payments"] as const, list: () => ["payments", "list"] as const },
   expenses: { all: ["expenses"] as const, list: () => ["expenses", "list"] as const },
@@ -37,7 +39,7 @@ export const qk = {
   viewPresets: { all: ["viewPresets"] as const, list: () => ["viewPresets", "list"] as const },
   reportTemplates: { all: ["reportTemplates"] as const, list: () => ["reportTemplates", "list"] as const },
   events: { all: ["events"] as const, list: () => ["events", "list"] as const },
-  attendance: { all: ["attendance"] as const, list: () => ["attendance", "list"] as const },
+  attendance: { all: ["attendance"] as const, list: (scope = "global") => ["attendance", "list", scope] as const },
   roadmaps: {
     all: ["roadmaps"] as const,
     list: () => ["roadmaps", "list"] as const,

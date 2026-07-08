@@ -200,7 +200,7 @@ export function ApprovalsView() {
     </SectionCard>
   );
 
-  // [TBO-20 M2] 승인 센터 = 관리자(매니저 이상, BE ADMIN_ROLES 정합). 가입 승인만 대표(super_admin) 전용(BE SuperAdminGuard).
+  // [TBO-21] 승인 센터 = 관리자(매니저 이상). 지출·페이·가입 승인 액션은 대표(super_admin) 전용.
   if (!isAdmin(currentRole)) {
     return (
       <div className="p-6 max-w-page mx-auto space-y-6">
@@ -242,7 +242,7 @@ export function ApprovalsView() {
         </SectionCard>
       ),
     },
-    {
+    ...(isSuper ? [{
       key: 'expenses', count: pendingExpenses.length, label: '지출',
       node: (
         <SectionCard title={`지출 승인 대기 (${pendingExpenses.length})`}>
@@ -267,8 +267,8 @@ export function ApprovalsView() {
           </TableWrap>
         </SectionCard>
       ),
-    },
-    {
+    }] : []),
+    ...(isSuper ? [{
       key: 'payouts', count: pendingPayouts.length, label: '강사 페이',
       node: (
         <SectionCard title={`강사 페이 승인 대기 (${pendingPayouts.length})`}>
@@ -291,7 +291,7 @@ export function ApprovalsView() {
           </TableWrap>
         </SectionCard>
       ),
-    },
+    }] : []),
   ];
   // 수업 요청 섹션은 반려/강제승인 모달 상태를 포함하므로 0건이어도 모달이 열려 있으면 유지
   const activeSections = sections.filter((s) => s.count > 0 || (s.key === 'requests' && (requestReject != null || forceApprove != null || requestMsg != null)));
@@ -301,7 +301,7 @@ export function ApprovalsView() {
     <div className="p-6 max-w-page mx-auto space-y-6">
       <AdminHeader />
 
-      {/* 가입 승인 = 대표 전용(BE SuperAdminGuard). 매니저는 보고서·지출·페이·수업요청 승인만. */}
+      {/* 가입 승인 = 대표 전용(BE SuperAdminGuard). 매니저는 보고서·수업요청만 처리. */}
       {isSuper && <MemberApprovals />}
 
       {activeSections.map((s) => <div key={s.key}>{s.node}</div>)}
@@ -313,7 +313,7 @@ export function ApprovalsView() {
         </div>
       )}
 
-      <p className="text-caption text-fg-subtle">승인 시 지출은 즉시 출금 반영, 강사 페이는 승인 후 강사페이 탭에서 지급 처리합니다.</p>
+      <p className="text-caption text-fg-subtle">수업 요청과 보고서는 매니저 이상이 처리하고, 지출·강사 페이·가입 승인은 대표만 처리합니다.</p>
 
       {expenseReject != null && (
         <ReasonModal

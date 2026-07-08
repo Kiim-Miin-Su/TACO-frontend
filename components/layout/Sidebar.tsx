@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTacoStore } from "@/lib/store";
 import { useAppData } from "@/lib/queries";
-import { roleLabel, isCEO, isAdmin } from "@/lib/roles";
+import { roleLabel, isCEO, isAdmin, canAccessFinance } from "@/lib/roles";
 import { navBadges } from "@/lib/tasks";
 import { decodeToken, getToken, myInstructorId } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -22,7 +22,7 @@ import {
   IconCalendar,
 } from "../ui/icons";
 
-type Item = { label: string; icon: React.FC<any>; href: string; adminOnly?: boolean };
+type Item = { label: string; icon: React.FC<any>; href: string; adminOnly?: boolean; financeOnly?: boolean; instructorVisible?: boolean };
 
 const groups: { title: string; items: Item[] }[] = [
   {
@@ -37,14 +37,13 @@ const groups: { title: string; items: Item[] }[] = [
   },
   {
     title: "입금",
-    items: [{ label: "결제 · 수납", icon: IconCard, href: "/payments" }],
+    items: [{ label: "결제 · 수납", icon: IconCard, href: "/payments", financeOnly: true }],
   },
   {
     title: "출금",
     items: [
-      // [코드리뷰 2026-07-03 M1] 정산 API 관리자 전용 상향 → 메뉴도 관리자만 노출(강사 403 오프라인 오표시 방지)
-      { label: "강사 페이", icon: IconWallet, href: "/payouts", adminOnly: true },
-      { label: "지출 · 비품", icon: IconReceipt, href: "/expenses" },
+      { label: "강사 페이", icon: IconWallet, href: "/payouts", financeOnly: true, instructorVisible: true },
+      { label: "지출 · 비품", icon: IconReceipt, href: "/expenses", financeOnly: true },
     ],
   },
   {
@@ -128,7 +127,13 @@ export default function Sidebar() {
           : groups
         )
           // adminOnly 항목은 관리자 역할에게만 노출(M1). 항목이 비면 그룹째 숨김.
-          .map((g) => ({ ...g, items: g.items.filter((it: Item) => !it.adminOnly || isAdmin(role)) }))
+          .map((g) => ({
+            ...g,
+            items: g.items.filter((it: Item) =>
+              (!it.adminOnly || isAdmin(role)) &&
+              (!it.financeOnly || canAccessFinance(role) || (it.instructorVisible && role === "instructor")),
+            ),
+          }))
           .filter((g) => g.items.length > 0)
           .map((g) => (
           <div key={g.title} className={`mb-3 ${collapsed ? "px-1.5" : "px-3"}`}>

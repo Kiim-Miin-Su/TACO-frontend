@@ -1,5 +1,5 @@
 'use client';
-// [TBO-20 20-B] 정산 상세 — 강사별 시수·페이 회차 내역 + 이번 달 산정 미리보기. 관리자 전용.
+// [TBO-20 20-B] 정산 상세 — 강사별 시수·페이 회차 내역 + 이번 달 산정 미리보기. 대표 전용.
 //  참조 무결성: 읽기=usePayouts(정산서)·usePayoutPreview(적격 산정, held+승인보고서). 편집은 정산 화면에서.
 //  시수/적격 규칙은 정산 서비스와 동일(중복 기준 없음). 출결 상세와 상호 링크.
 import { Fragment, useMemo, useState } from 'react';
@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { Badge, EmptyState, PageHeader, SectionCard, StatCard, TableWrap, type Tone } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
 import { useInstructors, usePayouts, usePayoutPreview } from '@/lib/queries';
-import { isAdmin } from '@/lib/roles';
+import { canAccessFinance } from '@/lib/roles';
 import { won } from '@/lib/format';
 import type { PayoutRowStatus } from '@/lib/api';
 
@@ -23,12 +23,12 @@ const monthRange = (ym: string) => {
 
 export function PayoutDetailView({ instructorId }: { instructorId: number }) {
   const role = useTacoStore((s) => s.currentRole);
-  const admin = isAdmin(role);
+  const finance = canAccessFinance(role);
   const { data: instructors = [], isLoading: loadingInst } = useInstructors();
   const { data: allPayouts = [] } = usePayouts();
   const [ym, setYm] = useState(thisYm());
   const range = monthRange(ym);
-  const { data: preview } = usePayoutPreview(admin ? instructorId : null, range.from, range.to);
+  const { data: preview } = usePayoutPreview(finance ? instructorId : null, range.from, range.to);
 
   const instructor = instructors.find((i) => i.id === instructorId);
   const myPayouts = useMemo(
@@ -40,10 +40,10 @@ export function PayoutDetailView({ instructorId }: { instructorId: number }) {
   const [open, setOpen] = useState<Set<number>>(new Set());
   const toggle = (id: number) => setOpen((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  if (!admin) {
+  if (!finance) {
     return (
       <div className="p-6 max-w-page-form mx-auto">
-        <PageHeader title="정산 상세" sub="관리자(매니저 이상)만 열람할 수 있습니다." />
+        <PageHeader title="정산 상세" sub="대표(CEO)만 열람할 수 있습니다." />
         <Link href="/" className="btn btn-primary">대시보드로</Link>
       </div>
     );

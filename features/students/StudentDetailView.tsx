@@ -10,6 +10,8 @@ import {
   useStudents, useEnrollments, useCourses, useParentStudents, useParents,
   useAttendance, useReports, usePayments, useCounselForms,
 } from '@/lib/queries';
+import { useTacoStore } from '@/lib/store';
+import { canAccessFinance } from '@/lib/roles';
 import { STUDENT_STATUS_LABEL, STUDENT_STATUS_TONE } from '@/lib/domain/students';
 import { won, shortDate } from '@/lib/format';
 import { CountryBadge } from '@/features/calendar/CountryInput';
@@ -21,6 +23,7 @@ const enrollTone: Record<EnrollmentStatus, Tone> = { active: 'success', paused: 
 const enrollLabel: Record<EnrollmentStatus, string> = { active: '수강중', paused: '일시정지', completed: '수료', canceled: '취소' };
 
 export function StudentDetailView({ studentId }: { studentId: number }) {
+  const finance = canAccessFinance(useTacoStore((s) => s.currentRole));
   const { data: students = [], isLoading } = useStudents();
   const { data: enrollments = [] } = useEnrollments();
   const { data: courses = [] } = useCourses();
@@ -88,8 +91,8 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard label="활성 수강" value={`${activeCount}개`} tone="accent" />
-        <StatCard label="누적 결제" value={won(paidTotal)} tone="success" />
-        <StatCard label="미납" value={won(unpaidTotal)} tone={unpaidTotal ? 'danger' : undefined} />
+        {finance && <StatCard label="누적 결제" value={won(paidTotal)} tone="success" />}
+        {finance && <StatCard label="미납" value={won(unpaidTotal)} tone={unpaidTotal ? 'danger' : undefined} />}
         <StatCard label="출석/지각/결석" value={`${attCounts.present}/${attCounts.late}/${attCounts.absent}`} />
         <StatCard label="보고서" value={`${myReports.length}건`} />
         <StatCard label="상담 이력" value={`${myCounsel.length}건`} />
@@ -145,26 +148,28 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
         </SectionCard>
       </div>
 
-      <SectionCard title={`결제 내역 (${myPayments.length})`} action={<Link href="/payments" className="btn btn-sm">결제 전체 →</Link>}>
-        {!myPayments.length ? <EmptyState message="결제 내역이 없습니다." /> : (
-          <TableWrap minWidth={640}>
-            <table className="table">
-              <thead><tr><th>금액</th><th>상태</th><th>수단</th><th>납부일</th><th className="text-right"></th></tr></thead>
-              <tbody>
-                {myPayments.map((p) => (
-                  <tr key={p.id}>
-                    <td className="mono font-medium">{won(p.amount)}{p.paidAmount != null && p.paidAmount !== p.amount ? ` (납 ${won(p.paidAmount)})` : ''}</td>
-                    <td><Badge tone={payTone[p.status]}>{payLabel[p.status]}</Badge></td>
-                    <td className="text-fg-muted">{p.paymentMethod ?? '—'}</td>
-                    <td className="mono text-fg-muted">{p.paidAt ? shortDate(p.paidAt) : p.dueAt ? `~${shortDate(p.dueAt)}` : '—'}</td>
-                    <td className="text-right"><Link href={`/payments/${p.id}`} className="btn btn-sm">상세</Link></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableWrap>
-        )}
-      </SectionCard>
+      {finance && (
+        <SectionCard title={`결제 내역 (${myPayments.length})`} action={<Link href="/payments" className="btn btn-sm">결제 전체 →</Link>}>
+          {!myPayments.length ? <EmptyState message="결제 내역이 없습니다." /> : (
+            <TableWrap minWidth={640}>
+              <table className="table">
+                <thead><tr><th>금액</th><th>상태</th><th>수단</th><th>납부일</th><th className="text-right"></th></tr></thead>
+                <tbody>
+                  {myPayments.map((p) => (
+                    <tr key={p.id}>
+                      <td className="mono font-medium">{won(p.amount)}{p.paidAmount != null && p.paidAmount !== p.amount ? ` (납 ${won(p.paidAmount)})` : ''}</td>
+                      <td><Badge tone={payTone[p.status]}>{payLabel[p.status]}</Badge></td>
+                      <td className="text-fg-muted">{p.paymentMethod ?? '—'}</td>
+                      <td className="mono text-fg-muted">{p.paidAt ? shortDate(p.paidAt) : p.dueAt ? `~${shortDate(p.dueAt)}` : '—'}</td>
+                      <td className="text-right"><Link href={`/payments/${p.id}`} className="btn btn-sm">상세</Link></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+          )}
+        </SectionCard>
+      )}
 
       <p className="text-caption text-fg-subtle">읽기 전용 종합 뷰 — 편집은 각 도메인 화면(학생 목록·결제·상담·출석부)에서. 데이터는 단일 소스로 즉시 반영됩니다.</p>
     </div>

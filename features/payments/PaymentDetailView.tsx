@@ -3,11 +3,14 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Badge, SectionCard } from '@/components/ui';
 import { usePayments, useStudents, useEnrollments, useCourses, useUpdatePayment, useMarkPaymentPaid } from '@/lib/queries';
+import { useTacoStore } from '@/lib/store';
+import { canAccessFinance } from '@/lib/roles';
 import type { PaymentMethod, PaymentStatus } from '@/types';
 import { won } from '@/lib/format';
 import { statusLabel, statusTone, methodLabel, METHODS, STATUSES } from './labels';
 
 export function PaymentDetailView({ paymentId }: { paymentId: number }) {
+  const finance = canAccessFinance(useTacoStore((s) => s.currentRole));
   const { data: payments = [] } = usePayments();
   const { data: students = [] } = useStudents();
   const { data: enrollments = [] } = useEnrollments();
@@ -17,6 +20,15 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
   const payment = payments.find((p) => p.id === paymentId);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ amount: '', paymentMethod: '', dueAt: '', status: '' as string });
+
+  if (!finance) {
+    return (
+      <div className="p-6 max-w-[720px] mx-auto">
+        <Link href="/" className="text-caption text-fg-muted hover:underline">← 대시보드</Link>
+        <div className="mt-3 text-fg-muted">결제 상세는 대표(CEO)만 열람할 수 있습니다.</div>
+      </div>
+    );
+  }
 
   if (!payment) {
     return (

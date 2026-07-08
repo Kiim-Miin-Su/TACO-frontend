@@ -3,6 +3,7 @@
 // 배포(Vercel)는 NEXT_PUBLIC_API_URL을 백엔드 도메인으로 지정하면 직접 호출(백엔드 CORS 허용).
 import axios from "axios";
 import { logger } from "./log";
+import { safeLogValue, safeUrlForLog } from "./log-redaction";
 import { getToken, clearToken } from "./auth";
 import { isPublicRoute } from "./auth-routes";
 import type {
@@ -146,20 +147,23 @@ http.interceptors.request.use((cfg) => {
   // 로그인 토큰이 있으면 모든 요청에 Bearer로 첨부 → 백엔드 RBAC 가드 대비(권한 체크 일관).
   const token = getToken();
   if (token) cfg.headers.Authorization = `Bearer ${token}`;
-  apiLog.debug(`→ ${cfg.method?.toUpperCase()} ${cfg.url}`, cfg.params ?? cfg.data ?? "");
+  apiLog.debug(`→ ${cfg.method?.toUpperCase()} ${safeUrlForLog(cfg.url)}`, safeLogValue(cfg.params ?? cfg.data ?? ""));
   return cfg;
 });
 http.interceptors.response.use(
   (res) => {
     // [R3] category=http 계측: #요청번호 · duration(ms) — "요청 개수·요청 시간·반환 시간"
     const meta = (res.config as unknown as MetaConfig).meta;
-    apiLog.debug(`← ${res.status} ${res.config.method?.toUpperCase() ?? ""} ${res.config.url} ${meta ? `${Date.now() - meta.start}ms #${meta.seq}` : ""}`);
+    apiLog.debug(`← ${res.status} ${res.config.method?.toUpperCase() ?? ""} ${safeUrlForLog(res.config.url)} ${meta ? `${Date.now() - meta.start}ms #${meta.seq}` : ""}`);
     return res;
   },
   (err) => {
     const status = err?.response?.status ?? "ERR";
     const meta = (err?.config as unknown as MetaConfig)?.meta;
-    apiLog.error(`✗ ${status} ${err?.config?.method?.toUpperCase() ?? ""} ${err?.config?.url ?? ""} ${meta ? `${Date.now() - meta.start}ms #${meta.seq}` : ""}`, err?.response?.data ?? err?.message);
+    apiLog.error(
+      `✗ ${status} ${err?.config?.method?.toUpperCase() ?? ""} ${safeUrlForLog(err?.config?.url)} ${meta ? `${Date.now() - meta.start}ms #${meta.seq}` : ""}`,
+      safeLogValue(err?.response?.data ?? err?.message),
+    );
     // 401(토큰 없음/만료): 조용히 실패하지 않고 로그인으로 유도 — 세션이 끊긴 걸 사용자에게 알림.
     // 단, 로그인 시도 자체의 401(잘못된 자격)이나 공개 경로에선 리다이렉트하지 않음.
     if (
@@ -362,10 +366,13 @@ export const api = {
   // ── 강사 페이 정산(TBO-05) — 시수×시급 산정 → 승인 → 지급 ──
   payouts: {
     list: () => http.get<PayoutRow[]>("/payouts").then((r) => r.data),
+    mine: () => http.get<PayoutRow[]>("/payouts/me").then((r) => r.data),
     get: (id: number) => http.get<PayoutRow>(`/payouts/${id}`).then((r) => r.data),
     // 읽기전용 산정 미리보기(정산서 생성 없음). 적격: held + 승인 보고서.
     preview: (instructorId: number, from: string, to: string) =>
       http.get<MeasureResult>("/payouts/preview", { params: { instructorId, from, to } }).then((r) => r.data),
+    previewMine: (from: string, to: string) =>
+      http.get<MeasureResult>("/payouts/me/preview", { params: { from, to } }).then((r) => r.data),
     // 정산서 생성(pending) + 세션 연결(이중 계상 방지)
     generate: (instructorId: number, from: string, to: string) =>
       http.post<PayoutRow>("/payouts/generate", { instructorId, from, to }).then((r) => r.data),

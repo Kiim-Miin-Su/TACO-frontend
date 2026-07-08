@@ -2,7 +2,7 @@
 //  (useSchedule·useCourses·useInstructors·useEnrollments·useStudents·useReports).
 //  쓰기=useCreateReport/useSubmitReport(보고서는 session×student 단일). 템플릿은 클라 상태(store 유지).
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Badge, SectionCard, type Tone } from '@/components/ui';
 import { useTacoStore } from '@/lib/store';
@@ -71,6 +71,11 @@ export function ReportWriteView() {
   // 기본 선택: 리포트가 필요한 첫 진행완료 수업 (단일 소스: lib/reports)
   const firstNeed = needSessions[0];
   const [selId, setSelId] = useState<number | undefined>(firstNeed?.id ?? sessions[0]?.id);
+  useEffect(() => {
+    if (selId == null && (firstNeed?.id != null || sessions[0]?.id != null)) {
+      setSelId(firstNeed?.id ?? sessions[0]?.id);
+    }
+  }, [firstNeed?.id, selId, sessions]);
   const selected = sessions.find((s) => s.id === selId);
   const roster = selected ? rosterOf(selected.courseId) : [];
 

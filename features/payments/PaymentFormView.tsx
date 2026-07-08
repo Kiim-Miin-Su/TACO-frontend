@@ -5,15 +5,14 @@ import Link from 'next/link';
 import { SectionCard } from '@/components/ui';
 import { useStudents, useCourses, useEnrollments, useCreatePayment } from '@/lib/queries';
 import { useTacoStore } from '@/lib/store';
-import { isAdmin } from '@/lib/roles';
+import { canAccessFinance } from '@/lib/roles';
 import type { PaymentMethod } from '@/types';
 import { won } from '@/lib/format';
 import { METHODS, methodLabel } from './labels';
 
 export function PaymentFormView() {
   const router = useRouter();
-  // [권한 정합] 결제 청구 생성 = BE ADMIN 전용. 직접 URL 접근 시 안내(403 방지).
-  const admin = isAdmin(useTacoStore((s) => s.currentRole));
+  const finance = canAccessFinance(useTacoStore((s) => s.currentRole));
   const { data: students = [] } = useStudents();
   const { data: courses = [] } = useCourses();
   const { data: enrollments = [] } = useEnrollments();
@@ -47,11 +46,11 @@ export function PaymentFormView() {
     }, { onSuccess: () => router.push('/payments') });
   };
 
-  if (!admin) {
+  if (!finance) {
     return (
       <div className="p-6 max-w-[720px] mx-auto space-y-4">
         <Link href="/payments" className="text-caption text-fg-muted hover:underline">← 결제 목록</Link>
-        <div className="p-4 rounded-lg border text-body text-fg-muted border-line-muted">결제 청구 등록은 관리자(매니저 이상) 전용입니다.</div>
+        <div className="p-4 rounded-lg border text-body text-fg-muted border-line-muted">결제 청구 등록은 대표(CEO) 전용입니다.</div>
       </div>
     );
   }
