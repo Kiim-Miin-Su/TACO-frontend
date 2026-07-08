@@ -1373,8 +1373,6 @@ export function ScheduleCalendar() {
       cache.map.set(tz, shifted);
       return shifted;
     };
-    const offMin = tzActive ? tzOffsetFromKst(tzc.tz, cols[0]?.date ?? todayISO()) : 0;
-    const offLabel = `${offMin >= 0 ? "+" : "-"}${Math.floor(Math.abs(offMin) / 60)}${Math.abs(offMin) % 60 ? ":" + pad(Math.abs(offMin) % 60) : ""}h`;
     const isSplitGrid = cols[0]?.resType != null;
     // 데일리 스플릿(피드백 최종): **요일 열 폭은 주간과 동일(COL_MIN 고정)**, 그 안을 인원수로
     //  서브분할(같은 크기 요일 열을 늘리는 게 아님 — 컴팩트). 일수가 적으면 flex로 화면을 채움.
@@ -1389,31 +1387,22 @@ export function ScheduleCalendar() {
     // 텍스트 밀도 단계(서브열 폭 기준) — 단일 함수 densityOf(lib/domain/lantiv, vitest)로 통일(R2)
     const textMode = densityOf(subW, isSplitGrid);
     const minCol = subW;
+    const gutterTitle = kstFixed
+      ? "모든 표가 KST 기준 00~24시 축으로 정렬됩니다. 해외 현지 시각은 수업 칩에 병기됩니다."
+      : tzActive && tzc
+        ? `${tzc.name} 현지 시각 축입니다.`
+        : anyColTz
+          ? "컬럼마다 현지 시각 축입니다."
+          : "한국 표준시 축입니다.";
     return (
               <div className="card overflow-x-auto">
-                {/* [오류3] 좁은 스플릿 표에서 국가명·축약 배지가 잘리지 않게 — wrap 허용 + shrink-0 */}
-                {anyColTz && (
-                  <div className="flex items-center gap-x-2 gap-y-0.5 px-3 py-1.5 border-b text-caption bg-canvas-subtle flex-wrap">
-                    <span className="shrink-0">🌐</span>
-                    <span className="font-semibold shrink-0">학생 국가별 시간 표시 중</span>
-                    <span className="badge text-[10px] shrink-0" title="해외 학생 컬럼은 그 나라 시간으로 표시 — 드래그·리사이즈·추가 가능(저장은 KST 자동 변환)">국기 컬럼 = 그 나라 시간 · 편집 가능(KST 자동 변환)</span>
-                  </div>
-                )}
-                {tzActive && tzc && (
-                  <div className="flex items-center gap-x-2 gap-y-0.5 px-3 py-1.5 border-b text-caption bg-canvas-subtle flex-wrap">
-                    <span className="shrink-0">{tzc.flag}</span>
-                    <span className="font-semibold shrink-0">{tzc.name} 시간</span>
-                    <span className="text-fg-subtle mono shrink-0">KST{offLabel}</span>
-                    <span className="badge text-[10px] shrink-0" title="저장 시간은 항상 한국 시간(KST) — 이 화면의 조작은 현지 시각으로 하고 저장 시 자동 변환됩니다">편집 가능 · 저장은 KST 자동 변환</span>
-                  </div>
-                )}
                 <div className="flex" /* [고정폭] minWidth 강제 제거 — 스크롤 없음 */>
                   {/* 시간 거터 */}
                   <div className="shrink-0 sticky left-0 z-10 bg-canvas" style={{ width: GUTTER_W }}>
                     {/* [다중 시차 UX] 세로 눈금의 기준을 명시 — 개별 시차 혼재 시 "현지"(컬럼별), 표 전체 tz면 그 국기, 아니면 KST */}
                     <div style={{ height: HEADER_H }} className="flex items-end justify-end pr-1.5 pb-1">
-                      <span className="text-[9px] text-fg-subtle mono" title={tzActive ? "이 표는 선택 국가 현지 시각" : anyColTz ? "컬럼마다 현지 시각(헤더 오프셋 배지 참고)" : "한국 표준시"}>
-                        {tzActive ? tzc!.flag : anyColTz ? "현지" : "KST"}
+                      <span className="text-[9px] text-fg-subtle mono" title={gutterTitle}>
+                        {kstFixed ? "KST" : tzActive ? tzc!.flag : anyColTz ? "현지" : "KST"}
                       </span>
                     </div>
                     <div className="relative" style={{ height: gridH }}>
@@ -1919,6 +1908,14 @@ export function ScheduleCalendar() {
             >
               🇰🇷 KST 고정{kstFixed ? " ✓" : ""}
             </button>
+            {anyTzActive && (
+              <span
+                className="badge text-caption"
+                title={kstFixed ? "표 행은 KST 기준으로 맞추고, 각 수업 칩에 현지 시각을 병기합니다." : "시차 표는 현지 시간 축으로 표시됩니다."}
+              >
+                시차 적용 중 · {kstFixed ? "행 정렬 KST" : "현지 축"}
+              </span>
+            )}
             <button className="btn btn-sm" disabled={busyImg} onClick={() => saveImage("png")} title="현재 화면을 PNG로 저장(시차 뷰면 그 국가 시간 기준)">
               PNG
             </button>
