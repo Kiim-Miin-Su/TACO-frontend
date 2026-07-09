@@ -20,6 +20,7 @@ import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLoc
 import { CountryInput } from "./CountryInput";
 import { CalendarViewTabs } from "./CalendarViewTabs";
 import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
+import { formatScheduleConflicts } from "@/lib/domain/conflict-messages";
 import type { CalendarViewPreset } from "@/types";
 import { exportNodeAsImage } from "@/lib/export";
 import { useTacoStore } from "@/lib/store";
@@ -995,28 +996,8 @@ export function ScheduleCalendar() {
   };
   const bDownResize = (e: React.PointerEvent, c: { key: string; date: string }, b: { id: number; kind: string; startMin: number; endMin: number }, edge: "top" | "bottom") => bDown(e, c, b, edge);
 
-  // 충돌(Conflict)을 실제 데이터(강사명·상대 스케줄)로 사람이 읽을 수 있게 변환.
-  const CONFLICT_LABEL: Record<string, string> = { double_book: "이중예약", unavailable: "불가시간 겹침", room_capacity: "강의실 정원 초과" };
-  function resourceName(c: Conflict): string {
-    if (c.resource === "instructor") return resources?.instructors.find((i) => i.id === c.resourceId)?.name ?? `강사#${c.resourceId}`;
-    if (c.resource === "room") return (resources?.rooms ?? rooms).find((r) => r.id === c.resourceId)?.name ?? `강의실#${c.resourceId}`;
-    if (c.resource === "student") return resources?.students.find((s) => s.id === c.resourceId)?.name ?? `학생#${c.resourceId}`;
-    return "";
-  }
   function describeConflicts(cs: Conflict[]): string {
-    return cs
-      .map((c) => {
-        const who = c.resource ? `${c.resource === "instructor" ? "강사" : c.resource === "room" ? "강의실" : "학생"} ${resourceName(c)}` : "";
-        const what = CONFLICT_LABEL[c.type] ?? c.type;
-        // 상대 스케줄: 이중예약이면 해당 세션(과목·요일·시각·강사), 불가시간이면 백엔드 detail(겹친 불가 시각).
-        const other = c.sessionId != null ? rows.find((r) => r.id === c.sessionId) : undefined;
-        // 상대 스케줄: {강사명} · {강의명} (요일 시각) — 실제 백엔드 데이터. 불가시간이면 detail(시각).
-        const otherStr = other
-          ? ` — ${other.instructorName} · ${other.courseName} (${WD[other.weekday]} ${other.startTime ?? ""}–${other.endTime ?? ""})`
-          : c.detail ? ` — ${c.detail}` : "";
-        return `· ${who} ${what}${otherStr}`.replace(/\s+/g, " ").trim();
-      })
-      .join("\n");
+    return formatScheduleConflicts(cs, { rows, resources, rooms });
   }
 
   // ── 낙관적 업데이트(렌더 레이턴시 해소) ──
