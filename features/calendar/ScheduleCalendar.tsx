@@ -37,6 +37,7 @@ import { CalendarViewTabs } from "./CalendarViewTabs";
 import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
 import { formatScheduleConflicts } from "@/lib/domain/conflict-messages";
 import { companionPaneSeed, primaryPaneSeed } from "@/lib/domain/calendar-panes";
+import { axisCompanionTimezone, resourceTimezoneKey, resourceTimezoneOf, type ResourceTimezoneOverrides } from "@/lib/domain/resource-timezone";
 import type { CalendarViewPreset } from "@/types";
 import { exportNodeAsImage } from "@/lib/export";
 import { useTacoStore } from "@/lib/store";
@@ -408,35 +409,35 @@ export function ScheduleCalendar() {
     const created = await createViewPreset.mutateAsync(input);
     setActivePresetId(Number(created.id));
   };
-  // 학생 개별 시차(피드백 2026-07-03 #1): 학생 스플릿 컬럼은 그 학생의 국가 시간으로 자동 표시.
-  //  전역/표별 국가를 명시 선택하면 그것이 우선(renderTimeGrid에서 그리드 tz가 컬럼 tz를 덮음).
-  const studentTzOf = (id?: number): CountryInfo | undefined => {
-    if (id == null) return undefined;
-    if (id in studentTzOverride) {
-      const ov = studentTzOverride[id]; // null = KST 고정(임시)
-      return ov && ov.tz !== KST_TZ ? ov : undefined;
-    }
-    const st = allStudents.find((x) => Number(x.id) === id);
-    const c = st?.country ? countryByCode(st.country) : undefined;
-    return c && c.tz !== KST_TZ ? c : undefined;
+  const resourcesByType = useMemo(() => {
+    const out = new Map<string, ScheduleResource>();
+    for (const r of resources?.instructors ?? []) out.set(resourceTimezoneKey("instructor", Number(r.id)), r);
+    for (const r of resources?.students ?? []) out.set(resourceTimezoneKey("student", Number(r.id)), r);
+    for (const r of resources?.rooms ?? []) out.set(resourceTimezoneKey("room", Number(r.id)), r);
+    return out;
+  }, [resources]);
+  // 유저/리소스 공통 시차(피드백 2026-07-09): 학생만이 아니라 강사도 동일 resolver/override를 사용한다.
+  const [resourceTzOverride, setResourceTzOverride] = useState<ResourceTimezoneOverrides>({});
+  const resourceTzFor = (type?: SplitDim, id?: number): CountryInfo | undefined => {
+    if (!type || type === "subject" || id == null) return undefined;
+    return resourceTimezoneOf(resourcesByType.get(resourceTimezoneKey(type, Number(id))), resourceTzOverride);
   };
-  // [피드백 2026-07-03 #3] 학생별 시차 수동 변경(뷰 전용 임시 — 저장은 유저 카드의 국가 수정).
-  //  'id in map' = 오버라이드 존재(paneCountry와 동일 패턴 — 함수 통일), 값 null = KST 고정.
-  const [studentTzOverride, setStudentTzOverride] = useState<Record<number, CountryInfo | null>>({});
   // [오류4 2026-07-06] x/y = 국기 버튼 뷰포트 좌표 — 팝오버를 fixed로 띄워 컬럼 overflow-hidden
   //  클리핑·옆 컬럼 가림에서 탈출(항상 최상위). 클릭 시점 좌표 고정(스크롤 시 재클릭).
-  const [tzPickerFor, setTzPickerFor] = useState<{ colKey: string; studentId: number; x: number; y: number } | null>(null);
+  const [tzPickerFor, setTzPickerFor] = useState<{ colKey: string; type: Exclude<SplitDim, "subject">; id: number; x: number; y: number } | null>(null);
 
-  // 학생 필터에 해외(비KR) 학생 포함 여부 — 개별 시차 컬럼도 조회 ±1일 확장이 필요(날짜 밀림).
-  const anyStudentColTz = useMemo(
-    () => [...fStudents].some((id) => studentTzOf(id) != null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- studentTzOf는 allStudents·override 파생
-    [fStudents, allStudents, studentTzOverride],
+  // 필터에 해외(비KR) owner가 포함되면 조회 ±1일 확장이 필요(날짜 밀림). 학생/강사 공통.
+  const anyResourceColTz = useMemo(
+    () => [...fStudents].some((id) => resourceTzFor("student", id) != null)
+      || [...fInstructors].some((id) => resourceTzFor("instructor", id) != null)
+      || [...fRooms].some((id) => resourceTzFor("room", id) != null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resourceTzFor는 resourcesByType·override 파생
+    [fStudents, fInstructors, fRooms, resourcesByType, resourceTzOverride],
   );
   const anyTzActive = (country != null && country.tz !== KST_TZ)
     || Object.values(paneCountry).some((c) => c != null && c.tz !== KST_TZ)
     || Object.values(paneCountryU).some((c) => c != null && c.tz !== KST_TZ)
-    || anyStudentColTz;
+    || anyResourceColTz;
   // 국가 필터 모집단: 그 국가 학생 id 집합(country 미지정 학생은 KR로 간주 — 국내 기본).
   //  'US-W'(서부)는 학생 country 'US'와 매칭(대표 tz만 다른 동일 국가).
   const countryStudentIds = useMemo(() => {
@@ -644,7 +645,7 @@ export function ScheduleCalendar() {
     setManualPanes([]);
     setPaneCountryU({});
     setPaneModesU({});
-    setStudentTzOverride({});
+    setResourceTzOverride({});
     setActivePresetId(null);
   };
 
@@ -709,7 +710,7 @@ export function ScheduleCalendar() {
     key: string; label: string; sub?: string; date: string; roomId?: number;
     noRoom?: boolean; // 일간 '미지정' 컬럼(강의실 없는 세션)
     resType?: SplitDim; resId?: number; firstOfDate?: boolean;
-    tzc?: CountryInfo; // 학생 개별 시차(country 파생 — 피드백 2026-07-03 #1)
+    tzc?: CountryInfo; // owner 개별 시차(country/timeZone 파생 — 학생·강사 공통)
   };
   // [이슈1 2026-07-03] paneDates: 표(패널)별 날짜 배열 — 왼쪽 3일·오른쪽 5일처럼 표마다 기간을 다르게.
   //  미지정 시 전역 dates 사용(기존 동작).
@@ -718,7 +719,7 @@ export function ScheduleCalendar() {
       key: prefix + c.key, label: c.label,
       sub: view === "week" || period ? `${WD[weekdayOf(c.date)]} ${c.date.slice(5)}` : undefined,
       date: c.date, roomId: c.roomId, resType: c.resType, resId: c.resId, firstOfDate: c.firstOfDate,
-      tzc: c.resType === "student" ? studentTzOf(c.resId) : undefined,
+      tzc: c.resType && c.resType !== "subject" ? resourceTzFor(c.resType, c.resId) : undefined,
     }));
   // 표별 날짜 = 그 표의 캘린더 범위(from~to, 최대 14일). 미설정이면 전역 dates.
   const paneDatesOf = (dim: SplitDim): string[] => {
@@ -741,8 +742,8 @@ export function ScheduleCalendar() {
         ]
       : dates.map((d) => ({ key: d, label: WD[weekdayOf(d)], sub: d.slice(5), date: d })),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- colsFor는 view/dates/period/anchor 클로저(아래 deps로 충분)
-    // studentTzOverride·allStudents: 학생 컬럼 개별 시차(자동 국가·수동 변경)가 컬럼 tzc에 반영되므로 필수
-    [singleSplitPicks, view, rooms, anchor, dates, period, studentTzOverride, allStudents]);
+    // resourceTzOverride·resourcesByType: owner 컬럼 개별 시차(자동 국가·수동 변경)가 컬럼 tzc에 반영되므로 필수
+    [singleSplitPicks, view, rooms, anchor, dates, period, resourceTzOverride, resourcesByType]);
 
   const picksForManualPane = (mp: ManualPaneState): MixedPick[] => {
     const opts =
@@ -766,10 +767,10 @@ export function ScheduleCalendar() {
 
   const autoTzStudentPanes = useMemo(() => {
     if (manualPanes.length || view === "month" || studPicks.length < 2) return [];
-    const tzKeys = new Set(studPicks.map((p) => studentTzOf(p.id)?.tz ?? KST_TZ));
-    return tzKeys.size > 1 ? studPicks.map((p) => ({ pick: p, country: studentTzOf(p.id) ?? null })) : [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- studentTzOf는 allStudents·override 파생
-  }, [manualPanes.length, view, studPicks, allStudents, studentTzOverride]);
+    const tzKeys = new Set(studPicks.map((p) => resourceTzFor("student", p.id)?.tz ?? KST_TZ));
+    return tzKeys.size > 1 ? studPicks.map((p) => ({ pick: p, country: resourceTzFor("student", p.id) ?? null })) : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resourceTzFor는 resourcesByType·override 파생
+  }, [manualPanes.length, view, studPicks, resourcesByType, resourceTzOverride]);
 
   const rowsOfColumn = (c: Col, src: ScheduleRow[] = filtered) =>
     src.filter(
@@ -1594,8 +1595,12 @@ export function ScheduleCalendar() {
     // 텍스트 밀도 단계(서브열 폭 기준) — 단일 함수 densityOf(lib/domain/lantiv, vitest)로 통일(R2)
     const textMode = densityOf(subW, isSplitGrid);
     const minCol = subW;
+    const axisTzc = kstFixed ? axisCompanionTimezone(cols.map((c) => c.tzc), tzc) : undefined;
+    const axisDate = cols[0]?.date ?? todayISO();
     const gutterTitle = kstFixed
-      ? "모든 표가 KST 기준 00~24시 축으로 정렬됩니다. 해외 현지 시각은 수업 칩에 병기됩니다."
+      ? axisTzc
+        ? `모든 표가 KST 기준 00~24시 축으로 정렬됩니다. 시간축 아래에는 ${axisTzc.name} 현지 시각을 병기합니다.`
+        : "모든 표가 KST 기준 00~24시 축으로 정렬됩니다. 해외 현지 시각은 컬럼 헤더와 수업 칩에 병기됩니다."
       : tzActive && tzc
         ? `${tzc.name} 현지 시각 축입니다.`
         : anyColTz
@@ -1622,9 +1627,9 @@ export function ScheduleCalendar() {
                           {i < endH - startH ? (
                             <span className="inline-flex flex-col items-end leading-none">
                               <span>KST {pad(startH + i)}:00</span>
-                              {kstFixed && tzc && tzc.tz !== KST_TZ && (
+                              {axisTzc && (
                                 <span className="text-[8px] text-fg-subtle">
-                                  ({tzc.name}: {fromMin(((startH + i) * 60 + tzOffsetFromKst(tzc.tz, cols[0]?.date ?? todayISO()) + 1440) % 1440)})
+                                  ({axisTzc.name}: {fromMin(((startH + i) * 60 + tzOffsetFromKst(axisTzc.tz, axisDate) + 1440) % 1440)})
                                 </span>
                               )}
                             </span>
@@ -1721,15 +1726,15 @@ export function ScheduleCalendar() {
                                       ＋
                                     </button>
                                   )}
-                                  {/* [피드백 #3] 학생 컬럼 시차 수동 변경 — 국기(현재 tz)/🌐(KST) 클릭 = 픽커 */}
-                                  {!tzActive && c.resType === "student" && c.resId != null && (
+                                  {/* [2I] owner 컬럼 시차 수동 변경 — 학생/강사 공통. 국기(현재 tz)/🌐(KST) 클릭 = 픽커 */}
+                                  {!tzActive && (c.resType === "student" || c.resType === "instructor") && c.resId != null && (
                                     <button
                                       className="shrink-0 hover:opacity-70 text-caption leading-none px-0.5 py-0.5 -my-0.5"
-                                      title={`${c.label} 컬럼 시차 변경(보기 전용 임시)`}
+                                      title={`${c.label} 컬럼 시차 변경`}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         const b = (e.currentTarget as HTMLElement).getBoundingClientRect(); // [오류4] fixed 좌표
-                                        setTzPickerFor((prev) => (prev?.colKey === c.key ? null : { colKey: c.key, studentId: c.resId!, x: b.left, y: b.bottom }));
+                                        setTzPickerFor((prev) => (prev?.colKey === c.key ? null : { colKey: c.key, type: c.resType as Exclude<SplitDim, "subject">, id: c.resId!, x: b.left, y: b.bottom }));
                                       }}
                                     >
                                       {c.tzc ? c.tzc.flag : "🌐"}
@@ -1747,22 +1752,23 @@ export function ScheduleCalendar() {
                                       className="input h-7 w-full text-micro"
                                       autoFocus
                                       value={
-                                        tzPickerFor.studentId in studentTzOverride
-                                          ? (studentTzOverride[tzPickerFor.studentId]?.code ?? "KST")
+                                        resourceTimezoneKey(tzPickerFor.type, tzPickerFor.id) in resourceTzOverride
+                                          ? (resourceTzOverride[resourceTimezoneKey(tzPickerFor.type, tzPickerFor.id)]?.code ?? "KST")
                                           : "AUTO"
                                       }
                                       onChange={(e) => {
                                         const v = e.target.value;
-                                        setStudentTzOverride((prev) => {
+                                        setResourceTzOverride((prev) => {
+                                          const key = resourceTimezoneKey(tzPickerFor.type, tzPickerFor.id);
                                           const n = { ...prev };
-                                          if (v === "AUTO") delete n[tzPickerFor.studentId]; // 자동 = 학생 국가
-                                          else n[tzPickerFor.studentId] = v === "KST" ? null : (countryByCode(v) ?? null);
+                                          if (v === "AUTO") delete n[key]; // 자동 = owner resource metadata
+                                          else n[key] = v === "KST" ? null : (countryByCode(v) ?? null);
                                           return n;
                                         });
                                         setTzPickerFor(null);
                                       }}
                                     >
-                                      <option value="AUTO">자동 — 학생 국가 기준</option>
+                                      <option value="AUTO">자동 — 유저 국가 기준</option>
                                       <option value="KST">🇰🇷 한국 시간(KST) 고정</option>
                                       {COUNTRIES.filter((x) => x.code !== "KR").map((x) => (
                                         <option key={x.code} value={x.code}>{x.flag} {x.name}</option>
@@ -2320,7 +2326,7 @@ export function ScheduleCalendar() {
                         onChange={(patch) => { if (patch.ids) setFStudents(new Set(patch.ids)); }}
                         onRemove={() => setFStudents((prev) => { const n = new Set(prev); n.delete(pick.id); return n; })}
                         headerExtra={
-                          <CountryInput compact value={studentCountry} onSelect={(c) => setStudentTzOverride((prev) => ({ ...prev, [pick.id]: c }))} placeholder="🌐 국가" />
+                          <CountryInput compact value={studentCountry} onSelect={(c) => setResourceTzOverride((prev) => ({ ...prev, [resourceTimezoneKey("student", pick.id)]: c }))} placeholder="🌐 국가" />
                         }
                       >
                         {renderTimeGrid(colsFor([pick], `tzs${pick.id}|`), studentCountry, paneModes.student, w, autoTzPanesAxis)}
