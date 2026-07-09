@@ -2,6 +2,7 @@
 import { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { useTacoStore } from "@/lib/store";
@@ -18,6 +19,7 @@ const DEMO = [
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
+  const queryClient = useQueryClient();
   const setCurrentRole = useTacoStore((s) => s.setCurrentRole);
   const clearRoleOverride = useTacoStore((s) => s.clearRoleOverride); // [임시/실험용] 새 로그인 시 오버라이드 해제
   const [webId, setWebId] = useState("");
@@ -35,6 +37,7 @@ function LoginForm() {
       setToken(res.accessToken);
       clearRoleOverride(); // [임시/실험용] 이전 세션의 역할 오버라이드 무시하고 실제 계정 역할로
       setCurrentRole(res.account.role as AccountRole);
+      queryClient.clear(); // 로그인 계정/권한 변경 — 이전 역할의 서버 캐시 폐기
       router.replace(params.get("redirect") || "/");
     } catch (e) {
       const ax = e as { response?: { data?: { message?: string } } };

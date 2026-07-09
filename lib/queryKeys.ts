@@ -15,7 +15,7 @@ export const qk = {
     everything: () => ["availability", "all"] as const,
   },
   rooms: { all: () => ["rooms"] as const },
-  scheduleRequests: { all: ["scheduleRequests"] as const, list: () => ["scheduleRequests", "list"] as const },
+  scheduleRequests: { all: ["scheduleRequests"] as const, list: (scope = "global") => ["scheduleRequests", "list", scope] as const },
   payouts: {
     all: ["payouts"] as const,
     list: () => ["payouts", "list"] as const,

@@ -110,7 +110,7 @@ export const useMyPayoutPreview = (from: string, to: string) => {
 // [TBO-16 #9] 수업 요청 — 승인센터·배지(tasks)·캘린더가 **같은 queryKey를 구독**(단일 이벤트 객체).
 //  서버가 역할별 스코프 적용(강사=본인 요청만) — 클라 필터 불요.
 export const useScheduleRequests = () =>
-  useQuery({ queryKey: qk.scheduleRequests.list(), queryFn: () => api.scheduleRequests.list() });
+  useQuery({ queryKey: qk.scheduleRequests.list(tokenScopeKey()), queryFn: () => api.scheduleRequests.list() });
 export const useCounselForms = () => useQuery({ queryKey: qk.counsel.forms(), queryFn: () => api.counsel.forms() });
 export const useCounselRounds = () => useQuery({ queryKey: qk.counsel.rounds(), queryFn: () => api.counsel.rounds() });
 export const useAcademyEvents = () => useQuery({ queryKey: qk.events.list(), queryFn: () => api.events.list() });

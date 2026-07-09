@@ -32,7 +32,11 @@ export default function Topbar() {
   // 로그인 여부(토큰 존재) — 클라이언트에서만 판단(SSR 불일치 방지).
   const [loggedIn, setLoggedIn] = useState(false);
   useEffect(() => { setLoggedIn(!!currentClaims()); }, []);
-  const logout = () => { clearToken(); router.replace('/login'); };
+  const logout = () => {
+    clearToken();
+    queryClient.clear(); // 다음 로그인 사용자가 이전 역할의 scoped cache를 보지 않도록 정리
+    router.replace('/login');
+  };
 
   // ─────────────────────────────────────────────────────────────────────────
   // [임시/실험용 — 나중에 제거] 역할 전환.
