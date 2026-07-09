@@ -14,7 +14,22 @@ import {
   type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick, densityOf, expandAxis,
   MODE_FILTERS, MODE_FILTER_LABEL, type SessionModeFilter,
   matchesSubjectFilter, SUBJECT_KIND_OPTIONS } from "@/lib/domain/lantiv";
-import { useAttendance, useStudents, useEnrollments, useCourses, useSubjects, useCreateViewPreset, useUpdateViewPreset, useScheduleRequests, useCalendarSchedule, useRooms, useScheduleResources, useAllAvailability } from "@/lib/queries";
+import {
+  invalidateScheduleRequests,
+  upsertScheduleRequestCache,
+  useAttendance,
+  useStudents,
+  useEnrollments,
+  useCourses,
+  useSubjects,
+  useCreateViewPreset,
+  useUpdateViewPreset,
+  useScheduleRequests,
+  useCalendarSchedule,
+  useRooms,
+  useScheduleResources,
+  useAllAvailability,
+} from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
 import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, kstPatchTimes, type CountryInfo, type TzShiftedRow, splitKstBand } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
@@ -25,6 +40,7 @@ import type { CalendarViewPreset } from "@/types";
 import { exportNodeAsImage } from "@/lib/export";
 import { useTacoStore } from "@/lib/store";
 import { usePersistedState } from "@/lib/usePersistedState";
+import { booleanPreferenceCodec, enumPreferenceCodec, preferenceKeys } from "@/lib/storage/preferences";
 import { isAdmin, roleLabel } from "@/lib/roles";
 import { currentClaims, myInstructorId as loginInstructorId } from "@/lib/auth";
 import { ResourcePanel } from "./ResourcePanel";
@@ -141,9 +157,13 @@ const AVAILABILITY_KIND_LABEL: Record<AvailabilityBlock["kind"] | "online_only",
 };
 
 export function ScheduleCalendar() {
-  // [C-2 2026-07-06] 뷰 프리셋(월/주/일·색 기준·열 좁게)만 localStorage 복원 — 새로고침에도 유지.
+  // [C-2 2026-07-06] 뷰 프리셋(월/주/일·색 기준·열 좁게)만 typed preference로 복원 — 새로고침에도 유지.
   //  anchor(기준일)는 항상 오늘로 시작(과거 날짜 고정 방지). 내용 필터(Set)는 후속(setCodec)으로 확장.
-  const [view, setView] = usePersistedState<View>("taco.cal.view", "week");
+  const [view, setView] = usePersistedState<View>(
+    preferenceKeys.calendarView,
+    "week",
+    enumPreferenceCodec<View>(["month", "week", "day"]),
+  );
   const [anchor, setAnchor] = useState(todayISO());
   // [TBO-21 B2] 현재시각선은 new Date()를 렌더 중 계산 → SSR HTML과 클라 하이드레이션 시각이 달라
   //  React #418(hydration text mismatch)이 났다. mount 후에만 렌더해 서버·클라 첫 렌더를 일치시킴.
@@ -208,7 +228,11 @@ export function ScheduleCalendar() {
 
   // ── 필터(Lantiv형) ──
   const [q, setQ] = useState("");
-  const [colorBy, setColorBy] = usePersistedState<ColorBy>("taco.cal.colorBy", "subject");
+  const [colorBy, setColorBy] = usePersistedState<ColorBy>(
+    preferenceKeys.calendarColorBy,
+    "subject",
+    enumPreferenceCodec<ColorBy>(["subject", "instructor", "room", "student"]),
+  );
   const [fInstructors, setFInstructors] = useState<Set<number>>(new Set());
   const [fSubjects, setFSubjects] = useState<Set<string>>(new Set());
   const [fRooms, setFRooms] = useState<Set<number>>(new Set());
@@ -236,7 +260,11 @@ export function ScheduleCalendar() {
   //  그리드 축(dates)·조회(range=min~max)·리스트/시수(filtered 날짜 술어)가 같은 집합을 쓴다(모집단 단일).
   const [pickedDates, setPickedDates] = useState<string[]>([]);
   // [B-5 2026-07-06] 컴팩트 열 토글(대표 지적 1·3) — 하루 열 128px 고정이 두 표 스플릿에서 과폭.
-  const [compactCols, setCompactCols] = usePersistedState<boolean>("taco.cal.compactCols", false);
+  const [compactCols, setCompactCols] = usePersistedState<boolean>(
+    preferenceKeys.calendarCompactCols,
+    false,
+    booleanPreferenceCodec,
+  );
   const [paneRange, setPaneRange] = useState<Partial<Record<SplitDim, { from: string; to: string }>>>({});
   // [B-3 #5] 표별 cherry-pick 날짜(불연속 집합, 최대 14) — 설정 시 paneRange(연속 범위)보다 우선.
   const [panePicked, setPanePicked] = useState<Partial<Record<SplitDim, string[]>>>({});
@@ -304,7 +332,11 @@ export function ScheduleCalendar() {
   const [country, setCountry] = useState<CountryInfo | null>(null);
   // [KST 고정 축 2026-07-07] on=모든 컬럼을 KST 위치로 그림(같은 가로선=같은 실제 순간, 비교 최적).
   //  해외 컬럼은 칩에 현지시각 병기. off=컬럼별 현지 시각(자연스러움). 시차 편집·변환은 off일 때만.
-  const [kstFixed, setKstFixed] = usePersistedState<boolean>("taco.cal.kstFixed", true);
+  const [kstFixed, setKstFixed] = usePersistedState<boolean>(
+    preferenceKeys.calendarKstFixed,
+    true,
+    booleanPreferenceCodec,
+  );
   useEffect(() => { if (!kstFixed) setKstFixed(true); }, [kstFixed, setKstFixed]);
   const [paneCountry, setPaneCountry] = useState<Partial<Record<SplitDim, CountryInfo | null>>>({});
   const paneTzOf = (dim: SplitDim) => (dim in paneCountry ? (paneCountry[dim] ?? null) : country);
@@ -810,11 +842,12 @@ export function ScheduleCalendar() {
             availabilityEffectiveTo: draft.body.effectiveTo,
           };
     try {
-      await api.scheduleRequests.create(input);
+      const created = await api.scheduleRequests.create(input);
+      upsertScheduleRequestCache(qc, created.row);
       setAvailabilityApproval(null);
       setCreating(null);
       reloadSelBlocks();
-      qc.invalidateQueries({ queryKey: qk.scheduleRequests.all });
+      await invalidateScheduleRequests(qc);
       setMsg("승인 요청을 보냈습니다 — 승인센터에서 처리됩니다.");
     } catch (e) {
       const serverMsg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
@@ -1056,9 +1089,10 @@ export function ScheduleCalendar() {
       mode: merged.mode,
     };
     try {
-      await api.scheduleRequests.create(body);
+      const created = await api.scheduleRequests.create(body);
+      upsertScheduleRequestCache(qc, created.row);
       setScheduleChangeApproval(null);
-      qc.invalidateQueries({ queryKey: qk.scheduleRequests.all });
+      await invalidateScheduleRequests(qc);
       setMsg("수업 변경 승인 요청을 보냈습니다 — 승인센터에서 처리됩니다.");
     } catch (e) {
       const serverMsg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
@@ -1095,15 +1129,16 @@ export function ScheduleCalendar() {
   async function createSession(body: ScheduleCreateBody) {
     if (isInstructor) {
       try {
-        await api.scheduleRequests.create({
+        const created = await api.scheduleRequests.create({
           courseId: body.courseId, instructorId: myInstructorId ?? body.instructorId, roomId: body.roomId,
           sessionDate: body.sessionDate, startTime: body.startTime, endTime: body.endTime,
           durationMinutes: body.durationMinutes, studentIds: body.studentIds, topic: body.topic, kind: body.kind,
           mode: body.mode, // [C2D] 수업방식 보존 — 승인 시 세션 mode로 반영
         });
+        upsertScheduleRequestCache(qc, created.row);
         setCreating(null);
         setMsg("승인 요청을 보냈습니다 — 매니저 승인 시 캘린더에 반영됩니다.");
-        qc.invalidateQueries({ queryKey: qk.scheduleRequests.all }); // 배지·승인센터 동일 모집단 갱신
+        await invalidateScheduleRequests(qc); // 배지·승인센터 동일 모집단 갱신
       } catch (e) {
         const err = e as { response?: { data?: { message?: string } } };
         setMsg(err.response?.data?.message ?? "요청 실패 — 입력을 확인하세요");

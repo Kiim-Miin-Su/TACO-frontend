@@ -183,7 +183,7 @@ export const http = axios.create({
 });
 
 // 모든 API 요청/응답/에러를 한 곳에서 로깅 — 문제 발생 시 콘솔에서 어떤 호출이 실패했는지 즉시 확인.
-// (브라우저 콘솔에서 [TACO:api] 로 필터. 끄려면 localStorage taco_debug="0")
+// (브라우저 콘솔에서 [TACO:api] 로 필터. 운영 debug 플래그는 lib/storage/preferences에서 관리)
 const apiLog = logger("api");
 // [R3 2026-07-06] network 계측 — 요청 개수·시작 시각(응답에서 duration 산출). PII·바디 미기록.
 let reqSeq = 0;

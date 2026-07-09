@@ -3,8 +3,8 @@
 //  - 쓰기(useMutation)는 Q3에서 도메인별로 추가하며 성공 시 관련 queryKey를 invalidate한다.
 //  - buildTasks/navBadges/lib.reports 등 "여러 도메인 slice"가 필요한 로직은 useAppData()로 조립해 넘긴다.
 "use client";
-import { useQuery, useMutation, useQueryClient, type QueryKey } from "@tanstack/react-query";
-import { api, type SessionReport as ApiReport } from "@/lib/api";
+import { useQuery, useMutation, useQueryClient, type QueryClient, type QueryKey } from "@tanstack/react-query";
+import { api, type ScheduleRequestEx, type SessionReport as ApiReport } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useTacoStore } from "@/lib/store";
 import { canAccessFinance, isAdmin } from "@/lib/roles";
@@ -13,14 +13,30 @@ import type { AccountRole, Instructor, SessionReport } from "@/types";
 
 // [TBO-21 B1] 정산 전체 조회는 대표 전용(403). 스토어 currentRole 기본값('super_admin')이 새로고침 직후
 //  JWT 하이드레이트 전에 대표로 잡혀 강사가 /payouts를 호출→403 나던 문제 → **토큰 역할**로 게이트.
-//  currentClaims()는 localStorage 토큰을 읽어 실제 로그인 역할을 즉시 반영(서버선 null→비활성, 쿼리는 클라에서만 실행).
+//  currentClaims()는 현재 쿠키 토큰을 읽어 실제 로그인 역할을 즉시 반영(서버선 null→비활성, 쿼리는 클라에서만 실행).
 const tokenIsAdmin = () => (currentClaims()?.roles ?? []).some((r) => isAdmin(r as AccountRole));
 const tokenCanAccessFinance = () => (currentClaims()?.roles ?? []).some((r) => canAccessFinance(r as AccountRole));
 const tokenIsInstructor = () => (currentClaims()?.roles ?? []).includes("instructor");
-const tokenScopeKey = () => {
+export const tokenScopeKey = () => {
   const c = currentClaims();
   return c ? `${c.sub}:${(c.roles ?? []).join(',')}` : 'anon';
 };
+
+export const scheduleRequestListKey = (scope = tokenScopeKey()) => qk.scheduleRequests.list(scope);
+
+// ScheduleCalendar has a few direct request paths (drag/resize approval modal, availability approval modal).
+// Keep those paths and mutation hooks on the same cache contract so dashboard, approvals, and calendar ghosts
+// all see the created pending request immediately, then reconcile with the backend refetch.
+export function upsertScheduleRequestCache(qc: QueryClient, row?: ScheduleRequestEx, scope = tokenScopeKey()) {
+  if (!row) return;
+  qc.setQueryData<ScheduleRequestEx[]>(scheduleRequestListKey(scope), (prev = []) => {
+    const next = [row, ...prev.filter((r) => r.id !== row.id)];
+    return next.sort((a, b) => b.id - a.id);
+  });
+}
+
+export const invalidateScheduleRequests = (qc: QueryClient) =>
+  qc.invalidateQueries({ queryKey: qk.scheduleRequests.all, refetchType: "all" });
 
 // 백엔드 보고서(draft|submitted|approved|rejected)를 store 모델로 정규화.
 //  approved→'sent'(작성완료 집계) · rejected→'draft'(재작성=미작성 집계). 실제 상태는 approvalStatus에 보존.
@@ -110,7 +126,7 @@ export const useMyPayoutPreview = (from: string, to: string) => {
 // [TBO-16 #9] 수업 요청 — 승인센터·배지(tasks)·캘린더가 **같은 queryKey를 구독**(단일 이벤트 객체).
 //  서버가 역할별 스코프 적용(강사=본인 요청만) — 클라 필터 불요.
 export const useScheduleRequests = () =>
-  useQuery({ queryKey: qk.scheduleRequests.list(tokenScopeKey()), queryFn: () => api.scheduleRequests.list() });
+  useQuery({ queryKey: scheduleRequestListKey(), queryFn: () => api.scheduleRequests.list() });
 export const useCounselForms = () => useQuery({ queryKey: qk.counsel.forms(), queryFn: () => api.counsel.forms() });
 export const useCounselRounds = () => useQuery({ queryKey: qk.counsel.rounds(), queryFn: () => api.counsel.rounds() });
 export const useAcademyEvents = () => useQuery({ queryKey: qk.events.list(), queryFn: () => api.events.list() });
@@ -267,8 +283,16 @@ export const useUpdateSchedule = () =>
 export const useRemoveSchedule = () => useMutation({ mutationFn: api.schedule.remove, onSuccess: useInvalidator([qk.schedule.all, qk.reports.all, qk.payouts.all]) });
 
 // 수업 요청(TBO-16 #9) — 승인 시 세션이 생기므로 schedule도 무효화(참조 무결성 — 캘린더·배지 동시 갱신)
-export const useCreateScheduleRequest = () =>
-  useMutation({ mutationFn: api.scheduleRequests.create, onSuccess: useInvalidator([qk.scheduleRequests.all]) });
+export const useCreateScheduleRequest = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.scheduleRequests.create,
+    onSuccess: (data) => {
+      upsertScheduleRequestCache(qc, data.row);
+      return invalidateScheduleRequests(qc);
+    },
+  });
+};
 export const useApproveScheduleRequest = () =>
   useMutation({
     mutationFn: (v: { id: number; force?: boolean }) => api.scheduleRequests.approve(v.id, v.force),

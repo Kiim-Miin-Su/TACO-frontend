@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTacoStore } from "@/lib/store";
 import { useAppData } from "@/lib/queries";
+import { booleanPreferenceCodec, preferenceKeys, readPreference, writePreference } from "@/lib/storage/preferences";
 import { roleLabel, isCEO, isAdmin, canAccessFinance } from "@/lib/roles";
 import { navBadges } from "@/lib/tasks";
 import { decodeToken, getToken, myInstructorId } from "@/lib/auth";
@@ -87,15 +88,15 @@ export default function Sidebar() {
             : "김민수"; // super_admin / admin
   const identity = { name: tokenName ?? demoName };
 
-  // 좌측 네비 접기/펴기 — 화면 가로 비율 조절. 선택값은 localStorage에 보존.
+  // 좌측 네비 접기/펴기 — 화면 가로 비율 조절. 선택값은 typed preference storage에 보존.
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
-    if (typeof window !== "undefined" && window.localStorage.getItem("sidebarCollapsed") === "1") setCollapsed(true);
+    setCollapsed(readPreference(preferenceKeys.uiSidebarCollapsed, false, booleanPreferenceCodec, { legacyKeys: ["sidebarCollapsed"] }));
   }, []);
   const toggle = () => {
     setCollapsed((v) => {
       const next = !v;
-      if (typeof window !== "undefined") window.localStorage.setItem("sidebarCollapsed", next ? "1" : "0");
+      writePreference(preferenceKeys.uiSidebarCollapsed, next, booleanPreferenceCodec);
       return next;
     });
   };

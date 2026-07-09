@@ -1,26 +1,21 @@
 "use client";
 // [참조/처리] 국가 자동완성 인풋(피드백 2026-07-02) — 해외 학생 시간표(시차 뷰)·국가 필터 진입점.
 //  - 대표 국가 목록(lib/domain/tz.COUNTRIES)에서 한글/영문/코드 부분일치 자동완성.
-//  - 최근 검색: localStorage('taco.recentCountries', 최대 5) — 포커스 시 우선 노출.
+//  - 최근 검색: preference wrapper('taco.calendar.recentCountries', 최대 5) — 포커스 시 우선 노출.
 //  - 선택 결과는 CountryInfo(코드·IANA tz) 그대로 부모에 전달 — tz 계산은 lib/domain/tz 단일 소스.
 import { useEffect, useRef, useState } from "react";
 import { COUNTRIES, countryByCode, searchCountries, type CountryInfo } from "@/lib/domain/tz";
+import { preferenceKeys, readPreference, stringArrayPreferenceCodec, writePreference } from "@/lib/storage/preferences";
 
-const RECENT_KEY = "taco.recentCountries";
+const countryCodeCodec = stringArrayPreferenceCodec(COUNTRIES.map((x) => x.code));
 
 function loadRecent(): CountryInfo[] {
-  try {
-    const codes: string[] = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
-    return codes.map((c) => COUNTRIES.find((x) => x.code === c)).filter((x): x is CountryInfo => !!x);
-  } catch {
-    return [];
-  }
+  const codes = readPreference(preferenceKeys.recentCountries, [], countryCodeCodec, { legacyKeys: ["taco.recentCountries"] });
+  return codes.map((c) => COUNTRIES.find((x) => x.code === c)).filter((x): x is CountryInfo => !!x);
 }
 function pushRecent(code: string) {
-  try {
-    const codes: string[] = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
-    localStorage.setItem(RECENT_KEY, JSON.stringify([code, ...codes.filter((c) => c !== code)].slice(0, 5)));
-  } catch { /* storage 불가 환경 무시 */ }
+  const codes = readPreference(preferenceKeys.recentCountries, [], countryCodeCodec, { legacyKeys: ["taco.recentCountries"] });
+  writePreference(preferenceKeys.recentCountries, [code, ...codes.filter((c) => c !== code)].slice(0, 5), countryCodeCodec);
 }
 
 /** 국가 표시(국기+이름/코드) 공용 — 학생 테이블·필터 칩 등에서 재사용(감사 M9: 표시 로직 단일화). */

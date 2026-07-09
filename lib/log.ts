@@ -8,17 +8,17 @@
 // 켜고 끄기:
 //  - 개발(NODE_ENV!=="production")에서는 debug까지 전부 출력.
 //  - 운영에서는 warn·error만 출력. 운영에서도 전부 보려면 브라우저 콘솔에서
-//      localStorage.setItem("taco_debug","1")  (끄려면 "0")
+//      localStorage.setItem("taco.debug.enabled","true")  (끄려면 "false")
 // 문제 진단 가이드: docs/logging.md
 // ─────────────────────────────────────────────────────────────
+import { debugPreferenceEnabled } from "@/lib/storage/preferences";
+
 type Level = "debug" | "info" | "warn" | "error";
 const ORDER: Record<Level, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 
 function minLevel(): number {
   if (typeof window !== "undefined") {
-    const f = window.localStorage.getItem("taco_debug");
-    if (f === "1") return ORDER.debug;
-    if (f === "0") return ORDER.warn;
+    if (debugPreferenceEnabled()) return ORDER.debug;
   }
   return process.env.NODE_ENV === "production" ? ORDER.warn : ORDER.debug;
 }

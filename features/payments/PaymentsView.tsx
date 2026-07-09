@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Badge, SectionCard, MonthCalendar, PageHeader, EmptyState, TableWrap } from '@/components/ui';
 import { usePayments, useStudents } from '@/lib/queries';
 import { usePersistedState } from '@/lib/usePersistedState';
+import { enumPreferenceCodec, preferenceKeys } from '@/lib/storage/preferences';
 import { useTacoStore } from '@/lib/store';
 import { canAccessFinance } from '@/lib/roles';
 import { won } from '@/lib/format';
@@ -13,8 +14,12 @@ export function PaymentsView() {
   const finance = canAccessFinance(useTacoStore((s) => s.currentRole));
   const { data: payments = [] } = usePayments();
   const { data: students = [] } = useStudents();
-  // [C-2 2026-07-06] 목록/달력 보기 토글 localStorage 복원(새로고침에도 유지).
-  const [view, setView] = usePersistedState<'list' | 'calendar'>('taco.payments.view', 'list');
+  // [C-2 2026-07-06] 목록/달력 보기 토글 typed preference 복원(새로고침에도 유지).
+  const [view, setView] = usePersistedState<'list' | 'calendar'>(
+    preferenceKeys.paymentsView,
+    'list',
+    enumPreferenceCodec(['list', 'calendar'] as const),
+  );
 
   const nameOf = (id: number) => students.find((s) => s.id === id)?.name ?? '—';
   // 캘린더 표시 기준: 수납 완료=수납일, 미수=등록일(청구 생성일).
