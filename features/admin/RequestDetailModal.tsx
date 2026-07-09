@@ -163,7 +163,7 @@ export function RequestDetailModal({
               ) : isAvailability ? (
                 <>요청 내용 — {AVAILABILITY_KIND_LABEL[targetBlock?.kind ?? r.availabilityKind ?? 'available']}{r.targetAvailabilityId != null ? ` (대상 블록 #${r.targetAvailabilityId})` : ' (신규)'}</>
               ) : (
-                <>요청 내용 — 새 수업</>
+                <>요청 내용 — {r.requestKind === 'session_update' ? `수업 변경${r.targetSessionId != null ? ` (대상 세션 #${r.targetSessionId})` : ''}` : '새 수업'}</>
               )}
             </div>
             {editing ? (

@@ -14,7 +14,7 @@ import {
   type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick, densityOf, expandAxis,
   MODE_FILTERS, MODE_FILTER_LABEL, type SessionModeFilter,
   matchesSubjectFilter, SUBJECT_KIND_OPTIONS } from "@/lib/domain/lantiv";
-import { useAttendance, useStudents, useEnrollments, useCourses, useSubjects, useCreateViewPreset, useScheduleRequests, useCalendarSchedule, useRooms, useScheduleResources, useAllAvailability } from "@/lib/queries";
+import { useAttendance, useStudents, useEnrollments, useCourses, useSubjects, useCreateViewPreset, useUpdateViewPreset, useScheduleRequests, useCalendarSchedule, useRooms, useScheduleResources, useAllAvailability } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
 import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, kstPatchTimes, type CountryInfo, type TzShiftedRow, splitKstBand } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
@@ -43,7 +43,6 @@ const START_H = 0,
   SNAP = 15;
 const HEADER_H = 52; // 요일/강의실 헤더 높이
 const GUTTER_W = 64; // 시간 거터 너비
-const COL_MIN = 128; // 컬럼 최소 너비
 const GRID_MIN = START_H * 60;
 const GRID_H = (END_H - START_H) * HOUR_H;
 // WD/toMin/fromMin/pad는 lib/domain/schedule, PALETTE/STATUS_LABEL은 lib/domain/lantiv에서 import(단일 소스).
@@ -84,12 +83,48 @@ const startMinOf = (r: ScheduleRow) => toMin(r.startTime ?? "09:00");
 // [R-9] 자정 크로스(endTime 미저장·durationMinutes 파생) 대응 — 1440 초과 가능(단일 소스: sessionEndMin)
 const endMinOf = (r: ScheduleRow) => sessionEndMin({ startTime: r.startTime ?? "09:00", endTime: r.endTime, durationMinutes: r.durationMinutes });
 
+// ── 낙관적 업데이트·승인요청 미리보기 공용 helper ──
+// 컴포넌트 바깥에 두어 drag/resize 모달과 실제 patch 적용이 같은 계산을 쓰고, 렌더마다 재생성되지 않게 한다.
+function applyRowPatch(r: ScheduleRow, patch: SchedulePatchBody): ScheduleRow {
+  const next: ScheduleRow = { ...r };
+  if (patch.sessionDate) { next.sessionDate = patch.sessionDate; next.weekday = weekdayOf(patch.sessionDate); }
+  if (patch.startTime) next.startTime = patch.startTime;
+  if (patch.endTime) next.endTime = patch.endTime;
+  if (patch.startTime || patch.endTime) {
+    const s = toMin(next.startTime ?? "00:00");
+    // [R-9] endTime<start = 익일 종료(자정 크로스) — +1440 래핑(BE durationFrom과 동일 규칙)
+    let e = next.endTime ? toMin(next.endTime) : s + next.durationMinutes;
+    if (next.endTime && e < s) e += 1440;
+    next.durationMinutes = Math.max(1, e - s);
+    if (e >= 1440) next.endTime = undefined; // 크로스는 endTime 미보유(durationMinutes 파생 — BE 저장 규칙)
+  }
+  if (patch.durationMinutes != null) {
+    next.durationMinutes = patch.durationMinutes;
+    if (next.startTime && !patch.endTime) {
+      const em = toMin(next.startTime) + patch.durationMinutes;
+      next.endTime = em >= 1440 ? undefined : fromMin(em); // [R-9] 크로스면 파생(무효 'HH:mm' 금지)
+    }
+  }
+  if (patch.roomId !== undefined) next.roomId = patch.roomId;
+  if (patch.instructorId !== undefined) next.instructorId = patch.instructorId;
+  if (patch.status) next.status = patch.status as ScheduleRow["status"];
+  if (patch.color !== undefined) next.color = patch.color;
+  if (patch.memo !== undefined) next.memo = patch.memo;
+  if (patch.studentIds !== undefined) next.studentIds = patch.studentIds;
+  if (patch.courseId !== undefined) next.courseId = patch.courseId;
+  if (patch.topic !== undefined) next.topic = patch.topic;
+  if (patch.kind !== undefined) next.kind = patch.kind;
+  if (patch.mode !== undefined) next.mode = patch.mode;
+  return next;
+}
+
 type View = "month" | "week" | "day";
 type ColorBy = "subject" | "instructor" | "room" | "student";
 type ManualPaneState = { uid: number; dim: SplitDim; ids: number[] };
 type Resizing = { id: number; edge: "top" | "bottom"; startClientY: number; origStart: number; origEnd: number;
   gm: number; gmax: number; tz?: string; dateLocal: string }; // [이슈2] 시차 뷰 리사이즈: 축 경계·tz·현지날짜
 type Pending = { row: ScheduleRow; patch: SchedulePatchBody; label: string };
+type ScheduleChangeApprovalDraft = { row: ScheduleRow; patch: SchedulePatchBody; label: string };
 type AvailabilityImpact = { sessionId: number; sessionDate: string; startTime?: string; endTime?: string; reason?: string };
 type AvailabilityApprovalDraft =
   | { action: "upsert"; body: AvailabilityUpsertBody; impacted: AvailabilityImpact[]; summary: string }
@@ -126,6 +161,7 @@ export function ScheduleCalendar() {
   //  시차 표에서도 미리보기가 그 나라 시간 기준으로 정확히 보인다(종전: 현지 분을 그대로 적용해 KST 표기 오염).
   const [preview, setPreview] = useState<{ id: number; start: number; end: number; dStart: number; dEnd: number } | null>(null);
   const [msg, setMsg] = useState("");
+  const [scheduleChangeApproval, setScheduleChangeApproval] = useState<ScheduleChangeApprovalDraft | null>(null);
   const [availabilityApproval, setAvailabilityApproval] = useState<AvailabilityApprovalDraft | null>(null);
   // 토스트 자동 사라짐(성공·정보 알림이 화면에 계속 남지 않도록)
   useEffect(() => {
@@ -200,7 +236,6 @@ export function ScheduleCalendar() {
   const [pickedDates, setPickedDates] = useState<string[]>([]);
   // [B-5 2026-07-06] 컴팩트 열 토글(대표 지적 1·3) — 하루 열 128px 고정이 두 표 스플릿에서 과폭.
   const [compactCols, setCompactCols] = usePersistedState<boolean>("taco.cal.compactCols", false);
-  const colMinBase = compactCols ? 80 : COL_MIN; // densityOf(subW)가 자동 연동(좁아지면 title→vtitle→color)
   const [paneRange, setPaneRange] = useState<Partial<Record<SplitDim, { from: string; to: string }>>>({});
   // [B-3 #5] 표별 cherry-pick 날짜(불연속 집합, 최대 14) — 설정 시 paneRange(연속 범위)보다 우선.
   const [panePicked, setPanePicked] = useState<Partial<Record<SplitDim, string[]>>>({});
@@ -269,11 +304,13 @@ export function ScheduleCalendar() {
   // [KST 고정 축 2026-07-07] on=모든 컬럼을 KST 위치로 그림(같은 가로선=같은 실제 순간, 비교 최적).
   //  해외 컬럼은 칩에 현지시각 병기. off=컬럼별 현지 시각(자연스러움). 시차 편집·변환은 off일 때만.
   const [kstFixed, setKstFixed] = usePersistedState<boolean>("taco.cal.kstFixed", true);
+  useEffect(() => { if (!kstFixed) setKstFixed(true); }, [kstFixed, setKstFixed]);
   const [paneCountry, setPaneCountry] = useState<Partial<Record<SplitDim, CountryInfo | null>>>({});
   const paneTzOf = (dim: SplitDim) => (dim in paneCountry ? (paneCountry[dim] ?? null) : country);
   // ── 뷰 프리셋(TBO-12 P1) — DB 자산(calendar_view_presets). 직렬화는 lib/domain/presets 단일 소스 ──
   const [activePresetId, setActivePresetId] = useState<number | null>(null);
   const createViewPreset = useCreateViewPreset();
+  const updateViewPreset = useUpdateViewPreset();
   const applyPreset = (p: CalendarViewPreset) => {
     const st = presetToState(p);
     setView(st.view); setPeriod(st.period); setQ(st.q); setColorBy(st.colorBy as ColorBy);
@@ -283,7 +320,7 @@ export function ScheduleCalendar() {
     SUBJECT_KIND_OPTIONS.forEach((o) => { if (st.fKinds.has(o.kind)) subj.add(o.value); });
     setFSubjects(subj); setFStatuses(st.fStatuses); setFModes(st.fModes); setGroupOnly(st.groupOnly);
     setCountry(st.country); setPaneCountry(st.paneCountry);
-    if (typeof st.kstFixed === "boolean") setKstFixed(st.kstFixed);
+    if (typeof st.kstFixed === "boolean") setKstFixed(true);
     if (typeof st.compactCols === "boolean") setCompactCols(st.compactCols);
     if (st.manualPanes) {
       const restored = st.manualPanes.map((mp) => ({ uid: mp.uid ?? paneUidRef.current++, dim: mp.dim, ids: mp.ids }));
@@ -300,8 +337,8 @@ export function ScheduleCalendar() {
     setActivePresetId(Number(p.id));
     setMsg(`프리셋 적용 — ${p.name}`);
   };
-  const saveCurrentPreset = async (name: string) => {
-    await createViewPreset.mutateAsync(serializeViewPreset(name, {
+  const saveCurrentPreset = async (name: string, updateId?: number) => {
+    const input = serializeViewPreset(name, {
       view, period, q, colorBy, fInstructors, fStudents, fRooms, fSubjects, fStatuses,
       // [오류2] kinds 필드 = 과목 유사 옵션(진단고사/상담) 역직렬화 — 구 스키마로 라운드트립
       fKinds: new Set(SUBJECT_KIND_OPTIONS.filter((o) => fSubjects.has(o.value)).map((o) => o.kind)),
@@ -313,7 +350,14 @@ export function ScheduleCalendar() {
         country: paneCountryU[mp.uid] ?? null,
         modes: new Set(paneModesU[mp.uid] ?? []),
       })),
-    }));
+    });
+    if (updateId != null) {
+      const updated = await updateViewPreset.mutateAsync({ id: updateId, input });
+      setActivePresetId(Number(updated.id));
+      return;
+    }
+    const created = await createViewPreset.mutateAsync(input);
+    setActivePresetId(Number(created.id));
   };
   // 학생 개별 시차(피드백 2026-07-03 #1): 학생 스플릿 컬럼은 그 학생의 국가 시간으로 자동 표시.
   //  전역/표별 국가를 명시 선택하면 그것이 우선(renderTimeGrid에서 그리드 tz가 컬럼 tz를 덮음).
@@ -977,34 +1021,6 @@ export function ScheduleCalendar() {
 
   // ── 낙관적 업데이트(렌더 레이턴시 해소) ──
   // 프론트에서 먼저 화면을 반영하고, 백엔드 응답으로 확정(load)하거나 실패 시 스냅샷으로 롤백.
-  function applyRowPatch(r: ScheduleRow, patch: SchedulePatchBody): ScheduleRow {
-    const next: ScheduleRow = { ...r };
-    if (patch.sessionDate) { next.sessionDate = patch.sessionDate; next.weekday = weekdayOf(patch.sessionDate); }
-    if (patch.startTime) next.startTime = patch.startTime;
-    if (patch.endTime) next.endTime = patch.endTime;
-    if (patch.startTime || patch.endTime) {
-      const s = toMin(next.startTime ?? "00:00");
-      // [R-9] endTime<start = 익일 종료(자정 크로스) — +1440 래핑(BE durationFrom과 동일 규칙)
-      let e = next.endTime ? toMin(next.endTime) : s + next.durationMinutes;
-      if (next.endTime && e < s) e += 1440;
-      next.durationMinutes = Math.max(1, e - s);
-      if (e >= 1440) next.endTime = undefined; // 크로스는 endTime 미보유(durationMinutes 파생 — BE 저장 규칙)
-    }
-    if (patch.durationMinutes != null) {
-      next.durationMinutes = patch.durationMinutes;
-      if (next.startTime && !patch.endTime) {
-        const em = toMin(next.startTime) + patch.durationMinutes;
-        next.endTime = em >= 1440 ? undefined : fromMin(em); // [R-9] 크로스면 파생(무효 'HH:mm' 금지)
-      }
-    }
-    if (patch.roomId !== undefined) next.roomId = patch.roomId;
-    if (patch.instructorId !== undefined) next.instructorId = patch.instructorId;
-    if (patch.status) next.status = patch.status as ScheduleRow["status"];
-    if (patch.color !== undefined) next.color = patch.color;
-    if (patch.memo !== undefined) next.memo = patch.memo;
-    return next;
-  }
-
   // ── PATCH 적용(낙관적 + 충돌 시 확인 후 force) ──
   async function applyPatch(id: number, patch: SchedulePatchBody) {
     const snapshot = rows;
@@ -1035,10 +1051,39 @@ export function ScheduleCalendar() {
 
   function requestChange(r: ScheduleRow, patch: SchedulePatchBody, label: string) {
     // [TBO-16 #8] 수업 변경은 manager 이상(BE 403) — 강사는 요청·가용/불가만
-    if (isInstructor) { setMsg("수업 변경은 매니저 승인이 필요합니다 — 새 수업은 '+ 추가'로 요청하세요."); return; }
+    if (isInstructor) { setScheduleChangeApproval({ row: r, patch, label }); return; }
     // [M5] SessionEditFields가 이미 scope를 골라 보냈으면 RecurrencePrompt 재질문 생략(이중 질문 방지)
     if (r.seriesId != null && !("scope" in patch)) setPending({ row: r, patch, label });
     else applyPatch(r.id, patch);
+  }
+
+  async function submitScheduleChangeApproval(draft: ScheduleChangeApprovalDraft) {
+    const merged = applyRowPatch(draft.row, draft.patch);
+    const body: CreateScheduleRequestBody = {
+      requestKind: "session_update",
+      targetSessionId: draft.row.id,
+      courseId: merged.courseId,
+      instructorId: merged.instructorId,
+      roomId: merged.roomId,
+      sessionDate: merged.sessionDate,
+      startTime: merged.startTime,
+      endTime: merged.endTime,
+      durationMinutes: merged.durationMinutes,
+      studentIds: merged.studentIds,
+      topic: merged.topic,
+      kind: merged.kind,
+      mode: merged.mode,
+    };
+    try {
+      await api.scheduleRequests.create(body);
+      setScheduleChangeApproval(null);
+      qc.invalidateQueries({ queryKey: qk.scheduleRequests.all });
+      setMsg("수업 변경 승인 요청을 보냈습니다 — 승인센터에서 처리됩니다.");
+    } catch (e) {
+      const serverMsg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      const detail = Array.isArray(serverMsg) ? serverMsg[0] : serverMsg;
+      setMsg(`요청 실패${detail ? ` — ${detail}` : ""}`);
+    }
   }
 
   // 낙관적 생성용 임시 행(음수 id) — resources에서 라벨 파생. load()로 곧 서버 행으로 교체됨.
@@ -1466,15 +1511,15 @@ export function ScheduleCalendar() {
       return shifted;
     };
     const isSplitGrid = cols[0]?.resType != null;
-    // 데일리 스플릿(피드백 최종): **요일 열 폭은 주간과 동일(COL_MIN 고정)**, 그 안을 인원수로
+    // 데일리 스플릿(피드백 최종): 요일 열을 컨테이너 폭에 맞춰 압축하고, 그 안을 인원수로
     //  서브분할(같은 크기 요일 열을 늘리는 게 아님 — 컴팩트). 일수가 적으면 flex로 화면을 채움.
     const dayCount = isSplitGrid ? new Set(cols.map((c) => c.date)).size : cols.length;
     const perDay = isSplitGrid ? Math.max(1, Math.round(cols.length / Math.max(1, dayCount))) : 1;
-    // [TBO-22 C1] 일별 컬럼은 넓은 화면에서는 컨테이너를 채우고, 좁은 화면에서만 최소폭 기반
-    //  overflow를 허용한다. 이전 max colMinBase 캡은 주간 표 오른쪽에 빈 공간을 만들었다.
+    // [C3] 일별 컬럼은 표 개수·날짜 수가 늘어도 한 화면 비교가 되도록 최소폭만 남기고 압축한다.
     const netW = Math.max(80, (availW ?? mainW) - GUTTER_W - 10);
     const fitDayW = Math.floor(netW / Math.max(1, dayCount));
-    const dayW = Math.max(24 * perDay, colMinBase, fitDayW);
+    const minDayW = compactCols ? 18 * perDay : 24 * perDay;
+    const dayW = Math.max(minDayW, fitDayW);
     const subW = isSplitGrid ? Math.max(24, Math.floor(dayW / perDay)) : Math.max(24, dayW);
     // 텍스트 밀도 단계(서브열 폭 기준) — 단일 함수 densityOf(lib/domain/lantiv, vitest)로 통일(R2)
     const textMode = densityOf(subW, isSplitGrid);
@@ -1487,7 +1532,7 @@ export function ScheduleCalendar() {
           ? "컬럼마다 현지 시각 축입니다."
           : "한국 표준시 축입니다.";
     return (
-              <div className="card overflow-x-auto">
+              <div className="card overflow-hidden">
                 <div className="flex" /* [고정폭] minWidth 강제 제거 — 스크롤 없음 */>
                   {/* 시간 거터 */}
                   <div className="shrink-0 sticky left-0 z-10 bg-canvas" style={{ width: GUTTER_W }}>
@@ -1504,7 +1549,16 @@ export function ScheduleCalendar() {
                           className="absolute right-2 text-micro text-fg-subtle mono"
                           style={{ top: i * HOUR_H - 7 }}
                         >
-                          {i < endH - startH ? `${pad(startH + i)}:00` : ""}
+                          {i < endH - startH ? (
+                            <span className="inline-flex flex-col items-end leading-none">
+                              <span>KST {pad(startH + i)}:00</span>
+                              {kstFixed && tzc && tzc.tz !== KST_TZ && (
+                                <span className="text-[8px] text-fg-subtle">
+                                  ({tzc.name}: {fromMin(((startH + i) * 60 + tzOffsetFromKst(tzc.tz, cols[0]?.date ?? todayISO()) + 1440) % 1440)})
+                                </span>
+                              )}
+                            </span>
+                          ) : ""}
                         </span>
                       ))}
                     </div>
@@ -2002,13 +2056,12 @@ export function ScheduleCalendar() {
             {/* 국가 시차 뷰(전역): 선택 시 그 국가 학생 세션 필터 + 그리드가 그 나라 시간으로 — PNG로 그대로 추출 */}
             <CountryInput value={country} onSelect={setCountry} />
             {/* [KST 고정 축] 여러 시차를 나란히 비교할 때 — 모든 컬럼을 KST 위치로(같은 가로선=같은 순간). 해외 칩엔 현지시각 병기 */}
-            <button
-              className={`btn btn-sm ${kstFixed ? "badge-accent" : ""}`}
-              onClick={() => setKstFixed((v) => !v)}
-              title="KST 고정 축 — 모든 컬럼을 한국시간 위치로 그려 시차 간 '같은 순간'을 세로로 정렬(해외 컬럼은 칩에 현지시각 병기). 끄면 컬럼별 현지시각 표시."
+            <span
+              className="badge badge-accent text-caption"
+              title="모든 표는 KST 00~24시 기준으로 고정됩니다. 해외 표는 시간 라벨 아래에 현지 시각을 병기합니다."
             >
-              🇰🇷 KST 고정{kstFixed ? " ✓" : ""}
-            </button>
+              🇰🇷 KST 기준
+            </span>
             {anyTzActive && (
               <span
                 className="badge text-caption"
@@ -2166,9 +2219,9 @@ export function ScheduleCalendar() {
             ) : autoTzStudentPanes.length > 0 ? (
               /* [TBO-22 C1] 다중 시차 학생 비교 — 날짜 안 서브컬럼 대신 학생별 표를 우측으로 분리.
                  모든 표는 00-24 KST 공통 축을 쓰고, 해외 표는 칩에 현지시각을 병기한다. */
-              <div className="flex gap-3 items-start pb-1 overflow-x-auto">
+              <div className="flex gap-3 items-start pb-1 overflow-hidden">
                 {instPicks.length > 0 && (
-                  <div className="shrink-0" style={{ width: Math.max(360, (mainW - 16) / (autoTzStudentPanes.length + 1)) }}>
+                  <div className="min-w-0" style={{ width: Math.max(120, (mainW - 12 * autoTzStudentPanes.length) / (autoTzStudentPanes.length + 1)) }}>
                     <CalendarSplitPane
                       pane={{ uid: 900001, dim: "instructor", ids: instPicks.map((x) => x.id) }}
                       fixedDim
@@ -2178,14 +2231,15 @@ export function ScheduleCalendar() {
                       onRemove={() => setClosedPanes((prev) => new Set(prev).add("instructor"))}
                       headerExtra={<CountryInput compact value={paneTzOf("instructor")} onSelect={(c) => setPaneCountry((prev) => ({ ...prev, instructor: c }))} placeholder="🌐 국가" />}
                     >
-                      {renderTimeGrid(colsFor(instPicks, "tzinst|"), paneTzOf("instructor"), paneModes.instructor, Math.max(360, (mainW - 16) / (autoTzStudentPanes.length + 1)), autoTzPanesAxis)}
+                      {renderTimeGrid(colsFor(instPicks, "tzinst|"), paneTzOf("instructor"), paneModes.instructor, Math.max(120, (mainW - 12 * autoTzStudentPanes.length) / (autoTzStudentPanes.length + 1)), autoTzPanesAxis)}
                     </CalendarSplitPane>
                   </div>
                 )}
                 {autoTzStudentPanes.map(({ pick, country: studentCountry }) => {
-                  const w = Math.max(360, (mainW - 16) / (autoTzStudentPanes.length + (instPicks.length ? 1 : 0)));
+                  const paneCount = autoTzStudentPanes.length + (instPicks.length ? 1 : 0);
+                  const w = Math.max(120, (mainW - 12 * Math.max(0, paneCount - 1)) / Math.max(1, paneCount));
                   return (
-                    <div key={pick.id} className="shrink-0" style={{ width: w }}>
+                    <div key={pick.id} className="min-w-0" style={{ width: w }}>
                       <CalendarSplitPane
                         pane={{ uid: 910000 + pick.id, dim: "student", ids: [pick.id] }}
                         fixedDim
@@ -2206,11 +2260,12 @@ export function ScheduleCalendar() {
             ) : manualPanes.length > 0 ? (
               /* [#2 2026-07-06] 수동 표 빌더 — 임의 차원(강사·학생·강의실·과목) 조합·동일차원 2표 허용.
                  [TBO-22 C1] 기존 기본 뷰를 왼쪽에 유지하고, 수동 표를 우측에 추가한다. */
-              <div className="flex gap-3 items-start pb-1 overflow-x-auto">
+              <div className="flex gap-3 items-start pb-1 overflow-hidden">
                 {(() => {
-                  const w = Math.max(360, (mainW - 16) / (manualPanes.length + 1));
+                  const paneCount = manualPanes.length + 1;
+                  const w = Math.max(120, (mainW - 12 * Math.max(0, paneCount - 1)) / paneCount);
                   return (
-                    <div className="shrink-0" style={{ width: w }}>
+                    <div className="min-w-0" style={{ width: w }}>
                       <div className="flex items-center gap-1.5 mb-1 px-0.5">
                         <span className="text-caption font-semibold text-fg-muted px-1">기본 뷰</span>
                         <span className="text-caption text-fg-muted truncate flex-1">현재 필터와 기간 유지</span>
@@ -2221,9 +2276,10 @@ export function ScheduleCalendar() {
                 })()}
                 {manualPanes.map((mp) => {
                   const picks = picksForManualPane(mp);
-                  const w = Math.max(360, (mainW - 16) / (manualPanes.length + 1));
+                  const paneCount = manualPanes.length + 1;
+                  const w = Math.max(120, (mainW - 12 * Math.max(0, paneCount - 1)) / paneCount);
                   return (
-                    <div key={mp.uid} className="shrink-0" style={{ width: w }}>
+                    <div key={mp.uid} className="min-w-0" style={{ width: w }}>
                       <CalendarSplitPane
                         pane={{ uid: mp.uid, dim: mp.dim, ids: mp.ids }}
                         resources={resources}
@@ -2256,7 +2312,7 @@ export function ScheduleCalendar() {
               </div>
             ) : twoPanes ? (
               /* 강사+학생 동시 필터 → 표 2개 자동(각 표 = 날짜×선택 데일리 스플릿). ✕=표 닫기(필터 유지) */
-              <div className="flex gap-3 items-start pb-1">{/* [정렬 2026-07-06] 표 자체가 고정폭 fit — wrapper 스크롤 불필요 */}
+              <div className="flex gap-3 items-start pb-1 overflow-hidden">{/* 표 개수에 맞춰 폭을 줄여 한 화면에 유지 */}
                 {panes.map((g) => (
                   <CalendarSplitPane
                     key={g.dim}
@@ -2317,7 +2373,7 @@ export function ScheduleCalendar() {
                       </div>
                     }
                   >
-                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim), paneModes[g.dim], panes.length >= 2 ? Math.max(320, (mainW - 16) / panes.length) : mainW, twoPanesAxis)}
+                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim), paneModes[g.dim], panes.length >= 2 ? Math.max(120, (mainW - 12 * Math.max(0, panes.length - 1)) / panes.length) : mainW, twoPanesAxis)}
                   </CalendarSplitPane>
                 ))}
               </div>
@@ -2505,6 +2561,48 @@ export function ScheduleCalendar() {
           onSubmit={() => submitAvailabilityApproval(availabilityApproval)}
         />
       )}
+      {scheduleChangeApproval && (
+        <ScheduleChangeApprovalModal
+          draft={scheduleChangeApproval}
+          onClose={() => setScheduleChangeApproval(null)}
+          onSubmit={() => submitScheduleChangeApproval(scheduleChangeApproval)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ScheduleChangeApprovalModal({
+  draft, onClose, onSubmit,
+}: {
+  draft: ScheduleChangeApprovalDraft;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const next = applyRowPatch(draft.row, draft.patch);
+  return (
+    <div className="fixed inset-0 z-[55] grid place-items-center p-4 bg-black/35" onClick={onClose}>
+      <div className="card card-pad w-[480px] max-w-[95vw] max-h-[85vh] flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
+        <div className="font-semibold">수업 변경 승인 요청</div>
+        <div className="space-y-3 text-body text-fg-muted">
+          <p>강사는 확정된 수업을 직접 변경할 수 없습니다. 아래 변경안을 승인센터로 보냅니다.</p>
+          <div className="rounded-md border overflow-hidden">
+            <div className="px-3 py-2 text-caption font-medium bg-canvas-subtle">{draft.label}</div>
+            <div className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-1 px-3 py-2 text-caption">
+              <span className="text-fg-subtle">현재</span>
+              <span className="mono">{draft.row.sessionDate} {draft.row.startTime}{draft.row.endTime ? `~${draft.row.endTime}` : ""}</span>
+              <span className="text-fg-subtle">요청</span>
+              <span className="mono">{next.sessionDate} {next.startTime}{next.endTime ? `~${next.endTime}` : ""}</span>
+              <span className="text-fg-subtle">수업</span>
+              <span>{draft.row.courseName} · {draft.row.instructorName}</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-1 shrink-0">
+          <button className="btn btn-sm" onClick={onClose}>취소</button>
+          <button className="btn btn-sm btn-primary" onClick={onSubmit}>승인 요청 보내기</button>
+        </div>
+      </div>
     </div>
   );
 }

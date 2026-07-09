@@ -136,7 +136,13 @@ export function ApprovalsView() {
   // 승인 — 충돌 409면 force 재시도 확인(세션 생성과 동일 규약: 서버 createSession 재검사)
   const onApproveRequest = (r: ScheduleRequestEx) => {
     approveRequest.mutate({ id: r.id }, {
-      onSuccess: () => setRequestMsg(r.requestKind === 'availability_upsert' || r.requestKind === 'availability_delete' ? '승인 — 가용시간 변경이 반영되었습니다.' : '승인 — 캘린더에 세션이 생성되었습니다.'),
+      onSuccess: () => setRequestMsg(
+        r.requestKind === 'availability_upsert' || r.requestKind === 'availability_delete'
+          ? '승인 — 가용시간 변경이 반영되었습니다.'
+          : r.requestKind === 'session_update'
+            ? '승인 — 수업 변경이 캘린더에 반영되었습니다.'
+            : '승인 — 캘린더에 세션이 생성되었습니다.',
+      ),
       onError: (e) => {
         const err = e as { response?: { status?: number } };
         if (err.response?.status === 409 && (!r.requestKind || r.requestKind === 'session_create')) setForceApprove(r.id);
@@ -160,6 +166,7 @@ export function ApprovalsView() {
       return `${AVAILABILITY_KIND_LABEL[r.availabilityKind ?? 'available']} 변경`;
     }
     if (r.requestKind === 'availability_delete') return '가용시간 삭제';
+    if (r.requestKind === 'session_update') return '수업 변경';
     return r.topic ?? courses.find((x) => x.id === r.courseId)?.name ?? '수업';
   };
   const requestWhen = (r: ScheduleRequestEx) => {
@@ -167,6 +174,7 @@ export function ApprovalsView() {
       return `${r.availabilityWeekday != null ? ['일', '월', '화', '수', '목', '금', '토'][r.availabilityWeekday] : '-'} ${r.availabilityStartTime ?? ''}~${r.availabilityEndTime ?? ''}`;
     }
     if (r.requestKind === 'availability_delete') return `블록 #${r.targetAvailabilityId ?? '-'}`;
+    if (r.requestKind === 'session_update') return `${r.sessionDate ?? '-'} ${r.startTime ?? ''}${r.endTime ? `~${r.endTime}` : ''}`;
     return `${r.sessionDate ?? '-'} ${r.startTime ?? ''}${r.endTime ? `~${r.endTime}` : ''}`;
   };
   const requestDetail = (r: ScheduleRequestEx) => {
@@ -174,15 +182,16 @@ export function ApprovalsView() {
       const n = r.impactSessionIds?.length ?? 0;
       return r.changeSummary ?? `영향 수업 ${n}건`;
     }
+    if (r.requestKind === 'session_update') return r.changeSummary ?? `세션 #${r.targetSessionId ?? '-'} 변경`;
     return r.kind && r.kind !== 'class' ? (r.kind === 'level_test' ? '진단고사' : '상담') : '수업';
   };
 
-  // 수업 요청 승인/반려는 BE가 manager 이상 허용(ADMIN_ROLES) — 섹션 컴포넌트로 분리해 재사용.
+  // 수업·가용시간 변경 요청 승인/반려는 BE가 manager 이상 허용(ADMIN_ROLES) — 섹션 컴포넌트로 분리해 재사용.
   const requestsSection = (
-    <SectionCard title={`수업 요청 승인 대기 (${pendingRequests.length})`}>
+    <SectionCard title={`수업·가용시간 변경 요청 승인 대기 (${pendingRequests.length})`}>
       {requestMsg && <div className="px-4 pt-3 text-caption text-accent">{requestMsg}</div>}
       {pendingRequests.length === 0 ? (
-        <EmptyState message="대기 중인 수업 요청이 없습니다. 승인 시 캘린더에 세션이 생성됩니다(충돌 재검사)." />
+        <EmptyState message="대기 중인 수업·가용시간 변경 요청이 없습니다. 승인 시 캘린더와 가용시간에 반영됩니다(충돌 재검사)." />
       ) : (
         <TableWrap minWidth={720}>
         <table className="table">
@@ -207,7 +216,7 @@ export function ApprovalsView() {
       {requestReject != null && (
         <ReasonModal
           mode="input"
-          title="수업 요청 반려 — 사유 필수"
+          title="수업·가용시간 요청 반려 — 사유 필수"
           onClose={() => setRequestReject(null)}
           onSubmit={(reason) => { rejectRequest.mutate({ id: requestReject, reason }); setRequestReject(null); }}
         />
@@ -255,7 +264,7 @@ export function ApprovalsView() {
   // [DESIGN §8] 대기>0 섹션이 위로, 0건 섹션은 하단 축약 스트립 — 빈 카드가 화면을 점유하지 않게.
   // 가입 승인(MemberApprovals)은 자체 페칭 컴포넌트라 정렬 대상에서 제외하고 항상 최상단.
   const sections: { key: string; count: number; node: ReactNode; label: string }[] = [
-    { key: 'requests', count: pendingRequests.length, node: requestsSection, label: '수업 요청' },
+    { key: 'requests', count: pendingRequests.length, node: requestsSection, label: '수업·가용시간 요청' },
     {
       key: 'reports', count: pendingReports.length, label: '수업 보고서',
       node: (
@@ -353,7 +362,7 @@ export function ApprovalsView() {
         </div>
       )}
 
-      <p className="text-caption text-fg-subtle">수업 요청과 보고서는 매니저 이상이 처리하고, 지출·강사 페이·가입 승인은 대표만 처리합니다.</p>
+      <p className="text-caption text-fg-subtle">수업·가용시간 변경 요청과 보고서는 매니저 이상이 처리하고, 지출·강사 페이·가입 승인은 대표만 처리합니다.</p>
 
       {expenseReject != null && (
         <ReasonModal

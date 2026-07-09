@@ -4,7 +4,7 @@
 //  localStorage 아님, 실DB 이관 시 그대로 테이블). 직렬화 규칙은 lib/domain/presets 단일 소스.
 import { useState } from "react";
 import type { CalendarViewPreset } from "@/types";
-import { useViewPresets, useCreateViewPreset, useRemoveViewPreset } from "@/lib/queries";
+import { useViewPresets, useRemoveViewPreset } from "@/lib/queries";
 import { countryByCode } from "@/lib/domain/tz";
 import { PromptModal, ConfirmModal } from "@/components/ui";
 
@@ -13,7 +13,7 @@ export function CalendarViewTabs({
 }: {
   activeId: number | null; // 마지막 적용 프리셋(필터 수동 변경 시 부모가 해제)
   onApply: (p: CalendarViewPreset) => void;
-  onSaveCurrent: (name: string) => Promise<void>; // 부모가 현재 상태 직렬화 후 저장
+  onSaveCurrent: (name: string, updateId?: number) => Promise<void>; // 부모가 현재 상태 직렬화 후 저장/수정
   onMsg: (m: string) => void;
 }) {
   const { data: presets = [] } = useViewPresets();
@@ -29,8 +29,10 @@ export function CalendarViewTabs({
     setSaveOpen(false);
     setBusy(true);
     try {
-      await onSaveCurrent(nm);
-      onMsg(`프리셋 저장됨 — ${nm}`);
+      const active = activeId != null ? presets.find((p) => Number(p.id) === Number(activeId)) : null;
+      const updateId = active && active.name === nm ? Number(active.id) : undefined;
+      await onSaveCurrent(nm, updateId);
+      onMsg(`${updateId ? "프리셋 수정됨" : "프리셋 저장됨"} — ${nm}`);
     } catch (e) {
       const err = e as { response?: { data?: { message?: string } } };
       onMsg(err.response?.data?.message ?? "프리셋 저장 실패");

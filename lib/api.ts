@@ -55,9 +55,10 @@ import type {
 
 export type ScheduleQuery = { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number };
 export type AvailabilityKindEx = AvailabilityKind | "online_only";
-export type ScheduleRequestKindEx = "session_create" | "availability_upsert" | "availability_delete";
+export type ScheduleRequestKindEx = "session_create" | "session_update" | "availability_upsert" | "availability_delete";
 export type ScheduleRequestEx = ScheduleRequest & {
   requestKind?: ScheduleRequestKindEx;
+  targetSessionId?: number;
   targetAvailabilityId?: number;
   availabilityOwnerType?: AvailabilityOwner;
   availabilityOwnerId?: number;
@@ -76,6 +77,7 @@ export type ScheduleRequestEx = ScheduleRequest & {
 };
 export type CreateScheduleRequestBody = Partial<CreateScheduleRequestInput> & {
   requestKind?: ScheduleRequestKindEx;
+  targetSessionId?: number;
   targetAvailabilityId?: number;
   availabilityOwnerType?: AvailabilityOwner;
   availabilityOwnerId?: number;
@@ -111,6 +113,7 @@ export type AvailabilityUpsertBody = {
 export type SchedulePatchBody = {
   sessionDate?: string; startTime?: string; endTime?: string; durationMinutes?: number;
   roomId?: number; instructorId?: number; courseId?: number; status?: string; topic?: string; memo?: string; color?: string;
+  studentIds?: number[];
   kind?: SessionKind; price?: number; // [v0.1.14] 종류·세션 단건 가격
   instructorAttendance?: InstructorAttendanceStatus; // [TBO-19] 강사 출결(매니저 CRUD) — BE PATCH 수용, manager+ 게이트
   clearInstructorAttendance?: boolean; // [TBO-19 Sprint2] 강사 출결 미표시로 초기화(clear)
@@ -284,6 +287,7 @@ export const api = {
   viewPresets: {
     list: () => http.get<CalendarViewPreset[]>("/view-presets").then((r) => r.data),
     create: (input: CreateViewPresetInput) => http.post<CalendarViewPreset>("/view-presets", input).then((r) => r.data),
+    update: (id: number, input: CreateViewPresetInput) => http.patch<CalendarViewPreset>(`/view-presets/${id}`, input).then((r) => r.data),
     remove: (id: number) => http.delete<CalendarViewPreset>(`/view-presets/${id}`).then((r) => r.data),
   },
   // 리포트 템플릿(자산화) — zustand → DB 컬렉션.
