@@ -60,7 +60,7 @@ export function RequestDetailModal({
   const [err, setErr] = useState<string | null>(null);
 
   const isAvailability = r.requestKind === 'availability_upsert' || r.requestKind === 'availability_delete';
-  const editable = r.status === 'pending' && r.requestKind !== 'availability_delete'; // 삭제 요청은 수정 항목 없음(BE 400)
+  const editable = r.status === 'pending' && r.requestKind !== 'availability_delete' && r.requestKind !== 'session_delete'; // 삭제 요청은 수정 항목 없음(BE 400)
   const kindLabel = REQUEST_KIND_LABEL[r.requestKind ?? 'session_create'] ?? '요청';
   const statusLabel = REQUEST_STATUS_LABEL[r.status] ?? r.status;
 
@@ -163,7 +163,7 @@ export function RequestDetailModal({
               ) : isAvailability ? (
                 <>요청 내용 — {AVAILABILITY_KIND_LABEL[targetBlock?.kind ?? r.availabilityKind ?? 'available']}{r.targetAvailabilityId != null ? ` (대상 블록 #${r.targetAvailabilityId})` : ' (신규)'}</>
               ) : (
-                <>요청 내용 — {r.requestKind === 'session_update' ? `수업 변경${r.targetSessionId != null ? ` (대상 세션 #${r.targetSessionId})` : ''}` : '새 수업'}</>
+                <>요청 내용 — {r.requestKind === 'session_delete' ? `수업 삭제${r.targetSessionId != null ? ` (대상 세션 #${r.targetSessionId})` : ''}` : r.requestKind === 'session_update' ? `수업 변경${r.targetSessionId != null ? ` (대상 세션 #${r.targetSessionId})` : ''}` : '새 수업'}</>
               )}
             </div>
             {editing ? (

@@ -142,6 +142,7 @@ type Resizing = { id: number; edge: "top" | "bottom"; startClientY: number; orig
   gm: number; gmax: number; tz?: string; dateLocal: string }; // [이슈2] 시차 뷰 리사이즈: 축 경계·tz·현지날짜
 type Pending = { row: ScheduleRow; patch: SchedulePatchBody; label: string };
 type ScheduleChangeApprovalDraft = { row: ScheduleRow; patch: SchedulePatchBody; label: string };
+type ScheduleDeleteApprovalDraft = { row: ScheduleRow };
 type AvailabilityImpact = { sessionId: number; sessionDate: string; startTime?: string; endTime?: string; reason?: string };
 type AvailabilityApprovalDraft =
   | { action: "upsert"; body: AvailabilityUpsertBody; impacted: AvailabilityImpact[]; summary: string }
@@ -183,6 +184,7 @@ export function ScheduleCalendar() {
   const [preview, setPreview] = useState<{ id: number; start: number; end: number; dStart: number; dEnd: number } | null>(null);
   const [msg, setMsg] = useState("");
   const [scheduleChangeApproval, setScheduleChangeApproval] = useState<ScheduleChangeApprovalDraft | null>(null);
+  const [scheduleDeleteApproval, setScheduleDeleteApproval] = useState<ScheduleDeleteApprovalDraft | null>(null);
   const [availabilityApproval, setAvailabilityApproval] = useState<AvailabilityApprovalDraft | null>(null);
   // 토스트 자동 사라짐(성공·정보 알림이 화면에 계속 남지 않도록)
   useEffect(() => {
@@ -1101,6 +1103,25 @@ export function ScheduleCalendar() {
     }
   }
 
+  async function submitScheduleDeleteApproval(draft: ScheduleDeleteApprovalDraft) {
+    try {
+      const created = await api.scheduleRequests.create({
+        requestKind: "session_delete",
+        targetSessionId: draft.row.id,
+      });
+      upsertScheduleRequestCache(qc, created.row);
+      setScheduleDeleteApproval(null);
+      setEditing(null);
+      setSelEvent(null);
+      await invalidateScheduleRequests(qc);
+      setMsg("수업 삭제 승인 요청을 보냈습니다 — 승인센터에서 처리됩니다.");
+    } catch (e) {
+      const serverMsg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      const detail = Array.isArray(serverMsg) ? serverMsg[0] : serverMsg;
+      setMsg(`삭제 요청 실패${detail ? ` — ${detail}` : ""}`);
+    }
+  }
+
   // 낙관적 생성용 임시 행(음수 id) — resources에서 라벨 파생. load()로 곧 서버 행으로 교체됨.
   function optimisticRow(body: ScheduleCreateBody): ScheduleRow {
     const c = resources?.courses.find((x) => x.id === body.courseId);
@@ -1201,7 +1222,12 @@ export function ScheduleCalendar() {
 
   // 세션 삭제(낙관적). 확인 후 즉시 제거 → 실패 시 롤백.
   async function deleteSession(id: number) {
-    if (isInstructor) { setMsg("수업 삭제는 매니저 권한입니다."); return; } // [TBO-16 #8]
+    if (isInstructor) {
+      const row = rows.find((r) => r.id === id);
+      if (!row) { setMsg("삭제 요청 실패 — 수업을 찾을 수 없습니다."); return; }
+      setScheduleDeleteApproval({ row });
+      return;
+    } // [TBO-16 #8] 강사는 직접 삭제 대신 승인 요청
     if (!confirm("이 스케줄을 삭제할까요? (삭제 내역은 DB에 보존됩니다)")) return;
     const snapshot = rows;
     setRows((rs) => rs.filter((r) => r.id !== id)); // 즉시 반영
@@ -2484,6 +2510,7 @@ export function ScheduleCalendar() {
             canEdit={!!canAdd}
             colorOf={colorOf}
             onPatch={(r, patch, label) => requestChange(r, patch, label)}
+            onDelete={(r) => deleteSession(r.id)}
             onOpenModal={(r) => openEditor(r)}
           />
           </div>
@@ -2584,6 +2611,13 @@ export function ScheduleCalendar() {
           onSubmit={() => submitScheduleChangeApproval(scheduleChangeApproval)}
         />
       )}
+      {scheduleDeleteApproval && (
+        <ScheduleDeleteApprovalModal
+          draft={scheduleDeleteApproval}
+          onClose={() => setScheduleDeleteApproval(null)}
+          onSubmit={() => submitScheduleDeleteApproval(scheduleDeleteApproval)}
+        />
+      )}
     </div>
   );
 }
@@ -2617,6 +2651,41 @@ function ScheduleChangeApprovalModal({
         <div className="flex justify-end gap-2 pt-1 shrink-0">
           <button className="btn btn-sm" onClick={onClose}>취소</button>
           <button className="btn btn-sm btn-primary" onClick={onSubmit}>승인 요청 보내기</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScheduleDeleteApprovalModal({
+  draft, onClose, onSubmit,
+}: {
+  draft: ScheduleDeleteApprovalDraft;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const r = draft.row;
+  return (
+    <div className="fixed inset-0 z-[55] grid place-items-center p-4 bg-black/35" onClick={onClose}>
+      <div className="card card-pad w-[480px] max-w-[95vw] max-h-[85vh] flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
+        <div className="font-semibold">수업 삭제 승인 요청</div>
+        <div className="space-y-3 text-body text-fg-muted">
+          <p>강사는 확정된 수업을 직접 삭제할 수 없습니다. 아래 수업 삭제안을 승인센터로 보냅니다.</p>
+          <div className="rounded-md border overflow-hidden">
+            <div className="px-3 py-2 text-caption font-medium bg-canvas-subtle">삭제 요청 대상</div>
+            <div className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-1 px-3 py-2 text-caption">
+              <span className="text-fg-subtle">일시</span>
+              <span className="mono">{r.sessionDate} {r.startTime}{r.endTime ? `~${r.endTime}` : ""}</span>
+              <span className="text-fg-subtle">수업</span>
+              <span>{r.courseName} · {r.instructorName}</span>
+              <span className="text-fg-subtle">강의실</span>
+              <span>{r.roomName ?? "미지정"}</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-1 shrink-0">
+          <button className="btn btn-sm" onClick={onClose}>취소</button>
+          <button className="btn btn-sm btn-primary" onClick={onSubmit}>삭제 승인 요청 보내기</button>
         </div>
       </div>
     </div>

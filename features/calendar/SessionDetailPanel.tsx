@@ -18,7 +18,7 @@ import { STUDENT_STATUS_LABEL } from "@/lib/domain/students";
 import { ChangeHistory } from "./ChangeHistory"; // [R-6] 변경 이력(audit) — 관리자
 
 export function SessionDetailPanel({
-  row, rooms, instructors, canEdit, colorOf, onPatch, onOpenModal, onPickStudent, onPickInstructor,
+  row, rooms, instructors, canEdit, colorOf, onPatch, onDelete, onOpenModal, onPickStudent, onPickInstructor,
 }: {
   row: ScheduleRow | null;
   rooms: Room[];
@@ -26,6 +26,7 @@ export function SessionDetailPanel({
   canEdit: boolean;
   colorOf: (r: ScheduleRow) => string;
   onPatch: (r: ScheduleRow, patch: SchedulePatchBody, label: string) => void;
+  onDelete?: (r: ScheduleRow) => void;
   onOpenModal: (r: ScheduleRow) => void;
   onPickStudent?: (id: number, name: string) => void; // 학생명 클릭 → 유저 상세·편집(피드백 2026-07-03 #2)
   onPickInstructor?: (id: number, name: string) => void; // 강사 클릭 → 강사 개인 뷰
@@ -69,6 +70,7 @@ export function SessionDetailPanel({
             compact
             onSave={(patch, label) => { setEditing(false); onPatch(row, patch, label); }}
             onCancel={() => setEditing(false)}
+            onDelete={onDelete ? () => onDelete(row) : undefined}
           />
         ) : (
           <>

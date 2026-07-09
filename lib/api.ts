@@ -55,7 +55,7 @@ import type {
 
 export type ScheduleQuery = { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number };
 export type AvailabilityKindEx = AvailabilityKind | "online_only";
-export type ScheduleRequestKindEx = "session_create" | "session_update" | "availability_upsert" | "availability_delete";
+export type ScheduleRequestKindEx = "session_create" | "session_update" | "session_delete" | "availability_upsert" | "availability_delete";
 export type ScheduleRequestEx = ScheduleRequest & {
   requestKind?: ScheduleRequestKindEx;
   targetSessionId?: number;

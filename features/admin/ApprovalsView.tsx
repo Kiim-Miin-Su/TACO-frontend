@@ -24,7 +24,7 @@ import { isAdmin, roleLabel } from '@/lib/roles';
 import { AdminHeader } from './AdminShell';
 import { categoryLabel } from '@/features/expenses/labels';
 import { api, type PendingAccount, type ScheduleRequestEx } from '@/lib/api';
-import { getToken } from '@/lib/auth';
+import { currentClaims, getToken } from '@/lib/auth';
 import { ReasonModal } from '@/components/ReasonModal';
 import { RequestDetailModal } from './RequestDetailModal';
 import type { AccountRole } from '@/types';
@@ -106,6 +106,14 @@ function MemberApprovals() {
 // 승인 센터 = 관리자(매니저 이상). 단 가입 승인은 대표(super_admin) 전용.
 export function ApprovalsView() {
   const currentRole = useTacoStore((s) => s.currentRole);
+  const tokenRoles = currentClaims()?.roles ?? [];
+  const roleForAccess: AccountRole =
+    tokenRoles.includes('super_admin') ? 'super_admin'
+    : tokenRoles.includes('admin') ? 'admin'
+    : tokenRoles.includes('manager') ? 'manager'
+    : tokenRoles.includes('instructor') ? 'instructor'
+    : currentRole;
+  const canManageApprovals = tokenRoles.length > 0 ? isAdmin(roleForAccess) : isAdmin(currentRole);
   const { data: instructors = [] } = useInstructors();
   const { data: expenses = [] } = useExpenses();
   const { data: instructorPayouts = [] } = usePayouts();
@@ -118,7 +126,7 @@ export function ApprovalsView() {
   const approveExpense = useApproveExpense();
   const rejectExpense = useRejectExpense();
   const confirmPayout = useConfirmPayout();
-  const isSuper = currentRole === 'super_admin';
+  const isSuper = tokenRoles.includes('super_admin');
   const instructorName = (id?: number) => id != null ? instructors.find((i) => i.id === id)?.name ?? '—' : '—';
 
   const [expenseReject, setExpenseReject] = useState<number | null>(null);
@@ -141,7 +149,9 @@ export function ApprovalsView() {
           ? '승인 — 가용시간 변경이 반영되었습니다.'
           : r.requestKind === 'session_update'
             ? '승인 — 수업 변경이 캘린더에 반영되었습니다.'
-            : '승인 — 캘린더에 세션이 생성되었습니다.',
+            : r.requestKind === 'session_delete'
+              ? '승인 — 수업이 삭제되었습니다.'
+              : '승인 — 캘린더에 세션이 생성되었습니다.',
       ),
       onError: (e) => {
         const err = e as { response?: { status?: number } };
@@ -167,6 +177,7 @@ export function ApprovalsView() {
     }
     if (r.requestKind === 'availability_delete') return '가용시간 삭제';
     if (r.requestKind === 'session_update') return '수업 변경';
+    if (r.requestKind === 'session_delete') return '수업 삭제';
     return r.topic ?? courses.find((x) => x.id === r.courseId)?.name ?? '수업';
   };
   const requestWhen = (r: ScheduleRequestEx) => {
@@ -175,6 +186,7 @@ export function ApprovalsView() {
     }
     if (r.requestKind === 'availability_delete') return `블록 #${r.targetAvailabilityId ?? '-'}`;
     if (r.requestKind === 'session_update') return `${r.sessionDate ?? '-'} ${r.startTime ?? ''}${r.endTime ? `~${r.endTime}` : ''}`;
+    if (r.requestKind === 'session_delete') return `${r.sessionDate ?? '-'} ${r.startTime ?? ''}${r.endTime ? `~${r.endTime}` : ''}`;
     return `${r.sessionDate ?? '-'} ${r.startTime ?? ''}${r.endTime ? `~${r.endTime}` : ''}`;
   };
   const requestDetail = (r: ScheduleRequestEx) => {
@@ -183,6 +195,7 @@ export function ApprovalsView() {
       return r.changeSummary ?? `영향 수업 ${n}건`;
     }
     if (r.requestKind === 'session_update') return r.changeSummary ?? `세션 #${r.targetSessionId ?? '-'} 변경`;
+    if (r.requestKind === 'session_delete') return r.changeSummary ?? `세션 #${r.targetSessionId ?? '-'} 삭제`;
     return r.kind && r.kind !== 'class' ? (r.kind === 'level_test' ? '진단고사' : '상담') : '수업';
   };
 
@@ -250,12 +263,12 @@ export function ApprovalsView() {
   );
 
   // [TBO-21] 승인 센터 = 관리자(매니저 이상). 지출·페이·가입 승인 액션은 대표(super_admin) 전용.
-  if (!isAdmin(currentRole)) {
+  if (!canManageApprovals) {
     return (
       <div className="p-6 max-w-page mx-auto space-y-6">
         <AdminHeader />
         <div className="card card-pad text-section text-fg-muted">
-          🔒 승인 센터는 <b>관리자</b> 전용입니다. 현재 역할: {roleLabel[currentRole]} — 우측 상단에서 전환하세요.
+          🔒 승인 센터는 <b>관리자</b> 전용입니다. 현재 역할: {roleLabel[roleForAccess]} — 우측 상단에서 전환하세요.
         </div>
       </div>
     );

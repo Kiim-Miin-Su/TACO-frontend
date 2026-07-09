@@ -12,6 +12,8 @@ export const AVAILABILITY_KIND_LABEL: Record<string, string> = {
 
 export const REQUEST_KIND_LABEL: Record<string, string> = {
   session_create: "수업 생성 요청",
+  session_update: "수업 변경 요청",
+  session_delete: "수업 삭제 요청",
   availability_upsert: "가용/불가 변경 요청",
   availability_delete: "가용/불가 삭제 요청",
 };
@@ -26,6 +28,7 @@ export const REQUEST_STATUS_LABEL: Record<string, string> = {
 export const REQUEST_FIELD_LABEL: Record<string, string> = {
   requestKind: "요청 종류", requesterId: "요청자", status: "상태", reason: "사유",
   decidedBy: "처리자", decidedAt: "처리 시각", createdSessionId: "생성 세션",
+  targetSessionId: "대상 수업",
   targetAvailabilityId: "대상 블록", availabilityKind: "종류", availabilityWeekday: "요일",
   availabilityStartTime: "시작", availabilityEndTime: "종료",
   availabilityEffectiveFrom: "적용 시작", availabilityEffectiveTo: "적용 종료",
