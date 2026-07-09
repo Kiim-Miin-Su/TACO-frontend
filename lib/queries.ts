@@ -294,16 +294,32 @@ export const useCreateScheduleRequest = () => {
   });
 };
 export const useApproveScheduleRequest = () =>
-  useMutation({
+  {
+    const qc = useQueryClient();
+    return useMutation({
     mutationFn: (v: { id: number; force?: boolean }) => api.scheduleRequests.approve(v.id, v.force),
     // [C2C-b] audit 프리픽스 무효화 — 상세 모달 '처리 이력'이 승인 직후 즉시 갱신
-    onSuccess: useInvalidator([qk.scheduleRequests.all, qk.schedule.all, qk.availability.all, ["audit"]]),
-  });
+      onSuccess: (data) => {
+        upsertScheduleRequestCache(qc, data.request);
+        qc.invalidateQueries({ queryKey: qk.scheduleRequests.all });
+        qc.invalidateQueries({ queryKey: qk.schedule.all });
+        qc.invalidateQueries({ queryKey: qk.availability.all });
+        qc.invalidateQueries({ queryKey: ["audit"] });
+      },
+    });
+  };
 export const useRejectScheduleRequest = () =>
-  useMutation({
+  {
+    const qc = useQueryClient();
+    return useMutation({
     mutationFn: (v: { id: number; reason: string }) => api.scheduleRequests.reject(v.id, v.reason), // 사유 필수
-    onSuccess: useInvalidator([qk.scheduleRequests.all, ["audit"]]),
-  });
+      onSuccess: (data) => {
+        upsertScheduleRequestCache(qc, data);
+        qc.invalidateQueries({ queryKey: qk.scheduleRequests.all });
+        qc.invalidateQueries({ queryKey: ["audit"] });
+      },
+    });
+  };
 // [C2C-b 청크2] pending 요청 수정(관리자) — 상세 모달 편집. 승인센터·배지·캘린더 고스트 동시 갱신
 export const useUpdateScheduleRequest = () =>
   useMutation({

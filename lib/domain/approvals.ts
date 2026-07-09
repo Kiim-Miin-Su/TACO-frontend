@@ -26,13 +26,20 @@ export const REQUEST_STATUS_LABEL: Record<string, string> = {
 
 // schedule_requests audit diff 라벨(ChangeHistory fieldLabels 병합용)
 export const REQUEST_FIELD_LABEL: Record<string, string> = {
-  requestKind: "요청 종류", requesterId: "요청자", status: "상태", reason: "사유",
+  requestKind: "요청 종류", requesterId: "요청자", status: "상태", requestReason: "요청 사유", reason: "반려 사유",
   decidedBy: "처리자", decidedAt: "처리 시각", createdSessionId: "생성 세션",
   targetSessionId: "대상 수업",
   targetAvailabilityId: "대상 블록", availabilityKind: "종류", availabilityWeekday: "요일",
   availabilityStartTime: "시작", availabilityEndTime: "종료",
   availabilityEffectiveFrom: "적용 시작", availabilityEffectiveTo: "적용 종료",
   impactSessionIds: "영향 수업", changeSummary: "요약",
+  scope: "반복 적용 범위",
+};
+
+export const RECURRENCE_SCOPE_LABEL: Record<string, string> = {
+  this: "이번 수업만",
+  this_and_following: "이번 이후",
+  all: "전체 반복",
 };
 
 export type DiffRow = { label: string; before: string; after: string; changed: boolean };

@@ -50,6 +50,7 @@ import type {
   ScheduleRequest,
   CreateScheduleRequestInput,
   SessionKind,
+  RecurrenceScope,
   InstructorAttendanceStatus,
 } from "@kms545487/contracts";
 
@@ -70,6 +71,8 @@ export type ScheduleRequestEx = ScheduleRequest & {
   availabilityEffectiveTo?: string;
   impactSessionIds?: number[];
   changeSummary?: string;
+  requestReason?: string;
+  scope?: RecurrenceScope;
   mode?: "in_person" | "online"; // [C2D] 요청 단계 수업방식 보존(contracts src 반영·게시 전 로컬 확장)
   // [C2C-b] 상세 모달 표시용 — BE BaseRow가 항상 내려주는 시각(contracts 0.1.16엔 미표기, 로컬 확장)
   createdAt?: string;
@@ -87,6 +90,8 @@ export type CreateScheduleRequestBody = Partial<CreateScheduleRequestInput> & {
   availabilityEndTime?: string;
   availabilityEffectiveFrom?: string;
   availabilityEffectiveTo?: string;
+  requestReason?: string;
+  scope?: RecurrenceScope;
   mode?: "in_person" | "online"; // [C2D] 요청 payload 수업방식(session_create)
 };
 // [C2C-b 청크2] pending 요청 수정(관리자) — 불변 필드(requestKind·target·owner) 제외 부분 패치
@@ -94,6 +99,7 @@ export type UpdateScheduleRequestBody = {
   courseId?: number; instructorId?: number; roomId?: number;
   sessionDate?: string; startTime?: string; endTime?: string; durationMinutes?: number;
   studentIds?: number[]; topic?: string; kind?: SessionKind; mode?: "in_person" | "online";
+  requestReason?: string; scope?: RecurrenceScope;
   availabilityKind?: AvailabilityKindEx; availabilityWeekday?: number;
   availabilityStartTime?: string; availabilityEndTime?: string;
   availabilityEffectiveFrom?: string; availabilityEffectiveTo?: string;

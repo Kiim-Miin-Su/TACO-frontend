@@ -35,6 +35,11 @@ const AVAILABILITY_KIND_LABEL: Record<string, string> = {
   unavailable: '불가시간',
   online_only: '온라인만 가능',
 };
+const RECURRENCE_SCOPE_LABEL: Record<string, string> = {
+  this: '이번 수업만',
+  this_and_following: '이번 이후',
+  all: '전체 반복',
+};
 
 // 가입 승인 대기(백엔드 계정) — 이메일 인증 완료 후 대표가 승인하면 로그인 가능.
 function MemberApprovals() {
@@ -194,7 +199,11 @@ export function ApprovalsView() {
       const n = r.impactSessionIds?.length ?? 0;
       return r.changeSummary ?? `영향 수업 ${n}건`;
     }
-    if (r.requestKind === 'session_update') return r.changeSummary ?? `세션 #${r.targetSessionId ?? '-'} 변경`;
+    if (r.requestKind === 'session_update') {
+      const scope = r.scope ? ` · ${RECURRENCE_SCOPE_LABEL[r.scope] ?? r.scope}` : '';
+      const reason = r.requestReason ? ` · 사유: ${r.requestReason}` : '';
+      return `${r.changeSummary ?? `세션 #${r.targetSessionId ?? '-'} 변경`}${scope}${reason}`;
+    }
     if (r.requestKind === 'session_delete') return r.changeSummary ?? `세션 #${r.targetSessionId ?? '-'} 삭제`;
     return r.kind && r.kind !== 'class' ? (r.kind === 'level_test' ? '진단고사' : '상담') : '수업';
   };

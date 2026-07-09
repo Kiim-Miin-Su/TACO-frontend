@@ -182,6 +182,8 @@ export function CalendarFilterBar({
   pickedDates, onPickDate, onUnpickDate, onClearPicked,
   anyFilter, onClearAll,
   tools,
+  hideResourceFilters,
+  resourceFilterNotice,
 }: {
   /** [압축 2026-07-06] 뷰 도구(열 좁게·뷰 프리셋 등) — 2행 선두 슬롯. 별도 툴바 행 제거용 */
   tools?: React.ReactNode;
@@ -215,6 +217,8 @@ export function CalendarFilterBar({
   onClearPicked: () => void;
   anyFilter: boolean;
   onClearAll: () => void;
+  hideResourceFilters?: boolean;
+  resourceFilterNotice?: React.ReactNode;
 }) {
   const optionsOf = (dim: FilterDim): Option[] =>
     dim === "instructor"
@@ -241,16 +245,20 @@ export function CalendarFilterBar({
     <div className="card card-pad space-y-2">
       {/* 1행: 리소스 다중선택 + 상태/그룹 + 기간 */}
       <div className="flex items-center gap-2 flex-wrap">
-        {(["instructor", "student", "room"] as FilterDim[]).map((dim) => (
-          <MultiPick
-            key={dim}
-            dim={dim}
-            options={optionsOf(dim)}
-            picked={pickedOf(dim)}
-            onToggle={(id) => onToggleId(dim, id)}
-            onClear={() => onClearDim(dim)}
-          />
-        ))}
+        {hideResourceFilters ? (
+          resourceFilterNotice ?? <span className="badge text-micro">스플릿 표에서 리소스 선택</span>
+        ) : (
+          (["instructor", "student", "room"] as FilterDim[]).map((dim) => (
+            <MultiPick
+              key={dim}
+              dim={dim}
+              options={optionsOf(dim)}
+              picked={pickedOf(dim)}
+              onToggle={(id) => onToggleId(dim, id)}
+              onClear={() => onClearDim(dim)}
+            />
+          ))
+        )}
         {/* [일관성 2026-07-06] 과목·상태·종류·유형 전부 리소스 팝오버와 같은 문법(버튼+▾+체크) */}
         <OptionPick icon="📚" label="과목" options={subjectOptions.map((s) => ({ value: s, label: s }))} picked={fSubjects} onToggle={onToggleSubject} onClear={onClearSubjects} />
         <OptionPick icon="✅" label="상태" title="예정/출석/지각/결강/보강 (복수=합집합·빈 선택=전체)"

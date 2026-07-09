@@ -99,18 +99,25 @@ function ResourcePanelImpl({
               return (
                 <div
                   key={`${r.type}-${r.id}`}
-                  className={`w-full flex items-center gap-2 px-2 h-8 rounded text-body cursor-pointer ${inFilter ? "bg-neutral-subtle" : on ? "bg-canvas-subtle" : "hover:bg-canvas-subtle text-fg-muted"}`}
-                  title={inFilter ? "클릭 = 필터에서 제외" : "클릭 = 이 유저로 필터(스플릿·조회 반영)"}
-                  onClick={() => onToggleFilter(tab, Number(r.id))}
+                  className={`w-full flex items-center gap-1 h-8 rounded text-body ${inFilter ? "bg-neutral-subtle" : on ? "bg-canvas-subtle" : "text-fg-muted"}`}
                 >
-                  <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color ?? "var(--color-line)" }} />
-                  <span className={`flex-1 text-left truncate text-fg ${inFilter ? "font-semibold" : ""}`}>{r.name}</span>
-                  {inFilter && <span className="text-accent text-caption font-bold" aria-label="필터 선택됨">✓</span>}
-                  {r.sub && <span className="text-micro text-fg-subtle">{r.sub}</span>}
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 h-8 px-2 rounded flex items-center gap-2 text-left hover:bg-canvas-subtle"
+                    title={inFilter ? "클릭 = 필터에서 제외" : "클릭 = 이 유저로 필터(스플릿·조회 반영)"}
+                    aria-pressed={inFilter}
+                    onClick={() => onToggleFilter(tab, Number(r.id))}
+                  >
+                    <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color ?? "var(--color-line)" }} />
+                    <span className={`flex-1 text-left truncate text-fg ${inFilter ? "font-semibold" : ""}`}>{r.name}</span>
+                    {inFilter && <span className="text-accent text-caption font-bold" aria-label="필터 선택됨">✓</span>}
+                    {r.sub && <span className="text-micro text-fg-subtle shrink-0">{r.sub}</span>}
+                  </button>
                   <button
                     className={`btn btn-sm h-6 px-1.5 text-micro shrink-0 ${on ? "badge-accent" : ""}`}
                     title="상세 카드 열기(뷰는 그대로)"
-                    onClick={(e) => { e.stopPropagation(); onSelect(on ? null : r); }}
+                    type="button"
+                    onClick={() => onSelect(on ? null : r)}
                   >ⓘ</button>
                 </div>
               );

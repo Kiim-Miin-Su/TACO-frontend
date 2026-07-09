@@ -14,7 +14,7 @@ import { ChangeHistory } from '@/features/calendar/ChangeHistory';
 import { useAllAvailability, useSchedule, useRooms, useStudents, useScheduleRequests, useUpdateScheduleRequest } from '@/lib/queries';
 import {
   AVAILABILITY_KIND_LABEL, REQUEST_FIELD_LABEL, REQUEST_KIND_LABEL, REQUEST_STATUS_LABEL,
-  WEEKDAY_LABEL, availabilityRequestDiff, fmtRequestAt,
+  RECURRENCE_SCOPE_LABEL, WEEKDAY_LABEL, availabilityRequestDiff, fmtRequestAt,
 } from '@/lib/domain/approvals';
 import type { ScheduleRequestEx, UpdateScheduleRequestBody } from '@/lib/api';
 
@@ -152,6 +152,7 @@ export function RequestDetailModal({
               </MetaRow>
             )}
             {r.reason && <MetaRow label="반려 사유">{r.reason}</MetaRow>}
+            {r.requestReason && <MetaRow label="요청 사유">{r.requestReason}</MetaRow>}
             {r.changeSummary && <MetaRow label="요약">{r.changeSummary}</MetaRow>}
           </section>
 
@@ -247,6 +248,7 @@ export function RequestDetailModal({
                 <MetaRow label="시간"><span className="mono">{r.startTime ?? '—'}{r.endTime ? `~${r.endTime}` : ''}{r.durationMinutes ? ` (${r.durationMinutes}분)` : ''}</span></MetaRow>
                 <MetaRow label="강의실">{roomName(r.roomId)}</MetaRow>
                 <MetaRow label="종류">{SESSION_KIND_LABEL[r.kind ?? 'class'] ?? r.kind}</MetaRow>
+                {r.scope && <MetaRow label="반복 범위">{RECURRENCE_SCOPE_LABEL[r.scope] ?? r.scope}</MetaRow>}
                 <MetaRow label="수업방식">{(r.mode ?? 'in_person') === 'online' ? '비대면' : '대면'}</MetaRow>
                 <div className="col-span-2"><MetaRow label="학생">{studentNames(r.studentIds)}</MetaRow></div>
                 {r.topic && <div className="col-span-2"><MetaRow label="주제">{r.topic}</MetaRow></div>}

@@ -36,6 +36,7 @@ import { CountryInput } from "./CountryInput";
 import { CalendarViewTabs } from "./CalendarViewTabs";
 import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
 import { formatScheduleConflicts } from "@/lib/domain/conflict-messages";
+import { companionPaneSeed, primaryPaneSeed } from "@/lib/domain/calendar-panes";
 import type { CalendarViewPreset } from "@/types";
 import { exportNodeAsImage } from "@/lib/export";
 import { useTacoStore } from "@/lib/store";
@@ -52,6 +53,7 @@ import { CalendarFilterBar, OptionPick, type Period } from "./CalendarFilterBar"
 import { HelpPopover, PageHeader } from "@/components/ui";
 import { SessionListPanel } from "./SessionListPanel";
 import { SessionDetailPanel } from "./SessionDetailPanel";
+import type { RecurrenceScope } from "@kms545487/contracts";
 
 // ── 그리드 상수 (애플/구글 캘린더 스타일: 넓고 시간 단위가 또렷하게) ──
 const START_H = 0,
@@ -215,8 +217,10 @@ export function ScheduleCalendar() {
   const { data: myRequests = [] } = useScheduleRequests();
   const pendingGhosts = useMemo(() => myRequests.filter((r) => r.status === "pending"), [myRequests]);
   const role = useTacoStore((s) => s.currentRole);
+  const claims = currentClaims();
+  const tokenRoles = claims?.roles ?? [];
   const canManage = isAdmin(role); // 대표/매니저/관리자 — 모든 스케줄 추가
-  const isInstructor = role === "instructor"; // 강사 — 본인 스케줄만 추가
+  const isInstructor = tokenRoles.includes("instructor") && !tokenRoles.some((r) => isAdmin(r as AccountRole)); // 강사 — 본인 스케줄만 추가
   const myInstructorId = isInstructor ? loginInstructorId() ?? undefined : undefined;
   const canAdd = canManage || (isInstructor && myInstructorId != null);
   // start가 있으면 그 시각으로 프리필(빈 곳 더블클릭 — 피드백 2026-07-02 #4).
@@ -280,25 +284,35 @@ export function ScheduleCalendar() {
   const [paneCountryU, setPaneCountryU] = useState<Record<number, CountryInfo | null>>({});
   const [paneModesU, setPaneModesU] = useState<Record<number, Set<SessionModeFilter>>>({});
   const addManualPane = () => {
+    if (!manualPanes.length) {
+      const firstSeed = primaryPaneSeed({
+        instructors: fInstructors,
+        students: fStudents,
+        rooms: fRooms,
+        fallbackInstructorId: myInstructorId,
+      });
+      const secondSeed = companionPaneSeed(firstSeed);
+      const uid1 = paneUidRef.current++;
+      const uid2 = paneUidRef.current++;
+      setManualPanes([
+        { uid: uid1, ...firstSeed },
+        { uid: uid2, ...secondSeed },
+      ]);
+      if (country) setPaneCountryU((cur) => ({ ...cur, [uid1]: country, [uid2]: country }));
+      setFInstructors(new Set());
+      setFStudents(new Set());
+      setFRooms(new Set());
+      return;
+    }
     setManualPanes((prev) => {
-      const last = prev.at(-1);
-      const seed: Omit<ManualPaneState, "uid"> = last
-        ? { dim: last.dim, ids: [...last.ids] }
-        : fInstructors.size
-          ? { dim: "instructor", ids: [...fInstructors] }
-          : fStudents.size
-            ? { dim: "student", ids: [...fStudents] }
-            : fRooms.size
-              ? { dim: "room", ids: [...fRooms] }
-              : { dim: "instructor", ids: [] };
+      const last = prev.at(-1)!;
+      const seed: Omit<ManualPaneState, "uid"> = { dim: last.dim, ids: [...last.ids] };
       const uid = paneUidRef.current++;
-      if (last) {
+      {
         const c = paneCountryU[last.uid] ?? null;
         const modes = paneModesU[last.uid];
         setPaneCountryU((cur) => ({ ...cur, [uid]: c }));
         if (modes) setPaneModesU((cur) => ({ ...cur, [uid]: new Set(modes) }));
-      } else if (country) {
-        setPaneCountryU((cur) => ({ ...cur, [uid]: country }));
       }
       return [...prev, { uid, ...seed }];
     });
@@ -789,6 +803,7 @@ export function ScheduleCalendar() {
     const nonNull = (x: Band | null): x is Band => x != null;
     // 스플릿 서브컬럼 = 그 컬럼 유저의 가용·불가 · 비스플릿 = 선택 유저(selBlocks).
     if (c.resType != null && c.resId != null) {
+      if (c.resType === "subject") return [];
       return allBlocks
         .filter((b) => b.ownerType === c.resType && Number(b.ownerId) === c.resId)
         .map((b) => toBand(b, true)).filter(nonNull);
@@ -804,6 +819,17 @@ export function ScheduleCalendar() {
   const reloadSelBlocks = useCallback(() => {
     qc.invalidateQueries({ queryKey: qk.availability.all });
   }, [qc]);
+
+  const hasAvailabilityLegend = useMemo(() => {
+    if (selected) return selBlocks.length > 0;
+    const hasOwnerBlocks = (dim: SplitDim, ids: number[]) =>
+      dim !== "subject" && ids.some((id) => allBlocks.some((b) => b.ownerType === dim && Number(b.ownerId) === id));
+    if (manualPanes.some((p) => hasOwnerBlocks(p.dim, p.ids))) return true;
+    if (singleSplitPicks.some((p) => hasOwnerBlocks(p.type, [p.id]))) return true;
+    if (panes.some((p) => hasOwnerBlocks(p.dim, p.picks.map((x) => x.id)))) return true;
+    if (autoTzStudentPanes.some(({ pick }) => hasOwnerBlocks("student", [pick.id]))) return true;
+    return instPicks.length > 0 && hasOwnerBlocks("instructor", instPicks.map((x) => x.id));
+  }, [allBlocks, autoTzStudentPanes, instPicks, manualPanes, panes, selected, selBlocks, singleSplitPicks]);
 
   function approvalImpactOf(e: unknown): AvailabilityImpact[] | null {
     const data = (e as { response?: { data?: { approvalRequired?: boolean; impactedSessions?: AvailabilityImpact[] } } })?.response?.data;
@@ -1073,7 +1099,7 @@ export function ScheduleCalendar() {
     else applyPatch(r.id, patch);
   }
 
-  async function submitScheduleChangeApproval(draft: ScheduleChangeApprovalDraft) {
+  async function submitScheduleChangeApproval(draft: ScheduleChangeApprovalDraft, requestReason: string, scope: RecurrenceScope) {
     const merged = applyRowPatch(draft.row, draft.patch);
     const body: CreateScheduleRequestBody = {
       requestKind: "session_update",
@@ -1089,6 +1115,8 @@ export function ScheduleCalendar() {
       topic: merged.topic,
       kind: merged.kind,
       mode: merged.mode,
+      requestReason,
+      scope,
     };
     try {
       const created = await api.scheduleRequests.create(body);
@@ -2031,10 +2059,7 @@ export function ScheduleCalendar() {
   //  각 표가 제 콘텐츠·시차로 축을 따로 잡아 높이가 어긋나던 문제 해소(나란히 비교 가능). 시차 표는 0~24h로
   //  확장되어 union에 반영 = 시차까지 고려한 공통 눈금.
   const manualPanesAxis = manualPanes.length
-    ? unionAxis([
-        computeAxis(columns, country),
-        ...manualPanes.map((mp) => computeAxis(colsFor(picksForManualPane(mp), `m${mp.uid}|`), paneCountryU[mp.uid] ?? null)),
-      ])
+    ? unionAxis(manualPanes.map((mp) => computeAxis(colsFor(picksForManualPane(mp), `m${mp.uid}|`), paneCountryU[mp.uid] ?? null)))
     : undefined;
   const autoTzPanesAxis = autoTzStudentPanes.length
     ? unionAxis([
@@ -2221,14 +2246,19 @@ export function ScheduleCalendar() {
             onClearPicked={() => setPickedDates([])}
             anyFilter={!!anyFilter}
             onClearAll={clearFilters}
+            hideResourceFilters={manualPanes.length > 0}
+            resourceFilterNotice={<span className="badge text-micro">스플릿 모드 · 강사/학생/강의실은 각 표에서 선택</span>}
           />
-          {selected && selBlocks.length > 0 && (
+          {hasAvailabilityLegend && (
             <p className="text-caption text-fg-subtle inline-flex items-center gap-2 flex-wrap">
               <span className="inline-flex items-center gap-1">
                 <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "rgba(26,127,55,.18)", borderLeft: "2px solid var(--color-success)" }} /> 가용
               </span>
               <span className="inline-flex items-center gap-1">
                 <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "repeating-linear-gradient(45deg, rgba(110,118,129,.18) 0 3px, rgba(110,118,129,.3) 3px 6px)" }} /> 불가
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "rgba(9,105,218,.16)", borderLeft: "2px solid var(--color-accent)" }} /> 온라인만 가능
               </span>
               {/* 조작법(클릭·드래그·삭제)은 헤더 ⓘ 팝오버로 이동(DESIGN §5.5) */}
             </p>
@@ -2301,24 +2331,12 @@ export function ScheduleCalendar() {
               </div>
             ) : manualPanes.length > 0 ? (
               /* [#2 2026-07-06] 수동 표 빌더 — 임의 차원(강사·학생·강의실·과목) 조합·동일차원 2표 허용.
-                 [TBO-22 C1] 기존 기본 뷰를 왼쪽에 유지하고, 수동 표를 우측에 추가한다. */
+                 [Chunk 2H] 첫 클릭 시 현재 resource filter를 pane 1로 옮기고 pane 2를 추가한다.
+                 전역 resource filter는 비워서 각 표 헤더가 리소스 선택의 단일 소스가 된다. */
               <div className="flex gap-3 items-start pb-1 overflow-hidden">
-                {(() => {
-                  const paneCount = manualPanes.length + 1;
-                  const w = Math.max(120, (mainW - 12 * Math.max(0, paneCount - 1)) / paneCount);
-                  return (
-                    <div className="min-w-0" style={{ width: w }}>
-                      <div className="flex items-center gap-1.5 mb-1 px-0.5">
-                        <span className="text-caption font-semibold text-fg-muted px-1">기본 뷰</span>
-                        <span className="text-caption text-fg-muted truncate flex-1">현재 필터와 기간 유지</span>
-                      </div>
-                      {renderTimeGrid(columns, country, undefined, w, manualPanesAxis)}
-                    </div>
-                  );
-                })()}
                 {manualPanes.map((mp) => {
                   const picks = picksForManualPane(mp);
-                  const paneCount = manualPanes.length + 1;
+                  const paneCount = manualPanes.length;
                   const w = Math.max(120, (mainW - 12 * Math.max(0, paneCount - 1)) / paneCount);
                   return (
                     <div key={mp.uid} className="min-w-0" style={{ width: w }}>
@@ -2342,7 +2360,6 @@ export function ScheduleCalendar() {
                               picked={(paneModesU[mp.uid] ?? new Set()) as unknown as Set<string>}
                               onToggle={(v) => setPaneModesU((prev) => { const k = v as SessionModeFilter; const cur = new Set(prev[mp.uid] ?? []); if (cur.has(k)) cur.delete(k); else cur.add(k); const n = { ...prev }; if (cur.size) n[mp.uid] = cur; else delete n[mp.uid]; return n; })}
                               onClear={() => setPaneModesU((prev) => { const n = { ...prev }; delete n[mp.uid]; return n; })} />
-                            <CountryInput compact value={paneCountryU[mp.uid] ?? null} onSelect={(c) => setPaneCountryU((prev) => ({ ...prev, [mp.uid]: c }))} placeholder="🌐 국가" />
                           </div>
                         }
                       >
@@ -2432,14 +2449,12 @@ export function ScheduleCalendar() {
 
         {/* 우측 컬럼(Lantiv): 유저별 스케줄(단일 선택) + 수업 리스트(날짜순·그룹 토글) + 선택 수업 상세(DTO) */}
         <div className="w-64 shrink-0 space-y-3 self-start sticky top-4">
-          {/* [피드백 2026-07-03] 우측 리스트 유저 클릭 = 그 유저 스케줄로 뷰 필터(A안 조정 번복).
-              selectResource가 해당 차원 필터(fStudents 등)를 그 1명으로 세팅 → 상단 체크박스와 자동 동기화.
-              카드도 함께 표시(setInfoTarget). 재클릭/해제(null)면 필터·카드 모두 해제. */}
+          {/* 우측 리스트: row 버튼 = 필터 토글, ⓘ 버튼 = 상세 카드만. 두 동작을 분리해 "상세 카드 열기(뷰는 그대로)" 계약을 지킨다. */}
           {resources && (
             <ResourcePanel
               resources={resources}
-              selected={cardTarget}
-              onSelect={(r) => { selectResource(r); setInfoTarget(r); }}
+              selected={infoTarget}
+              onSelect={setInfoTarget}
               filterIds={{ instructor: fInstructors, student: fStudents, room: fRooms }}
               onToggleFilter={(dim, id) => {
                 // 필터바 onToggleId와 동일 로직(단일 소스) — 리스트 클릭 = 필터 선택/해제(UX 제안 2026-07-06)
@@ -2608,7 +2623,7 @@ export function ScheduleCalendar() {
         <ScheduleChangeApprovalModal
           draft={scheduleChangeApproval}
           onClose={() => setScheduleChangeApproval(null)}
-          onSubmit={() => submitScheduleChangeApproval(scheduleChangeApproval)}
+          onSubmit={(requestReason, scope) => submitScheduleChangeApproval(scheduleChangeApproval, requestReason, scope)}
         />
       )}
       {scheduleDeleteApproval && (
@@ -2627,9 +2642,13 @@ function ScheduleChangeApprovalModal({
 }: {
   draft: ScheduleChangeApprovalDraft;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: (requestReason: string, scope: RecurrenceScope) => void;
 }) {
   const next = applyRowPatch(draft.row, draft.patch);
+  const [requestReason, setRequestReason] = useState("");
+  const [scope, setScope] = useState<RecurrenceScope>((draft.patch.scope as RecurrenceScope | undefined) ?? "this");
+  const reason = requestReason.trim();
+  const hasSeries = draft.row.seriesId != null;
   return (
     <div className="fixed inset-0 z-[55] grid place-items-center p-4 bg-black/35" onClick={onClose}>
       <div className="card card-pad w-[480px] max-w-[95vw] max-h-[85vh] flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
@@ -2647,10 +2666,39 @@ function ScheduleChangeApprovalModal({
               <span>{draft.row.courseName} · {draft.row.instructorName}</span>
             </div>
           </div>
+          {hasSeries && (
+            <Field label="반복 적용 범위">
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ["this", "이번 수업만"],
+                  ["this_and_following", "이번 이후"],
+                  ["all", "전체 반복"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`btn btn-sm ${scope === value ? "btn-primary" : ""}`}
+                    onClick={() => setScope(value as RecurrenceScope)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
+          <Field label="요청 사유">
+            <textarea
+              className="input min-h-[96px] resize-y"
+              value={requestReason}
+              onChange={(e) => setRequestReason(e.target.value)}
+              maxLength={500}
+              placeholder="예: 학부모 요청으로 이번 수업 시간을 30분 늦춰야 합니다."
+            />
+          </Field>
         </div>
         <div className="flex justify-end gap-2 pt-1 shrink-0">
           <button className="btn btn-sm" onClick={onClose}>취소</button>
-          <button className="btn btn-sm btn-primary" onClick={onSubmit}>승인 요청 보내기</button>
+          <button className="btn btn-sm btn-primary" disabled={!reason} onClick={() => onSubmit(reason, hasSeries ? scope : "this")}>승인 요청 보내기</button>
         </div>
       </div>
     </div>
