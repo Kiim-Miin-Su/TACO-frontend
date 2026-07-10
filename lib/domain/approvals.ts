@@ -116,3 +116,18 @@ export function requestStatusHelp(status?: string, reason?: string): string {
   if (status === "pending") return "관리자 검토 대기 중입니다.";
   return "요청 상태를 확인할 수 없습니다.";
 }
+
+export type ApprovalDetailKind = "report" | "expense" | "payout";
+export type ApprovalDetailAction = "approve" | "reject";
+
+export function approvalDetailTitle(kind: ApprovalDetailKind, id: number): string {
+  if (kind === "report") return `수업 보고서 #${id}`;
+  if (kind === "expense") return `지출 요청 #${id}`;
+  return `강사 페이 #${id}`;
+}
+
+export function approvalDetailActionLabel(kind: ApprovalDetailKind, action: ApprovalDetailAction): string {
+  if (action === "reject") return "반려";
+  if (kind === "payout") return "승인";
+  return "승인";
+}

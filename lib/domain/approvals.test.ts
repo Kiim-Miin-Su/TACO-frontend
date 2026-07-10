@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availabilityRequestDiff, requestStatusHelp, requestStatusTone } from "./approvals";
+import { approvalDetailActionLabel, approvalDetailTitle, availabilityRequestDiff, requestStatusHelp, requestStatusTone } from "./approvals";
 
 const block = { kind: "available", weekday: 3, startTime: "14:00", endTime: "20:00" };
 
@@ -61,5 +61,19 @@ describe("requester-facing request status helpers", () => {
     expect(requestStatusHelp("pending")).toContain("검토 대기");
     expect(requestStatusHelp("approved")).toContain("반영");
     expect(requestStatusHelp("rejected", "시간 충돌")).toContain("시간 충돌");
+  });
+});
+
+describe("approval list detail helpers", () => {
+  it("builds stable detail modal titles for non-schedule approval lists", () => {
+    expect(approvalDetailTitle("report", 3)).toBe("수업 보고서 #3");
+    expect(approvalDetailTitle("expense", 7)).toBe("지출 요청 #7");
+    expect(approvalDetailTitle("payout", 11)).toBe("강사 페이 #11");
+  });
+
+  it("keeps action labels explicit for modal buttons", () => {
+    expect(approvalDetailActionLabel("report", "approve")).toBe("승인");
+    expect(approvalDetailActionLabel("expense", "reject")).toBe("반려");
+    expect(approvalDetailActionLabel("payout", "approve")).toBe("승인");
   });
 });

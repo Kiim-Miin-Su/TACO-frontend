@@ -15,6 +15,7 @@ import {
   useApproveExpense,
   useRejectExpense,
   useConfirmPayout,
+  useRejectPayout,
   useScheduleRequests,
   useApproveScheduleRequest,
   useRejectScheduleRequest,
@@ -27,6 +28,7 @@ import { api, type PendingAccount, type ScheduleRequestEx } from '@/lib/api';
 import { currentClaims, getToken } from '@/lib/auth';
 import { ReasonModal } from '@/components/ReasonModal';
 import { RequestDetailModal } from './RequestDetailModal';
+import { ApprovalItemDetailModal, type ApprovalDetailItem } from './ApprovalItemDetailModal';
 import type { AccountRole } from '@/types';
 
 const ROLE_OPTS: AccountRole[] = ['instructor', 'manager', 'admin', 'super_admin'];
@@ -131,10 +133,14 @@ export function ApprovalsView() {
   const approveExpense = useApproveExpense();
   const rejectExpense = useRejectExpense();
   const confirmPayout = useConfirmPayout();
+  const rejectPayout = useRejectPayout();
   const isSuper = tokenRoles.includes('super_admin');
   const instructorName = (id?: number) => id != null ? instructors.find((i) => i.id === id)?.name ?? '—' : '—';
 
+  const [reportReject, setReportReject] = useState<number | null>(null);
   const [expenseReject, setExpenseReject] = useState<number | null>(null);
+  const [payoutReject, setPayoutReject] = useState<number | null>(null);
+  const [detailItem, setDetailItem] = useState<ApprovalDetailItem | null>(null);
   // ── 수업 요청(TBO-16 #9) — 배지(lib/tasks)와 같은 useScheduleRequests 모집단(단일 구독) ──
   const { data: scheduleRequests = [] } = useScheduleRequests();
   const approveRequest = useApproveScheduleRequest();
@@ -206,6 +212,18 @@ export function ApprovalsView() {
     }
     if (r.requestKind === 'session_delete') return r.changeSummary ?? `세션 #${r.targetSessionId ?? '-'} 삭제`;
     return r.kind && r.kind !== 'class' ? (r.kind === 'level_test' ? '진단고사' : '상담') : '수업';
+  };
+  const approveDetailItem = (item: ApprovalDetailItem) => {
+    setDetailItem(null);
+    if (item.kind === 'report') approveReport.mutate({ id: item.row.id });
+    else if (item.kind === 'expense') approveExpense.mutate(item.row.id);
+    else confirmPayout.mutate(item.row.id);
+  };
+  const rejectDetailItem = (item: ApprovalDetailItem) => {
+    setDetailItem(null);
+    if (item.kind === 'report') setReportReject(item.row.id);
+    else if (item.kind === 'expense') setExpenseReject(item.row.id);
+    else setPayoutReject(item.row.id);
   };
 
   // 수업·가용시간 변경 요청 승인/반려는 BE가 manager 이상 허용(ADMIN_ROLES) — 섹션 컴포넌트로 분리해 재사용.
@@ -296,14 +314,14 @@ export function ApprovalsView() {
             <thead><tr><th>강사</th><th>학생</th><th>수업</th><th>내용</th><th className="text-right"></th></tr></thead>
             <tbody>
               {pendingReports.map((r) => (
-                <tr key={r.id}>
+                <tr key={r.id} data-testid={`approval-report-row-${r.id}`} className="cursor-pointer hover:bg-canvas-subtle" onClick={() => setDetailItem({ kind: 'report', row: r })} title="클릭 — 보고서 상세">
                   <td className="font-medium">{instructorName(r.instructorId)}</td>
                   <td>{studentName(r.studentId)}</td>
                   <td className="text-fg-muted">{sessionInfo(r.sessionId)}</td>
                   <td className="text-fg-muted max-w-[280px] truncate" title={r.content}>{r.content || '—'}</td>
                   <td className="text-right whitespace-nowrap">
-                    <button className="btn btn-sm btn-primary mr-1.5" onClick={() => approveReport.mutate({ id: r.id })}>승인</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => rejectReport.mutate({ id: r.id })}>반려</button>
+                    <button className="btn btn-sm btn-primary mr-1.5" onClick={(e) => { e.stopPropagation(); approveReport.mutate({ id: r.id }); }}>승인</button>
+                    <button className="btn btn-sm btn-danger" onClick={(e) => { e.stopPropagation(); setReportReject(r.id); }}>반려</button>
                   </td>
                 </tr>
               ))}
@@ -322,14 +340,14 @@ export function ApprovalsView() {
             <thead><tr><th>항목</th><th>분류</th><th className="text-right">금액</th><th>지출일</th><th></th></tr></thead>
             <tbody>
               {pendingExpenses.map((e) => (
-                <tr key={e.id}>
+                <tr key={e.id} data-testid={`approval-expense-row-${e.id}`} className="cursor-pointer hover:bg-canvas-subtle" onClick={() => setDetailItem({ kind: 'expense', row: e })} title="클릭 — 지출 상세">
                   <td className="font-medium">{e.title}</td>
                   <td className="text-fg-muted">{categoryLabel[e.category]}</td>
                   <td className="text-right mono">{won(e.amount)}</td>
                   <td className="mono text-fg-muted">{e.spentAt}</td>
                   <td className="text-right whitespace-nowrap">
-                    <button className="btn btn-sm btn-primary mr-1.5" onClick={() => approveExpense.mutate(e.id)}>승인</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => setExpenseReject(e.id)}>반려</button>
+                    <button className="btn btn-sm btn-primary mr-1.5" onClick={(ev) => { ev.stopPropagation(); approveExpense.mutate(e.id); }}>승인</button>
+                    <button className="btn btn-sm btn-danger" onClick={(ev) => { ev.stopPropagation(); setExpenseReject(e.id); }}>반려</button>
                   </td>
                 </tr>
               ))}
@@ -348,12 +366,13 @@ export function ApprovalsView() {
             <thead><tr><th>강사</th><th>기간</th><th className="text-right">금액</th><th></th></tr></thead>
             <tbody>
               {pendingPayouts.map((p) => (
-                <tr key={p.id}>
+                <tr key={p.id} data-testid={`approval-payout-row-${p.id}`} className="cursor-pointer hover:bg-canvas-subtle" onClick={() => setDetailItem({ kind: 'payout', row: p })} title="클릭 — 페이 상세">
                   <td className="font-medium">{instructorName(p.instructorId)}</td>
                   <td className="mono text-fg-muted">{p.periodStart} ~ {p.periodEnd}</td>
                   <td className="text-right mono">{won(p.amount)} <span className="text-fg-subtle">({p.sessionCount ?? 0}회)</span></td>
-                  <td className="text-right">
-                    <button className="btn btn-sm btn-primary" onClick={() => confirmPayout.mutate(p.id)}>승인</button>
+                  <td className="text-right whitespace-nowrap">
+                    <button className="btn btn-sm btn-primary mr-1.5" onClick={(e) => { e.stopPropagation(); confirmPayout.mutate(p.id); }}>승인</button>
+                    <button className="btn btn-sm btn-danger" onClick={(e) => { e.stopPropagation(); setPayoutReject(p.id); }}>반려</button>
                   </td>
                 </tr>
               ))}
@@ -386,12 +405,40 @@ export function ApprovalsView() {
 
       <p className="text-caption text-fg-subtle">수업·가용시간 변경 요청과 보고서는 매니저 이상이 처리하고, 지출·강사 페이·가입 승인은 대표만 처리합니다.</p>
 
+      {detailItem && (
+        <ApprovalItemDetailModal
+          item={detailItem}
+          instructorName={instructorName}
+          studentName={studentName}
+          sessionInfo={sessionInfo}
+          onClose={() => setDetailItem(null)}
+          onApprove={approveDetailItem}
+          onReject={rejectDetailItem}
+        />
+      )}
+
+      {reportReject != null && (
+        <ReasonModal
+          mode="input"
+          title="수업 보고서 반려 — 사유 필수"
+          onClose={() => setReportReject(null)}
+          onSubmit={(reason) => { rejectReport.mutate({ id: reportReject, reason }); setReportReject(null); }}
+        />
+      )}
       {expenseReject != null && (
         <ReasonModal
           mode="input"
           title="지출 반려"
           onClose={() => setExpenseReject(null)}
           onSubmit={(reason) => { rejectExpense.mutate({ id: expenseReject, reason }); setExpenseReject(null); }}
+        />
+      )}
+      {payoutReject != null && (
+        <ReasonModal
+          mode="input"
+          title="강사 페이 반려 — 사유 필수"
+          onClose={() => setPayoutReject(null)}
+          onSubmit={(reason) => { rejectPayout.mutate({ id: payoutReject, reason }); setPayoutReject(null); }}
         />
       )}
     </div>
