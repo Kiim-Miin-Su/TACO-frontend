@@ -38,4 +38,16 @@ describe("schedule request cache helpers", () => {
 
     expect(qc.getQueryData<ScheduleRequestEx[]>(scheduleRequestListKey(scope))).toEqual([request(2, "fresh")]);
   });
+
+  it("updates every loaded schedule request list cache for fast role/page rerender", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(scheduleRequestListKey("4:manager"), [request(4, "manager stale")]);
+    qc.setQueryData(scheduleRequestListKey("3:super_admin"), [request(4, "super stale")]);
+
+    const approved = { ...request(4, "approved"), status: "approved" as const };
+    upsertScheduleRequestCache(qc, approved, "4:manager");
+
+    expect(qc.getQueryData<ScheduleRequestEx[]>(scheduleRequestListKey("4:manager"))).toEqual([approved]);
+    expect(qc.getQueryData<ScheduleRequestEx[]>(scheduleRequestListKey("3:super_admin"))).toEqual([approved]);
+  });
 });

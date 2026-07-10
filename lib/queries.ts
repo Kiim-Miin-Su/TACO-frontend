@@ -29,14 +29,33 @@ export const scheduleRequestListKey = (scope = tokenScopeKey()) => qk.scheduleRe
 // all see the created pending request immediately, then reconcile with the backend refetch.
 export function upsertScheduleRequestCache(qc: QueryClient, row?: ScheduleRequestEx, scope = tokenScopeKey()) {
   if (!row) return;
-  qc.setQueryData<ScheduleRequestEx[]>(scheduleRequestListKey(scope), (prev = []) => {
+  const upsert = (prev: ScheduleRequestEx[] = []) => {
     const next = [row, ...prev.filter((r) => r.id !== row.id)];
     return next.sort((a, b) => b.id - a.id);
-  });
+  };
+  qc.setQueryData<ScheduleRequestEx[]>(scheduleRequestListKey(scope), upsert);
+  qc.setQueriesData<ScheduleRequestEx[]>({ queryKey: qk.scheduleRequests.all }, upsert);
 }
 
 export const invalidateScheduleRequests = (qc: QueryClient) =>
   qc.invalidateQueries({ queryKey: qk.scheduleRequests.all, refetchType: "all" });
+
+async function refreshScheduleRequestLifecycle(qc: QueryClient, opts: { schedule?: boolean; availability?: boolean } = {}) {
+  const tasks: Promise<unknown>[] = [
+    qc.invalidateQueries({ queryKey: qk.scheduleRequests.all, refetchType: "all" }),
+    qc.invalidateQueries({ queryKey: ["audit"], refetchType: "all" }),
+  ];
+  if (opts.schedule) {
+    tasks.push(qc.invalidateQueries({ queryKey: qk.schedule.all, refetchType: "active" }));
+    tasks.push(qc.invalidateQueries({ queryKey: qk.attendance.all, refetchType: "active" }));
+    tasks.push(qc.invalidateQueries({ queryKey: qk.reports.all, refetchType: "active" }));
+    tasks.push(qc.invalidateQueries({ queryKey: qk.payouts.all, refetchType: "active" }));
+  }
+  if (opts.availability) {
+    tasks.push(qc.invalidateQueries({ queryKey: qk.availability.all, refetchType: "active" }));
+  }
+  await Promise.all(tasks);
+}
 
 // 백엔드 보고서(status=draft|submitted|sent, approvalStatus=draft|submitted|approved|rejected)를 store 모델로 정규화.
 //  구형 응답 호환: approvalStatus가 없으면 status를 승인상태로 해석한다.
@@ -294,41 +313,51 @@ export const useCreateScheduleRequest = () => {
     },
   });
 };
-export const useApproveScheduleRequest = () =>
-  {
-    const qc = useQueryClient();
-    return useMutation({
+export const useApproveScheduleRequest = () => {
+  const qc = useQueryClient();
+  return useMutation({
     mutationFn: (v: { id: number; force?: boolean }) => api.scheduleRequests.approve(v.id, v.force),
     // [C2C-b] audit 프리픽스 무효화 — 상세 모달 '처리 이력'이 승인 직후 즉시 갱신
-      onSuccess: (data) => {
-        upsertScheduleRequestCache(qc, data.request);
-        qc.invalidateQueries({ queryKey: qk.scheduleRequests.all });
-        qc.invalidateQueries({ queryKey: qk.schedule.all });
-        qc.invalidateQueries({ queryKey: qk.availability.all });
-        qc.invalidateQueries({ queryKey: ["audit"] });
-      },
-    });
-  };
-export const useRejectScheduleRequest = () =>
-  {
-    const qc = useQueryClient();
-    return useMutation({
-    mutationFn: (v: { id: number; reason: string }) => api.scheduleRequests.reject(v.id, v.reason), // 사유 필수
-      onSuccess: (data) => {
-        upsertScheduleRequestCache(qc, data);
-        qc.invalidateQueries({ queryKey: qk.scheduleRequests.all });
-        qc.invalidateQueries({ queryKey: ["audit"] });
-      },
-    });
-  };
-// [C2C-b 청크2] pending 요청 수정(관리자) — 상세 모달 편집. 승인센터·배지·캘린더 고스트 동시 갱신
-export const useUpdateScheduleRequest = () =>
-  useMutation({
-    mutationFn: (v: { id: number; body: Parameters<typeof api.scheduleRequests.update>[1] }) => api.scheduleRequests.update(v.id, v.body),
-    onSuccess: useInvalidator([qk.scheduleRequests.all, ["audit"]]), // 이력 즉시 갱신(상세 모달)
+    onSuccess: async (data) => {
+      upsertScheduleRequestCache(qc, data.request);
+      const kind = data.request.requestKind;
+      await refreshScheduleRequestLifecycle(qc, {
+        schedule: kind == null || kind === "session_create" || kind === "session_update" || kind === "session_delete",
+        availability: kind === "availability_upsert" || kind === "availability_delete",
+      });
+    },
   });
-export const useWithdrawScheduleRequest = () =>
-  useMutation({ mutationFn: api.scheduleRequests.withdraw, onSuccess: useInvalidator([qk.scheduleRequests.all]) });
+};
+export const useRejectScheduleRequest = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: number; reason: string }) => api.scheduleRequests.reject(v.id, v.reason), // 사유 필수
+    onSuccess: async (data) => {
+      upsertScheduleRequestCache(qc, data);
+      await refreshScheduleRequestLifecycle(qc);
+    },
+  });
+};
+// [C2C-b 청크2] pending 요청 수정(관리자) — 상세 모달 편집. 승인센터·배지·캘린더 고스트 동시 갱신
+export const useUpdateScheduleRequest = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: number; body: Parameters<typeof api.scheduleRequests.update>[1] }) => api.scheduleRequests.update(v.id, v.body),
+    onSuccess: async (data) => {
+      upsertScheduleRequestCache(qc, data);
+      await refreshScheduleRequestLifecycle(qc);
+    }, // 이력 즉시 갱신(상세 모달)
+  });
+};
+export const useWithdrawScheduleRequest = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.scheduleRequests.withdraw,
+    onSuccess: async () => {
+      await refreshScheduleRequestLifecycle(qc);
+    },
+  });
+};
 
 // 출결(강사 마킹) — session×student upsert
 export const useUpsertAttendance = () => useMutation({ mutationFn: api.attendance.upsert, onSuccess: useInvalidator([qk.attendance.all]) });
