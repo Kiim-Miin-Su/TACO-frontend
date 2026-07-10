@@ -16,12 +16,16 @@ import {
 import Link from 'next/link';
 import { won, shortDate } from '@/lib/format';
 import { useTacoStore } from '@/lib/store';
-import { useAppData } from '@/lib/queries';
+import { useAppData, useScheduleRequests } from '@/lib/queries';
 import { isCEO, isAdmin, roleLabel } from '@/lib/roles';
 import { buildTasks, type TaskItem } from '@/lib/tasks';
 import { myInstructorId } from '@/lib/auth';
 import { InstructorAttendanceSummary } from './InstructorAttendanceSummary';
 import type { EnrollmentStatus } from '@/types';
+import type { ScheduleRequestEx } from '@/lib/api';
+import { RequestDetailModal } from '@/features/admin/RequestDetailModal';
+import { REQUEST_KIND_LABEL, REQUEST_STATUS_LABEL, fmtRequestAt, requestStatusHelp, requestStatusTone } from '@/lib/domain/approvals';
+import { useState } from 'react';
 
 // To-do 항목 리스트 — 알림/대시보드 공용 표현. 항목 클릭 시 해당 화면으로.
 // [DESIGN §2.4] 항목 폭주 시 카드가 페이지를 밀지 않게 자체 스크롤(max-h-[300px]).
@@ -72,6 +76,68 @@ const statusLabel: Record<EnrollmentStatus, string> = {
   canceled: '취소',
 };
 
+function requesterRequestTitle(r: ScheduleRequestEx) {
+  if (r.changeSummary) return r.changeSummary;
+  if (r.requestKind === 'availability_upsert' || r.requestKind === 'availability_delete') return REQUEST_KIND_LABEL[r.requestKind] ?? '가용시간 요청';
+  if (r.requestKind === 'session_update') return `수업 변경 요청 · ${r.sessionDate ?? '-'} ${r.startTime ?? ''}`;
+  if (r.requestKind === 'session_delete') return `수업 삭제 요청 · ${r.sessionDate ?? '-'} ${r.startTime ?? ''}`;
+  return `수업 생성 요청 · ${r.sessionDate ?? '-'} ${r.startTime ?? ''}`;
+}
+
+function InstructorRequestStatusPanel({ courseName, instructorName }: { courseName: (id?: number) => string; instructorName: (id?: number) => string }) {
+  const { data: requests = [] } = useScheduleRequests();
+  const [detail, setDetail] = useState<ScheduleRequestEx | null>(null);
+  const rows = requests.slice().sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id - a.id).slice(0, 8);
+  return (
+    <SectionCard title={`내 승인 요청 상태 (${requests.length})`} action={<a href="/calendar" className="btn btn-sm">캘린더</a>}>
+      {rows.length === 0 ? (
+        <EmptyState message="보낸 승인 요청이 없습니다." />
+      ) : (
+        <div className="max-h-[320px] overflow-y-auto">
+          <ul className="divide-y border-line-muted">
+            {rows.map((r) => {
+              const tone = requestStatusTone(r.status);
+              return (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    className="w-full text-left flex items-start gap-3 px-4 py-3 hover:bg-canvas-subtle"
+                    onClick={() => setDetail(r)}
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: `var(--color-${tone === 'neutral' ? 'fg-subtle' : tone})` }} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="block text-body font-medium text-fg truncate">{requesterRequestTitle(r)}</span>
+                        <span className={`badge text-micro shrink-0 ${r.status === 'pending' ? 'badge-attention' : r.status === 'approved' ? 'badge-success' : 'badge-danger'}`}>
+                          {REQUEST_STATUS_LABEL[r.status] ?? r.status}
+                        </span>
+                      </span>
+                      <span className="block text-caption text-fg-subtle truncate">{requestStatusHelp(r.status, r.reason)}</span>
+                      <span className="block text-micro text-fg-subtle mono">{fmtRequestAt(r.createdAt)}</span>
+                    </span>
+                    <span className="text-fg-subtle text-body">›</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+      {detail && (
+        <RequestDetailModal
+          request={detail}
+          instructorName={instructorName}
+          courseName={courseName}
+          onClose={() => setDetail(null)}
+          onApprove={() => undefined}
+          onReject={() => undefined}
+          readOnly
+        />
+      )}
+    </SectionCard>
+  );
+}
+
 export function DashboardView() {
   // [참조/처리] 서버 데이터(수강·학생·코스 등)는 TanStack Query(useAppData) 단일 소스.
   //  currentRole은 zustand(클라 상태)에서 별도로 읽어 buildTasks에 합성해 넘긴다.
@@ -85,6 +151,8 @@ export function DashboardView() {
   if (role === 'instructor') {
     const reportTasks = tasks.filter((t) => t.group === 'report');
     const classTasks = tasks.filter((t) => t.group === 'class' || t.group === 'schedule'); // [UX H2] 내 수업 요청(반려·대기)도 수업 카드에
+    const instructorName = (id?: number) => id != null ? appData.instructors.find((i) => i.id === id)?.name ?? '—' : '—';
+    const courseName = (id?: number) => id != null ? appData.courses.find((c) => c.id === id)?.name ?? '—' : '—';
     return (
       <div className="p-6 max-w-page-form mx-auto space-y-6">
         <PageHeader
@@ -105,6 +173,8 @@ export function DashboardView() {
         <SectionCard title={`오늘 · 다가오는 수업 (${classTasks.length})`} action={<a href="/schedule" className="btn btn-sm">캘린더</a>}>
           <TaskList items={classTasks} empty="예정된 수업이 없습니다." />
         </SectionCard>
+
+        <InstructorRequestStatusPanel instructorName={instructorName} courseName={courseName} />
 
         <p className="text-caption text-fg-subtle">진행한 수업은 <b>리포트를 작성·승인</b>받아야 시수로 측정되고 페이가 산정됩니다.</p>
       </div>

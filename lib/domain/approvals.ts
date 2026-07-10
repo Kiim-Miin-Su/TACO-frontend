@@ -100,3 +100,19 @@ export const fmtRequestAt = (at?: string): string => {
   const d = new Date(at);
   return isNaN(+d) ? at : d.toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 };
+
+export type RequestStatusTone = "neutral" | "attention" | "success" | "danger";
+
+export function requestStatusTone(status?: string): RequestStatusTone {
+  if (status === "approved") return "success";
+  if (status === "rejected") return "danger";
+  if (status === "pending") return "attention";
+  return "neutral";
+}
+
+export function requestStatusHelp(status?: string, reason?: string): string {
+  if (status === "approved") return "승인되어 캘린더 또는 가용시간에 반영되었습니다.";
+  if (status === "rejected") return `반려되었습니다.${reason ? ` 사유: ${reason}` : ""}`;
+  if (status === "pending") return "관리자 검토 대기 중입니다.";
+  return "요청 상태를 확인할 수 없습니다.";
+}

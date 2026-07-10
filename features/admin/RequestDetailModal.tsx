@@ -39,7 +39,7 @@ function EditField({ label, children }: { label: string; children: React.ReactNo
 }
 
 export function RequestDetailModal({
-  request: initial, instructorName, courseName, onClose, onApprove, onReject,
+  request: initial, instructorName, courseName, onClose, onApprove, onReject, readOnly = false,
 }: {
   request: ScheduleRequestEx;
   instructorName: (id?: number) => string;
@@ -47,6 +47,7 @@ export function RequestDetailModal({
   onClose: () => void;
   onApprove: (r: ScheduleRequestEx) => void; // 부모 onApproveRequest 재사용(409→force 분기 포함)
   onReject: (r: ScheduleRequestEx) => void;  // 부모 ReasonModal 흐름 재사용(사유 필수)
+  readOnly?: boolean;
 }) {
   const { data: allReqs = [] } = useScheduleRequests();
   const r = allReqs.find((x) => x.id === initial.id) ?? initial; // 라이브 행(수정·처리 후 자동 갱신)
@@ -137,7 +138,7 @@ export function RequestDetailModal({
         <div className="flex items-center gap-2 shrink-0">
           <div className="font-semibold">{kindLabel} #{r.id}</div>
           <span className={`badge text-micro ${r.status === 'pending' ? 'badge-attention' : r.status === 'approved' ? 'badge-success' : 'badge-danger'}`}>{statusLabel}</span>
-          {editable && !editing && <button className="btn btn-sm" onClick={startEdit}>수정</button>}
+          {editable && !readOnly && !editing && <button className="btn btn-sm" onClick={startEdit}>수정</button>}
           <button className="btn btn-sm ml-auto" onClick={onClose}>닫기</button>
         </div>
 
@@ -278,13 +279,15 @@ export function RequestDetailModal({
           )}
 
           {/* 처리 이력 — audit_log 그대로(생성→수정→승인/반려), R-6 ChangeHistory 재사용 */}
-          <section className="rounded-md border p-3">
-            <div className="text-caption font-medium mb-1.5">처리 이력</div>
-            <ChangeHistory entity="schedule_requests" entityId={r.id} actorName={(id) => actorName(id)} fieldLabels={REQUEST_FIELD_LABEL} />
-          </section>
+          {!readOnly && (
+            <section className="rounded-md border p-3">
+              <div className="text-caption font-medium mb-1.5">처리 이력</div>
+              <ChangeHistory entity="schedule_requests" entityId={r.id} actorName={(id) => actorName(id)} fieldLabels={REQUEST_FIELD_LABEL} />
+            </section>
+          )}
         </div>
 
-        {r.status === 'pending' && !editing && (
+        {r.status === 'pending' && !readOnly && !editing && (
           <div className="flex justify-end gap-2 pt-1 shrink-0 border-t">
             <button className="btn btn-sm btn-danger mt-2" onClick={() => onReject(r)}>반려</button>
             <button className="btn btn-sm btn-primary mt-2" onClick={() => onApprove(r)}>승인</button>

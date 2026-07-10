@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availabilityRequestDiff } from "./approvals";
+import { availabilityRequestDiff, requestStatusHelp, requestStatusTone } from "./approvals";
 
 const block = { kind: "available", weekday: 3, startTime: "14:00", endTime: "20:00" };
 
@@ -46,5 +46,20 @@ describe("availabilityRequestDiff — 승인센터 상세 before→after", () =>
       block,
     );
     expect(rows.find((r) => r.label === "적용 기간")).toMatchObject({ before: "상시(매주)", after: "2026-07-13 ~ 2026-08-31", changed: true });
+  });
+});
+
+describe("requester-facing request status helpers", () => {
+  it("maps authoritative approval status to stable UI tone", () => {
+    expect(requestStatusTone("pending")).toBe("attention");
+    expect(requestStatusTone("approved")).toBe("success");
+    expect(requestStatusTone("rejected")).toBe("danger");
+    expect(requestStatusTone(undefined)).toBe("neutral");
+  });
+
+  it("keeps rejected reason visible without changing approval truth", () => {
+    expect(requestStatusHelp("pending")).toContain("검토 대기");
+    expect(requestStatusHelp("approved")).toContain("반영");
+    expect(requestStatusHelp("rejected", "시간 충돌")).toContain("시간 충돌");
   });
 });
