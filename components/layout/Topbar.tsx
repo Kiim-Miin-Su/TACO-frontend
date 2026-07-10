@@ -19,7 +19,6 @@ export default function Topbar() {
   const currentRole = useTacoStore((s) => s.currentRole);
   const setCurrentRole = useTacoStore((s) => s.setCurrentRole);
   // [임시/실험용] dev 역할 토글 — 아래 주석/JSX 참조.
-  const overrideRole = useTacoStore((s) => s.overrideRole);
   const clearRoleOverride = useTacoStore((s) => s.clearRoleOverride);
   const devRoleOverride = useTacoStore((s) => s.devRoleOverride);
   const [switching, setSwitching] = useState(false);
@@ -40,14 +39,13 @@ export default function Topbar() {
 
   // ─────────────────────────────────────────────────────────────────────────
   // [임시/실험용 — 나중에 제거] 역할 전환.
-  //  staff 3역할(super_admin/manager/instructor)은 해당 데모 계정으로 **실제 재로그인** →
+  //  staff 역할(super_admin/admin/manager/instructor)은 해당 데모 계정으로 **실제 재로그인** →
   //   새 JWT로 토큰 교체 → 백엔드 RBAC까지 그 역할로 바뀐다(403 등 실권한 재현 가능).
   //   토큰이 곧 진실원이므로 devRoleOverride는 끈다(AppShell이 JWT로 하이드레이션 = 동일 역할).
   //   권한이 바뀌었으니 이전 역할로 채운 쿼리 캐시는 전부 폐기(clear) 후 대시보드로.
-  //  로그인 계정이 없는 역할(student/parent)은 UI 전용 미리보기(overrideRole — 토큰 불변).
   async function switchRole(role: AccountRole) {
     const acc = DEV_ROLE_ACCOUNTS[role];
-    if (!acc) { overrideRole(role); return; } // 계정 없음 → UI 전용
+    if (!acc) return;
     try {
       setSwitching(true);
       const res = await api.auth.login({ webId: acc.webId, password: acc.password });
@@ -84,13 +82,12 @@ export default function Topbar() {
       <div className="flex-1" />
       {/* ─────────────────────────────────────────────────────────────────────
           [임시/실험용 — 나중에 제거] dev 역할 전환 토글(탑네비 상시 노출).
-          staff 3역할(대표/매니저/강사) = 데모 계정으로 **실제 재로그인** → 백엔드 RBAC까지 그 역할로.
-          학생/학부모(로그인 계정 없음) = UI 전용 미리보기(devRoleOverride, '미리보기' 뱃지+복귀).
+          staff 역할(대표/관리자/매니저/강사) = 데모 계정으로 **실제 재로그인** → 백엔드 RBAC까지 그 역할로.
           상세·제거 지점: lib/store.ts · lib/dev-roles.ts 주석.
           ───────────────────────────────────────────────────────────────────── */}
       <label
         className="flex items-center gap-1.5 text-caption text-fg-muted"
-        title="실험용 역할 전환: 대표/매니저/강사는 실제 계정으로 재로그인(백엔드 권한까지 변경), 학생/학부모는 화면 미리보기입니다."
+        title="실험용 역할 전환: 백오피스 담당자 계정으로 실제 재로그인합니다."
       >
         <span className={`badge ${devRoleOverride ? 'badge-attention' : 'badge-neutral'}`}>
           {devRoleOverride ? '미리보기' : '실험'}
@@ -103,7 +100,7 @@ export default function Topbar() {
           onChange={(e) => switchRole(e.target.value as AccountRole)}
         >
           {ROLES.map((r) => (
-            <option key={r} value={r}>{roleLabel[r]}{DEV_ROLE_ACCOUNTS[r] ? '' : ' (미리보기)'}</option>
+            <option key={r} value={r}>{roleLabel[r]}</option>
           ))}
         </select>
       </label>

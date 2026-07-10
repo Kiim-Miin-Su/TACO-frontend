@@ -52,6 +52,8 @@ import type {
   SessionKind,
   RecurrenceScope,
   InstructorAttendanceStatus,
+  ReportApprovalStatus,
+  ReportStatus,
 } from "@kms545487/contracts";
 
 export type ScheduleQuery = { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number };
@@ -150,10 +152,9 @@ export type ConflictCheckBody = {
 };
 
 // ── TBO-05 시수·페이 정산 타입(백엔드 reports/payouts 모듈 응답) ──
-export type ReportStatus = "draft" | "submitted" | "approved" | "rejected";
 export type SessionReport = {
   id: number; sessionId: number; studentId: number; instructorId: number; subjectId?: number;
-  content: string; homework?: string; status: ReportStatus;
+  content: string; homework?: string; status: ReportStatus; approvalStatus?: ReportApprovalStatus;
   submittedAt?: string; approvedAt?: string; approvedBy?: number; rejectedReason?: string;
   createdAt: string; updatedAt: string;
 };

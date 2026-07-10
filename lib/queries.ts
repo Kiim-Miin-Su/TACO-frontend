@@ -38,15 +38,16 @@ export function upsertScheduleRequestCache(qc: QueryClient, row?: ScheduleReques
 export const invalidateScheduleRequests = (qc: QueryClient) =>
   qc.invalidateQueries({ queryKey: qk.scheduleRequests.all, refetchType: "all" });
 
-// 백엔드 보고서(draft|submitted|approved|rejected)를 store 모델로 정규화.
-//  approved→'sent'(작성완료 집계) · rejected→'draft'(재작성=미작성 집계). 실제 상태는 approvalStatus에 보존.
+// 백엔드 보고서(status=draft|submitted|sent, approvalStatus=draft|submitted|approved|rejected)를 store 모델로 정규화.
+//  구형 응답 호환: approvalStatus가 없으면 status를 승인상태로 해석한다.
 export function toStoreReport(r: ApiReport): SessionReport {
+  const approvalStatus = r.approvalStatus ?? (r.status === "sent" ? "approved" : r.status);
   const status: SessionReport["status"] =
-    r.status === "approved" ? "sent" : r.status === "rejected" ? "draft" : r.status;
+    approvalStatus === "approved" ? "sent" : approvalStatus === "rejected" ? "draft" : r.status;
   return {
     id: r.id, sessionId: r.sessionId, studentId: r.studentId, instructorId: r.instructorId,
     subjectId: r.subjectId, content: r.content, homework: r.homework,
-    status, approvalStatus: r.status,
+    status, approvalStatus,
     submittedAt: r.submittedAt, approvedAt: r.approvedAt, approvedBy: r.approvedBy,
     rejectedReason: r.rejectedReason,
   };

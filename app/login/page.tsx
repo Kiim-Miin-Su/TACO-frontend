@@ -11,6 +11,7 @@ import type { AccountRole } from "@/types";
 
 const DEMO = [
   { role: "대표", name: "김민수", webId: "admin", password: "demo1234" },
+  { role: "관리자", name: "한서윤", webId: "prof_admin", password: "demo1234" },
   { role: "매니저", name: "이지원", webId: "manager", password: "demo1234" },
   { role: "강사", name: "박지훈", webId: "park_inst", password: "demo1234" },
   { role: "강사", name: "정유진", webId: "jung_inst", password: "demo1234" },
