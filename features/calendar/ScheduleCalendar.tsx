@@ -39,13 +39,14 @@ import { formatScheduleConflicts } from "@/lib/domain/conflict-messages";
 import { appendCalendarPane, companionPaneSeed, currentPaneSeeds } from "@/lib/domain/calendar-panes";
 import { availabilityGhostBandsForColumn } from "@/lib/domain/pending-ghosts";
 import { buildAvailabilityRequestBody, buildSessionDeleteRequestBody } from "@/lib/domain/request-drafts";
+import { calendarExportFilename } from "@/lib/domain/calendar-export";
 import { axisCompanionTimezone, resourceTimezoneKey, resourceTimezoneOf, type ResourceTimezoneOverrides } from "@/lib/domain/resource-timezone";
 import type { CalendarViewPreset } from "@/types";
 import { exportNodeAsImage } from "@/lib/export";
 import { useTacoStore } from "@/lib/store";
 import { usePersistedState } from "@/lib/usePersistedState";
 import { booleanPreferenceCodec, enumPreferenceCodec, preferenceKeys } from "@/lib/storage/preferences";
-import { isAdmin, roleLabel } from "@/lib/roles";
+import { isAdmin } from "@/lib/roles";
 import { currentClaims, myInstructorId as loginInstructorId } from "@/lib/auth";
 import { ResourcePanel } from "./ResourcePanel";
 import { ResourceDetailCard } from "./ResourceDetailCard";
@@ -1306,22 +1307,36 @@ export function ScheduleCalendar() {
   // [감사 M6] 국가(시차) 변경 시 stale 커서·선택 해제 — KST 좌표 커서가 tz 뷰에 남아 오배치되는 것 방지.
   useEffect(() => { setCursor(null); setSelEvent(null); }, [country, paneCountry]);
 
-  // 다운로드 파일명: {선택유저명+역할}_{YYMMDD}_{뷰}.ext  (예: 김민수강사_260630_weekly.png)
-  // 우측 패널에서 자원을 고르면 그 자원, 아니면 로그인한 본인(토큰), 그것도 없으면 전체스케줄.
+  // 다운로드 파일명은 로그인 계정이 아니라 실제로 렌더 중인 강사/학생을 pane 순서대로 사용한다.
   function downloadName(ext: string) {
-    const ROLE_SUFFIX: Record<string, string> = { instructor: "강사", student: "학생", room: "강의실" };
-    let who = "전체스케줄";
-    if (selected) {
-      who = `${selected.name}${ROLE_SUFFIX[selected.type] ?? ""}`;
+    const names: string[] = [];
+    const add = (dim: SplitDim, ids: number[]) => {
+      if (dim !== "instructor" && dim !== "student") return;
+      const options = dim === "instructor" ? resources?.instructors : resources?.students;
+      for (const id of ids) {
+        const name = options?.find((option) => Number(option.id) === Number(id))?.name;
+        if (name) names.push(name);
+      }
+    };
+    if (manualPanes.length) {
+      for (const pane of manualPanes) add(pane.dim, pane.ids);
+    } else if (autoTzStudentPanes.length) {
+      add("instructor", instPicks.map((pick) => pick.id));
+      add("student", autoTzStudentPanes.map(({ pick }) => pick.id));
     } else {
-      const claims = currentClaims();
-      if (claims) who = `${claims.name}${roleLabel[(claims.roles?.[0] ?? "") as AccountRole] ?? ""}`;
+      for (const pane of panes) add(pane.dim, pane.picks.map((pick) => pick.id));
+      if (!panes.length) {
+        add("instructor", instPicks.map((pick) => pick.id));
+        add("student", studPicks.map((pick) => pick.id));
+      }
     }
-    const yymmdd = anchor.slice(2, 4) + anchor.slice(5, 7) + anchor.slice(8, 10);
-    const viewWord = view === "month" ? "monthly" : view === "week" ? "weekly" : "daily";
-    const safe = (s: string) => s.replace(/[\\/:*?"<>|\s]+/g, ""); // 파일명 금지문자·공백 제거
-    const tzTag = country && country.tz !== KST_TZ ? `_${country.code}` : ""; // 예: _US — 시차 뷰 캡처 구분
-    return `${safe(who)}_${yymmdd}_${viewWord}${tzTag}.${ext}`;
+    if (!names.length && selected && (selected.type === "instructor" || selected.type === "student")) names.push(selected.name);
+    return calendarExportFilename({
+      userNames: names,
+      currentDate: todayISO(),
+      view,
+      ext: ext === "jpg" ? "jpg" : "png",
+    });
   }
 
   // 현재 뷰(캘린더/표)를 이미지로 저장.
@@ -2321,7 +2336,7 @@ export function ScheduleCalendar() {
             ) : autoTzStudentPanes.length > 0 ? (
               /* [TBO-22 C1] 다중 시차 학생 비교 — 날짜 안 서브컬럼 대신 학생별 표를 우측으로 분리.
                  모든 표는 00-24 KST 공통 축을 쓰고, 해외 표는 칩에 현지시각을 병기한다. */
-              <div className="flex gap-3 items-start pb-1 overflow-hidden">
+              <div className="flex gap-3 items-start overflow-hidden">
                 {instPicks.length > 0 && (
                   <div className="min-w-0" style={{ width: Math.max(120, (mainW - 12 * autoTzStudentPanes.length) / (autoTzStudentPanes.length + 1)) }}>
                     <CalendarSplitPane
@@ -2363,7 +2378,7 @@ export function ScheduleCalendar() {
               /* [#2 2026-07-06] 수동 표 빌더 — 임의 차원(강사·학생·강의실·과목) 조합·동일차원 2표 허용.
                  [Chunk 2H] 첫 클릭 시 현재 resource filter를 pane 1로 옮기고 pane 2를 추가한다.
                  전역 resource filter는 비워서 각 표 헤더가 리소스 선택의 단일 소스가 된다. */
-              <div className="flex gap-3 items-start pb-1 overflow-hidden">
+              <div className="flex gap-3 items-start overflow-hidden">
                 {manualPanes.map((mp) => {
                   const picks = picksForManualPane(mp);
                   const paneCount = manualPanes.length;
@@ -2401,7 +2416,7 @@ export function ScheduleCalendar() {
               </div>
             ) : twoPanes ? (
               /* 강사+학생 동시 필터 → 표 2개 자동(각 표 = 날짜×선택 데일리 스플릿). ✕=표 닫기(필터 유지) */
-              <div className="flex gap-3 items-start pb-1 overflow-hidden">{/* 표 개수에 맞춰 폭을 줄여 한 화면에 유지 */}
+              <div className="flex gap-3 items-start overflow-hidden">{/* 표 개수에 맞춰 폭을 줄여 한 화면에 유지 */}
                 {panes.map((g) => (
                   <CalendarSplitPane
                     key={g.dim}

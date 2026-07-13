@@ -11,35 +11,24 @@ export async function exportNodeAsImage(
   node: HTMLElement,
   filename: string,
   type: "png" | "jpeg" = "png",
-  targetWidth = 1680, // 가로 기준 목표 폭(px). 현재 폭이 더 좁을 때만 넓힘.
 ) {
-  // 원래 인라인 스타일 보존(복원용)
-  const prev = { width: node.style.width, maxWidth: node.style.maxWidth, padding: node.style.padding };
-  const widen = node.scrollWidth < targetWidth;
-  if (widen) {
-    node.style.width = `${targetWidth}px`;
-    node.style.maxWidth = "none";
-  }
-  node.style.padding = "20px"; // 가장자리 여백으로 답답함 완화
-  // 레이아웃 반영 강제(컬럼이 새 폭으로 리플로우되도록)
-  void node.offsetWidth;
-
-  try {
-    const width = Math.max(node.scrollWidth, node.clientWidth);
-    const height = Math.max(node.scrollHeight, node.clientHeight);
-    // pixelRatio 3 → 글자/선이 또렷하게(가독성↑). 폭이 충분하면 추가 확대는 불필요.
-    const opts = { backgroundColor: "#ffffff", pixelRatio: 3, cacheBust: true, width, height };
-    const dataUrl = type === "jpeg"
-      ? await toJpeg(node, { ...opts, quality: 0.96 })
-      : await toPng(node, opts);
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    a.download = filename;
-    a.click();
-  } finally {
-    // 스타일 원복(화면 깜빡임 최소화)
-    node.style.width = prev.width;
-    node.style.maxWidth = prev.maxWidth;
-    node.style.padding = prev.padding;
-  }
+  await document.fonts?.ready;
+  const rect = node.getBoundingClientRect();
+  const width = Math.ceil(Math.max(node.scrollWidth, node.clientWidth, rect.width));
+  const height = Math.ceil(Math.max(node.scrollHeight, node.clientHeight, rect.height));
+  const opts = {
+    backgroundColor: "#ffffff",
+    pixelRatio: 3,
+    cacheBust: true,
+    width,
+    height,
+    style: { margin: "0", padding: "0" },
+  };
+  const dataUrl = type === "jpeg"
+    ? await toJpeg(node, { ...opts, quality: 0.96 })
+    : await toPng(node, opts);
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = filename;
+  a.click();
 }
