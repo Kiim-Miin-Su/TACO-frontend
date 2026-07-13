@@ -22,8 +22,25 @@ export function primaryPaneSeed(input: ResourceFilterSeedInput): CalendarPaneSee
   return { dim: "instructor", ids: [] };
 }
 
+export function currentPaneSeeds(input: ResourceFilterSeedInput): CalendarPaneSeed[] {
+  const panes: CalendarPaneSeed[] = [];
+  const instructors = copy(input.instructors);
+  const students = copy(input.students);
+  const rooms = copy(input.rooms);
+  if (instructors.length) panes.push({ dim: "instructor", ids: instructors });
+  if (students.length) panes.push({ dim: "student", ids: students });
+  if (rooms.length) panes.push({ dim: "room", ids: rooms });
+  return panes.length ? panes : [primaryPaneSeed(input)];
+}
+
 export function companionPaneSeed(seed: CalendarPaneSeed): CalendarPaneSeed {
   if (seed.ids.length) return { dim: seed.dim, ids: [...seed.ids] };
   if (seed.dim === "instructor") return { dim: "student", ids: [] };
   return { dim: "instructor", ids: [] };
+}
+
+export function appendCalendarPane<T extends CalendarPaneSeed & { uid: number }>(panes: T[], uid: number): T[] {
+  const last = panes.at(-1);
+  const seed = last ? companionPaneSeed(last) : { dim: "instructor" as const, ids: [] };
+  return [...panes, { uid, ...seed } as T];
 }

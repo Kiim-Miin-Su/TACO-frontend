@@ -36,7 +36,7 @@ import { CountryInput } from "./CountryInput";
 import { CalendarViewTabs } from "./CalendarViewTabs";
 import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
 import { formatScheduleConflicts } from "@/lib/domain/conflict-messages";
-import { companionPaneSeed, primaryPaneSeed } from "@/lib/domain/calendar-panes";
+import { appendCalendarPane, companionPaneSeed, currentPaneSeeds } from "@/lib/domain/calendar-panes";
 import { availabilityGhostBandsForColumn } from "@/lib/domain/pending-ghosts";
 import { buildAvailabilityRequestBody, buildSessionDeleteRequestBody } from "@/lib/domain/request-drafts";
 import { axisCompanionTimezone, resourceTimezoneKey, resourceTimezoneOf, type ResourceTimezoneOverrides } from "@/lib/domain/resource-timezone";
@@ -288,37 +288,31 @@ export function ScheduleCalendar() {
   const [paneModesU, setPaneModesU] = useState<Record<number, Set<SessionModeFilter>>>({});
   const addManualPane = () => {
     if (!manualPanes.length) {
-      const firstSeed = primaryPaneSeed({
+      const currentSeeds = currentPaneSeeds({
         instructors: fInstructors,
         students: fStudents,
         rooms: fRooms,
         fallbackInstructorId: myInstructorId,
       });
-      const secondSeed = companionPaneSeed(firstSeed);
-      const uid1 = paneUidRef.current++;
-      const uid2 = paneUidRef.current++;
-      setManualPanes([
-        { uid: uid1, ...firstSeed },
-        { uid: uid2, ...secondSeed },
-      ]);
-      if (country) setPaneCountryU((cur) => ({ ...cur, [uid1]: country, [uid2]: country }));
+      const seeds = [...currentSeeds, companionPaneSeed(currentSeeds.at(-1)!)];
+      const panes = seeds.map((seed) => ({ uid: paneUidRef.current++, ...seed }));
+      setManualPanes(panes);
+      if (country) {
+        setPaneCountryU((cur) => ({
+          ...cur,
+          ...Object.fromEntries(panes.map((pane) => [pane.uid, country])),
+        }));
+      }
       setFInstructors(new Set());
       setFStudents(new Set());
       setFRooms(new Set());
       return;
     }
-    setManualPanes((prev) => {
-      const last = prev.at(-1)!;
-      const seed: Omit<ManualPaneState, "uid"> = { dim: last.dim, ids: [...last.ids] };
-      const uid = paneUidRef.current++;
-      {
-        const c = paneCountryU[last.uid] ?? null;
-        const modes = paneModesU[last.uid];
-        setPaneCountryU((cur) => ({ ...cur, [uid]: c }));
-        if (modes) setPaneModesU((cur) => ({ ...cur, [uid]: new Set(modes) }));
-      }
-      return [...prev, { uid, ...seed }];
-    });
+    const last = manualPanes.at(-1)!;
+    const uid = paneUidRef.current++;
+    setManualPanes((prev) => appendCalendarPane(prev, uid));
+    setPaneCountryU((cur) => ({ ...cur, [uid]: cur[last.uid] ?? null }));
+    setPaneModesU((cur) => cur[last.uid] ? { ...cur, [uid]: new Set(cur[last.uid]) } : cur);
   };
   // 우측 패널: 리스트에서 클릭한 세션(아래 상세) + 그룹 토글
   const [detailId, setDetailId] = useState<number | null>(null);
