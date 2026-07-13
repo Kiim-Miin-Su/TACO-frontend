@@ -145,6 +145,7 @@ export function ApprovalsView() {
   const { data: scheduleRequests = [] } = useScheduleRequests();
   const approveRequest = useApproveScheduleRequest();
   const rejectRequest = useRejectScheduleRequest();
+  const approvingRequestId = approveRequest.isPending ? approveRequest.variables?.id : undefined;
   const [requestReject, setRequestReject] = useState<number | null>(null);
   const [requestMsg, setRequestMsg] = useState<string | null>(null);
   // [DESIGN §5.5] 충돌 강제 승인 확인 — window.confirm 대신 ConfirmModal
@@ -237,18 +238,23 @@ export function ApprovalsView() {
         <table className="table">
           <thead><tr><th>요청자/대상</th><th>일시/범위</th><th>요청</th><th>상세</th><th className="text-right"></th></tr></thead>
           <tbody>
-            {pendingRequests.map((r) => (
-              <tr key={r.id} className="cursor-pointer hover:bg-canvas-subtle" onClick={() => setDetailReq(r)} title="클릭 — 요청 상세(변경 내용·영향 수업·이력)">
-                <td className="font-medium">{instructorName(r.instructorId ?? r.availabilityOwnerId ?? r.requesterId)}</td>
-                <td className="mono text-fg-muted">{requestWhen(r)}</td>
-                <td className="text-fg-muted">{requestTitle(r)}</td>
-                <td className="text-fg-muted">{r.requestKind === 'session_create' || !r.requestKind ? (r.studentIds?.length ? `${r.studentIds.length}명(지정)` : '코스 전원') : requestDetail(r)}</td>
-                <td className="text-right whitespace-nowrap">
-                  <button className="btn btn-sm btn-primary mr-1.5" onClick={(e) => { e.stopPropagation(); onApproveRequest(r); }}>승인</button>
-                  <button className="btn btn-sm btn-danger" onClick={(e) => { e.stopPropagation(); setRequestReject(r.id); }}>반려</button>
-                </td>
-              </tr>
-            ))}
+            {pendingRequests.map((r) => {
+              const isApproving = approvingRequestId === r.id;
+              return (
+                <tr key={r.id} className="cursor-pointer hover:bg-canvas-subtle" onClick={() => setDetailReq(r)} title="클릭 — 요청 상세(변경 내용·영향 수업·이력)">
+                  <td className="font-medium">{instructorName(r.instructorId ?? r.availabilityOwnerId ?? r.requesterId)}</td>
+                  <td className="mono text-fg-muted">{requestWhen(r)}</td>
+                  <td className="text-fg-muted">{requestTitle(r)}</td>
+                  <td className="text-fg-muted">{r.requestKind === 'session_create' || !r.requestKind ? (r.studentIds?.length ? `${r.studentIds.length}명(지정)` : '코스 전원') : requestDetail(r)}</td>
+                  <td className="text-right whitespace-nowrap">
+                    <button className="btn btn-sm btn-primary mr-1.5" disabled={approveRequest.isPending} aria-busy={isApproving} onClick={(e) => { e.stopPropagation(); onApproveRequest(r); }}>
+                      {isApproving ? '처리 중' : '승인'}
+                    </button>
+                    <button className="btn btn-sm btn-danger" disabled={approveRequest.isPending} onClick={(e) => { e.stopPropagation(); setRequestReject(r.id); }}>반려</button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         </TableWrap>
