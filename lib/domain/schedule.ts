@@ -68,6 +68,51 @@ export function blocksOnDate<
 export const overlaps = (aStart: string, aEnd: string, bStart: string, bEnd: string): boolean =>
   toMin(aStart) < toMin(bEnd) && toMin(bStart) < toMin(aEnd);
 
+export type SessionModeForAvailability = 'in_person' | 'online';
+export type AvailabilityKindForSchedule = AvailabilityBlock['kind'] | 'online_only';
+
+export function blockRestrictsSession(
+  block: Pick<AvailabilityBlock, 'kind'>,
+  mode: SessionModeForAvailability = 'in_person',
+): boolean {
+  const kind = block.kind as AvailabilityKindForSchedule;
+  return kind === 'unavailable' || (kind === 'online_only' && mode !== 'online');
+}
+
+export type AvailabilitySlotDecision = {
+  available: boolean;
+  hasAvailableWindow: boolean;
+  blockingKind?: Extract<AvailabilityKindForSchedule, 'unavailable' | 'online_only'>;
+  blockingBlockId?: ID;
+  reason?: 'outside_available' | 'unavailable_overlap' | 'online_only_overlap';
+};
+
+export function ownerAvailabilityForSlot(
+  blocks: AvailabilityBlock[],
+  owner: { type: AvailabilityBlock['ownerType']; id: ID },
+  slot: { weekday: number; start: number; end: number; mode?: SessionModeForAvailability },
+  opts: { requireAvailable?: boolean } = {},
+): AvailabilitySlotDecision {
+  const ownerBlocks = blocks.filter((b) => b.ownerType === owner.type && Number(b.ownerId) === Number(owner.id) && b.weekday === slot.weekday);
+  const availableWindows = ownerBlocks.filter((b) => b.kind === 'available');
+  const hasAvailableWindow = availableWindows.length > 0;
+  if (opts.requireAvailable && (!hasAvailableWindow || !availableWindows.some((b) => toMin(b.startTime) <= slot.start && slot.end <= toMin(b.endTime)))) {
+    return { available: false, hasAvailableWindow, reason: 'outside_available' };
+  }
+  const blocking = ownerBlocks.find((b) => blockRestrictsSession(b, slot.mode) && slot.start < toMin(b.endTime) && toMin(b.startTime) < slot.end);
+  if (blocking) {
+    const kind = blocking.kind as AvailabilityKindForSchedule;
+    return {
+      available: false,
+      hasAvailableWindow,
+      blockingKind: kind === 'online_only' ? 'online_only' : 'unavailable',
+      blockingBlockId: blocking.id,
+      reason: kind === 'online_only' ? 'online_only_overlap' : 'unavailable_overlap',
+    };
+  }
+  return { available: true, hasAvailableWindow };
+}
+
 export type ConflictCandidate = {
   sessionDate: string;
   startTime: string;
@@ -75,6 +120,7 @@ export type ConflictCandidate = {
   instructorId?: ID;
   roomId?: ID;
   studentIds?: ID[];
+  mode?: SessionModeForAvailability;
   ignoreSessionId?: ID;
 };
 export type ConflictCtx = {
@@ -109,7 +155,8 @@ export function detectConflicts(cand: ConflictCandidate, ctx: ConflictCtx): Conf
       out.push({ type: 'double_book', resource: 'room', resourceId: cand.roomId, sessionId: s.id });
   }
 
-  // 2) 불가시간(Block) 침범 — 강사/강의실. 크로스 후보는 이틀 세그먼트로 각 날짜 요일 검사.
+  // 2) 제약 블록 침범 — 강사/강의실/학생. online_only는 대면만 막고 온라인은 허용.
+  //    크로스 후보는 이틀 세그먼트로 각 날짜 요일 검사.
   const segs = cE > 1440
     ? [
         { date: cand.sessionDate, s: cS, e: 1440 },
@@ -119,12 +166,17 @@ export function detectConflicts(cand: ConflictCandidate, ctx: ConflictCtx): Conf
   for (const seg of segs) {
     const wd = weekdayOf(seg.date);
     for (const b of ctx.blocks ?? []) {
-      if (b.kind !== 'unavailable' || b.weekday !== wd) continue;
+      if (b.weekday !== wd || !blockRestrictsSession(b, cand.mode)) continue;
       if (!(seg.s < toMin(b.endTime) && toMin(b.startTime) < seg.e)) continue;
-      if (b.ownerType === 'instructor' && cand.instructorId === b.ownerId)
-        out.push({ type: 'unavailable', resource: 'instructor', resourceId: b.ownerId });
-      if (b.ownerType === 'room' && cand.roomId === b.ownerId)
-        out.push({ type: 'unavailable', resource: 'room', resourceId: b.ownerId });
+      const detail = (b.kind as AvailabilityKindForSchedule) === 'online_only' ? 'online_only_overlap' : undefined;
+      const conflict = (resource: 'instructor' | 'room' | 'student', resourceId: ID): Conflict =>
+        detail ? { type: 'unavailable', resource, resourceId, detail } : { type: 'unavailable', resource, resourceId };
+      if (b.ownerType === 'instructor' && Number(cand.instructorId) === Number(b.ownerId))
+        out.push(conflict('instructor', b.ownerId));
+      if (b.ownerType === 'room' && Number(cand.roomId) === Number(b.ownerId))
+        out.push(conflict('room', b.ownerId));
+      if (b.ownerType === 'student' && cand.studentIds?.some((id) => Number(id) === Number(b.ownerId)))
+        out.push(conflict('student', b.ownerId));
     }
   }
 
@@ -296,10 +348,10 @@ export function ownerWindows(
   blocks: AvailabilityBlock[],
   ownerType: AvailabilityBlock['ownerType'],
   ownerId: ID,
-  kind: AvailabilityBlock['kind'],
+  kind: AvailabilityKindForSchedule,
 ): DayWindow[] {
   return blocks
-    .filter((b) => b.ownerType === ownerType && b.ownerId === ownerId && b.kind === kind)
+    .filter((b) => b.ownerType === ownerType && Number(b.ownerId) === Number(ownerId) && (b.kind as AvailabilityKindForSchedule) === kind)
     .map((b) => ({ weekday: b.weekday, start: toMin(b.startTime), end: toMin(b.endTime) }));
 }
 

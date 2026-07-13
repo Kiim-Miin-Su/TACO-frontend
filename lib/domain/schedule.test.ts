@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ClassSession, AvailabilityBlock } from '@/types';
-import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, recommendInstructorsForStudent, ownerWindows, blocksOnDate, sessionEndMin, crossMidnightEnd } from './schedule';
+import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, recommendInstructorsForStudent, ownerWindows, blocksOnDate, sessionEndMin, crossMidnightEnd, blockRestrictsSession, ownerAvailabilityForSlot } from './schedule';
 
 const ablock = (p: Partial<AvailabilityBlock>): AvailabilityBlock => ({
   id: 1, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '09:00', endTime: '12:00', ...p,
@@ -92,12 +92,64 @@ describe('detectConflicts', () => {
     expect(c).toContainEqual({ type: 'unavailable', resource: 'instructor', resourceId: 1 });
   });
 
+  it('online_only는 대면 수업을 막고 온라인 수업은 허용', () => {
+    const blocks: AvailabilityBlock[] = [
+      ablock({ id: 1, ownerType: 'instructor', ownerId: 1, kind: 'online_only' as AvailabilityBlock['kind'], weekday: 1, startTime: '12:00', endTime: '13:00' }),
+    ];
+    const inPerson = detectConflicts(
+      { sessionDate: '2026-06-29', startTime: '12:30', durationMinutes: 30, instructorId: 1, mode: 'in_person' },
+      { sessions: [], blocks },
+    );
+    const online = detectConflicts(
+      { sessionDate: '2026-06-29', startTime: '12:30', durationMinutes: 30, instructorId: 1, mode: 'online' },
+      { sessions: [], blocks },
+    );
+    expect(inPerson).toContainEqual({ type: 'unavailable', resource: 'instructor', resourceId: 1, detail: 'online_only_overlap' });
+    expect(online).toEqual([]);
+  });
+
+  it('학생 owner의 불가/온라인만 가능도 후보 studentIds 기준으로 검사', () => {
+    const blocks: AvailabilityBlock[] = [
+      ablock({ id: 1, ownerType: 'student', ownerId: 7, kind: 'unavailable', weekday: 1, startTime: '12:00', endTime: '13:00' }),
+    ];
+    const c = detectConflicts(
+      { sessionDate: '2026-06-29', startTime: '12:30', durationMinutes: 30, studentIds: [7, 8] },
+      { sessions: [], blocks },
+    );
+    expect(c).toContainEqual({ type: 'unavailable', resource: 'student', resourceId: 7 });
+  });
+
   it('강의실 capacity 초과 → room_capacity', () => {
     const c = detectConflicts(
       { sessionDate: '2026-06-29', startTime: '20:00', durationMinutes: 60, roomId: 1 },
       { sessions: [], roomCapacity: { 1: 6 }, enrolledCount: 8 },
     );
     expect(c.some((x) => x.type === 'room_capacity')).toBe(true);
+  });
+});
+
+describe('availability block policy', () => {
+  it('blockRestrictsSession: online_only는 온라인 수업을 제한하지 않음', () => {
+    expect(blockRestrictsSession(ablock({ kind: 'online_only' as AvailabilityBlock['kind'] }), 'in_person')).toBe(true);
+    expect(blockRestrictsSession(ablock({ kind: 'online_only' as AvailabilityBlock['kind'] }), 'online')).toBe(false);
+  });
+
+  it('ownerAvailabilityForSlot: 가용 범위와 제약 블록을 같은 함수로 판정', () => {
+    const blocks: AvailabilityBlock[] = [
+      ablock({ id: 1, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '09:00', endTime: '17:00' }),
+      ablock({ id: 2, ownerType: 'instructor', ownerId: 1, kind: 'online_only' as AvailabilityBlock['kind'], weekday: 1, startTime: '12:00', endTime: '13:00' }),
+    ];
+    const base = { type: 'instructor' as const, id: 1 };
+    expect(ownerAvailabilityForSlot(blocks, base, { weekday: 1, start: 600, end: 660, mode: 'in_person' }, { requireAvailable: true })).toMatchObject({
+      available: true,
+    });
+    expect(ownerAvailabilityForSlot(blocks, base, { weekday: 1, start: 750, end: 780, mode: 'in_person' }, { requireAvailable: true })).toMatchObject({
+      available: false,
+      reason: 'online_only_overlap',
+    });
+    expect(ownerAvailabilityForSlot(blocks, base, { weekday: 1, start: 750, end: 780, mode: 'online' }, { requireAvailable: true })).toMatchObject({
+      available: true,
+    });
   });
 });
 

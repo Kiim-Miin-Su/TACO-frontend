@@ -6,7 +6,7 @@ import { api, type SchedulePatchBody, type ScheduleCreateBody, type Availability
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/queryKeys";
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 D — 파일별 중복 toMin/fromMin/pad/WD 제거)
-import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, ownerWindows, sessionEndMin, crossMidnightEnd } from "@/lib/domain/schedule";
+import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, sessionEndMin, crossMidnightEnd, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
 import {
   PALETTE, STATUS_LABEL, MAX_SPLIT,
   matchesStatusFilter, matchesResourceFilter, isGroupSession, sortByDateAsc,
@@ -3274,14 +3274,24 @@ function CreateModal({
   // ── #2: 선택 시간대에 가용한 강사 안내(가용 강사 먼저) ──
   const [blocks, setBlocks] = useState<AvailabilityBlock[]>([]);
   useEffect(() => { api.availability.all().then(setBlocks).catch(() => setBlocks([])); }, []);
-  const instAvailable = useCallback((instructorId: number): boolean => {
-    const wd = weekdayOf(date);
-    const s = toMin(start), e = toMin(end);
-    const av = ownerWindows(blocks, "instructor", instructorId, "available").filter((w) => w.weekday === wd);
-    if (!av.length || !av.some((w) => w.start <= s && e <= w.end)) return false; // 가용 미선언/미포함 → 불가
-    const blocked = blocks.some((b) => b.kind === "unavailable" && b.ownerType === "instructor" && b.ownerId === instructorId && b.weekday === wd && s < toMin(b.endTime) && toMin(b.startTime) < e);
-    return !blocked;
-  }, [blocks, date, start, end]);
+  const instAvailability = useCallback((id: number) => {
+    const s = toMin(start);
+    const e = end < start ? 1440 : toMin(end);
+    return ownerAvailabilityForSlot(
+      blocks,
+      { type: "instructor", id },
+      { weekday: weekdayOf(date), start: s, end: e, mode: sessionMode },
+      { requireAvailable: true },
+    );
+  }, [blocks, date, start, end, sessionMode]);
+  const instAvailable = useCallback((id: number): boolean => instAvailability(id).available, [instAvailability]);
+  const instAvailabilityLabel = useCallback((id: number): string => {
+    const decision = instAvailability(id);
+    if (decision.available) return "가용";
+    if (decision.reason === "online_only_overlap") return "온라인만 가능";
+    if (decision.reason === "unavailable_overlap") return "불가";
+    return "가용 외";
+  }, [instAvailability]);
   const sortedInstructors = useMemo(
     () => [...resources.instructors].sort((a, b) => Number(instAvailable(b.id)) - Number(instAvailable(a.id))),
     [resources.instructors, instAvailable],
@@ -3404,11 +3414,11 @@ function CreateModal({
                 {myCourses.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.subjectName}</option>)}
               </select>
             </Field>
-            <Field label={`강사 ${instructorId && !instAvailable(Number(instructorId)) ? "· ⚠ 선택 시간에 불가" : ""}`}>
+            <Field label={`강사 ${instructorId && !instAvailable(Number(instructorId)) ? `· ⚠ ${instAvailabilityLabel(Number(instructorId))}` : ""}`}>
               {lockInstructorId == null ? (
                 <select className="input" value={instructorId} onChange={(e) => setInstructorId(e.target.value ? Number(e.target.value) : "")}>
                   {sortedInstructors.map((i) => (
-                    <option key={i.id} value={i.id}>{i.name} {instAvailable(i.id) ? "· 가용" : "· 불가"}</option>
+                    <option key={i.id} value={i.id}>{i.name} · {instAvailabilityLabel(i.id)}</option>
                   ))}
                 </select>
               ) : (
