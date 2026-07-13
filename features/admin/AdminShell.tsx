@@ -42,12 +42,3 @@ export function AdminHeader() {
     </div>
   );
 }
-
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
-      {children}
-    </label>
-  );
-}

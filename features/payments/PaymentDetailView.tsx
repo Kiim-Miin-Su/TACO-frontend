@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { Badge, SectionCard } from '@/components/ui';
+import { Badge, Field, SectionCard } from '@/components/ui';
 import { usePayments, useStudents, useEnrollments, useCourses, useUpdatePayment, useMarkPaymentPaid } from '@/lib/queries';
 import { useTacoStore } from '@/lib/store';
 import { canAccessFinance } from '@/lib/roles';
@@ -138,14 +138,5 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
       </SectionCard>
       <p className="text-caption text-fg-subtle">수납 처리하면 입·출금 원장과 대시보드 입금/미수금에 반영됩니다.</p>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
-      {children}
-    </label>
   );
 }

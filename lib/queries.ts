@@ -3,9 +3,15 @@
 //  - 쓰기(useMutation)는 Q3에서 도메인별로 추가하며 성공 시 관련 queryKey를 invalidate한다.
 //  - buildTasks/navBadges/lib.reports 등 "여러 도메인 slice"가 필요한 로직은 useAppData()로 조립해 넘긴다.
 "use client";
-import { useQuery, useMutation, useQueryClient, type QueryClient, type QueryKey } from "@tanstack/react-query";
-import { api, type ScheduleRequestEx, type SessionReport as ApiReport } from "@/lib/api";
+import { useQuery, useMutation, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { api, type SessionReport as ApiReport } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+import {
+  invalidateScheduleRequests,
+  refreshScheduleRequestLifecycle,
+  scheduleRequestListKey,
+  upsertScheduleRequestCache,
+} from "@/lib/query-cache";
 import { useTacoStore } from "@/lib/store";
 import { canAccessFinance, isAdmin } from "@/lib/roles";
 import { currentClaims } from "@/lib/auth";
@@ -22,41 +28,6 @@ export const tokenScopeKey = () => {
   const c = currentClaims();
   return c ? `${c.sub}:${(c.roles ?? []).join(',')}` : 'anon';
 };
-
-export const scheduleRequestListKey = (scope = tokenScopeKey()) => qk.scheduleRequests.list(scope);
-
-// ScheduleCalendar has a few direct request paths (drag/resize approval modal, availability approval modal).
-// Keep those paths and mutation hooks on the same cache contract so dashboard, approvals, and calendar ghosts
-// all see the created pending request immediately, then reconcile with the backend refetch.
-export function upsertScheduleRequestCache(qc: QueryClient, row?: ScheduleRequestEx, scope = tokenScopeKey()) {
-  if (!row) return;
-  const upsert = (prev: ScheduleRequestEx[] = []) => {
-    const next = [row, ...prev.filter((r) => r.id !== row.id)];
-    return next.sort((a, b) => b.id - a.id);
-  };
-  qc.setQueryData<ScheduleRequestEx[]>(scheduleRequestListKey(scope), upsert);
-  qc.setQueriesData<ScheduleRequestEx[]>({ queryKey: qk.scheduleRequests.all }, upsert);
-}
-
-export const invalidateScheduleRequests = (qc: QueryClient) =>
-  qc.invalidateQueries({ queryKey: qk.scheduleRequests.all, refetchType: "all" });
-
-async function refreshScheduleRequestLifecycle(qc: QueryClient, opts: { schedule?: boolean; availability?: boolean } = {}) {
-  const tasks: Promise<unknown>[] = [
-    qc.invalidateQueries({ queryKey: qk.scheduleRequests.all, refetchType: "all" }),
-    qc.invalidateQueries({ queryKey: ["audit"], refetchType: "all" }),
-  ];
-  if (opts.schedule) {
-    tasks.push(qc.invalidateQueries({ queryKey: qk.schedule.all, refetchType: "active" }));
-    tasks.push(qc.invalidateQueries({ queryKey: qk.attendance.all, refetchType: "active" }));
-    tasks.push(qc.invalidateQueries({ queryKey: qk.reports.all, refetchType: "active" }));
-    tasks.push(qc.invalidateQueries({ queryKey: qk.payouts.all, refetchType: "active" }));
-  }
-  if (opts.availability) {
-    tasks.push(qc.invalidateQueries({ queryKey: qk.availability.all, refetchType: "active" }));
-  }
-  await Promise.all(tasks);
-}
 
 // 백엔드 보고서(status=draft|submitted|sent, approvalStatus=draft|submitted|approved|rejected)를 store 모델로 정규화.
 //  구형 응답 호환: approvalStatus가 없으면 status를 승인상태로 해석한다.
@@ -85,25 +56,25 @@ export const useCourses = () => useQuery({ queryKey: qk.courses.list(), queryFn:
 export const useEnrollments = () => useQuery({ queryKey: qk.enrollments.list(), queryFn: () => api.enrollments.list(), staleTime: CATALOG_STALE });
 export const useSchedule = () => {
   const scope = tokenScopeKey();
-  return useQuery({ queryKey: qk.schedule.list({}, scope), queryFn: () => api.schedule.list({}) });
+  return useQuery({ queryKey: qk.schedule.list({}, scope), queryFn: ({ signal }) => api.schedule.list({}, { signal }) });
 };
 // [TBO-14] 캘린더 데이터층 — 기간·선택자원 파라미터 스케줄 조회. qk.schedule 하위키라 세션 변경(PATCH/생성/삭제·
 //  강사출결)이 qk.schedule.all 무효화로 자동 반영(M1 invalidate 단절 해소). 뷰는 이 데이터를 rows로 feed.
 export const useCalendarSchedule = (params: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number }) => {
   const scope = tokenScopeKey();
-  return useQuery({ queryKey: qk.schedule.list(params, scope), queryFn: () => api.schedule.list(params) });
+  return useQuery({ queryKey: qk.schedule.list(params, scope), queryFn: ({ signal }) => api.schedule.list(params, { signal }) });
 };
 // [TBO-14 C2] 캘린더 준정적 카탈로그 — 강의실·자원 피커. staleTime 5분(변경 빈도 낮음·쓰기 시 invalidate).
 export const useRooms = () => useQuery({ queryKey: qk.rooms.all(), queryFn: () => api.rooms.list(), staleTime: CATALOG_STALE });
 export const useScheduleResources = () => {
   const scope = tokenScopeKey();
-  return useQuery({ queryKey: qk.schedule.resources(scope), queryFn: () => api.schedule.resources(), staleTime: CATALOG_STALE });
+  return useQuery({ queryKey: qk.schedule.resources(scope), queryFn: ({ signal }) => api.schedule.resources({ signal }), staleTime: CATALOG_STALE });
 };
 // [TBO-14 C2b] 전체 가용/불가 블록 — 캘린더 밴드 단일 소스(selBlocks는 뷰에서 owner 파생). 밴드 편집 시 invalidate.
-export const useAllAvailability = () => useQuery({ queryKey: qk.availability.all, queryFn: () => api.availability.all() });
+export const useAllAvailability = () => useQuery({ queryKey: qk.availability.all, queryFn: ({ signal }) => api.availability.all({ signal }) });
 export const useAttendance = () => {
   const scope = tokenScopeKey();
-  return useQuery({ queryKey: qk.attendance.list(scope), queryFn: () => api.attendance.list() });
+  return useQuery({ queryKey: qk.attendance.list(scope), queryFn: ({ signal }) => api.attendance.list({ signal }) });
 };
 export const usePayments = () => {
   const role = useTacoStore((s) => s.currentRole);
@@ -147,7 +118,7 @@ export const useMyPayoutPreview = (from: string, to: string) => {
 // [TBO-16 #9] 수업 요청 — 승인센터·배지(tasks)·캘린더가 **같은 queryKey를 구독**(단일 이벤트 객체).
 //  서버가 역할별 스코프 적용(강사=본인 요청만) — 클라 필터 불요.
 export const useScheduleRequests = () =>
-  useQuery({ queryKey: scheduleRequestListKey(), queryFn: () => api.scheduleRequests.list() });
+  useQuery({ queryKey: scheduleRequestListKey(tokenScopeKey()), queryFn: ({ signal }) => api.scheduleRequests.list(undefined, { signal }) });
 export const useCounselForms = () => useQuery({ queryKey: qk.counsel.forms(), queryFn: () => api.counsel.forms() });
 export const useCounselRounds = () => useQuery({ queryKey: qk.counsel.rounds(), queryFn: () => api.counsel.rounds() });
 export const useAcademyEvents = () => useQuery({ queryKey: qk.events.list(), queryFn: () => api.events.list() });
@@ -198,11 +169,10 @@ export const useReports = () =>
 // 강사 목록 = 스케줄 자원(resources)에서 파생(단일 소스). store.instructors 대체.
 export const useInstructors = () =>
   useQuery({
-    queryKey: [...qk.schedule.all, "resources", "instructors", tokenScopeKey()] as const,
-    queryFn: async (): Promise<Instructor[]> => {
-      const res = await api.schedule.resources();
-      return res.instructors.map((i) => ({ id: i.id, name: i.name, subjectName: i.sub }));
-    },
+    queryKey: qk.schedule.resources(tokenScopeKey()),
+    queryFn: ({ signal }) => api.schedule.resources({ signal }),
+    select: (res): Instructor[] => res.instructors.map((i) => ({ id: i.id, name: i.name, subjectName: i.sub })),
+    staleTime: CATALOG_STALE,
   });
 
 // 교차 도메인 slice — buildTasks/navBadges/lib.reports가 store 대신 이걸 받는다(전환용 컴포지트).
@@ -239,12 +209,32 @@ export function useAppData() {
   };
 }
 
+// 네비게이션 배지/알림은 buildTasks가 실제 사용하는 도메인만 구독한다.
+export function useTaskData() {
+  const role = useTacoStore((s) => s.currentRole);
+  const financePayouts = usePayouts().data ?? [];
+  const myPayouts = useMyPayouts().data ?? [];
+  return {
+    instructors: useInstructors().data ?? [],
+    students: useStudents().data ?? [],
+    courses: useCourses().data ?? [],
+    enrollments: useEnrollments().data ?? [],
+    classSessions: useSchedule().data ?? [],
+    sessionReports: useReports().data ?? [],
+    expenses: useExpenses().data ?? [],
+    instructorPayouts: canAccessFinance(role) ? financePayouts : role === "instructor" ? myPayouts : [],
+    counselForms: useCounselForms().data ?? [],
+    payments: usePayments().data ?? [],
+    scheduleRequests: useScheduleRequests().data ?? [],
+  };
+}
+
 // ── 뮤테이션 훅 (중앙화) ──
 // 쓰기는 전부 백엔드 API 경유 + 성공 시 관련 queryKey invalidate → Query(및 store 하이드레이션) 자동 갱신.
 // 각 뷰는 아래 훅만 호출(useMutation+invalidate 반복 제거 = 함수 통일).
 function useInvalidator(keys: QueryKey[]) {
   const qc = useQueryClient();
-  return () => keys.forEach((key) => qc.invalidateQueries({ queryKey: key }));
+  return () => Promise.all(keys.map((key) => qc.invalidateQueries({ queryKey: key })));
 }
 
 // 카탈로그
@@ -348,7 +338,7 @@ export const useCreateScheduleRequest = () => {
   return useMutation({
     mutationFn: api.scheduleRequests.create,
     onSuccess: (data) => {
-      upsertScheduleRequestCache(qc, data.row);
+      upsertScheduleRequestCache(qc, tokenScopeKey(), data.row);
       return invalidateScheduleRequests(qc);
     },
   });
@@ -359,7 +349,7 @@ export const useApproveScheduleRequest = () => {
     mutationFn: (v: { id: number; force?: boolean }) => api.scheduleRequests.approve(v.id, v.force),
     // [C2C-b] audit 프리픽스 무효화 — 상세 모달 '처리 이력'이 승인 직후 즉시 갱신
     onSuccess: async (data) => {
-      upsertScheduleRequestCache(qc, data.request);
+      upsertScheduleRequestCache(qc, tokenScopeKey(), data.request);
       const kind = data.request.requestKind;
       await refreshScheduleRequestLifecycle(qc, {
         schedule: kind == null || kind === "session_create" || kind === "session_update" || kind === "session_delete",
@@ -373,7 +363,7 @@ export const useRejectScheduleRequest = () => {
   return useMutation({
     mutationFn: (v: { id: number; reason: string }) => api.scheduleRequests.reject(v.id, v.reason), // 사유 필수
     onSuccess: async (data) => {
-      upsertScheduleRequestCache(qc, data);
+      upsertScheduleRequestCache(qc, tokenScopeKey(), data);
       await refreshScheduleRequestLifecycle(qc);
     },
   });
@@ -384,7 +374,7 @@ export const useUpdateScheduleRequest = () => {
   return useMutation({
     mutationFn: (v: { id: number; body: Parameters<typeof api.scheduleRequests.update>[1] }) => api.scheduleRequests.update(v.id, v.body),
     onSuccess: async (data) => {
-      upsertScheduleRequestCache(qc, data);
+      upsertScheduleRequestCache(qc, tokenScopeKey(), data);
       await refreshScheduleRequestLifecycle(qc);
     }, // 이력 즉시 갱신(상세 모달)
   });

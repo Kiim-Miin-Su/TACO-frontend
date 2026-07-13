@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { SectionCard } from '@/components/ui';
+import { Field, SectionCard } from '@/components/ui';
 import { useStudents, useCourses, useEnrollments, useCreatePayment } from '@/lib/queries';
 import { useTacoStore } from '@/lib/store';
 import { canAccessFinance } from '@/lib/roles';
@@ -96,14 +96,5 @@ export function PaymentFormView() {
         </form>
       </SectionCard>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
-      {children}
-    </label>
   );
 }

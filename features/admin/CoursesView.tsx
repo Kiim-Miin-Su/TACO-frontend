@@ -9,7 +9,8 @@ import { api } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
 import { useCourses, useSubjects, useInstructors } from '@/lib/queries';
 import { won } from '@/lib/format';
-import { AdminGuard, AdminHeader, Field } from './AdminShell';
+import { AdminGuard, AdminHeader } from './AdminShell';
+import { Field } from '@/components/ui';
 
 export function CoursesView() {
   const { data: subjects = [] } = useSubjects();

@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
-import { scheduleRequestListKey, upsertScheduleRequestCache } from "./queries";
+import { scheduleRequestListKey, upsertScheduleRequestCache } from "./query-cache";
 import type { ScheduleRequestEx } from "./api";
 
 const request = (id: number, topic: string): ScheduleRequestEx => ({
@@ -24,7 +24,7 @@ describe("schedule request cache helpers", () => {
     const scope = "1:instructor";
     qc.setQueryData(scheduleRequestListKey(scope), [request(1, "old")]);
 
-    upsertScheduleRequestCache(qc, request(3, "new"), scope);
+    upsertScheduleRequestCache(qc, scope, request(3, "new"));
 
     expect(qc.getQueryData<ScheduleRequestEx[]>(scheduleRequestListKey(scope))?.map((r) => r.id)).toEqual([3, 1]);
   });
@@ -34,20 +34,20 @@ describe("schedule request cache helpers", () => {
     const scope = "1:instructor";
     qc.setQueryData(scheduleRequestListKey(scope), [request(2, "stale")]);
 
-    upsertScheduleRequestCache(qc, request(2, "fresh"), scope);
+    upsertScheduleRequestCache(qc, scope, request(2, "fresh"));
 
     expect(qc.getQueryData<ScheduleRequestEx[]>(scheduleRequestListKey(scope))).toEqual([request(2, "fresh")]);
   });
 
-  it("updates every loaded schedule request list cache for fast role/page rerender", () => {
+  it("does not leak a request update into another authentication scope", () => {
     const qc = new QueryClient();
     qc.setQueryData(scheduleRequestListKey("4:manager"), [request(4, "manager stale")]);
     qc.setQueryData(scheduleRequestListKey("3:super_admin"), [request(4, "super stale")]);
 
     const approved = { ...request(4, "approved"), status: "approved" as const };
-    upsertScheduleRequestCache(qc, approved, "4:manager");
+    upsertScheduleRequestCache(qc, "4:manager", approved);
 
     expect(qc.getQueryData<ScheduleRequestEx[]>(scheduleRequestListKey("4:manager"))).toEqual([approved]);
-    expect(qc.getQueryData<ScheduleRequestEx[]>(scheduleRequestListKey("3:super_admin"))).toEqual([approved]);
+    expect(qc.getQueryData<ScheduleRequestEx[]>(scheduleRequestListKey("3:super_admin"))).toEqual([request(4, "super stale")]);
   });
 });

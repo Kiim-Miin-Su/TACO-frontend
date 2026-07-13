@@ -10,7 +10,8 @@ import { api } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
 import { useAcademyEvents } from '@/lib/queries';
 import type { EventType, EventPriority } from '@/types';
-import { AdminGuard, AdminHeader, Field } from './AdminShell';
+import { AdminGuard, AdminHeader } from './AdminShell';
+import { Field } from '@/components/ui';
 import { eventLabel, eventTone, EVENT_TYPES, priorityLabel, EVENT_PRIORITIES } from './labels';
 
 export function EventsView() {

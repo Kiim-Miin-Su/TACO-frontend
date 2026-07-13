@@ -5,6 +5,7 @@ import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, 
 import { api, type SchedulePatchBody, type ScheduleCreateBody, type AvailabilityUpsertBody, type CreateScheduleRequestBody } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/queryKeys";
+import { invalidateScheduleLifecycle } from "@/lib/query-cache";
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 D — 파일별 중복 toMin/fromMin/pad/WD 제거)
 import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, sessionEndMin, crossMidnightEnd, durationMinutesBetween, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
 import {
@@ -36,6 +37,7 @@ import { CountryInput } from "./CountryInput";
 import { CalendarViewTabs } from "./CalendarViewTabs";
 import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
 import { formatScheduleConflicts } from "@/lib/domain/conflict-messages";
+import { applyScheduleRowPatch } from "@/lib/domain/schedule-row";
 import { appendCalendarPane, companionPaneSeed, currentPaneSeeds } from "@/lib/domain/calendar-panes";
 import { availabilityGhostBandsForColumn } from "@/lib/domain/pending-ghosts";
 import { buildAvailabilityRequestBody, buildSessionDeleteRequestBody } from "@/lib/domain/request-drafts";
@@ -52,11 +54,11 @@ import { currentClaims, myInstructorId as loginInstructorId } from "@/lib/auth";
 import { ResourcePanel } from "./ResourcePanel";
 import { ResourceDetailCard } from "./ResourceDetailCard";
 import { ParticipantsCard } from "./ParticipantsCard";
-import { SessionEditFields, ColorPicker, Field, TimeSelect } from "./SessionEditFields";
+import { SessionEditFields, ColorPicker, TimeSelect } from "./SessionEditFields";
 import { CalendarSplitPane, type SplitPaneDef } from "./CalendarSplitPane";
 import { CalendarFilterBar, type Period } from "./CalendarFilterBar";
 import { CalendarPaneFilters } from "./CalendarPaneFilters";
-import { HelpPopover, PageHeader } from "@/components/ui";
+import { Field, HelpPopover, PageHeader } from "@/components/ui";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 import { SessionListPanel } from "./SessionListPanel";
 import { SessionDetailPanel } from "./SessionDetailPanel";
@@ -108,39 +110,6 @@ const hashColor = (s: string) => PALETTE[[...s].reduce((a, c) => a + c.charCodeA
 const startMinOf = (r: ScheduleRow) => toMin(r.startTime ?? "09:00");
 // [R-9] 자정 크로스(endTime 미저장·durationMinutes 파생) 대응 — 1440 초과 가능(단일 소스: sessionEndMin)
 const endMinOf = (r: ScheduleRow) => sessionEndMin({ startTime: r.startTime ?? "09:00", endTime: r.endTime, durationMinutes: r.durationMinutes });
-
-// ── 낙관적 업데이트·승인요청 미리보기 공용 helper ──
-// 컴포넌트 바깥에 두어 drag/resize 모달과 실제 patch 적용이 같은 계산을 쓰고, 렌더마다 재생성되지 않게 한다.
-function applyRowPatch(r: ScheduleRow, patch: SchedulePatchBody): ScheduleRow {
-  const next: ScheduleRow = { ...r };
-  if (patch.sessionDate) { next.sessionDate = patch.sessionDate; next.weekday = weekdayOf(patch.sessionDate); }
-  if (patch.startTime) next.startTime = patch.startTime;
-  if (patch.endTime) next.endTime = patch.endTime;
-  if (patch.startTime || patch.endTime) {
-    const s = toMin(next.startTime ?? "00:00");
-    const e = next.endTime ? s + durationMinutesBetween(next.startTime ?? "00:00", next.endTime) : s + next.durationMinutes;
-    next.durationMinutes = Math.max(1, e - s);
-    if (e >= 1440) next.endTime = undefined; // 크로스는 endTime 미보유(durationMinutes 파생 — BE 저장 규칙)
-  }
-  if (patch.durationMinutes != null) {
-    next.durationMinutes = patch.durationMinutes;
-    if (next.startTime && !patch.endTime) {
-      const em = toMin(next.startTime) + patch.durationMinutes;
-      next.endTime = em >= 1440 ? undefined : fromMin(em); // [R-9] 크로스면 파생(무효 'HH:mm' 금지)
-    }
-  }
-  if (patch.roomId !== undefined) next.roomId = patch.roomId;
-  if (patch.instructorId !== undefined) next.instructorId = patch.instructorId;
-  if (patch.status) next.status = patch.status as ScheduleRow["status"];
-  if (patch.color !== undefined) next.color = patch.color;
-  if (patch.memo !== undefined) next.memo = patch.memo;
-  if (patch.studentIds !== undefined) next.studentIds = patch.studentIds;
-  if (patch.courseId !== undefined) next.courseId = patch.courseId;
-  if (patch.topic !== undefined) next.topic = patch.topic;
-  if (patch.kind !== undefined) next.kind = patch.kind;
-  if (patch.mode !== undefined) next.mode = patch.mode;
-  return next;
-}
 
 type View = "month" | "week" | "day";
 type ColorBy = "subject" | "instructor" | "room" | "student";
@@ -582,7 +551,7 @@ export function ScheduleCalendar() {
   }, [scheduleQ.isError]);
   // load() = 스케줄 쿼리 무효화(refetch→위 useEffect가 rows reconcile). 낙관적 커밋 후 서버 확정에 사용.
   const load = useCallback(async () => {
-    await qc.invalidateQueries({ queryKey: qk.schedule.all });
+    await invalidateScheduleLifecycle(qc);
   }, [qc]);
   // [TBO-14 C2] rooms·resources는 useRooms()·useScheduleResources() Query로 이관 — 로컬 fetch effect 제거.
 
@@ -836,8 +805,8 @@ export function ScheduleCalendar() {
 
   // ── 가용/불가(Block) — 밴드 표시 + 클릭 삭제. 생성은 "스케줄 추가" 모달의 '가용·불가' 탭에서. ──
   // [TBO-14 C2b] 밴드 편집 후 가용/불가 쿼리 무효화 → allBlocks refetch → selBlocks 파생 자동 재계산.
-  const reloadSelBlocks = useCallback(() => {
-    qc.invalidateQueries({ queryKey: qk.availability.all });
+  const reloadSelBlocks = useCallback(async () => {
+    await qc.invalidateQueries({ queryKey: qk.availability.all });
   }, [qc]);
 
   const hasAvailabilityLegend = useMemo(() => {
@@ -1070,7 +1039,7 @@ export function ScheduleCalendar() {
   // ── PATCH 적용(낙관적 + 충돌 시 확인 후 force) ──
   async function applyPatch(id: number, patch: SchedulePatchBody) {
     const snapshot = rows;
-    setRows((rs) => rs.map((r) => (r.id === id ? applyRowPatch(r, patch) : r))); // 즉시 반영
+    setRows((rs) => rs.map((r) => (r.id === id ? applyScheduleRowPatch(r, patch) : r))); // 즉시 반영
     try {
       const res = await api.schedule.update(id, patch);
       if (res.updated > 1) setMsg(`반복 일정 ${res.updated}건 함께 수정되었습니다.`);
@@ -1111,7 +1080,7 @@ export function ScheduleCalendar() {
   }
 
   async function submitScheduleChangeApproval(draft: ScheduleChangeApprovalDraft, requestReason: string, scope: RecurrenceScope) {
-    const merged = applyRowPatch(draft.row, draft.patch);
+    const merged = applyScheduleRowPatch(draft.row, draft.patch);
     const body: CreateScheduleRequestBody = {
       requestKind: "session_update",
       targetSessionId: draft.row.id,
@@ -2711,7 +2680,7 @@ function ScheduleChangeApprovalModal({
   onClose: () => void;
   onSubmit: (requestReason: string, scope: RecurrenceScope) => void;
 }) {
-  const next = applyRowPatch(draft.row, draft.patch);
+  const next = applyScheduleRowPatch(draft.row, draft.patch);
   const [requestReason, setRequestReason] = useState("");
   const [scope, setScope] = useState<RecurrenceScope>((draft.patch.scope as RecurrenceScope | undefined) ?? "this");
   const reason = requestReason.trim();

@@ -4,7 +4,7 @@ export { PageHeader } from './PageHeader';
 export { Field } from './Field';
 export { EmptyState } from './EmptyState';
 export { TableWrap } from './TableWrap';
-export { PromptModal, ConfirmModal } from './Modal';
+export { ModalShell, PromptModal, ConfirmModal } from './Modal';
 export type { PromptField } from './Modal';
 export { HelpPopover } from './HelpPopover';
 export { StatusDot } from './StatusDot';

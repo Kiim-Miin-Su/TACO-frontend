@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { Combobox } from "@/components/ui";
+import { Combobox, Field } from "@/components/ui";
 import { useCourses, useInstructors, useSchedule, useCreateSchedule } from "@/lib/queries";
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -187,14 +187,5 @@ export function SessionForm() {
         </button>
       </div>
     </form>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
-      {children}
-    </label>
   );
 }

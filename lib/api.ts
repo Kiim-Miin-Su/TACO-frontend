@@ -1,7 +1,7 @@
 // 백엔드(NestJS) REST 클라이언트 — Axios.
 // baseURL = `${NEXT_PUBLIC_API_URL}/api`. 로컬은 미설정 시 next.config rewrites가 localhost로 프록시,
 // 배포(Vercel)는 NEXT_PUBLIC_API_URL을 백엔드 도메인으로 지정하면 직접 호출(백엔드 CORS 허용).
-import axios from "axios";
+import axios, { type AxiosRequestConfig } from "axios";
 import { logger } from "./log";
 import { safeLogValue, safeUrlForLog } from "./log-redaction";
 import { getToken, clearToken } from "./auth";
@@ -183,6 +183,7 @@ export type LedgerTx = {
 };
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+export type ApiReadOptions = Pick<AxiosRequestConfig, "signal">;
 
 export const http = axios.create({
   baseURL: `${BASE}/api`,
@@ -195,6 +196,7 @@ export const http = axios.create({
 const apiLog = logger("api");
 // [R3 2026-07-06] network 계측 — 요청 개수·시작 시각(응답에서 duration 산출). PII·바디 미기록.
 let reqSeq = 0;
+let expiredRedirectStarted = false;
 type MetaConfig = { meta?: { seq: number; start: number } };
 
 http.interceptors.request.use((cfg) => {
@@ -213,6 +215,7 @@ http.interceptors.response.use(
     return res;
   },
   (err) => {
+    if (axios.isCancel(err)) return Promise.reject(err);
     const status = err?.response?.status ?? "ERR";
     const meta = (err?.config as unknown as MetaConfig)?.meta;
     apiLog.error(
@@ -225,10 +228,12 @@ http.interceptors.response.use(
       status === 401 &&
       typeof window !== "undefined" &&
       !isPublicRoute(window.location.pathname) &&
-      !String(err?.config?.url ?? "").includes("/auth/login")
+      !String(err?.config?.url ?? "").includes("/auth/login") &&
+      !expiredRedirectStarted
     ) {
+      expiredRedirectStarted = true;
       clearToken();
-      window.location.href = "/login?expired=1";
+      window.location.assign("/login?expired=1");
     }
     return Promise.reject(err);
   },
@@ -339,7 +344,7 @@ export const api = {
       http.get<AuditLog[]>("/audit", { params: { entity, entityId, limit } }).then((r) => r.data),
   },
   attendance: {
-    list: () => http.get<Attendance[]>("/attendance").then((r) => r.data),
+    list: (options: ApiReadOptions = {}) => http.get<Attendance[]>("/attendance", options).then((r) => r.data),
     upsert: (body: { sessionId: number; studentId: number; status: AttendanceStatus }) =>
       http.put<Attendance>("/attendance", body).then((r) => r.data),
   },
@@ -359,10 +364,10 @@ export const api = {
   },
   // ── 스케줄(v5) ──
   schedule: {
-    list: (q: ScheduleQuery = {}) =>
-      http.get<ScheduleRow[]>("/schedule", { params: q }).then((r) => r.data),
+    list: (q: ScheduleQuery = {}, options: ApiReadOptions = {}) =>
+      http.get<ScheduleRow[]>("/schedule", { ...options, params: q }).then((r) => r.data),
     // 자원 피커(강사·강의실·학생)
-    resources: () => http.get<ScheduleResources>("/schedule/resources").then((r) => r.data),
+    resources: (options: ApiReadOptions = {}) => http.get<ScheduleResources>("/schedule/resources", options).then((r) => r.data),
     // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터
     instructorAttendanceSummary: (from?: string, to?: string, instructorId?: number) =>
       http.get<InstructorAttendanceSummary>("/schedule/instructor-attendance-summary", { params: { from, to, instructorId } }).then((r) => r.data),
@@ -380,8 +385,8 @@ export const api = {
   },
   // 강사 수업 요청 → 매니저 승인/반려(TBO-16 #9). 승인=서버가 createSession 재사용(409+force 동일 규약).
   scheduleRequests: {
-    list: (status?: ScheduleRequest["status"]) =>
-      http.get<ScheduleRequestEx[]>("/schedule-requests", { params: status ? { status } : {} }).then((r) => r.data),
+    list: (status?: ScheduleRequest["status"], options: ApiReadOptions = {}) =>
+      http.get<ScheduleRequestEx[]>("/schedule-requests", { ...options, params: status ? { status } : {} }).then((r) => r.data),
     create: (input: CreateScheduleRequestBody) =>
       http.post<{ row: ScheduleRequestEx; conflicts: Conflict[] }>("/schedule-requests", input).then((r) => r.data),
     approve: (id: number, force?: boolean) =>
@@ -402,7 +407,7 @@ export const api = {
         .get<AvailabilityBlock[]>("/availability", { params: { ownerType, ownerId } })
         .then((r) => r.data),
     // 전체 블록(추천 컨텍스트용 — 학생+강사+강의실 가용/불가 한 번에)
-    all: () => http.get<AvailabilityBlock[]>("/availability").then((r) => r.data),
+    all: (options: ApiReadOptions = {}) => http.get<AvailabilityBlock[]>("/availability", options).then((r) => r.data),
     // 가용/불가(Block) 생성·수정(id 있으면 수정)
     upsert: (body: AvailabilityUpsertBody) =>
       http.put<AvailabilityBlock>("/availability", body).then((r) => r.data),

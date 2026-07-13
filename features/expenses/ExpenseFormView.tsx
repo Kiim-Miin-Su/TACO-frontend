@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { SectionCard } from '@/components/ui';
+import { Field, SectionCard } from '@/components/ui';
 import { useCreateExpense } from '@/lib/queries';
 import type { ExpenseCategory } from '@/types';
 import { CATEGORIES, categoryLabel } from './labels';
@@ -75,14 +75,5 @@ export function ExpenseFormView() {
       </SectionCard>
       <p className="text-caption text-fg-subtle">지출은 <b>대표(super_admin) 승인</b> 후 출금 원장·대시보드에 반영됩니다. (관리자 &gt; 승인 센터)</p>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
-      {children}
-    </label>
   );
 }

@@ -11,6 +11,7 @@ import type { Room, ScheduleRow, RecurrenceScope } from "@/types";
 import type { SchedulePatchBody } from "@/lib/api";
 import { fromMin, toMin, pad2, WEEKDAYS_KO as WD } from "@/lib/domain/schedule";
 import { PALETTE, STATUS_LABEL, sessionEditPatch, KIND_FILTERS, KIND_FILTER_LABEL, MODE_FILTERS, MODE_FILTER_LABEL, type SessionDraft } from "@/lib/domain/lantiv";
+import { Field } from "@/components/ui";
 
 // ── 시간 선택기(24시간 · 시/분 드롭다운) — 브라우저 type=time의 AM/PM(로케일 의존) 불편 해소.
 //  실제 앱처럼 시(00~23)·분(5분 단위)을 직접 고른다. 값·onChange는 "HH:mm" 문자열(기존 계약 유지).
@@ -28,16 +29,6 @@ export function TimeSelect({ value, onChange, className }: { value: string; onCh
         {Array.from({ length: 60 / MINUTE_STEP }, (_, i) => i * MINUTE_STEP).map((mm) => <option key={mm} value={mm}>{pad2(mm)}분</option>)}
       </select>
     </div>
-  );
-}
-
-// ── 공용 폼 프리미티브(캘린더 폼 3곳 공유: 본 폼·CreateModal·BlockEditModal) ──
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
-      {children}
-    </label>
   );
 }
 

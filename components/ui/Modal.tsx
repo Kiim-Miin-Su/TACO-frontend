@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 /**
  * Modal 계열 — window.prompt/confirm 대체 (DESIGN.md §5).
@@ -8,17 +8,95 @@ import { useEffect, useState, type ReactNode } from "react";
  */
 
 const widths = { sm: "w-[400px]", md: "w-[560px]", lg: "w-[720px]" } as const;
+type ModalSize = keyof typeof widths;
 
-function Overlay({ children, onClose }: { children: ReactNode; onClose: () => void }) {
-  // Escape로 닫기 — 팝오버와 달리 모달은 키보드 탈출 지원
+const focusableSelector = [
+  "button:not([disabled])",
+  "[href]",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
+export function ModalShell({
+  title,
+  children,
+  footer,
+  onClose,
+  size = "sm",
+  bodyClassName = "",
+}: {
+  title: ReactNode;
+  children: ReactNode;
+  footer?: ReactNode;
+  onClose: () => void;
+  size?: ModalSize;
+  bodyClassName?: string;
+}) {
+  const titleId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
+    onCloseRef.current = onClose;
   }, [onClose]);
+
+  useEffect(() => {
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const panel = panelRef.current;
+    const first = panel?.querySelector<HTMLElement>("[data-modal-autofocus]") ?? panel?.querySelector<HTMLElement>(focusableSelector);
+    (first ?? panel)?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab" || !panel) return;
+      const focusable = [...panel.querySelectorAll<HTMLElement>(focusableSelector)].filter((element) => element.offsetParent !== null);
+      if (!focusable.length) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const firstElement = focusable[0];
+      const lastElement = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === firstElement || !panel.contains(document.activeElement))) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      const restoreFocus = restoreFocusRef.current;
+      window.setTimeout(() => restoreFocus?.focus(), 0);
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-[55] grid place-items-center bg-black/35" onClick={onClose}>
-      {children}
+    <div
+      className="fixed inset-0 z-[55] grid place-items-center bg-black/35 p-4"
+      onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className={`card card-pad ${widths[size]} max-w-[95vw] max-h-[85vh] flex flex-col gap-3`}
+      >
+        <div id={titleId} className="font-semibold shrink-0">{title}</div>
+        <div className={`min-h-0 overflow-y-auto ${bodyClassName}`}>{children}</div>
+        {footer && <div className="flex justify-end gap-2 pt-1 shrink-0">{footer}</div>}
+      </div>
     </div>
   );
 }
@@ -66,16 +144,23 @@ export function PromptModal({
     onSubmit(out);
   };
   return (
-    <Overlay onClose={onClose}>
-      <div className={`card card-pad ${widths.sm} max-w-[95vw] max-h-[85vh] flex flex-col gap-3`} onClick={(e) => e.stopPropagation()}>
-        <div className="font-semibold shrink-0">{title}</div>
-        <div className="min-h-0 overflow-y-auto space-y-3">
+    <ModalShell
+      title={title}
+      onClose={onClose}
+      bodyClassName="space-y-3"
+      footer={(
+        <>
+          <button className="btn btn-sm" onClick={onClose}>취소</button>
+          <button className="btn btn-sm btn-primary" disabled={invalid} onClick={submit}>{submitLabel}</button>
+        </>
+      )}
+    >
         {fields.map((f, i) => (
           <label key={f.name} className="block">
             <span className="block text-caption font-medium text-fg-muted mb-1">{f.label}{f.required ? " *" : ""}</span>
             <input
               className="input"
-              autoFocus={i === 0}
+              data-modal-autofocus={i === 0 ? "true" : undefined}
               inputMode={f.type === "number" ? "numeric" : undefined}
               placeholder={f.placeholder}
               value={values[f.name]}
@@ -85,13 +170,7 @@ export function PromptModal({
             {f.hint && <span className="block text-micro text-fg-subtle mt-1">{f.hint}</span>}
           </label>
         ))}
-        </div>
-        <div className="flex justify-end gap-2 pt-1 shrink-0">
-          <button className="btn btn-sm" onClick={onClose}>취소</button>
-          <button className="btn btn-sm btn-primary" disabled={invalid} onClick={submit}>{submitLabel}</button>
-        </div>
-      </div>
-    </Overlay>
+    </ModalShell>
   );
 }
 
@@ -111,17 +190,20 @@ export function ConfirmModal({
   onConfirm: () => void;
 }) {
   return (
-    <Overlay onClose={onClose}>
-      <div className={`card card-pad ${widths.sm} max-w-[95vw] max-h-[85vh] flex flex-col gap-3`} onClick={(e) => e.stopPropagation()}>
-        <div className="font-semibold shrink-0">{title}</div>
-        <div className="text-body text-fg-muted min-h-0 overflow-y-auto">{message}</div>
-        <div className="flex justify-end gap-2 pt-1 shrink-0">
+    <ModalShell
+      title={title}
+      onClose={onClose}
+      bodyClassName="text-body text-fg-muted"
+      footer={(
+        <>
           <button className="btn btn-sm" onClick={onClose}>취소</button>
-          <button className={`btn btn-sm ${danger ? "btn-danger" : "btn-primary"}`} autoFocus onClick={onConfirm}>
+          <button className={`btn btn-sm ${danger ? "btn-danger" : "btn-primary"}`} data-modal-autofocus="true" onClick={onConfirm}>
             {confirmLabel}
           </button>
-        </div>
-      </div>
-    </Overlay>
+        </>
+      )}
+    >
+      {message}
+    </ModalShell>
   );
 }
