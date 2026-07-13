@@ -14,6 +14,7 @@ import { useTacoStore } from '@/lib/store';
 import { isAdmin } from '@/lib/roles';
 import { paidTeachingHours, countsForPay, WEEKDAYS_KO as WD } from '@/lib/domain/schedule';
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from './AttMarker';
+import { AccountingImpactModal } from '@/components/AccountingImpactModal';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const thisYm = () => new Date().toISOString().slice(0, 7);
@@ -202,6 +203,7 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
         )}
         <p className="text-caption text-fg-subtle mt-2">시수 인정 = 진행(held)·강사 결석 아님(정산과 동일 규칙). 보강·결석·미진행은 제외(잠정).</p>
       </SectionCard>
+      <AccountingImpactModal prompt={updateSchedule.accountingPrompt} onClose={updateSchedule.dismissAccountingPrompt} onConfirm={updateSchedule.confirmAccountingImpact} />
     </div>
   );
 }

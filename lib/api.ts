@@ -128,6 +128,7 @@ export type SchedulePatchBody = {
   mode?: "in_person" | "online";
   // 반복 편집 범위(this=이 일정만 · this_and_following=이후 전부 · all=시리즈 전체). seriesId가 있을 때만 의미.
   scope?: "this" | "this_and_following" | "all"; force?: boolean;
+  acknowledgeAccountingImpact?: boolean;
 };
 // [TBO-19 Sprint4] 강사 계약(백엔드 로컬 타입 — @kms545487/contracts 미포함). DB 이관 시 contracts로 승격 검토.
 export type InstructorContract = {

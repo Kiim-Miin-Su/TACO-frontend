@@ -10,6 +10,7 @@ import { useTacoStore } from "@/lib/store";
 import { canAccessFinance, isAdmin } from "@/lib/roles";
 import { currentClaims } from "@/lib/auth";
 import type { AccountRole, Instructor, SessionReport } from "@/types";
+import { useState } from "react";
 
 // [TBO-21 B1] 정산 전체 조회는 대표 전용(403). 스토어 currentRole 기본값('super_admin')이 새로고침 직후
 //  JWT 하이드레이트 전에 대표로 잡혀 강사가 /payouts를 호출→403 나던 문제 → **토큰 역할**로 게이트.
@@ -298,8 +299,47 @@ export const useCreateCounselRound = () =>
 
 // 스케줄(생성·수정·삭제) — 삭제/상태변경은 리포트·정산 적격에도 영향 → 폭넓게 무효화
 export const useCreateSchedule = () => useMutation({ mutationFn: api.schedule.create, onSuccess: useInvalidator([qk.schedule.all]) });
-export const useUpdateSchedule = () =>
-  useMutation({ mutationFn: (v: { id: number; body: Parameters<typeof api.schedule.update>[1] }) => api.schedule.update(v.id, v.body), onSuccess: useInvalidator([qk.schedule.all, qk.reports.all, qk.payouts.all]) });
+export type AccountingImpactPrompt = {
+  payoutLocked: boolean;
+  impact: {
+    before: { teachingMinutes: number; computedAmount: number };
+    after: { teachingMinutes: number; computedAmount: number };
+    delta: { teachingMinutes: number; computedAmount: number };
+  };
+};
+
+export const useUpdateSchedule = () => {
+  type Variables = { id: number; body: Parameters<typeof api.schedule.update>[1] };
+  const [pending, setPending] = useState<{ variables: Variables; prompt: AccountingImpactPrompt } | null>(null);
+  const mutation = useMutation({
+    mutationFn: (v: Variables) => api.schedule.update(v.id, v.body),
+    onSuccess: useInvalidator([qk.schedule.all, qk.reports.all, qk.payouts.all]),
+  });
+  const mutate: typeof mutation.mutate = (variables, options) => mutation.mutate(variables, {
+    ...options,
+    onError: (error, vars, onMutateResult, context) => {
+      const data = (error as { response?: { data?: { code?: string; impact?: AccountingImpactPrompt['impact'] } } }).response?.data;
+      if (data?.impact && (data.code === 'ACCOUNTING_IMPACT_ACK_REQUIRED' || data.code === 'PAYOUT_REVERSAL_REQUIRED')) {
+        setPending({ variables, prompt: { impact: data.impact, payoutLocked: data.code === 'PAYOUT_REVERSAL_REQUIRED' } });
+        return;
+      }
+      options?.onError?.(error, vars, onMutateResult, context);
+    },
+  });
+  return {
+    ...mutation,
+    mutate,
+    accountingPrompt: pending?.prompt ?? null,
+    dismissAccountingPrompt: () => setPending(null),
+    confirmAccountingImpact: () => {
+      if (!pending) return;
+      const { variables, prompt } = pending;
+      setPending(null);
+      if (!prompt.payoutLocked)
+        mutation.mutate({ ...variables, body: { ...variables.body, acknowledgeAccountingImpact: true } });
+    },
+  };
+};
 export const useRemoveSchedule = () => useMutation({ mutationFn: api.schedule.remove, onSuccess: useInvalidator([qk.schedule.all, qk.reports.all, qk.payouts.all]) });
 
 // 수업 요청(TBO-16 #9) — 승인 시 세션이 생기므로 schedule도 무효화(참조 무결성 — 캘린더·배지 동시 갱신)

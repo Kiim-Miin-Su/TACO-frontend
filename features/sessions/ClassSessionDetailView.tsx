@@ -18,6 +18,7 @@ import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from "@/featur
 import { SessionFeedbackForm } from "@/features/reports/SessionFeedbackForm";
 import type { AttendanceStatus, InstructorAttendanceStatus } from "@/types";
 import { shortDate } from "@/lib/format";
+import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 
 const statusTone: Record<string, Tone> = { held: "success", scheduled: "accent", canceled: "danger", no_show: "danger", makeup: "attention" };
 const statusLabel: Record<string, string> = { held: "진행완료", scheduled: "예정", canceled: "취소", no_show: "노쇼", makeup: "보강" };
@@ -124,6 +125,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
         )}
         <p className="text-caption text-fg-subtle mt-2 px-1">출결·피드백은 출석부·보고서와 같은 데이터(단일 소스) — 여기서의 수정이 즉시 반영됩니다.</p>
       </SectionCard>
+      <AccountingImpactModal prompt={updateSchedule.accountingPrompt} onClose={updateSchedule.dismissAccountingPrompt} onConfirm={updateSchedule.confirmAccountingImpact} />
     </div>
   );
 }

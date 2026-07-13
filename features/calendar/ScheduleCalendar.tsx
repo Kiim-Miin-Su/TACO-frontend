@@ -55,6 +55,7 @@ import { SessionEditFields, ColorPicker, Field, TimeSelect } from "./SessionEdit
 import { CalendarSplitPane, type SplitPaneDef } from "./CalendarSplitPane";
 import { CalendarFilterBar, OptionPick, type Period } from "./CalendarFilterBar";
 import { HelpPopover, PageHeader } from "@/components/ui";
+import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 import { SessionListPanel } from "./SessionListPanel";
 import { SessionDetailPanel } from "./SessionDetailPanel";
 import type { RecurrenceScope } from "@kms545487/contracts";
@@ -145,6 +146,13 @@ type ManualPaneState = { uid: number; dim: SplitDim; ids: number[] };
 type Resizing = { id: number; edge: "top" | "bottom"; startClientY: number; origStart: number; origEnd: number;
   gm: number; gmax: number; tz?: string; dateLocal: string }; // [이슈2] 시차 뷰 리사이즈: 축 경계·tz·현지날짜
 type Pending = { row: ScheduleRow; patch: SchedulePatchBody; label: string };
+type AccountingImpact = {
+  payoutId?: number | null;
+  before: { teachingMinutes: number; payoutEligibleMinutes: number; computedAmount: number };
+  after: { teachingMinutes: number; payoutEligibleMinutes: number; computedAmount: number };
+  delta: { teachingMinutes: number; payoutEligibleMinutes: number; computedAmount: number };
+};
+type AccountingAck = { id: number; patch: SchedulePatchBody; impact: AccountingImpact; payoutLocked: boolean };
 type ScheduleChangeApprovalDraft = { row: ScheduleRow; patch: SchedulePatchBody; label: string };
 type ScheduleDeleteApprovalDraft = { row: ScheduleRow };
 type AvailabilityImpact = { sessionId: number; sessionDate: string; startTime?: string; endTime?: string; reason?: string };
@@ -176,6 +184,7 @@ export function ScheduleCalendar() {
   const openEditor = useCallback((r: ScheduleRow, tz: CountryInfo | null = null) => { setEditing(r); setEditingTz(tz); }, []);
   const [selEvent, setSelEvent] = useState<number | null>(null); // 단일 클릭 선택(애플식 — 리사이즈 핸들 노출)
   const [pending, setPending] = useState<Pending | null>(null);
+  const [accountingAck, setAccountingAck] = useState<AccountingAck | null>(null);
   // [오류5 2026-07-06] 리사이즈 미리보기 — start/end는 드래그 중인 컬럼의 "현지 분"(커밋용),
   //  dStart/dEnd는 프레임 불변 델타(±분). 다른 시차 컬럼(같은 세션)은 자기 좌표 + 델타로 그려
   //  시차 표에서도 미리보기가 그 나라 시간 기준으로 정확히 보인다(종전: 현지 분을 그대로 적용해 KST 표기 오염).
@@ -1047,8 +1056,15 @@ export function ScheduleCalendar() {
       if (res.updated > 1) setMsg(`반복 일정 ${res.updated}건 함께 수정되었습니다.`);
       await load(); // 서버 확정으로 reconcile
     } catch (e) {
-      const err = e as { response?: { status?: number; data?: { conflicts?: Conflict[] } } };
+      const err = e as { response?: { status?: number; data?: { code?: string; conflicts?: Conflict[]; impact?: AccountingImpact } } };
       if (err.response?.status === 409) {
+        const code = err.response.data?.code;
+        const impact = err.response.data?.impact;
+        if (impact && (code === "ACCOUNTING_IMPACT_ACK_REQUIRED" || code === "PAYOUT_REVERSAL_REQUIRED")) {
+          setRows(snapshot);
+          setAccountingAck({ id, patch, impact, payoutLocked: code === "PAYOUT_REVERSAL_REQUIRED" });
+          return;
+        }
         const cs = err.response.data?.conflicts ?? [];
         if (confirm(`충돌 ${cs.length}건:\n${describeConflicts(cs)}\n\n그래도 적용할까요?`)) {
           // [M4] force 재시도도 실패할 수 있음(네트워크·400) — 미처리 거부/유령 낙관 상태 방지
@@ -2594,6 +2610,22 @@ export function ScheduleCalendar() {
             const p = pending;
             setPending(null);
             applyPatch(p.row.id, { ...p.patch, scope });
+          }}
+        />
+      )}
+
+      {accountingAck && (
+        <AccountingImpactModal
+          prompt={{ payoutLocked: accountingAck.payoutLocked, impact: accountingAck.impact }}
+          onClose={() => setAccountingAck(null)}
+          onConfirm={() => {
+            const pendingImpact = accountingAck;
+            setAccountingAck(null);
+            if (pendingImpact.payoutLocked) {
+              setMsg("정산 회수 또는 보정 거래 후 변경해 주세요.");
+              return;
+            }
+            applyPatch(pendingImpact.id, { ...pendingImpact.patch, acknowledgeAccountingImpact: true });
           }}
         />
       )}

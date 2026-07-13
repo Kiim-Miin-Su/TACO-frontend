@@ -14,6 +14,7 @@ import { useTacoStore } from "@/lib/store";
 import { isAdmin } from "@/lib/roles";
 import { myInstructorId as loginInstructorId } from "@/lib/auth";
 import { EmptyState, HelpPopover, PageHeader, SectionCard, TableWrap } from "@/components/ui";
+import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 
 // 상태 배지(셀) — LMS 관례: P/L/A/E 원형 + 색
 const CELL: Record<AttendanceStatus, { label: string; bg: string }> = {
@@ -397,6 +398,7 @@ export function AttendanceBookView() {
           </p>
         </SectionCard>
       )}
+      <AccountingImpactModal prompt={updateSchedule.accountingPrompt} onClose={updateSchedule.dismissAccountingPrompt} onConfirm={updateSchedule.confirmAccountingImpact} />
     </div>
   );
 }
