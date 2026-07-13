@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ClassSession, AvailabilityBlock } from '@/types';
-import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, recommendInstructorsForStudent, ownerWindows, blocksOnDate, sessionEndMin, crossMidnightEnd, blockRestrictsSession, ownerAvailabilityForSlot } from './schedule';
+import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, recommendInstructorsForStudent, ownerWindows, blocksOnDate, sessionEndMin, crossMidnightEnd, durationMinutesBetween, blockRestrictsSession, ownerAvailabilityForSlot } from './schedule';
 
 const ablock = (p: Partial<AvailabilityBlock>): AvailabilityBlock => ({
   id: 1, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '09:00', endTime: '12:00', ...p,
@@ -19,6 +19,10 @@ describe('시간 유틸', () => {
   });
   it('weekdayOf: 2026-06-29는 월요일(1)', () => {
     expect(weekdayOf('2026-06-29')).toBe(1);
+  });
+  it('durationMinutesBetween: 종료 시각과 자정 크로스를 같은 규칙으로 계산', () => {
+    expect(durationMinutesBetween('16:00', '17:30')).toBe(90);
+    expect(durationMinutesBetween('23:00', '01:00')).toBe(120);
   });
 });
 

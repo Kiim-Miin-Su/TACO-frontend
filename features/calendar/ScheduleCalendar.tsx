@@ -6,7 +6,7 @@ import { api, type SchedulePatchBody, type ScheduleCreateBody, type Availability
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/queryKeys";
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 D — 파일별 중복 toMin/fromMin/pad/WD 제거)
-import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, sessionEndMin, crossMidnightEnd, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
+import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, sessionEndMin, crossMidnightEnd, durationMinutesBetween, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
 import {
   PALETTE, STATUS_LABEL, MAX_SPLIT,
   matchesStatusFilter, matchesResourceFilter, isGroupSession, sortByDateAsc,
@@ -15,8 +15,6 @@ import {
   MODE_FILTERS, MODE_FILTER_LABEL, type SessionModeFilter,
   matchesSubjectFilter, SUBJECT_KIND_OPTIONS } from "@/lib/domain/lantiv";
 import {
-  invalidateScheduleRequests,
-  upsertScheduleRequestCache,
   useAttendance,
   useStudents,
   useEnrollments,
@@ -29,6 +27,7 @@ import {
   useRooms,
   useScheduleResources,
   useAllAvailability,
+  useCreateScheduleRequest,
 } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
 import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, kstPatchTimes, type CountryInfo, type TzShiftedRow, splitKstBand } from "@/lib/domain/tz";
@@ -40,6 +39,7 @@ import { appendCalendarPane, companionPaneSeed, currentPaneSeeds } from "@/lib/d
 import { availabilityGhostBandsForColumn } from "@/lib/domain/pending-ghosts";
 import { buildAvailabilityRequestBody, buildSessionDeleteRequestBody } from "@/lib/domain/request-drafts";
 import { calendarExportFilename } from "@/lib/domain/calendar-export";
+import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
 import { axisCompanionTimezone, resourceTimezoneKey, resourceTimezoneOf, type ResourceTimezoneOverrides } from "@/lib/domain/resource-timezone";
 import type { CalendarViewPreset } from "@/types";
 import { exportNodeAsImage } from "@/lib/export";
@@ -115,9 +115,7 @@ function applyRowPatch(r: ScheduleRow, patch: SchedulePatchBody): ScheduleRow {
   if (patch.endTime) next.endTime = patch.endTime;
   if (patch.startTime || patch.endTime) {
     const s = toMin(next.startTime ?? "00:00");
-    // [R-9] endTime<start = 익일 종료(자정 크로스) — +1440 래핑(BE durationFrom과 동일 규칙)
-    let e = next.endTime ? toMin(next.endTime) : s + next.durationMinutes;
-    if (next.endTime && e < s) e += 1440;
+    const e = next.endTime ? s + durationMinutesBetween(next.startTime ?? "00:00", next.endTime) : s + next.durationMinutes;
     next.durationMinutes = Math.max(1, e - s);
     if (e >= 1440) next.endTime = undefined; // 크로스는 endTime 미보유(durationMinutes 파생 — BE 저장 규칙)
   }
@@ -156,12 +154,6 @@ type AvailabilityApprovalDraft =
 type AvailabilityApprovalSeed =
   | { action: "upsert"; body: AvailabilityUpsertBody; summary: string }
   | { action: "delete"; targetAvailabilityId: number; summary: string };
-
-const AVAILABILITY_KIND_LABEL: Record<AvailabilityBlock["kind"] | "online_only", string> = {
-  available: "가용시간",
-  unavailable: "불가시간",
-  online_only: "온라인만 가능",
-};
 
 export function ScheduleCalendar() {
   // [C-2 2026-07-06] 뷰 프리셋(월/주/일·색 기준·열 좁게)만 typed preference로 복원 — 새로고침에도 유지.
@@ -217,6 +209,7 @@ export function ScheduleCalendar() {
 
   // 관리자(데모 역할) — 스케줄 직접 추가
   const qc = useQueryClient(); // [TBO-16] 요청 생성 후 scheduleRequests 무효화(배지·승인센터 동일 모집단)
+  const createScheduleRequest = useCreateScheduleRequest();
   // [B-4] 내 수업 요청(강사) — 배지·승인센터와 같은 useScheduleRequests 단일 queryKey 구독
   const { data: myRequests = [] } = useScheduleRequests();
   const pendingGhosts = useMemo(() => myRequests.filter((r) => r.status === "pending"), [myRequests]);
@@ -854,12 +847,10 @@ export function ScheduleCalendar() {
   async function submitAvailabilityApproval(draft: AvailabilityApprovalDraft, requestReason: string) {
     const input: CreateScheduleRequestBody = buildAvailabilityRequestBody(draft, requestReason);
     try {
-      const created = await api.scheduleRequests.create(input);
-      upsertScheduleRequestCache(qc, created.row);
+      await createScheduleRequest.mutateAsync(input);
       setAvailabilityApproval(null);
       setCreating(null);
       reloadSelBlocks();
-      await invalidateScheduleRequests(qc);
       setMsg("승인 요청을 보냈습니다 — 승인센터에서 처리됩니다.");
     } catch (e) {
       const serverMsg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
@@ -1103,10 +1094,8 @@ export function ScheduleCalendar() {
       scope,
     };
     try {
-      const created = await api.scheduleRequests.create(body);
-      upsertScheduleRequestCache(qc, created.row);
+      await createScheduleRequest.mutateAsync(body);
       setScheduleChangeApproval(null);
-      await invalidateScheduleRequests(qc);
       setMsg("수업 변경 승인 요청을 보냈습니다 — 승인센터에서 처리됩니다.");
     } catch (e) {
       const serverMsg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
@@ -1117,12 +1106,10 @@ export function ScheduleCalendar() {
 
   async function submitScheduleDeleteApproval(draft: ScheduleDeleteApprovalDraft, requestReason: string, scope: RecurrenceScope) {
     try {
-      const created = await api.scheduleRequests.create(buildSessionDeleteRequestBody(draft.row.id, requestReason, scope));
-      upsertScheduleRequestCache(qc, created.row);
+      await createScheduleRequest.mutateAsync(buildSessionDeleteRequestBody(draft.row.id, requestReason, scope));
       setScheduleDeleteApproval(null);
       setEditing(null);
       setSelEvent(null);
-      await invalidateScheduleRequests(qc);
       setMsg("수업 삭제 승인 요청을 보냈습니다 — 승인센터에서 처리됩니다.");
     } catch (e) {
       const serverMsg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
@@ -1138,7 +1125,7 @@ export function ScheduleCalendar() {
     // [R-9] 자정 크로스: endTime<start = 익일 종료(+1440), 파생 종료가 24:00 이상이면 endTime 미설정
     //  (BE 저장 규칙과 동일 — durationMinutes 파생. '25:00' 같은 무효 문자열 금지).
     const dur = body.endTime
-      ? ((toMin(body.endTime) - toMin(start) + 1440) % 1440) || 1
+      ? durationMinutesBetween(start, body.endTime) || 1
       : (body.durationMinutes ?? c?.durationMinutes ?? 60);
     const endMin = toMin(start) + dur;
     return {
@@ -1159,16 +1146,14 @@ export function ScheduleCalendar() {
   async function createSession(body: ScheduleCreateBody) {
     if (isInstructor) {
       try {
-        const created = await api.scheduleRequests.create({
+        await createScheduleRequest.mutateAsync({
           courseId: body.courseId, instructorId: myInstructorId ?? body.instructorId, roomId: body.roomId,
           sessionDate: body.sessionDate, startTime: body.startTime, endTime: body.endTime,
           durationMinutes: body.durationMinutes, studentIds: body.studentIds, topic: body.topic, kind: body.kind,
           mode: body.mode, // [C2D] 수업방식 보존 — 승인 시 세션 mode로 반영
         });
-        upsertScheduleRequestCache(qc, created.row);
         setCreating(null);
         setMsg("승인 요청을 보냈습니다 — 매니저 승인 시 캘린더에 반영됩니다.");
-        await invalidateScheduleRequests(qc); // 배지·승인센터 동일 모집단 갱신
       } catch (e) {
         const err = e as { response?: { data?: { message?: string } } };
         setMsg(err.response?.data?.message ?? "요청 실패 — 입력을 확인하세요");
@@ -3355,8 +3340,7 @@ function CreateModal({
   const sessionValid = courseId && date && start !== end;
 
   // ── #2: 선택 시간대에 가용한 강사 안내(가용 강사 먼저) ──
-  const [blocks, setBlocks] = useState<AvailabilityBlock[]>([]);
-  useEffect(() => { api.availability.all().then(setBlocks).catch(() => setBlocks([])); }, []);
+  const { data: blocks = [] } = useAllAvailability();
   const instAvailability = useCallback((id: number) => {
     const s = toMin(start);
     const e = end < start ? 1440 : toMin(end);
@@ -3455,7 +3439,7 @@ function CreateModal({
     // [이슈1] 각 발생일(현지)을 KST로 변환해 저장 — 종료는 시작과 같은 현지날짜 기준으로 변환.
     const mk = (dLocal: string): ScheduleCreateBody => {
       const ks = toKst(dLocal, start), ke = toKst(dLocal, end);
-      return { courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: ks.date, startTime: ks.time, endTime: ke.time, memo: memo || undefined, color, status, seriesId, studentIds,
+      return { courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: ks.date, startTime: ks.time, endTime: ke.time, durationMinutes: durationMinutesBetween(start, end), memo: memo || undefined, color, status, seriesId, studentIds,
         kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined, mode: sessionMode }; // [C2D] 강사 요청도 mode 보존
     };
     const days = occurrences();

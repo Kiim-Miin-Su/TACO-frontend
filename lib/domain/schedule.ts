@@ -19,6 +19,11 @@ export const addMinutes = (hhmm: string, mins: number): string => {
   const t = toMin(hhmm) + mins;
   return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
 };
+/** 시작/종료 벽시각의 진행 분. 종료가 더 이르면 익일 종료로 해석한다. */
+export const durationMinutesBetween = (startTime: string, endTime: string): number => {
+  const delta = toMin(endTime) - toMin(startTime);
+  return delta < 0 ? delta + 1440 : delta;
+};
 /** 0(일)~6(토). 'YYYY-MM-DD' 기준(결정론적, UTC). */
 export const weekdayOf = (dateStr: string): number =>
   new Date(dateStr + 'T00:00:00Z').getUTCDay();
