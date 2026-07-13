@@ -38,6 +38,7 @@ import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
 import { formatScheduleConflicts } from "@/lib/domain/conflict-messages";
 import { companionPaneSeed, primaryPaneSeed } from "@/lib/domain/calendar-panes";
 import { availabilityGhostBandsForColumn } from "@/lib/domain/pending-ghosts";
+import { buildAvailabilityRequestBody, buildSessionDeleteRequestBody } from "@/lib/domain/request-drafts";
 import { axisCompanionTimezone, resourceTimezoneKey, resourceTimezoneOf, type ResourceTimezoneOverrides } from "@/lib/domain/resource-timezone";
 import type { CalendarViewPreset } from "@/types";
 import { exportNodeAsImage } from "@/lib/export";
@@ -855,22 +856,8 @@ export function ScheduleCalendar() {
     return true;
   }
 
-  async function submitAvailabilityApproval(draft: AvailabilityApprovalDraft) {
-    const input: CreateScheduleRequestBody =
-      draft.action === "delete"
-        ? { requestKind: "availability_delete", targetAvailabilityId: draft.targetAvailabilityId }
-        : {
-            requestKind: "availability_upsert",
-            targetAvailabilityId: draft.body.id,
-            availabilityOwnerType: draft.body.ownerType,
-            availabilityOwnerId: draft.body.ownerId,
-            availabilityKind: draft.body.kind ?? "available",
-            availabilityWeekday: draft.body.weekday,
-            availabilityStartTime: draft.body.startTime,
-            availabilityEndTime: draft.body.endTime,
-            availabilityEffectiveFrom: draft.body.effectiveFrom,
-            availabilityEffectiveTo: draft.body.effectiveTo,
-          };
+  async function submitAvailabilityApproval(draft: AvailabilityApprovalDraft, requestReason: string) {
+    const input: CreateScheduleRequestBody = buildAvailabilityRequestBody(draft, requestReason);
     try {
       const created = await api.scheduleRequests.create(input);
       upsertScheduleRequestCache(qc, created.row);
@@ -1133,12 +1120,9 @@ export function ScheduleCalendar() {
     }
   }
 
-  async function submitScheduleDeleteApproval(draft: ScheduleDeleteApprovalDraft) {
+  async function submitScheduleDeleteApproval(draft: ScheduleDeleteApprovalDraft, requestReason: string, scope: RecurrenceScope) {
     try {
-      const created = await api.scheduleRequests.create({
-        requestKind: "session_delete",
-        targetSessionId: draft.row.id,
-      });
+      const created = await api.scheduleRequests.create(buildSessionDeleteRequestBody(draft.row.id, requestReason, scope));
       upsertScheduleRequestCache(qc, created.row);
       setScheduleDeleteApproval(null);
       setEditing(null);
@@ -2668,7 +2652,7 @@ export function ScheduleCalendar() {
           draft={availabilityApproval}
           rows={rows}
           onClose={() => setAvailabilityApproval(null)}
-          onSubmit={() => submitAvailabilityApproval(availabilityApproval)}
+          onSubmit={(requestReason) => submitAvailabilityApproval(availabilityApproval, requestReason)}
         />
       )}
       {scheduleChangeApproval && (
@@ -2682,7 +2666,7 @@ export function ScheduleCalendar() {
         <ScheduleDeleteApprovalModal
           draft={scheduleDeleteApproval}
           onClose={() => setScheduleDeleteApproval(null)}
-          onSubmit={() => submitScheduleDeleteApproval(scheduleDeleteApproval)}
+          onSubmit={(requestReason, scope) => submitScheduleDeleteApproval(scheduleDeleteApproval, requestReason, scope)}
         />
       )}
     </div>
@@ -2762,9 +2746,13 @@ function ScheduleDeleteApprovalModal({
 }: {
   draft: ScheduleDeleteApprovalDraft;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: (requestReason: string, scope: RecurrenceScope) => void;
 }) {
   const r = draft.row;
+  const [requestReason, setRequestReason] = useState("");
+  const [scope, setScope] = useState<RecurrenceScope>("this");
+  const reason = requestReason.trim();
+  const hasSeries = r.seriesId != null;
   return (
     <div className="fixed inset-0 z-[55] grid place-items-center p-4 bg-black/35" onClick={onClose}>
       <div className="card card-pad w-[480px] max-w-[95vw] max-h-[85vh] flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
@@ -2782,10 +2770,39 @@ function ScheduleDeleteApprovalModal({
               <span>{r.roomName ?? "미지정"}</span>
             </div>
           </div>
+          {hasSeries && (
+            <Field label="반복 적용 범위">
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ["this", "이번 수업만"],
+                  ["this_and_following", "이번 이후"],
+                  ["all", "전체 반복"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`btn btn-sm ${scope === value ? "btn-primary" : ""}`}
+                    onClick={() => setScope(value as RecurrenceScope)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
+          <Field label="요청 사유">
+            <textarea
+              className="input min-h-[96px] resize-y"
+              value={requestReason}
+              onChange={(e) => setRequestReason(e.target.value)}
+              maxLength={500}
+              placeholder="예: 학생 요청으로 이번 수업을 취소해야 합니다."
+            />
+          </Field>
         </div>
         <div className="flex justify-end gap-2 pt-1 shrink-0">
           <button className="btn btn-sm" onClick={onClose}>취소</button>
-          <button className="btn btn-sm btn-primary" onClick={onSubmit}>삭제 승인 요청 보내기</button>
+          <button className="btn btn-sm btn-primary" disabled={!reason} onClick={() => onSubmit(reason, hasSeries ? scope : "this")}>삭제 승인 요청 보내기</button>
         </div>
       </div>
     </div>
@@ -2798,8 +2815,10 @@ function AvailabilityApprovalModal({
   draft: AvailabilityApprovalDraft;
   rows: ScheduleRow[];
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: (requestReason: string) => void;
 }) {
+  const [requestReason, setRequestReason] = useState("");
+  const reason = requestReason.trim();
   const impacted = draft.impacted.map((x) => {
     const row = rows.find((r) => r.id === x.sessionId);
     return {
@@ -2827,10 +2846,19 @@ function AvailabilityApprovalModal({
               ))}
             </div>
           </div>
+          <Field label="요청 사유">
+            <textarea
+              className="input min-h-[96px] resize-y"
+              value={requestReason}
+              onChange={(e) => setRequestReason(e.target.value)}
+              maxLength={500}
+              placeholder="예: 이미 잡힌 수업과 겹치지만 해당 시간대를 온라인만 가능으로 바꿔야 합니다."
+            />
+          </Field>
         </div>
         <div className="flex justify-end gap-2 pt-1 shrink-0">
           <button className="btn btn-sm" onClick={onClose}>취소</button>
-          <button className="btn btn-sm btn-primary" onClick={onSubmit}>승인 요청 보내기</button>
+          <button className="btn btn-sm btn-primary" disabled={!reason} onClick={() => onSubmit(reason)}>승인 요청 보내기</button>
         </div>
       </div>
     </div>
