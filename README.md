@@ -31,7 +31,7 @@ app/                 # 라우트는 얇게 (각 page는 feature View 렌더만)
 │  · /payments[/new|/id] · /payouts · /expenses[/new|/id] · /admin[/courses|/events|/approvals]
 components/
 ├─ ui/               # 프리미티브 + Chart·MonthCalendar·Combobox (+ index 배럴)
-└─ layout/           # Sidebar·Topbar(역할 전환)
+└─ layout/           # Sidebar·Topbar(사용자 계정 전환)
 features/            # 도메인 단위 (확장 지점)
 │  dashboard · schedule · counsel · students · sessions
 │  payments · payouts · expenses · admin · system(BackendPanel)

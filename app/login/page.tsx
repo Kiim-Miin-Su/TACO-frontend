@@ -7,22 +7,16 @@ import { api } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { useTacoStore } from "@/lib/store";
 import { AuthShell, AuthField } from "@/components/auth/AuthShell";
+import { DEV_ACCOUNTS } from "@/lib/dev-accounts";
+import { roleLabel } from "@/lib/roles";
 import type { AccountRole } from "@/types";
-
-const DEMO = [
-  { role: "대표", name: "김민수", webId: "admin", password: "demo1234" },
-  { role: "관리자", name: "한서윤", webId: "prof_admin", password: "demo1234" },
-  { role: "매니저", name: "이지원", webId: "manager", password: "demo1234" },
-  { role: "강사", name: "박지훈", webId: "park_inst", password: "demo1234" },
-  { role: "강사", name: "정유진", webId: "jung_inst", password: "demo1234" },
-];
 
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const queryClient = useQueryClient();
   const setCurrentRole = useTacoStore((s) => s.setCurrentRole);
-  const clearRoleOverride = useTacoStore((s) => s.clearRoleOverride); // [임시/실험용] 새 로그인 시 오버라이드 해제
+  const setCurrentAccount = useTacoStore((s) => s.setCurrentAccount);
   const [webId, setWebId] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -36,8 +30,9 @@ function LoginForm() {
     try {
       const res = await api.auth.login({ webId: webId.trim(), password });
       setToken(res.accessToken);
-      clearRoleOverride(); // [임시/실험용] 이전 세션의 역할 오버라이드 무시하고 실제 계정 역할로
-      setCurrentRole(res.account.role as AccountRole);
+      const accountRole = res.account.role as AccountRole;
+      setCurrentRole(accountRole);
+      setCurrentAccount({ id: res.account.id, name: res.account.name, role: accountRole });
       queryClient.clear(); // 로그인 계정/권한 변경 — 이전 역할의 서버 캐시 폐기
       router.replace(params.get("redirect") || "/");
     } catch (e) {
@@ -69,7 +64,7 @@ function LoginForm() {
       <div className="border-t pt-3 border-line-muted">
         <div className="text-caption font-medium text-fg-muted mb-2">테스트 계정</div>
         <div className="overflow-hidden rounded-md border border-line-muted">
-          {DEMO.map((d) => (
+          {DEV_ACCOUNTS.map((d) => (
             <button
               key={d.webId}
               type="button"
@@ -77,7 +72,7 @@ function LoginForm() {
               className="grid w-full grid-cols-[64px_1fr] gap-x-3 border-b border-line-muted px-3 py-2 text-left text-caption last:border-b-0 hover:bg-canvas-subtle"
               title={`${d.webId} / ${d.password}`}
             >
-              <span className="font-medium text-fg-muted">{d.role}</span>
+              <span className="font-medium text-fg-muted">{roleLabel[d.role]}</span>
               <span className="min-w-0">
                 <span className="block font-medium text-fg">{d.name}</span>
                 <span className="block text-fg-subtle">

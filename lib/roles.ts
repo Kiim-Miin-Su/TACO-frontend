@@ -9,7 +9,7 @@ export const roleLabel: Record<AccountRole, string> = {
   super_admin: '대표(CEO)',
 };
 
-// 백오피스 로그인/역할 전환 노출 목록. 학생·학부모는 도메인 엔티티지만 로그인 주체가 아니다.
+// 백오피스 로그인 역할 목록. 학생·학부모는 도메인 엔티티지만 로그인 주체가 아니다.
 export const BACKOFFICE_ROLES: AccountRole[] = ['super_admin', 'admin', 'manager', 'instructor'];
 export const ROLES: AccountRole[] = BACKOFFICE_ROLES;
 

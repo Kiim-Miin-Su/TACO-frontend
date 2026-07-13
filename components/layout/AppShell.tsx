@@ -15,18 +15,20 @@ import type { AccountRole } from "@/types";
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const setCurrentRole = useTacoStore((s) => s.setCurrentRole);
-  // [임시/실험용] dev 역할 오버라이드가 켜져 있으면 JWT 재하이드레이션을 건너뛴다(토글 유지).
-  const devRoleOverride = useTacoStore((s) => s.devRoleOverride);
+  const setCurrentAccount = useTacoStore((s) => s.setCurrentAccount);
   const publicRoute = isPublicRoute(pathname);
 
   // 로그인된 경우에만 역할을 앱 전역 currentRole에 반영(공개 경로에선 동기화하지 않음).
   useEffect(() => {
     if (publicRoute) return;
-    if (devRoleOverride) return; // [임시/실험용] 토글로 고른 역할 유지(재하이드레이션 스킵)
     const claims = currentClaims();
     const role = claims?.roles?.[0];
-    if (role) setCurrentRole(role as AccountRole);
-  }, [pathname, publicRoute, setCurrentRole, devRoleOverride]);
+    if (claims && role) {
+      const accountRole = role as AccountRole;
+      setCurrentRole(accountRole);
+      setCurrentAccount({ id: claims.sub, name: claims.name, role: accountRole });
+    }
+  }, [pathname, publicRoute, setCurrentAccount, setCurrentRole]);
 
   if (publicRoute) return <>{children}</>;
 

@@ -7,7 +7,7 @@ import { useScheduleResources, useTaskData } from "@/lib/queries";
 import { booleanPreferenceCodec, preferenceKeys, readPreference, writePreference } from "@/lib/storage/preferences";
 import { roleLabel, isCEO, isAdmin, canAccessFinance } from "@/lib/roles";
 import { navBadges } from "@/lib/tasks";
-import { decodeToken, getToken, myInstructorId } from "@/lib/auth";
+import { myInstructorId } from "@/lib/auth";
 import {
   IconHome,
   IconUsers,
@@ -63,17 +63,12 @@ export default function Sidebar() {
 
   // 현재 역할(데모 컨텍스트 — Topbar에서 전환)은 zustand(클라 상태).
   const role = useTacoStore((s) => s.currentRole);
+  const currentAccount = useTacoStore((s) => s.currentAccount);
   // 탭별 알림 배지 — 서버 데이터는 TanStack Query(useAppData) 단일 소스에서 조립해 navBadges에 넘긴다.
   //  처리(리포트 작성·승인 등) 시 관련 쿼리가 invalidate되면 배지도 함께 갱신됨.
   const badges = navBadges({ ...useTaskData(), currentRole: role }, role, myInstructorId() ?? undefined);
-  // 로그인 토큰이 있으면 디코딩해 실제 이름을 사용(직책 대신). 없으면 데모 이름.
-  const [tokenName, setTokenName] = useState<string | null>(null);
   // 강사/학생 역할은 백엔드 자원에서 대표 인물명을 가져와 표시(참조 무결성: 역할↔표시 일치)
   const resources = useScheduleResources().data;
-  useEffect(() => {
-    const t = getToken();
-    if (t) setTokenName(decodeToken(t)?.name ?? null);
-  }, []);
   const people = { instructor: resources?.instructors[0]?.name, student: resources?.students[0]?.name };
   // 직책이 아니라 실제 이름. 토큰 우선 → 강사/학생은 백엔드 인물 → 데모 이름.
   const demoName =
@@ -82,7 +77,7 @@ export default function Sidebar() {
         : role === "parent" ? "최영희"
           : role === "manager" ? "이지원"
             : "김민수"; // super_admin / admin
-  const identity = { name: tokenName ?? demoName };
+  const identity = { name: currentAccount?.name ?? demoName };
 
   // 좌측 네비 접기/펴기 — 화면 가로 비율 조절. 선택값은 typed preference storage에 보존.
   const [collapsed, setCollapsed] = useState(false);
