@@ -38,10 +38,11 @@ import { CalendarViewTabs } from "./CalendarViewTabs";
 import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
 import { formatScheduleConflicts } from "@/lib/domain/conflict-messages";
 import { applyScheduleRowPatch } from "@/lib/domain/schedule-row";
+import { scopeCalendarRowsToInstructor } from "@/lib/domain/calendar-access";
 import { appendCalendarPane, companionPaneSeed, currentPaneSeeds } from "@/lib/domain/calendar-panes";
 import { availabilityGhostBandsForColumn } from "@/lib/domain/pending-ghosts";
 import { buildAvailabilityRequestBody, buildSessionDeleteRequestBody } from "@/lib/domain/request-drafts";
-import { calendarExportFilename } from "@/lib/domain/calendar-export";
+import { calendarExportFilename, type CalendarExportPerson } from "@/lib/domain/calendar-export";
 import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
 import { axisCompanionTimezone, buildTimezonePaneGroups, resourceTimezoneKey, resourceTimezoneOf, type ResourceTimezoneOverrides } from "@/lib/domain/resource-timezone";
 import type { CalendarViewPreset } from "@/types";
@@ -76,6 +77,9 @@ const GRID_H = (END_H - START_H) * HOUR_H;
 // WD/toMin/fromMin/pad는 lib/domain/schedule, PALETTE/STATUS_LABEL은 lib/domain/lantiv에서 import(단일 소스).
 // 시수 미측정·충돌 제외·회색 표시 대상(결강/취소)
 const CANCELED_GRAY = "#8c959f";
+const INSTRUCTOR_RESOURCE_FILTER_DIMS: "room"[] = ["room"];
+const INSTRUCTOR_SPLIT_DIMS: SplitDim[] = ["room", "subject"];
+const INSTRUCTOR_RESOURCE_PANEL_TYPES: "room"[] = ["room"];
 const isCanceledStatus = (s?: string) => s === "canceled" || s === "no_show";
 // [TBO-19] 강사 결석(instructorAttendance='absent')도 '결강'처럼 시각화(회색·취소선) — status는 바꾸지 않고 표시만.
 //  (결석 시수 제외는 백엔드 payouts.measure가 담당. 여기선 캘린더 렌더만.)
@@ -194,7 +198,8 @@ export function ScheduleCalendar() {
   const { data: myRequests = [] } = useScheduleRequests();
   const pendingGhosts = useMemo(() => myRequests.filter((r) => r.status === "pending"), [myRequests]);
   const role = useTacoStore((s) => s.currentRole);
-  const claims = currentClaims();
+  const [claims, setClaims] = useState<ReturnType<typeof currentClaims>>(null);
+  useEffect(() => setClaims(currentClaims()), []);
   const tokenRoles = claims?.roles ?? [];
   const canManage = isAdmin(role); // 대표/매니저/관리자 — 모든 스케줄 추가
   const isInstructor = tokenRoles.includes("instructor") && !tokenRoles.some((r) => isAdmin(r as AccountRole)); // 강사 — 본인 스케줄만 추가
@@ -263,15 +268,25 @@ export function ScheduleCalendar() {
   const dimFacetKey = (dim: SplitDim) => `dimension:${dim}`;
   const facetOf = (key: string) => paneFacets[key] ?? emptyCalendarFacetFilters();
   const setFacet = (key: string, value: CalendarFacetFilters) => setPaneFacets((current) => ({ ...current, [key]: value }));
+  useEffect(() => {
+    if (!isInstructor || myInstructorId == null) return;
+    setFInstructors((current) => current.size === 1 && current.has(myInstructorId) ? current : new Set([myInstructorId]));
+    setFStudents((current) => current.size ? new Set() : current);
+    setManualPanes((current) => current.filter((pane) => pane.dim === "room" || pane.dim === "subject"));
+  }, [isInstructor, myInstructorId]);
   const addManualPane = () => {
     if (!manualPanes.length) {
-      const currentSeeds = currentPaneSeeds({
-        instructors: fInstructors,
-        students: fStudents,
-        rooms: fRooms,
-        fallbackInstructorId: myInstructorId,
-      });
-      const seeds = [...currentSeeds, companionPaneSeed(currentSeeds.at(-1)!)];
+      const currentSeeds = isInstructor
+        ? [{ dim: "room" as const, ids: [...fRooms] }]
+        : currentPaneSeeds({
+            instructors: fInstructors,
+            students: fStudents,
+            rooms: fRooms,
+            fallbackInstructorId: myInstructorId,
+          });
+      const seeds = isInstructor
+        ? [...currentSeeds, { dim: "room" as const, ids: [...currentSeeds[0].ids] }]
+        : [...currentSeeds, companionPaneSeed(currentSeeds.at(-1)!)];
       const panes = seeds.map((seed) => ({ uid: paneUidRef.current++, ...seed }));
       setManualPanes(panes);
       if (country) {
@@ -280,14 +295,16 @@ export function ScheduleCalendar() {
           ...Object.fromEntries(panes.map((pane) => [pane.uid, country])),
         }));
       }
-      setFInstructors(new Set());
+      setFInstructors(isInstructor && myInstructorId != null ? new Set([myInstructorId]) : new Set());
       setFStudents(new Set());
       setFRooms(new Set());
       return;
     }
     const last = manualPanes.at(-1)!;
     const uid = paneUidRef.current++;
-    setManualPanes((prev) => appendCalendarPane(prev, uid));
+    setManualPanes((prev) => isInstructor
+      ? [...prev, { uid, dim: last.dim === "subject" ? "subject" : "room", ids: [...last.ids] }]
+      : appendCalendarPane(prev, uid));
     setPaneCountryU((cur) => ({ ...cur, [uid]: cur[last.uid] ?? null }));
     setPaneFacets((current) => current[manualFacetKey(last.uid)]
       ? { ...current, [manualFacetKey(uid)]: current[manualFacetKey(last.uid)] }
@@ -343,7 +360,9 @@ export function ScheduleCalendar() {
   const applyPreset = (p: CalendarViewPreset) => {
     const st = presetToState(p);
     setView(st.view); setPeriod(st.period); setQ(st.q); setColorBy(st.colorBy as ColorBy);
-    setFInstructors(st.fInstructors); setFStudents(st.fStudents); setFRooms(st.fRooms);
+    setFInstructors(isInstructor && myInstructorId != null ? new Set([myInstructorId]) : st.fInstructors);
+    setFStudents(isInstructor ? new Set() : st.fStudents);
+    setFRooms(st.fRooms);
     // [오류2] 구 프리셋의 kinds → 과목 유사 옵션으로 승계(하위호환). 수업방식(fModes)은 프리셋 미보존(R-7).
     const subj = new Set(st.fSubjects);
     SUBJECT_KIND_OPTIONS.forEach((o) => { if (st.fKinds.has(o.kind)) subj.add(o.value); });
@@ -352,10 +371,13 @@ export function ScheduleCalendar() {
     if (typeof st.kstFixed === "boolean") setKstFixed(true);
     if (typeof st.compactCols === "boolean") setCompactCols(st.compactCols);
     if (st.manualPanes) {
-      const restored = st.manualPanes.map((mp) => ({ uid: mp.uid ?? paneUidRef.current++, dim: mp.dim, ids: mp.ids }));
+      const allowedPanes = isInstructor
+        ? st.manualPanes.filter((pane) => pane.dim === "room" || pane.dim === "subject")
+        : st.manualPanes;
+      const restored = allowedPanes.map((mp) => ({ uid: mp.uid ?? paneUidRef.current++, dim: mp.dim, ids: mp.ids }));
       setManualPanes(restored);
-      setPaneCountryU(Object.fromEntries(st.manualPanes.map((mp, i) => [restored[i].uid, mp.country ?? null])));
-      setPaneFacets(Object.fromEntries(st.manualPanes.map((mp, i) => [manualFacetKey(restored[i].uid), {
+      setPaneCountryU(Object.fromEntries(allowedPanes.map((mp, i) => [restored[i].uid, mp.country ?? null])));
+      setPaneFacets(Object.fromEntries(allowedPanes.map((mp, i) => [manualFacetKey(restored[i].uid), {
         ...emptyCalendarFacetFilters(),
         modes: new Set(mp.modes),
       }])));
@@ -502,6 +524,13 @@ export function ScheduleCalendar() {
   // 개인 필터 적용(명시적) — 해당 차원 필터를 그 1명으로 세팅(다른 리소스 차원은 비움).
   //  해제(null)는 리소스 필터만 클리어(상태·기간·국가 등 나머지 필터는 유지).
   const selectResource = (r: ScheduleResource | null) => {
+    if (isInstructor && myInstructorId != null) {
+      setFInstructors(new Set([myInstructorId]));
+      setFStudents(new Set());
+      if (r?.type === "room") setFRooms(new Set([Number(r.id)]));
+      else if (!r) setFRooms(new Set());
+      return;
+    }
     if (!r) { setFInstructors(new Set()); setFStudents(new Set()); setFRooms(new Set()); return; }
     const id = Number(r.id);
     setFInstructors(r.type === "instructor" ? new Set([id]) : new Set());
@@ -544,8 +573,8 @@ export function ScheduleCalendar() {
   //    → 출석부/상세에서 강사 출결을 바꿔도 캘린더가 자동 갱신(M1 invalidate 단절 근본 해소).
   const scheduleQ = useCalendarSchedule({ ...fetchRange, ...selQuery });
   useEffect(() => {
-    if (scheduleQ.data) setRows(scheduleQ.data); // 서버 데이터 → rows 동기화(리페치 시 reconcile)
-  }, [scheduleQ.data]);
+    if (scheduleQ.data) setRows(scopeCalendarRowsToInstructor(scheduleQ.data, myInstructorId));
+  }, [scheduleQ.data, myInstructorId]);
   useEffect(() => {
     if (scheduleQ.isError) setMsg("백엔드 API에 연결할 수 없습니다. 서버 상태를 확인하세요.");
   }, [scheduleQ.isError]);
@@ -591,9 +620,13 @@ export function ScheduleCalendar() {
   }), [fSubjects, fStatuses, fModes, groupOnly]);
 
   // ── 필터 적용 ──
+  const visibleRows = useMemo(
+    () => scopeCalendarRowsToInstructor(rows, myInstructorId),
+    [rows, myInstructorId],
+  );
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return rows.filter((r) => {
+    return visibleRows.filter((r) => {
       // 강사·학생 = 합집합(OR), 강의실 = AND — 동시 다중선택 교집합 버그 수정(lantiv.matchesResourceFilter).
       if (!matchesResourceFilter(r, { instructors: fInstructors, students: fStudents, rooms: fRooms })) return false;
       if (pickedDates.length && !dates.includes(r.sessionDate)) return false; // cherry-pick — 그리드·리스트·시수 동일 모집단
@@ -607,14 +640,14 @@ export function ScheduleCalendar() {
       }
       return true;
     });
-  }, [rows, q, fInstructors, fRooms, fStudents, globalFacetFilters, attBySession, countryStudentIds, pickedDates, dates]);
+  }, [visibleRows, q, fInstructors, fRooms, fStudents, globalFacetFilters, attBySession, countryStudentIds, pickedDates, dates]);
 
   const anyFilter =
-    q.trim() !== "" || fInstructors.size || fSubjects.size || fRooms.size || fStudents.size ||
+    q.trim() !== "" || (!isInstructor && fInstructors.size) || fSubjects.size || fRooms.size || fStudents.size ||
     fStatuses.size || fModes.size || groupOnly || period != null || pickedDates.length || country != null;
   const clearFilters = () => {
     setQ("");
-    setFInstructors(new Set());
+    setFInstructors(myInstructorId != null ? new Set([myInstructorId]) : new Set());
     setFSubjects(new Set());
     setFRooms(new Set());
     setFStudents(new Set());
@@ -1299,13 +1332,13 @@ export function ScheduleCalendar() {
 
   // 다운로드 파일명은 로그인 계정이 아니라 실제로 렌더 중인 강사/학생을 pane 순서대로 사용한다.
   function downloadName(ext: string) {
-    const names: string[] = [];
+    const people: CalendarExportPerson[] = [];
     const add = (dim: SplitDim, ids: number[]) => {
       if (dim !== "instructor" && dim !== "student") return;
       const options = dim === "instructor" ? resources?.instructors : resources?.students;
       for (const id of ids) {
         const name = options?.find((option) => Number(option.id) === Number(id))?.name;
-        if (name) names.push(name);
+        if (name) people.push({ role: dim, name });
       }
     };
     if (manualPanes.length) {
@@ -1319,9 +1352,11 @@ export function ScheduleCalendar() {
         add("student", studPicks.map((pick) => pick.id));
       }
     }
-    if (!names.length && selected && (selected.type === "instructor" || selected.type === "student")) names.push(selected.name);
+    if (!people.length && selected && (selected.type === "instructor" || selected.type === "student")) {
+      people.push({ role: selected.type, name: selected.name });
+    }
     return calendarExportFilename({
-      userNames: names,
+      people,
       currentDate: todayISO(),
       view,
       ext: ext === "jpg" ? "jpg" : "png",
@@ -2115,7 +2150,7 @@ export function ScheduleCalendar() {
           <>
             {periodLabel}
             <span className="text-fg-subtle">
-              {" "}· {inRange.length}건{anyFilter ? ` / 전체 ${rows.length}` : ""} · 시수 {hrs.hours}h
+              {" "}· {inRange.length}건{anyFilter ? ` / 전체 ${visibleRows.length}` : ""} · 시수 {hrs.hours}h
             </span>
             {selected && <span className="text-accent"> · {selected.name} 개인 스케줄</span>}
             {isSplit && (
@@ -2234,6 +2269,7 @@ export function ScheduleCalendar() {
             fStudents={fStudents}
             fRooms={fRooms}
             onToggleId={(dim, id) => {
+              if (isInstructor && (dim === "instructor" || dim === "student")) return;
               const setter = dim === "instructor" ? setFInstructors : dim === "student" ? setFStudents : setFRooms;
               setter((prev) => {
                 const n = new Set(prev);
@@ -2243,7 +2279,9 @@ export function ScheduleCalendar() {
               });
             }}
             onClearDim={(dim) =>
-              (dim === "instructor" ? setFInstructors : dim === "student" ? setFStudents : setFRooms)(new Set())
+              isInstructor && (dim === "instructor" || dim === "student")
+                ? undefined
+                : (dim === "instructor" ? setFInstructors : dim === "student" ? setFStudents : setFRooms)(new Set())
             }
             subjectOptions={subjectFilterOptions}
             fSubjects={fSubjects}
@@ -2278,7 +2316,14 @@ export function ScheduleCalendar() {
             anyFilter={!!anyFilter}
             onClearAll={clearFilters}
             hideResourceFilters={manualPanes.length > 0}
-            resourceFilterNotice={<span className="badge text-micro">스플릿 모드 · 강사/학생/강의실은 각 표에서 선택</span>}
+            resourceFilterDims={isInstructor ? INSTRUCTOR_RESOURCE_FILTER_DIMS : undefined}
+            resourceFilterNotice={manualPanes.length || isInstructor ? (
+              <span className="badge text-micro">
+                {manualPanes.length
+                  ? `스플릿 모드 · ${isInstructor ? "강의실/과목" : "강사/학생/강의실"}은 각 표에서 선택`
+                  : `내 일정 · ${selected?.name ?? claims?.name ?? `강사 #${myInstructorId ?? "-"}`}`}
+              </span>
+            ) : undefined}
           />
           {hasAvailabilityLegend && (
             <p className="text-caption text-fg-subtle inline-flex items-center gap-2 flex-wrap">
@@ -2373,6 +2418,7 @@ export function ScheduleCalendar() {
                         resources={resources}
                         rooms={rooms}
                         subjects={subjectOpts}
+                        allowedDimensions={isInstructor ? INSTRUCTOR_SPLIT_DIMS : undefined}
                         onChange={(patch) => setManualPanes((prev) => prev.map((x) => (x.uid === mp.uid ? { ...x, ...patch } : x)))}
                         onRemove={() => {
                           setManualPanes((prev) => prev.filter((x) => x.uid !== mp.uid));
@@ -2477,10 +2523,12 @@ export function ScheduleCalendar() {
               onSelect={setInfoTarget}
               filterIds={{ instructor: fInstructors, student: fStudents, room: fRooms }}
               onToggleFilter={(dim, id) => {
+                if (isInstructor && (dim === "instructor" || dim === "student")) return;
                 // 필터바 onToggleId와 동일 로직(단일 소스) — 리스트 클릭 = 필터 선택/해제(UX 제안 2026-07-06)
                 const setter = dim === "instructor" ? setFInstructors : dim === "student" ? setFStudents : setFRooms;
                 setter((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
               }}
+              allowedTypes={isInstructor ? INSTRUCTOR_RESOURCE_PANEL_TYPES : undefined}
             />
           )}
           {/* [피드백 2026-07-03] 스케줄 선택 → 포함 인원 리스트 → 한 명 클릭 → 바로 아래 유저 상세 카드 */}

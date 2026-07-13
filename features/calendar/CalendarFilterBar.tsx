@@ -19,6 +19,7 @@ const DIM_META: Record<FilterDim, { icon: string; label: string }> = {
   room: { icon: "🚪", label: "강의실" },
   subject: { icon: "📚", label: "과목" },
 };
+const DEFAULT_RESOURCE_FILTER_DIMS: Exclude<FilterDim, "subject">[] = ["instructor", "student", "room"];
 
 type Option = { id: number; name: string; color?: string; sub?: string };
 
@@ -183,6 +184,7 @@ export function CalendarFilterBar({
   anyFilter, onClearAll,
   tools,
   hideResourceFilters,
+  resourceFilterDims,
   resourceFilterNotice,
 }: {
   /** [압축 2026-07-06] 뷰 도구(열 좁게·뷰 프리셋 등) — 2행 선두 슬롯. 별도 툴바 행 제거용 */
@@ -218,8 +220,10 @@ export function CalendarFilterBar({
   anyFilter: boolean;
   onClearAll: () => void;
   hideResourceFilters?: boolean;
+  resourceFilterDims?: Exclude<FilterDim, "subject">[];
   resourceFilterNotice?: React.ReactNode;
 }) {
+  const visibleResourceDims = resourceFilterDims ?? DEFAULT_RESOURCE_FILTER_DIMS;
   const optionsOf = (dim: FilterDim): Option[] =>
     dim === "instructor"
       ? (resources?.instructors ?? []).map((r) => ({ id: Number(r.id), name: r.name, color: r.color, sub: r.sub }))
@@ -231,7 +235,7 @@ export function CalendarFilterBar({
   // 선택 칩(이름 역참조 — FK가 리소스 목록에 없으면 #id 폴백, 조인 누락을 숨기지 않음)
   const chips = useMemo(() => {
     const out: { dim: FilterDim; id: number; name: string }[] = [];
-    (["instructor", "student", "room"] as FilterDim[]).forEach((dim) => {
+    visibleResourceDims.forEach((dim) => {
       const opts = optionsOf(dim);
       pickedOf(dim).forEach((id) =>
         out.push({ dim, id, name: opts.find((o) => o.id === id)?.name ?? `${DIM_META[dim].label}#${id}` }),
@@ -239,7 +243,7 @@ export function CalendarFilterBar({
     });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resources, rooms, fInstructors, fStudents, fRooms]);
+  }, [resources, rooms, fInstructors, fStudents, fRooms, visibleResourceDims]);
 
   return (
     <div className="card card-pad space-y-2">
@@ -248,16 +252,19 @@ export function CalendarFilterBar({
         {hideResourceFilters ? (
           resourceFilterNotice ?? <span className="badge text-micro">스플릿 표에서 리소스 선택</span>
         ) : (
-          (["instructor", "student", "room"] as FilterDim[]).map((dim) => (
-            <MultiPick
-              key={dim}
-              dim={dim}
-              options={optionsOf(dim)}
-              picked={pickedOf(dim)}
-              onToggle={(id) => onToggleId(dim, id)}
-              onClear={() => onClearDim(dim)}
-            />
-          ))
+          <>
+            {resourceFilterNotice}
+            {visibleResourceDims.map((dim) => (
+              <MultiPick
+                key={dim}
+                dim={dim}
+                options={optionsOf(dim)}
+                picked={pickedOf(dim)}
+                onToggle={(id) => onToggleId(dim, id)}
+                onClear={() => onClearDim(dim)}
+              />
+            ))}
+          </>
         )}
         {/* [일관성 2026-07-06] 과목·상태·종류·유형 전부 리소스 팝오버와 같은 문법(버튼+▾+체크) */}
         <OptionPick icon="📚" label="과목" options={subjectOptions.map((s) => ({ value: s, label: s }))} picked={fSubjects} onToggle={onToggleSubject} onClear={onClearSubjects} />

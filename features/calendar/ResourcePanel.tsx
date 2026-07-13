@@ -1,5 +1,5 @@
 "use client";
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import type { ScheduleResources, ScheduleResource } from "@/types";
 
 type RType = "instructor" | "student" | "room";
@@ -8,6 +8,7 @@ const TABS: { key: RType; label: string }[] = [
   { key: "instructor", label: "강사" },
   { key: "room", label: "강의실" },
 ];
+const DEFAULT_RESOURCE_TYPES: RType[] = ["student", "instructor", "room"];
 const PAGE = 8;
 
 // 우측 접이식 패널: 유저별 스케줄 — 강사/학생/강의실을 골라 개인 스케줄로 보기(단일 선택).
@@ -19,18 +20,23 @@ const PAGE = 8;
 //  - 필터가 없으면: 전체 유저(검색 가능 — 기존 그대로). 행 클릭 = **필터 토글**(대표 지시).
 //  - 상세 카드(뷰 불변)는 행 우측 ⓘ 버튼으로 분리(기존 onSelect 유지 — 역할 명확화).
 function ResourcePanelImpl({
-  resources, selected, onSelect, filterIds, onToggleFilter,
+  resources, selected, onSelect, filterIds, onToggleFilter, allowedTypes = DEFAULT_RESOURCE_TYPES,
 }: {
   resources: ScheduleResources;
   selected: ScheduleResource | null;
   onSelect: (r: ScheduleResource | null) => void;
   filterIds: Record<RType, Set<number>>;
   onToggleFilter: (dim: RType, id: number) => void;
+  allowedTypes?: RType[];
 }) {
+  const tabs = TABS.filter((item) => allowedTypes.includes(item.key));
   const [open, setOpen] = useState(true);
-  const [tab, setTab] = useState<RType>("student");
+  const [tab, setTab] = useState<RType>(allowedTypes[0] ?? "room");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
+  useEffect(() => {
+    if (!allowedTypes.includes(tab)) setTab(allowedTypes[0] ?? "room");
+  }, [allowedTypes, tab]);
 
   const list: ScheduleResource[] =
     tab === "student" ? resources.students : tab === "instructor" ? resources.instructors : resources.rooms;
@@ -54,7 +60,7 @@ function ResourcePanelImpl({
         className="w-full px-3 h-10 flex items-center justify-between border-b"
        
       >
-        <span className="text-body font-semibold">유저별 스케줄{picked.size ? <span className="ml-1.5 badge badge-accent text-[10px]">{picked.size}명 필터</span> : null}</span>
+        <span className="text-body font-semibold">{tabs.length === 1 && tabs[0]?.key === "room" ? "강의실별 스케줄" : "유저별 스케줄"}{picked.size ? <span className="ml-1.5 badge badge-accent text-[10px]">{picked.size}개 필터</span> : null}</span>
         <span className="text-caption text-fg-subtle inline-flex items-center gap-1">
           {selected ? <span className="text-accent truncate max-w-[90px]">{selected.name}</span> : null}
           {open ? "▲" : "▼"}
@@ -74,7 +80,7 @@ function ResourcePanelImpl({
             </div>
           )}
           <div className="flex border-b">
-            {TABS.map((t) => (
+            {tabs.map((t) => (
               <button
                 key={t.key}
                 onClick={() => changeTab(t.key)}
@@ -87,7 +93,7 @@ function ResourcePanelImpl({
           <div className="p-2">
             <input
               className="input h-8 w-full text-body"
-              placeholder={`${TABS.find((t) => t.key === tab)?.label} 검색`}
+              placeholder={`${tabs.find((t) => t.key === tab)?.label} 검색`}
               value={q}
               onChange={(e) => { setQ(e.target.value); setPage(0); }}
             />

@@ -71,7 +71,10 @@ export const useScheduleResources = () => {
   return useQuery({ queryKey: qk.schedule.resources(scope), queryFn: ({ signal }) => api.schedule.resources({ signal }), staleTime: CATALOG_STALE });
 };
 // [TBO-14 C2b] 전체 가용/불가 블록 — 캘린더 밴드 단일 소스(selBlocks는 뷰에서 owner 파생). 밴드 편집 시 invalidate.
-export const useAllAvailability = () => useQuery({ queryKey: qk.availability.all, queryFn: ({ signal }) => api.availability.all({ signal }) });
+export const useAllAvailability = () => {
+  const scope = tokenScopeKey();
+  return useQuery({ queryKey: qk.availability.everything(scope), queryFn: ({ signal }) => api.availability.all({ signal }) });
+};
 export const useAttendance = () => {
   const scope = tokenScopeKey();
   return useQuery({ queryKey: qk.attendance.list(scope), queryFn: ({ signal }) => api.attendance.list({ signal }) });

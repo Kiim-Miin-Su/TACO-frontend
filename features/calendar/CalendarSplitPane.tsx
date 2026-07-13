@@ -13,9 +13,11 @@ export type SubjectOption = { id: number; name: string; color?: string };
 
 // [#2 2026-07-06] 과목(subject) 차원 추가 — 4차원 수동 표 빌더.
 const DIM_LABEL: Record<SplitDim, string> = { instructor: "강사", student: "학생", room: "강의실", subject: "과목" };
+const ALL_DIMENSIONS = Object.keys(DIM_LABEL) as SplitDim[];
 
 export function CalendarSplitPane({
   pane, resources, rooms, subjects = [], onChange, onRemove, onMoveLeft, onMoveRight, children, fixedDim, headerExtra,
+  allowedDimensions = ALL_DIMENSIONS,
 }: {
   pane: SplitPaneDef;
   fixedDim?: boolean; // 자동 스플릿 모드 — 차원은 필터에서 파생(변경 UI 숨김)
@@ -28,6 +30,7 @@ export function CalendarSplitPane({
   onMoveRight?: () => void;
   children: React.ReactNode; // 부모가 renderTimeGrid(colsFor(pane))로 주입한 그리드
   headerExtra?: React.ReactNode; // 표별 국가(시차) 픽커 등 — 헤더 우측 슬롯(피드백 2026-07-02 #6)
+  allowedDimensions?: SplitDim[];
 }) {
   const options =
     pane.dim === "instructor"
@@ -56,7 +59,7 @@ export function CalendarSplitPane({
               onChange={(e) => onChange({ dim: e.target.value as SplitDim, ids: [] })}
               title="이 표의 기준(강사/학생/강의실)"
             >
-              {(Object.keys(DIM_LABEL) as SplitDim[]).map((d) => (
+              {allowedDimensions.map((d) => (
                 <option key={d} value={d}>{DIM_LABEL[d]}</option>
               ))}
             </select>

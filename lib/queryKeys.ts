@@ -12,7 +12,7 @@ export const qk = {
   availability: {
     all: ["availability"] as const,
     list: (ownerType: AvailabilityOwner, ownerId: number) => ["availability", ownerType, ownerId] as const,
-    everything: () => ["availability", "all"] as const,
+    everything: (scope = "global") => ["availability", "all", scope] as const,
   },
   rooms: { all: () => ["rooms"] as const },
   scheduleRequests: { all: ["scheduleRequests"] as const, list: (scope = "global") => ["scheduleRequests", "list", scope] as const },
