@@ -37,6 +37,7 @@ import { CalendarViewTabs } from "./CalendarViewTabs";
 import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
 import { formatScheduleConflicts } from "@/lib/domain/conflict-messages";
 import { companionPaneSeed, primaryPaneSeed } from "@/lib/domain/calendar-panes";
+import { availabilityGhostBandsForColumn } from "@/lib/domain/pending-ghosts";
 import { axisCompanionTimezone, resourceTimezoneKey, resourceTimezoneOf, type ResourceTimezoneOverrides } from "@/lib/domain/resource-timezone";
 import type { CalendarViewPreset } from "@/types";
 import { exportNodeAsImage } from "@/lib/export";
@@ -1662,15 +1663,28 @@ export function ScheduleCalendar() {
                       const contRows = !colTz
                         ? rowsOfColumn({ ...c, date: addDaysISO(c.date, -1) }, filtered).filter(kindPass).filter((r) => endMinOf(r) > 1440)
                         : [];
-                      // [B-4 #9] 강사 본인 pending 요청 고스트(승인 대기 시각화) — KST 컬럼 전용·표시 전용
+                      // [B-4 #9] 강사 본인 pending 요청 고스트(승인 대기 시각화) — KST 컬럼 전용·표시 전용.
+                      //  세션 요청과 availability 요청을 분리해 타입별 geometry를 각각 계산한다.
                       const colGhosts = !colTz && isInstructor
-                        ? pendingGhosts.filter((g) => g.sessionDate === c.date && (c.resType == null || (c.resType === "instructor" && Number(c.resId) === Number(g.instructorId))))
+                        ? pendingGhosts.filter((g) =>
+                            (g.requestKind == null || g.requestKind === "session_create" || g.requestKind === "session_update") &&
+                            g.sessionDate === c.date &&
+                            (c.resType == null || (c.resType === "instructor" && Number(c.resId) === Number(g.instructorId))),
+                          )
                         : [];
                       // [오류5] 미리보기 = 자기 프레임 좌표 + 프레임 불변 델타 — 시차 컬럼에서도 그 나라 시간으로 표시
                       const sOf = (r: ScheduleRow) => (preview && preview.id === r.id ? startMinOf(r) + preview.dStart : startMinOf(r));
                       const eOf = (r: ScheduleRow) => (preview && preview.id === r.id ? endMinOf(r) + preview.dEnd : endMinOf(r));
                       const lanes = layoutLanes(colRows.map((r) => ({ id: r.id, start: sOf(r), end: eOf(r) })));
                       const bands = bandsOfColumn(c, gridMin, gridMax, colTz ? colTzc.tz : null); // [이슈1] 시차 컬럼도 변환해 표시
+                      const availabilityGhosts = !colTz && c.resType && c.resType !== "subject" && c.resId != null
+                        ? availabilityGhostBandsForColumn({
+                            requests: pendingGhosts,
+                            blocks: allBlocks,
+                            date: c.date,
+                            owner: { type: c.resType, id: c.resId },
+                          })
+                        : [];
                       const isToday = c.date === todayISO();
                       return (
                         <div
@@ -1879,6 +1893,38 @@ export function ScheduleCalendar() {
                                   </>
                                 )}
                               </div>
+                              );
+                            })}
+                            {/* [C2] availability 승인 대기 ghost — DB-backed schedule_requests에서 복원(새로고침 유지). */}
+                            {availabilityGhosts.map((g) => {
+                              const s = clampAxis(g.startMin);
+                              const e = clampAxis(g.endMin);
+                              if (e <= s) return null;
+                              const isDelete = g.requestKind === "availability_delete";
+                              const tone =
+                                g.kind === "unavailable"
+                                  ? "var(--color-fg-muted)"
+                                  : g.kind === "online_only"
+                                    ? "var(--color-accent)"
+                                    : "var(--color-success)";
+                              return (
+                                <div
+                                  key={`availability-ghost-${g.id}`}
+                                  className="absolute left-0 right-0 z-10 pointer-events-none px-1 py-0.5 text-[10px] leading-tight overflow-hidden"
+                                  style={{
+                                    top: ((s - gridMin) / 60) * HOUR_H + 1,
+                                    height: Math.max(18, ((e - s) / 60) * HOUR_H) - 2,
+                                    color: isDelete ? "var(--color-danger)" : tone,
+                                    border: `1.5px dashed ${isDelete ? "var(--color-danger)" : tone}`,
+                                    background: isDelete
+                                      ? "repeating-linear-gradient(45deg, rgba(207,34,46,.08) 0 6px, rgba(207,34,46,.18) 6px 12px)"
+                                      : `color-mix(in srgb, ${tone} 12%, transparent)`,
+                                  }}
+                                  title={g.title}
+                                >
+                                  <div className="font-semibold truncate">⏳ {g.label}</div>
+                                  <div className="mono">{fromMin(g.startMin)}–{fromMin(g.endMin)} 승인 대기</div>
+                                </div>
                               );
                             })}
                             {/* 밴드 리사이즈 미리보기 */}
