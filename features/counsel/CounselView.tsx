@@ -3,7 +3,7 @@
 //  종전엔 한 페이지에 캘린더+폼+목록이 쌓여 가독성이 낮았음 → 목록(검색)·예약(캘린더)·폼(페이지)으로 분리.
 import { useState } from 'react';
 import Link from 'next/link';
-import { Badge, SectionCard, PageHeader, EmptyState, TableWrap } from '@/components/ui';
+import { Badge, ClickableTableRow, SectionCard, PageHeader, EmptyState, TableWrap } from '@/components/ui';
 // 서버 상태(상담 폼·회차)는 TanStack Query 훅에서 구독한다(zustand store 대체).
 import { useCounselForms, useCounselRounds } from '@/lib/queries';
 import { CounselCalendar } from './CounselCalendar';
@@ -78,9 +78,13 @@ export function CounselView() {
                 </thead>
                 <tbody>
                   {filtered.map((f) => (
-                    <tr key={f.id}>
+                    <ClickableTableRow
+                      key={f.id}
+                      href={`/counsel/${f.id}`}
+                      label={`${f.applicantName} 상담 상세 보기`}
+                    >
                       <td>
-                        <div className="font-medium">{f.applicantName}</div>
+                        <Link href={`/counsel/${f.id}`} className="font-medium text-accent hover:underline">{f.applicantName}</Link>
                         <div className="text-caption text-fg-subtle">{f.applicantPhone ?? ''}</div>
                       </td>
                       <td className="text-fg-muted">{sourceLabel[f.source]}</td>
@@ -89,9 +93,9 @@ export function CounselView() {
                       <td className="mono text-fg-muted">{f.nextContactAt ?? '—'}</td>
                       <td className="mono text-fg-muted">{f.createdAt}</td>
                       <td className="text-right">
-                        <Link href={`/counsel/${f.id}`} className="btn btn-sm">열기 · 수정</Link>
+                        <Link href={`/counsel/${f.id}`} className="btn btn-sm">상세 보기</Link>
                       </td>
-                    </tr>
+                    </ClickableTableRow>
                   ))}
                 </tbody>
               </table>
