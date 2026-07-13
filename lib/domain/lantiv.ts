@@ -337,6 +337,35 @@ export function matchesSubjectFilter(
   return SUBJECT_KIND_OPTIONS.some((o) => o.kind === kind && fSubjects.has(o.value));
 }
 
+export type CalendarFacetFilters = {
+  subjects: Set<string>;
+  statuses: Set<StatusFilter>;
+  modes: Set<SessionModeFilter>;
+  groupOnly: boolean;
+};
+
+export function emptyCalendarFacetFilters(): CalendarFacetFilters {
+  return { subjects: new Set(), statuses: new Set(), modes: new Set(), groupOnly: false };
+}
+
+export function calendarFacetFilterCount(filters?: CalendarFacetFilters): number {
+  if (!filters) return 0;
+  return filters.subjects.size + filters.statuses.size + filters.modes.size + (filters.groupOnly ? 1 : 0);
+}
+
+/** Shared predicate for the top filter bar and every split-pane filter. */
+export function matchesCalendarFacetFilters(
+  row: ScheduleRow,
+  attendance: Attendance[],
+  filters?: CalendarFacetFilters,
+): boolean {
+  if (!filters) return true;
+  if (!matchesSubjectFilter(row, filters.subjects)) return false;
+  if (!matchesStatusFilter(row, attendance, filters.statuses)) return false;
+  if (filters.modes.size && !filters.modes.has((row.mode ?? 'in_person') as SessionModeFilter)) return false;
+  return !filters.groupOnly || isGroupSession(row);
+}
+
 // ── [R2 2026-07-06] 스플릿 컴팩트 단계형 밀도 — 단일 함수(TBO-16 #1 마감) ──
 //  하루 열 폭은 COL_MIN 고정, 안을 인원수로 서브분할(subW = COL_MIN/perDay).
 //  단계: full(전체 내용) ≥80px → title(가로 축약 제목+시간) ≥46 → vtitle(세로 글) ≥24 → color(색상 라벨만).

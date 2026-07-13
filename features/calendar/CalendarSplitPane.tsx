@@ -43,39 +43,43 @@ export function CalendarSplitPane({
     .join(", ");
 
   return (
-    <div className="flex-1 min-w-0">{/* [정렬] 균등 분할 — 내부 그리드가 고정폭 fit이라 최소폭 강제 불필요 */}
+    <div className="flex-1 min-w-0 overflow-hidden">{/* [정렬] 균등 분할 — 내부 그리드가 고정폭 fit이라 최소폭 강제 불필요 */}
       {/* 표 헤더: 차원 선택 + 리소스 다중 체크(표별 독립 필터) + 제거 */}
-      <div className="flex items-center gap-1.5 mb-1 px-0.5 flex-wrap">{/* [2026-07-06] 컨트롤 많아짐 — 두 줄 허용(대표: 두 줄 돼도 무관) */}
-        {fixedDim ? (
-          <span className="text-caption font-semibold text-fg-muted px-1">{DIM_LABEL[pane.dim]}</span>
-        ) : (
-          <select
-            className="input h-7 w-[76px] text-caption"
-            value={pane.dim}
-            onChange={(e) => onChange({ dim: e.target.value as SplitDim, ids: [] })}
-            title="이 표의 기준(강사/학생/강의실)"
-          >
-            {(Object.keys(DIM_LABEL) as SplitDim[]).map((d) => (
-              <option key={d} value={d}>{DIM_LABEL[d]}</option>
-            ))}
-          </select>
-        )}
-        <MultiPick
-          dim={pane.dim as FilterDim}
-          options={options}
-          picked={picked}
-          onToggle={(id) =>
-            onChange({ ids: picked.has(id) ? pane.ids.filter((x) => x !== id) : [...pane.ids, id] })
-          }
-          onClear={() => onChange({ ids: [] })}
-        />
-        <span className="text-caption text-fg-muted truncate flex-1" title={names}>
-          {names || `${DIM_LABEL[pane.dim]}을 선택하세요`}
-        </span>
-        {headerExtra}
-        {onMoveLeft && <button className="btn btn-sm h-7 px-1.5" onClick={onMoveLeft} title="왼쪽으로 이동">←</button>}
-        {onMoveRight && <button className="btn btn-sm h-7 px-1.5" onClick={onMoveRight} title="오른쪽으로 이동">→</button>}
-        <button className="btn btn-sm h-7 px-1.5" onClick={onRemove} title="이 표 닫기">✕</button>
+      <div className="mb-1 min-w-0 space-y-1 px-0.5">
+        <div className="flex min-w-0 items-center gap-1">
+          {fixedDim ? (
+            <span className="shrink-0 px-1 text-caption font-semibold text-fg-muted">{DIM_LABEL[pane.dim]}</span>
+          ) : (
+            <select
+              className="input h-7 w-[76px] min-w-0 text-caption"
+              value={pane.dim}
+              onChange={(e) => onChange({ dim: e.target.value as SplitDim, ids: [] })}
+              title="이 표의 기준(강사/학생/강의실)"
+            >
+              {(Object.keys(DIM_LABEL) as SplitDim[]).map((d) => (
+                <option key={d} value={d}>{DIM_LABEL[d]}</option>
+              ))}
+            </select>
+          )}
+          <div className="min-w-0 shrink">
+            <MultiPick
+              dim={pane.dim as FilterDim}
+              options={options}
+              picked={picked}
+              onToggle={(id) =>
+                onChange({ ids: picked.has(id) ? pane.ids.filter((x) => x !== id) : [...pane.ids, id] })
+              }
+              onClear={() => onChange({ ids: [] })}
+            />
+          </div>
+          <span className="min-w-0 flex-1 truncate text-caption text-fg-muted" title={names}>
+            {names || `${DIM_LABEL[pane.dim]}을 선택하세요`}
+          </span>
+          {onMoveLeft && <button className="btn btn-sm h-7 shrink-0 px-1.5" onClick={onMoveLeft} title="왼쪽으로 이동">←</button>}
+          {onMoveRight && <button className="btn btn-sm h-7 shrink-0 px-1.5" onClick={onMoveRight} title="오른쪽으로 이동">→</button>}
+          <button className="btn btn-sm h-7 shrink-0 px-1.5" onClick={onRemove} title="이 표 닫기">✕</button>
+        </div>
+        {headerExtra && <div className="flex min-w-0 max-w-full items-center gap-1 overflow-hidden">{headerExtra}</div>}
       </div>
       {pane.ids.length === 0 ? (
         /* [DESIGN §2.4] 빈 표 자리 — 고정 인라인 height 대신 min-h 클래스 */

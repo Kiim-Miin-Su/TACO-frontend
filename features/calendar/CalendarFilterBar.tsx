@@ -112,11 +112,11 @@ export function MultiPick({
   return (
     <div className="relative" ref={ref}>
       <button
-        className={`btn btn-sm ${picked.size ? "badge-accent" : ""}`}
+        className={`btn btn-sm min-w-0 max-w-full ${picked.size ? "badge-accent" : ""}`}
         onClick={toggle}
         title={`${meta.label} 다중선택 — 2명 이상 선택하면 스플릿 뷰`}
       >
-        {meta.icon} {meta.label}
+        <span aria-hidden="true">{meta.icon}</span><span className="truncate">{meta.label}</span>
         {picked.size > 0 && <span className="ml-1 mono">{picked.size}</span>}
         <span className="ml-1 text-[10px]">▾</span>
       </button>

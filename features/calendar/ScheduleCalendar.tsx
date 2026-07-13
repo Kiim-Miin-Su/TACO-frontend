@@ -9,11 +9,12 @@ import { qk } from "@/lib/queryKeys";
 import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, sessionEndMin, crossMidnightEnd, durationMinutesBetween, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
 import {
   PALETTE, STATUS_LABEL, MAX_SPLIT,
-  matchesStatusFilter, matchesResourceFilter, isGroupSession, sortByDateAsc,
+  matchesResourceFilter, sortByDateAsc,
   buildMixedSplitColumns, rowInResource, cloneSessionBody, resolvePasteCourseId,
   type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick, densityOf, expandAxis,
-  MODE_FILTERS, MODE_FILTER_LABEL, type SessionModeFilter,
-  matchesSubjectFilter, SUBJECT_KIND_OPTIONS } from "@/lib/domain/lantiv";
+  type SessionModeFilter,
+  matchesCalendarFacetFilters, emptyCalendarFacetFilters, SUBJECT_KIND_OPTIONS,
+  type CalendarFacetFilters } from "@/lib/domain/lantiv";
 import {
   useAttendance,
   useStudents,
@@ -40,7 +41,7 @@ import { availabilityGhostBandsForColumn } from "@/lib/domain/pending-ghosts";
 import { buildAvailabilityRequestBody, buildSessionDeleteRequestBody } from "@/lib/domain/request-drafts";
 import { calendarExportFilename } from "@/lib/domain/calendar-export";
 import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
-import { axisCompanionTimezone, resourceTimezoneKey, resourceTimezoneOf, type ResourceTimezoneOverrides } from "@/lib/domain/resource-timezone";
+import { axisCompanionTimezone, buildTimezonePaneGroups, resourceTimezoneKey, resourceTimezoneOf, type ResourceTimezoneOverrides } from "@/lib/domain/resource-timezone";
 import type { CalendarViewPreset } from "@/types";
 import { exportNodeAsImage } from "@/lib/export";
 import { useTacoStore } from "@/lib/store";
@@ -53,7 +54,8 @@ import { ResourceDetailCard } from "./ResourceDetailCard";
 import { ParticipantsCard } from "./ParticipantsCard";
 import { SessionEditFields, ColorPicker, Field, TimeSelect } from "./SessionEditFields";
 import { CalendarSplitPane, type SplitPaneDef } from "./CalendarSplitPane";
-import { CalendarFilterBar, OptionPick, type Period } from "./CalendarFilterBar";
+import { CalendarFilterBar, type Period } from "./CalendarFilterBar";
+import { CalendarPaneFilters } from "./CalendarPaneFilters";
 import { HelpPopover, PageHeader } from "@/components/ui";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 import { SessionListPanel } from "./SessionListPanel";
@@ -280,15 +282,18 @@ export function ScheduleCalendar() {
   const [paneRange, setPaneRange] = useState<Partial<Record<SplitDim, { from: string; to: string }>>>({});
   // [B-3 #5] 표별 cherry-pick 날짜(불연속 집합, 최대 14) — 설정 시 paneRange(연속 범위)보다 우선.
   const [panePicked, setPanePicked] = useState<Partial<Record<SplitDim, string[]>>>({});
-  // [오류2 2026-07-06] 표별 수업방식(대면/비대면) 필터 — 전역 fModes와 별개로 그 표에만 적용(빈 Set=전체).
-  const [paneModes, setPaneModes] = useState<Partial<Record<SplitDim, Set<SessionModeFilter>>>>({});
+  // 표별 과목·상태·수업방식·그룹 필터. 자동/수동 표 모두 안정적인 pane key로 분리한다.
+  const [paneFacets, setPaneFacets] = useState<Record<string, CalendarFacetFilters>>({});
   // [#2 2026-07-06] 수동 표 빌더 — 강사·학생·강의실·과목 임의 조합(학생×학생 등 동일차원 2표 허용).
   //  자동 스플릿(강사+학생 필터)과 병행: manualPanes가 있으면 그것을 우선 렌더, 없으면 기존 자동 동작.
   //  per-pane 필터(국가·수업방식)는 dim이 아닌 **uid 키**(동일차원 중복 시 충돌 방지 — §14 P1 대칭).
   const [manualPanes, setManualPanes] = useState<ManualPaneState[]>([]);
   const paneUidRef = useRef(1);
   const [paneCountryU, setPaneCountryU] = useState<Record<number, CountryInfo | null>>({});
-  const [paneModesU, setPaneModesU] = useState<Record<number, Set<SessionModeFilter>>>({});
+  const manualFacetKey = (uid: number) => `manual:${uid}`;
+  const dimFacetKey = (dim: SplitDim) => `dimension:${dim}`;
+  const facetOf = (key: string) => paneFacets[key] ?? emptyCalendarFacetFilters();
+  const setFacet = (key: string, value: CalendarFacetFilters) => setPaneFacets((current) => ({ ...current, [key]: value }));
   const addManualPane = () => {
     if (!manualPanes.length) {
       const currentSeeds = currentPaneSeeds({
@@ -315,7 +320,9 @@ export function ScheduleCalendar() {
     const uid = paneUidRef.current++;
     setManualPanes((prev) => appendCalendarPane(prev, uid));
     setPaneCountryU((cur) => ({ ...cur, [uid]: cur[last.uid] ?? null }));
-    setPaneModesU((cur) => cur[last.uid] ? { ...cur, [uid]: new Set(cur[last.uid]) } : cur);
+    setPaneFacets((current) => current[manualFacetKey(last.uid)]
+      ? { ...current, [manualFacetKey(uid)]: current[manualFacetKey(last.uid)] }
+      : current);
   };
   // 우측 패널: 리스트에서 클릭한 세션(아래 상세) + 그룹 토글
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -341,6 +348,10 @@ export function ScheduleCalendar() {
     () => allSubjects.map((s) => ({ id: Number(s.id), name: s.name, color: (s as { color?: string }).color })),
     [allSubjects],
   );
+  const subjectFilterOptions = useMemo(() => [
+    ...[...new Set((resources?.courses ?? []).map((course) => course.subjectName).filter(Boolean))].sort(),
+    ...SUBJECT_KIND_OPTIONS.map((option) => option.value),
+  ], [resources]);
   const subjectIdOf = useMemo(() => {
     const m = new Map(allCourses.map((c) => [Number(c.id), c.subjectId != null ? Number(c.subjectId) : undefined]));
     return (courseId: number) => m.get(courseId);
@@ -375,12 +386,15 @@ export function ScheduleCalendar() {
       const restored = st.manualPanes.map((mp) => ({ uid: mp.uid ?? paneUidRef.current++, dim: mp.dim, ids: mp.ids }));
       setManualPanes(restored);
       setPaneCountryU(Object.fromEntries(st.manualPanes.map((mp, i) => [restored[i].uid, mp.country ?? null])));
-      setPaneModesU(Object.fromEntries(st.manualPanes.flatMap((mp, i) => mp.modes.size ? [[restored[i].uid, mp.modes] as const] : [])));
+      setPaneFacets(Object.fromEntries(st.manualPanes.map((mp, i) => [manualFacetKey(restored[i].uid), {
+        ...emptyCalendarFacetFilters(),
+        modes: new Set(mp.modes),
+      }])));
       paneUidRef.current = Math.max(paneUidRef.current, ...restored.map((mp) => mp.uid + 1), 1);
     } else {
       setManualPanes([]);
       setPaneCountryU({});
-      setPaneModesU({});
+      setPaneFacets({});
     }
     setClosedPanes(new Set()); // 표 닫힘 상태 초기화 — 프리셋의 스플릿 구성을 그대로 복원
     setActivePresetId(Number(p.id));
@@ -397,7 +411,7 @@ export function ScheduleCalendar() {
         dim: mp.dim,
         ids: mp.ids,
         country: paneCountryU[mp.uid] ?? null,
-        modes: new Set(paneModesU[mp.uid] ?? []),
+        modes: new Set(paneFacets[manualFacetKey(mp.uid)]?.modes ?? []),
       })),
     });
     if (updateId != null) {
@@ -600,6 +614,13 @@ export function ScheduleCalendar() {
     [colorBy],
   );
 
+  const globalFacetFilters = useMemo<CalendarFacetFilters>(() => ({
+    subjects: fSubjects,
+    statuses: fStatuses,
+    modes: fModes,
+    groupOnly,
+  }), [fSubjects, fStatuses, fModes, groupOnly]);
+
   // ── 필터 적용 ──
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -607,13 +628,7 @@ export function ScheduleCalendar() {
       // 강사·학생 = 합집합(OR), 강의실 = AND — 동시 다중선택 교집합 버그 수정(lantiv.matchesResourceFilter).
       if (!matchesResourceFilter(r, { instructors: fInstructors, students: fStudents, rooms: fRooms })) return false;
       if (pickedDates.length && !dates.includes(r.sessionDate)) return false; // cherry-pick — 그리드·리스트·시수 동일 모집단
-      // [오류2] 과목 = 실제 과목명 ∪ 종류 유사 옵션(진단고사/상담) — 같은 필터 내 합집합
-      if (!matchesSubjectFilter(r, fSubjects)) return false;
-      // Lantiv 상태 필터(예정/출석/지각/결강/보강) — 세션 status + 강사·학생 출결 조합(lib/domain/lantiv)
-      if (!matchesStatusFilter(r, attBySession.get(Number(r.id)) ?? [], fStatuses)) return false;
-      // [오류2] 수업방식(대면/비대면) — 미지정=in_person 하위호환
-      if (fModes.size && !fModes.has((r.mode ?? "in_person") as SessionModeFilter)) return false;
-      if (groupOnly && !isGroupSession(r)) return false;
+      if (!matchesCalendarFacetFilters(r, attBySession.get(Number(r.id)) ?? [], globalFacetFilters)) return false;
       // 국가 필터: 그 국가 학생이 코호트에 포함된 세션만(해외 학생에게 보낼 시간표 추출용)
       if (countryStudentIds && !(r.studentIds ?? []).some((id) => countryStudentIds.has(Number(id)))) return false;
       if (needle) {
@@ -623,7 +638,7 @@ export function ScheduleCalendar() {
       }
       return true;
     });
-  }, [rows, q, fInstructors, fSubjects, fRooms, fStudents, fStatuses, fModes, groupOnly, attBySession, countryStudentIds, pickedDates, dates]);
+  }, [rows, q, fInstructors, fRooms, fStudents, globalFacetFilters, attBySession, countryStudentIds, pickedDates, dates]);
 
   const anyFilter =
     q.trim() !== "" || fInstructors.size || fSubjects.size || fRooms.size || fStudents.size ||
@@ -643,7 +658,7 @@ export function ScheduleCalendar() {
     setPaneCountry({});
     setManualPanes([]);
     setPaneCountryU({});
-    setPaneModesU({});
+    setPaneFacets({});
     setResourceTzOverride({});
     setActivePresetId(null);
   };
@@ -764,12 +779,17 @@ export function ScheduleCalendar() {
     });
   };
 
-  const autoTzStudentPanes = useMemo(() => {
-    if (manualPanes.length || view === "month" || studPicks.length < 2) return [];
-    const tzKeys = new Set(studPicks.map((p) => resourceTzFor("student", p.id)?.tz ?? KST_TZ));
-    return tzKeys.size > 1 ? studPicks.map((p) => ({ pick: p, country: resourceTzFor("student", p.id) ?? null })) : [];
+  const autoTzPanes = useMemo(() => {
+    if (manualPanes.length || view === "month") return [];
+    return buildTimezonePaneGroups(
+      [
+        { dim: "instructor" as const, picks: closedPanes.has("instructor") ? [] : instPicks },
+        { dim: "student" as const, picks: closedPanes.has("student") ? [] : studPicks },
+      ],
+      (dim, id) => resourceTzFor(dim, id),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resourceTzFor는 resourcesByType·override 파생
-  }, [manualPanes.length, view, studPicks, resourcesByType, resourceTzOverride]);
+  }, [manualPanes.length, view, instPicks, studPicks, closedPanes, resourcesByType, resourceTzOverride]);
 
   const rowsOfColumn = (c: Col, src: ScheduleRow[] = filtered) =>
     src.filter(
@@ -827,9 +847,9 @@ export function ScheduleCalendar() {
     if (manualPanes.some((p) => hasOwnerBlocks(p.dim, p.ids))) return true;
     if (singleSplitPicks.some((p) => hasOwnerBlocks(p.type, [p.id]))) return true;
     if (panes.some((p) => hasOwnerBlocks(p.dim, p.picks.map((x) => x.id)))) return true;
-    if (autoTzStudentPanes.some(({ pick }) => hasOwnerBlocks("student", [pick.id]))) return true;
+    if (autoTzPanes.some((pane) => hasOwnerBlocks(pane.dim, pane.picks.map((pick) => pick.id)))) return true;
     return instPicks.length > 0 && hasOwnerBlocks("instructor", instPicks.map((x) => x.id));
-  }, [allBlocks, autoTzStudentPanes, instPicks, manualPanes, panes, selected, selBlocks, singleSplitPicks]);
+  }, [allBlocks, autoTzPanes, instPicks, manualPanes, panes, selected, selBlocks, singleSplitPicks]);
 
   function approvalImpactOf(e: unknown): AvailabilityImpact[] | null {
     const data = (e as { response?: { data?: { approvalRequired?: boolean; impactedSessions?: AvailabilityImpact[] } } })?.response?.data;
@@ -1321,9 +1341,8 @@ export function ScheduleCalendar() {
     };
     if (manualPanes.length) {
       for (const pane of manualPanes) add(pane.dim, pane.ids);
-    } else if (autoTzStudentPanes.length) {
-      add("instructor", instPicks.map((pick) => pick.id));
-      add("student", autoTzStudentPanes.map(({ pick }) => pick.id));
+    } else if (autoTzPanes.length) {
+      for (const pane of autoTzPanes) add(pane.dim, pane.picks.map((pick) => pick.id));
     } else {
       for (const pane of panes) add(pane.dim, pane.picks.map((pick) => pick.id));
       if (!panes.length) {
@@ -1555,7 +1574,7 @@ export function ScheduleCalendar() {
   const unionAxis = (list: { startH: number; endH: number }[]): { startH: number; endH: number } =>
     list.length ? { startH: Math.min(...list.map((a) => a.startH)), endH: Math.max(...list.map((a) => a.endH)) } : { startH: START_H, endH: END_H };
 
-  const renderTimeGrid = (cols: Col[], tzc?: CountryInfo | null, paneModeSet?: Set<SessionModeFilter>, availW?: number, axisOverride?: { startH: number; endH: number }) => {
+  const renderTimeGrid = (cols: Col[], tzc?: CountryInfo | null, paneFilters?: CalendarFacetFilters, availW?: number, axisOverride?: { startH: number; endH: number }) => {
     // [KST 고정] kstFixed면 tz 위치 변환·편집 변환 없음(전 컬럼 KST). 국가정보는 칩 현지시각 라벨용으로만 유지.
     const tzActive = !kstFixed && !!tzc && tzc.tz !== KST_TZ;
     // 학생 개별 시차(피드백 2026-07-03 #1): 그리드 tz(전역/표별 — 명시 선택)가 없을 때만
@@ -1648,14 +1667,18 @@ export function ScheduleCalendar() {
                       const colOffLabel = colIsOverseas ? `KST${colOff >= 0 ? "+" : "-"}${Math.floor(Math.abs(colOff) / 60)}${Math.abs(colOff) % 60 ? ":" + pad(Math.abs(colOff) % 60) : ""}h` : "";
                       // kstFixed일 때 칩에 병기할 현지시각 = KST분 + 오프셋(자정 넘김은 24h 모듈로).
                       const toLocal = (mm: number) => ((mm + colOff) % 1440 + 1440) % 1440;
-                      // [오류2] 표별 수업방식 필터(빈 Set=전체) — 전역 fModes는 filtered 단계에서 이미 적용
-                      const kindPass = (r: ScheduleRow) => !paneModeSet?.size || paneModeSet.has((r.mode ?? "in_person") as SessionModeFilter);
-                      const colRows = rowsOfColumn(c, colTz ? rowsForTz(colTzc.tz) : filtered).filter(kindPass);
+                      // 전역 필터와 같은 판정 함수를 쓰되, 이 표의 필터를 추가로 적용한다.
+                      const panePass = (r: ScheduleRow) => matchesCalendarFacetFilters(
+                        r,
+                        attBySession.get(Number(r.id)) ?? [],
+                        paneFilters,
+                      );
+                      const colRows = rowsOfColumn(c, colTz ? rowsForTz(colTzc.tz) : filtered).filter(panePass);
                       // [R-9] 전일 자정 크로스 세션의 익일 연속 블록(00:00~잔여) — **표시 전용**(상호작용은
                       //  시작일 원본 블록에서). KST 컬럼 전용 — 시차 컬럼은 shiftRowToTz가 현지 좌표로
                       //  통변환하므로(대개 크로스가 풀림) 기존 tzOverflowEnd 배지 규칙을 유지.
                       const contRows = !colTz
-                        ? rowsOfColumn({ ...c, date: addDaysISO(c.date, -1) }, filtered).filter(kindPass).filter((r) => endMinOf(r) > 1440)
+                        ? rowsOfColumn({ ...c, date: addDaysISO(c.date, -1) }, filtered).filter(panePass).filter((r) => endMinOf(r) > 1440)
                         : [];
                       // [B-4 #9] 강사 본인 pending 요청 고스트(승인 대기 시각화) — KST 컬럼 전용·표시 전용.
                       //  세션 요청과 availability 요청을 분리해 타입별 geometry를 각각 계산한다.
@@ -2107,11 +2130,8 @@ export function ScheduleCalendar() {
   const manualPanesAxis = manualPanes.length
     ? unionAxis(manualPanes.map((mp) => computeAxis(colsFor(picksForManualPane(mp), `m${mp.uid}|`), paneCountryU[mp.uid] ?? null)))
     : undefined;
-  const autoTzPanesAxis = autoTzStudentPanes.length
-    ? unionAxis([
-        ...(instPicks.length ? [computeAxis(colsFor(instPicks, "tzinst|"), paneTzOf("instructor"))] : []),
-        ...autoTzStudentPanes.map((p) => computeAxis(colsFor([p.pick], `tzs${p.pick.id}|`), p.country)),
-      ])
+  const autoTzPanesAxis = autoTzPanes.length
+    ? unionAxis(autoTzPanes.map((pane, index) => computeAxis(colsFor(pane.picks, `tz${index}|`), pane.country)))
     : undefined;
   const twoPanesAxis = twoPanes
     ? unionAxis(panes.map((g) => computeAxis(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim))))
@@ -2256,11 +2276,7 @@ export function ScheduleCalendar() {
             onClearDim={(dim) =>
               (dim === "instructor" ? setFInstructors : dim === "student" ? setFStudents : setFRooms)(new Set())
             }
-            subjectOptions={[
-              ...[...new Set((resources?.courses ?? []).map((cs) => cs.subjectName).filter(Boolean))].sort(),
-              // [오류2] 종류(진단고사/상담)를 과목 카테고리의 유사 옵션으로 편입 — 합집합 매칭(matchesSubjectFilter)
-              ...SUBJECT_KIND_OPTIONS.map((o) => o.value),
-            ]}
+            subjectOptions={subjectFilterOptions}
             fSubjects={fSubjects}
             onToggleSubject={(s) => setFSubjects((prev) => { const n = new Set(prev); if (n.has(s)) n.delete(s); else n.add(s); return n; })}
             onClearSubjects={() => setFSubjects(new Set())}
@@ -2334,42 +2350,39 @@ export function ScheduleCalendar() {
                 }}
                 onCreateDay={(d) => canAdd && setCreating({ date: d })}
               />
-            ) : autoTzStudentPanes.length > 0 ? (
-              /* [TBO-22 C1] 다중 시차 학생 비교 — 날짜 안 서브컬럼 대신 학생별 표를 우측으로 분리.
-                 모든 표는 00-24 KST 공통 축을 쓰고, 해외 표는 칩에 현지시각을 병기한다. */
+            ) : autoTzPanes.length > 0 ? (
+              /* 학생과 강사가 같은 다중 시차 분리 함수를 사용한다. 혼합 시차 차원은 리소스별 표,
+                 같은 시차의 동반 차원은 한 표의 서브컬럼으로 유지한다. */
               <div className="flex gap-3 items-start overflow-hidden">
-                {instPicks.length > 0 && (
-                  <div className="min-w-0" style={{ width: Math.max(120, (mainW - 12 * autoTzStudentPanes.length) / (autoTzStudentPanes.length + 1)) }}>
-                    <CalendarSplitPane
-                      pane={{ uid: 900001, dim: "instructor", ids: instPicks.map((x) => x.id) }}
-                      fixedDim
-                      resources={resources}
-                      rooms={rooms}
-                      onChange={(patch) => { if (patch.ids) setFInstructors(new Set(patch.ids)); }}
-                      onRemove={() => setClosedPanes((prev) => new Set(prev).add("instructor"))}
-                      headerExtra={<CountryInput compact value={paneTzOf("instructor")} onSelect={(c) => setPaneCountry((prev) => ({ ...prev, instructor: c }))} placeholder="🌐 국가" />}
-                    >
-                      {renderTimeGrid(colsFor(instPicks, "tzinst|"), paneTzOf("instructor"), paneModes.instructor, Math.max(120, (mainW - 12 * autoTzStudentPanes.length) / (autoTzStudentPanes.length + 1)), autoTzPanesAxis)}
-                    </CalendarSplitPane>
-                  </div>
-                )}
-                {autoTzStudentPanes.map(({ pick, country: studentCountry }) => {
-                  const paneCount = autoTzStudentPanes.length + (instPicks.length ? 1 : 0);
-                  const w = Math.max(120, (mainW - 12 * Math.max(0, paneCount - 1)) / Math.max(1, paneCount));
+                {autoTzPanes.map((autoPane, index) => {
+                  const ids = autoPane.picks.map((pick) => pick.id);
+                  const paneCount = autoTzPanes.length;
+                  const w = Math.max(1, (mainW - 12 * Math.max(0, paneCount - 1)) / Math.max(1, paneCount));
+                  const key = `auto:${autoPane.dim}:${ids.join(",")}`;
+                  const uid = (autoPane.dim === "instructor" ? 900000 : 910000) + ids[0];
+                  const setIds = (next: number[]) => {
+                    if (autoPane.dim === "instructor") setFInstructors(new Set(next));
+                    else setFStudents(new Set(next));
+                  };
                   return (
-                    <div key={pick.id} className="min-w-0" style={{ width: w }}>
+                    <div key={key} className="min-w-0" style={{ width: w }}>
                       <CalendarSplitPane
-                        pane={{ uid: 910000 + pick.id, dim: "student", ids: [pick.id] }}
+                        pane={{ uid, dim: autoPane.dim, ids }}
                         fixedDim
                         resources={resources}
                         rooms={rooms}
-                        onChange={(patch) => { if (patch.ids) setFStudents(new Set(patch.ids)); }}
-                        onRemove={() => setFStudents((prev) => { const n = new Set(prev); n.delete(pick.id); return n; })}
+                        onChange={(patch) => { if (patch.ids) setIds(patch.ids); }}
+                        onRemove={() => {
+                          const removed = new Set(ids);
+                          const current = autoPane.dim === "instructor" ? fInstructors : fStudents;
+                          setIds([...current].filter((id) => !removed.has(id)));
+                          setPaneFacets((facets) => { const next = { ...facets }; delete next[key]; return next; });
+                        }}
                         headerExtra={
-                          <CountryInput compact value={studentCountry} onSelect={(c) => setResourceTzOverride((prev) => ({ ...prev, [resourceTimezoneKey("student", pick.id)]: c }))} placeholder="🌐 국가" />
+                          <CalendarPaneFilters value={facetOf(key)} subjectOptions={subjectFilterOptions} onChange={(next) => setFacet(key, next)} />
                         }
                       >
-                        {renderTimeGrid(colsFor([pick], `tzs${pick.id}|`), studentCountry, paneModes.student, w, autoTzPanesAxis)}
+                        {renderTimeGrid(colsFor(autoPane.picks, `tz${index}|`), autoPane.country, facetOf(key), w, autoTzPanesAxis)}
                       </CalendarSplitPane>
                     </div>
                   );
@@ -2395,21 +2408,15 @@ export function ScheduleCalendar() {
                         onRemove={() => {
                           setManualPanes((prev) => prev.filter((x) => x.uid !== mp.uid));
                           setPaneCountryU((prev) => { const n = { ...prev }; delete n[mp.uid]; return n; });
-                          setPaneModesU((prev) => { const n = { ...prev }; delete n[mp.uid]; return n; });
+                          setPaneFacets((prev) => { const n = { ...prev }; delete n[manualFacetKey(mp.uid)]; return n; });
                         }}
                         onMoveLeft={() => moveManualPane(mp.uid, -1)}
                         onMoveRight={() => moveManualPane(mp.uid, 1)}
                         headerExtra={
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <OptionPick icon="🖥️" label="수업방식" title="이 표에만 적용 (복수=합집합·빈 선택=전체)"
-                              options={MODE_FILTERS.map((k) => ({ value: k, label: MODE_FILTER_LABEL[k] }))}
-                              picked={(paneModesU[mp.uid] ?? new Set()) as unknown as Set<string>}
-                              onToggle={(v) => setPaneModesU((prev) => { const k = v as SessionModeFilter; const cur = new Set(prev[mp.uid] ?? []); if (cur.has(k)) cur.delete(k); else cur.add(k); const n = { ...prev }; if (cur.size) n[mp.uid] = cur; else delete n[mp.uid]; return n; })}
-                              onClear={() => setPaneModesU((prev) => { const n = { ...prev }; delete n[mp.uid]; return n; })} />
-                          </div>
+                          <CalendarPaneFilters value={facetOf(manualFacetKey(mp.uid))} subjectOptions={subjectFilterOptions} onChange={(next) => setFacet(manualFacetKey(mp.uid), next)} />
                         }
                       >
-                        {renderTimeGrid(colsFor(picks, `m${mp.uid}|`), paneCountryU[mp.uid] ?? null, paneModesU[mp.uid], w, manualPanesAxis)}
+                        {renderTimeGrid(colsFor(picks, `m${mp.uid}|`), paneCountryU[mp.uid] ?? null, facetOf(manualFacetKey(mp.uid)), w, manualPanesAxis)}
                       </CalendarSplitPane>
                     </div>
                   );
@@ -2436,8 +2443,7 @@ export function ScheduleCalendar() {
                       setPaneCountry((prev) => { const n = { ...prev }; delete n[g.dim]; return n; });
                     }}
                     headerExtra={
-                      /* [통일 2026-07-06] 표별 필터바 = 본 필터바와 같은 문법·규격
-                         (input h-7 text-caption w-[120px] · 종류=OptionPick 팝오버 · 배지 text-micro) */
+                      /* 표별 날짜와 단계형 수업 필터. 좁은 표에서도 컨트롤은 줄바꿈되고 표 밖으로 넘치지 않는다. */
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {/* [이슈3] 이 표의 날짜 범위 — 캘린더(from~to)로 표마다 다르게. 비우면 전역 기간. */}
                         <input type="date" className="input h-7 px-1.5 text-caption w-[120px]" title="이 표 시작일"
@@ -2463,12 +2469,11 @@ export function ScheduleCalendar() {
                           </span>
                         ))}
                         <span className="w-px h-5 bg-line" />
-                        {/* [오류2] 표별 수업방식(대면/비대면) 필터 — 이 표에만 적용. 본 필터바와 같은 팝오버 문법(OptionPick) */}
-                        <OptionPick icon="🖥️" label="수업방식" title="이 표에만 적용 (복수=합집합·빈 선택=전체)"
-                          options={MODE_FILTERS.map((k) => ({ value: k, label: MODE_FILTER_LABEL[k] }))}
-                          picked={(paneModes[g.dim] ?? new Set()) as unknown as Set<string>}
-                          onToggle={(v) => setPaneModes((prev) => { const k = v as SessionModeFilter; const cur = new Set(prev[g.dim] ?? []); if (cur.has(k)) cur.delete(k); else cur.add(k); const n = { ...prev }; if (cur.size) n[g.dim] = cur; else delete n[g.dim]; return n; })}
-                          onClear={() => setPaneModes((prev) => { const n = { ...prev }; delete n[g.dim]; return n; })} />
+                        <CalendarPaneFilters
+                          value={facetOf(dimFacetKey(g.dim))}
+                          subjectOptions={subjectFilterOptions}
+                          onChange={(next) => setFacet(dimFacetKey(g.dim), next)}
+                        />
                         <CountryInput
                           compact
                           value={paneTzOf(g.dim)}
@@ -2478,7 +2483,7 @@ export function ScheduleCalendar() {
                       </div>
                     }
                   >
-                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim), paneModes[g.dim], panes.length >= 2 ? Math.max(120, (mainW - 12 * Math.max(0, panes.length - 1)) / panes.length) : mainW, twoPanesAxis)}
+                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim), facetOf(dimFacetKey(g.dim)), panes.length >= 2 ? Math.max(120, (mainW - 12 * Math.max(0, panes.length - 1)) / panes.length) : mainW, twoPanesAxis)}
                   </CalendarSplitPane>
                 ))}
               </div>

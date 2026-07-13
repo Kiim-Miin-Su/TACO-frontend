@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ScheduleResource } from "@/types";
 import { countryByCode } from "./tz";
-import { axisCompanionTimezone, resourceTimezoneKey, resourceTimezoneOf, timezoneCountryFromResource } from "./resource-timezone";
+import { axisCompanionTimezone, buildTimezonePaneGroups, resourceTimezoneKey, resourceTimezoneOf, timezoneCountryFromResource } from "./resource-timezone";
 
 const instructor = (patch: Partial<ScheduleResource> = {}): ScheduleResource => ({
   type: "instructor",
@@ -39,5 +39,31 @@ describe("resource timezone resolver", () => {
 
   it("prefers table-level timezone for the KST axis companion label", () => {
     expect(axisCompanionTimezone([countryByCode("GB")], countryByCode("US-W"))?.code).toBe("US-W");
+  });
+
+  it("reuses the same timezone split rule for instructors and students", () => {
+    const groups = buildTimezonePaneGroups(
+      [
+        { dim: "instructor" as const, picks: [{ id: 1 }, { id: 2 }] },
+        { dim: "student" as const, picks: [{ id: 10 }, { id: 11 }] },
+      ],
+      (dim, id) => {
+        if (dim === "instructor") return id === 1 ? countryByCode("KR") : countryByCode("GB");
+        return countryByCode("US");
+      },
+    );
+
+    expect(groups.map((group) => [group.dim, group.picks.map((pick) => pick.id)])).toEqual([
+      ["instructor", [1]],
+      ["instructor", [2]],
+      ["student", [10, 11]],
+    ]);
+  });
+
+  it("keeps the normal sub-column view when every selected resource shares a timezone", () => {
+    expect(buildTimezonePaneGroups(
+      [{ dim: "instructor" as const, picks: [{ id: 1 }, { id: 2 }] }],
+      () => countryByCode("GB"),
+    )).toEqual([]);
   });
 });

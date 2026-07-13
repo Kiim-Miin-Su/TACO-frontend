@@ -6,6 +6,7 @@ import {
   buildMixedSplitColumns,
   cloneSessionBody,
   matchesResourceFilter,
+  matchesCalendarFacetFilters,
   groupSessions,
   isGroupSession,
   matchesStatusFilter,
@@ -77,6 +78,20 @@ describe('sessionStates — 출석/지각/결강/보강 판정(status + 강사·
     const all = new Set<StatusFilter>(['scheduled', 'attended', 'late', 'absence', 'makeup']);
     expect(matchesStatusFilter(row({ status: 'scheduled' }), [], all)).toBe(true);
     expect(matchesStatusFilter(row(), [], all)).toBe(true); // held(문제없음)도 통과
+  });
+});
+
+describe('matchesCalendarFacetFilters — 전역·스플릿 공통 필터', () => {
+  it('카테고리 간 AND, 카테고리 내부 OR 규칙을 공유한다', () => {
+    const filters = {
+      subjects: new Set(['수학', '영어']),
+      statuses: new Set<StatusFilter>(['attended', 'late']),
+      modes: new Set<'in_person' | 'online'>(['online']),
+      groupOnly: true,
+    };
+    expect(matchesCalendarFacetFilters(row({ mode: 'online', studentIds: [1, 2] }), [], filters)).toBe(true);
+    expect(matchesCalendarFacetFilters(row({ mode: 'in_person', studentIds: [1, 2] }), [], filters)).toBe(false);
+    expect(matchesCalendarFacetFilters(row({ mode: 'online', studentIds: [1] }), [], filters)).toBe(false);
   });
 });
 
