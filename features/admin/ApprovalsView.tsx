@@ -39,6 +39,7 @@ function MemberApprovals() {
   const [rows, setRows] = useState<PendingAccount[]>([]);
   const [roleSel, setRoleSel] = useState<Record<number, string>>({});
   const [msg, setMsg] = useState<string | null>(null);
+  const [memberReject, setMemberReject] = useState<number | null>(null); // [TBO-28B] 반려 사유 필수 모달
 
   // [C-2 2026-07-06] alive 게이터 주입 — 언마운트 후 setState 방지(초기 mount fetch가 늦게 도착하는 경우).
   //  decide()의 재조회는 사용자 액션(마운트 상태)이라 기본값(항상 alive)로 호출.
@@ -54,15 +55,20 @@ function MemberApprovals() {
     return () => { alive = false; };
   }, [load]);
 
-  async function decide(id: number, action: 'approve' | 'reject') {
+  // [TBO-28B] 승인=원자 tx(백엔드) — 동시 결정 시 409(이미 처리됨) 메시지 표면화. 반려=사유 필수(ReasonModal).
+  async function decide(id: number, action: 'approve' | 'reject', reason?: string) {
     const token = getToken();
     if (!token) return;
     try {
       if (action === 'approve') await api.auth.approve(id, roleSel[id]);
-      else await api.auth.reject(id);
+      else await api.auth.reject(id, reason ?? '');
       setMsg(action === 'approve' ? '승인했습니다.' : '반려했습니다.');
       await load();
-    } catch { setMsg('처리 실패'); }
+    } catch (e) {
+      const status = (e as { response?: { status?: number } }).response?.status;
+      setMsg(status === 409 ? '이미 처리된 계정입니다(목록을 새로고침했습니다).' : '처리 실패');
+      await load();
+    }
   }
 
   return (
@@ -89,13 +95,21 @@ function MemberApprovals() {
                 </td>
                 <td className="text-right whitespace-nowrap">
                   <button className="btn btn-sm btn-primary mr-1.5" disabled={!r.emailVerified} onClick={() => decide(r.id, 'approve')} title={r.emailVerified ? '' : '이메일 인증 후 승인 가능'}>승인</button>
-                  <button className="btn btn-sm btn-danger" onClick={() => decide(r.id, 'reject')}>반려</button>
+                  <button className="btn btn-sm btn-danger" onClick={() => setMemberReject(r.id)}>반려</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
         </TableWrap>
+      )}
+      {memberReject != null && (
+        <ReasonModal
+          mode="input"
+          title="가입 반려 — 사유 필수"
+          onClose={() => setMemberReject(null)}
+          onSubmit={(reason) => { decide(memberReject, 'reject', reason); setMemberReject(null); }}
+        />
       )}
     </SectionCard>
   );

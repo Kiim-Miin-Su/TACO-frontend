@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { useTacoStore } from "@/lib/store";
 import { AuthShell, AuthField } from "@/components/auth/AuthShell";
-import { DEV_ACCOUNTS } from "@/lib/dev-accounts";
+import { DEMO_SWITCHER_ENABLED, DEV_ACCOUNTS } from "@/lib/dev-accounts";
 import { roleLabel } from "@/lib/roles";
 import type { AccountRole } from "@/types";
 
@@ -61,6 +61,9 @@ function LoginForm() {
         <Link href="/signup" className="font-medium text-accent hover:underline">가입 신청 →</Link>
       </div>
 
+      {/* [TBO-28B] 테스트 계정 퀵셀렉트 — NEXT_PUBLIC_ENABLE_DEMO_ACCOUNT_SWITCHER=true(개발)에서만.
+          production 빌드에서는 블록·데모 비밀번호 문자열이 번들에서 제거된다. */}
+      {DEMO_SWITCHER_ENABLED && DEV_ACCOUNTS.length > 0 && (
       <div className="border-t pt-3 border-line-muted">
         <div className="text-caption font-medium text-fg-muted mb-2">테스트 계정</div>
         <div className="overflow-hidden rounded-md border border-line-muted">
@@ -85,6 +88,7 @@ function LoginForm() {
           ))}
         </div>
       </div>
+      )}
     </AuthShell>
   );
 }

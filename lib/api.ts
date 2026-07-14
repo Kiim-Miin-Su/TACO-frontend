@@ -260,12 +260,15 @@ export const api = {
     // 토큰 검증(서버에서 claims 반환)
     me: () =>
       http.get<{ sub: number; name: string; roles: string[] }>("/auth/me").then((r) => r.data),
+    // [TBO-28B] 로그아웃 — auth_events 보안 기록(베스트에포트 호출, 토큰 폐기는 클라이언트).
+    logout: () => http.post<{ ok: boolean }>("/auth/logout", {}).then((r) => r.data),
     // 대표(super_admin) 전용 — 승인 대기 목록·승인·반려
+    // [TBO-28B] 승인=원자 tx(상태+승인메타+강사프로필+audit, 동시 결정 409) · 반려=사유 필수(400)
     pending: () => http.get<PendingAccount[]>("/auth/pending").then((r) => r.data),
-    approve: (id: number, role?: string) =>
-      http.post<PendingAccount>(`/auth/approve/${id}`, { role }).then((r) => r.data),
-    reject: (id: number) =>
-      http.post<PendingAccount>(`/auth/reject/${id}`, {}).then((r) => r.data),
+    approve: (id: number, role?: string, reason?: string) =>
+      http.post<PendingAccount>(`/auth/approve/${id}`, { role, ...(reason ? { reason } : {}) }).then((r) => r.data),
+    reject: (id: number, reason: string) =>
+      http.post<PendingAccount>(`/auth/reject/${id}`, { reason }).then((r) => r.data),
   },
   students: {
     list: () => http.get<Student[]>("/students").then((r) => r.data),

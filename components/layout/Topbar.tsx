@@ -10,7 +10,7 @@ import { roleLabel } from '@/lib/roles';
 import { buildTasks } from '@/lib/tasks';
 import { api } from '@/lib/api';
 import { clearToken, setToken, myInstructorId } from '@/lib/auth';
-import { DEV_ACCOUNTS, devAccountById, devAccountLabel } from '@/lib/dev-accounts';
+import { DEMO_SWITCHER_ENABLED, DEV_ACCOUNTS, devAccountById, devAccountLabel } from '@/lib/dev-accounts';
 import type { AccountRole } from '@/types';
 
 export default function Topbar() {
@@ -28,6 +28,8 @@ export default function Topbar() {
   const ref = useRef<HTMLDivElement>(null);
 
   const logout = () => {
+    // [TBO-28B] 보안 이벤트 기록(auth_events) — best-effort(실패해도 로그아웃 진행).
+    api.auth.logout().catch(() => undefined);
     clearToken();
     setCurrentAccount(null);
     queryClient.clear(); // 다음 로그인 사용자가 이전 역할의 scoped cache를 보지 않도록 정리
@@ -75,29 +77,39 @@ export default function Topbar() {
         <input className="input pl-8" placeholder="학생, 등록, 결제 검색…" aria-label="검색" />
       </div>
       <div className="flex-1" />
-      <label
-        className="flex items-center gap-1.5 text-caption text-fg-muted"
-        title="테스트 사용자 계정으로 실제 재로그인합니다."
-      >
-        계정
-        <select
-          className="input w-48 max-w-[42vw] h-8"
-          value={currentAccount ? String(currentAccount.id) : ""}
-          disabled={switching}
-          onChange={(e) => switchAccount(e.target.value)}
-          aria-label="테스트 사용자 계정 전환"
+      {/* [TBO-28B] 데모 계정 전환기 — NEXT_PUBLIC_ENABLE_DEMO_ACCOUNT_SWITCHER=true(개발)에서만 렌더.
+          production 빌드(플래그 미설정=false)에서는 전환기·데모 계정·비밀번호가 번들에서 제거된다. */}
+      {DEMO_SWITCHER_ENABLED ? (
+        <label
+          className="flex items-center gap-1.5 text-caption text-fg-muted"
+          title="테스트 사용자 계정으로 실제 재로그인합니다."
         >
-          {!currentAccount && <option value="">계정 선택</option>}
-          {currentAccount && !devAccountById(currentAccount.id) && (
-            <option value={String(currentAccount.id)}>
-              {currentAccount.name} · {roleLabel[currentAccount.role]}
-            </option>
-          )}
-          {DEV_ACCOUNTS.map((account) => (
-            <option key={account.id} value={String(account.id)}>{devAccountLabel(account)}</option>
-          ))}
-        </select>
-      </label>
+          계정
+          <select
+            className="input w-48 max-w-[42vw] h-8"
+            value={currentAccount ? String(currentAccount.id) : ""}
+            disabled={switching}
+            onChange={(e) => switchAccount(e.target.value)}
+            aria-label="테스트 사용자 계정 전환"
+          >
+            {!currentAccount && <option value="">계정 선택</option>}
+            {currentAccount && !devAccountById(currentAccount.id) && (
+              <option value={String(currentAccount.id)}>
+                {currentAccount.name} · {roleLabel[currentAccount.role]}
+              </option>
+            )}
+            {DEV_ACCOUNTS.map((account) => (
+              <option key={account.id} value={String(account.id)}>{devAccountLabel(account)}</option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        currentAccount && (
+          <span className="text-caption text-fg-muted" aria-label="로그인 계정">
+            {currentAccount.name} · {roleLabel[currentAccount.role]}
+          </span>
+        )
+      )}
       {currentAccount && (
         <button className="btn btn-sm" onClick={logout} title="로그아웃">로그아웃</button>
       )}
