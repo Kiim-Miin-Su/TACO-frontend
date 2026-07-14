@@ -5,17 +5,18 @@
 import Link from 'next/link';
 import { StatCard, SectionCard, PageHeader, IconArrowDown, IconArrowUp, IconReceipt } from '@/components/ui';
 import { won, shortDate } from '@/lib/format';
-import { useTacoStore } from '@/lib/store';
 import { useTransactions, usePayments } from '@/lib/queries';
-import { isCEO, roleLabel } from '@/lib/roles';
+import { roleLabel } from '@/lib/roles';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 import { RevenueCharts } from './RevenueCharts';
 
 export function InsightsView() {
-  const role = useTacoStore((s) => s.currentRole);
+  const access = useAccountAccess();
+  const role = access.role ?? 'instructor';
   const { data: transactions = [] } = useTransactions();
   const { data: payments = [] } = usePayments();
 
-  if (!isCEO(role)) {
+  if (!access.can('finance.access')) {
     return (
       <div className="p-6 max-w-page-form mx-auto">
         <PageHeader title="경영 지표" sub={`수입·지출·매출 추이는 대표(super_admin)만 열람할 수 있습니다. (현재: ${roleLabel[role]})`} />

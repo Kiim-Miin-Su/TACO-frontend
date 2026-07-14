@@ -10,8 +10,7 @@ import Link from 'next/link';
 import type { AttendanceStatus, InstructorAttendanceStatus } from '@/types';
 import { EmptyState, PageHeader, SectionCard, StatCard, TableWrap } from '@/components/ui';
 import { useInstructors, useInstructorSessions, useUpdateSchedule, useAttendance, useUpsertAttendance } from '@/lib/queries';
-import { useTacoStore } from '@/lib/store';
-import { isAdmin } from '@/lib/roles';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 import { paidTeachingHours, countsForPay, WEEKDAYS_KO as WD } from '@/lib/domain/schedule';
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from './AttMarker';
 import { AccountingImpactModal } from '@/components/AccountingImpactModal';
@@ -24,8 +23,7 @@ const monthRange = (ym: string) => {
   return { from: `${ym}-01`, to: `${ym}-${pad(last)}` };
 };
 export function InstructorAttendanceDetailView({ instructorId }: { instructorId: number }) {
-  const role = useTacoStore((s) => s.currentRole);
-  const admin = isAdmin(role);
+  const admin = useAccountAccess().can('admin.area');
   const { data: instructors = [], isLoading: loadingInst } = useInstructors();
   // [req3] 매니저 CRUD — 강사 출결(세션 PATCH)·학생 출결(attendance upsert). 상세=지난 회차 편집 진입점.
   const updateSchedule = useUpdateSchedule();

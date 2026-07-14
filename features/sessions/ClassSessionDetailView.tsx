@@ -10,9 +10,7 @@ import {
   useSchedule, useCourses, useInstructors, useEnrollments, useStudents,
   useAttendance, useUpdateSchedule, useUpsertAttendance,
 } from "@/lib/queries";
-import { useTacoStore } from "@/lib/store";
-import { isAdmin } from "@/lib/roles";
-import { myInstructorId } from "@/lib/auth";
+import { useAccountAccess } from "@/lib/useAccountAccess";
 import { countsForPay } from "@/lib/domain/schedule";
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from "@/features/attendance/AttMarker";
 import { SessionFeedbackForm } from "@/features/reports/SessionFeedbackForm";
@@ -24,9 +22,9 @@ const statusTone: Record<string, Tone> = { held: "success", scheduled: "accent",
 const statusLabel: Record<string, string> = { held: "진행완료", scheduled: "예정", canceled: "취소", no_show: "노쇼", makeup: "보강" };
 
 export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
-  const role = useTacoStore((s) => s.currentRole);
-  const admin = isAdmin(role);
-  const myId = myInstructorId();
+  const access = useAccountAccess();
+  const admin = access.can("calendar.manage");
+  const myId = access.instructorId;
   const { data: classSessions = [] } = useSchedule();
   const { data: courses = [] } = useCourses();
   const { data: instructors = [] } = useInstructors();

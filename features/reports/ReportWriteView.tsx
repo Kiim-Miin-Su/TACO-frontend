@@ -2,14 +2,12 @@
 //  (useSchedule·useCourses·useInstructors·useEnrollments·useStudents·useReports).
 //  쓰기=useCreateReport/useSubmitReport(보고서는 session×student 단일). 템플릿은 클라 상태(store 유지).
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Badge, SectionCard, type Tone } from '@/components/ui';
-import { useTacoStore } from '@/lib/store';
 import { useSchedule, useCourses, useInstructors, useEnrollments, useStudents, useReports } from '@/lib/queries';
 import { SessionFeedbackForm } from '@/features/reports/SessionFeedbackForm';
-import { DEMO_INSTRUCTOR_ID } from '@/lib/tasks';
-import { myInstructorId } from '@/lib/auth';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 import { pendingReportSummary, rosterStudentIds, sessionNeedsReport } from '@/lib/reports';
 import type { ClassSession, Student } from '@/types';
 
@@ -18,6 +16,7 @@ const sessionLabel: Record<string, string> = { held: '진행완료', scheduled: 
 
 // 한 페이지 리포트 작성 — 강사의 진행중 모든 수업·학생을 좌(목록)/우(인라인 작성)로.
 export function ReportWriteView() {
+  const access = useAccountAccess();
   const { data: instructors = [] } = useInstructors();
   const { data: courses = [] } = useCourses();
   const { data: classSessions = [] } = useSchedule();
@@ -29,15 +28,14 @@ export function ReportWriteView() {
     () => ({ classSessions, enrollments, sessionReports }),
     [classSessions, enrollments, sessionReports],
   );
-  // [버그수정 2026-07-07] 로그인 강사의 도메인 강사 id(계정 링크). 미로그인/미링크 시 DEMO 폴백.
-  const instructorId = myInstructorId() ?? DEMO_INSTRUCTOR_ID;
+  const instructorId = access.instructorId;
   const instructorName = instructors.find((i) => i.id === instructorId)?.name ?? '강사';
   const courseName = (id: number) => courses.find((c) => c.id === id)?.name ?? '수업';
 
   const sessions = useMemo(
     () =>
       classSessions
-        .filter((s) => s.instructorId === instructorId)
+        .filter((s) => instructorId != null && s.instructorId === instructorId)
         .sort((a, b) => (b.sessionDate + (b.startTime ?? '')).localeCompare(a.sessionDate + (a.startTime ?? ''))),
     [classSessions, instructorId],
   );
@@ -62,7 +60,7 @@ export function ReportWriteView() {
   const needSessions = useMemo(() => sessions.filter((s) => sessionNeedsReport(reportSlice, s)), [sessions, reportSlice]);
   // 강사 배지와 같은 숫자(보고서 건수) — 같은 모집단(pendingReportSummary) 사용.
   const needItemCount = useMemo(
-    () => pendingReportSummary(reportSlice, instructorId).itemCount,
+    () => pendingReportSummary(reportSlice, instructorId ?? undefined).itemCount,
     [reportSlice, instructorId],
   );
   const [needOnly, setNeedOnly] = useState(true);
@@ -70,13 +68,9 @@ export function ReportWriteView() {
 
   // 기본 선택: 리포트가 필요한 첫 진행완료 수업 (단일 소스: lib/reports)
   const firstNeed = needSessions[0];
-  const [selId, setSelId] = useState<number | undefined>(firstNeed?.id ?? sessions[0]?.id);
-  useEffect(() => {
-    if (selId == null && (firstNeed?.id != null || sessions[0]?.id != null)) {
-      setSelId(firstNeed?.id ?? sessions[0]?.id);
-    }
-  }, [firstNeed?.id, selId, sessions]);
-  const selected = sessions.find((s) => s.id === selId);
+  const [selId, setSelId] = useState<number | undefined>();
+  const effectiveSelId = selId ?? firstNeed?.id ?? sessions[0]?.id;
+  const selected = sessions.find((s) => s.id === effectiveSelId);
   const roster = selected ? rosterOf(selected.courseId) : [];
 
   return (

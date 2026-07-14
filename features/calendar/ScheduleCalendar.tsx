@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, AvailabilityBlock, AccountRole, Attendance } from "@/types";
+import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, AvailabilityBlock, Attendance } from "@/types";
 import { api, type SchedulePatchBody, type ScheduleCreateBody, type AvailabilityUpsertBody, type CreateScheduleRequestBody } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/queryKeys";
@@ -47,11 +47,9 @@ import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
 import { axisCompanionTimezone, buildTimezonePaneGroups, resourceTimezoneKey, resourceTimezoneOf, type ResourceTimezoneOverrides } from "@/lib/domain/resource-timezone";
 import type { CalendarViewPreset } from "@/types";
 import { exportNodeAsImage } from "@/lib/export";
-import { useTacoStore } from "@/lib/store";
 import { usePersistedState } from "@/lib/usePersistedState";
 import { booleanPreferenceCodec, enumPreferenceCodec, preferenceKeys } from "@/lib/storage/preferences";
-import { isAdmin } from "@/lib/roles";
-import { currentClaims, myInstructorId as loginInstructorId } from "@/lib/auth";
+import { useAccountAccess } from "@/lib/useAccountAccess";
 import { ResourcePanel } from "./ResourcePanel";
 import { ResourceDetailCard } from "./ResourceDetailCard";
 import { ParticipantsCard } from "./ParticipantsCard";
@@ -64,6 +62,7 @@ import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 import { SessionListPanel } from "./SessionListPanel";
 import { SessionDetailPanel } from "./SessionDetailPanel";
 import type { RecurrenceScope } from "@kms545487/contracts";
+import { useAutoClear, useElementWidth, useMounted, useWindowKeydown } from "@/lib/hooks/browser-sync";
 
 // ── 그리드 상수 (애플/구글 캘린더 스타일: 넓고 시간 단위가 또렷하게) ──
 const START_H = 0,
@@ -149,8 +148,7 @@ export function ScheduleCalendar() {
   const [anchor, setAnchor] = useState(todayISO());
   // [TBO-21 B2] 현재시각선은 new Date()를 렌더 중 계산 → SSR HTML과 클라 하이드레이션 시각이 달라
   //  React #418(hydration text mismatch)이 났다. mount 후에만 렌더해 서버·클라 첫 렌더를 일치시킴.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useMounted();
   const [rows, setRows] = useState<ScheduleRow[]>([]);
   const { data: rooms = [] } = useRooms(); // [TBO-14 C2] 강의실 카탈로그 = Query(로컬 state·1회 fetch 대체)
   const [editing, setEditing] = useState<ScheduleRow | null>(null);
@@ -168,12 +166,7 @@ export function ScheduleCalendar() {
   const [scheduleChangeApproval, setScheduleChangeApproval] = useState<ScheduleChangeApprovalDraft | null>(null);
   const [scheduleDeleteApproval, setScheduleDeleteApproval] = useState<ScheduleDeleteApprovalDraft | null>(null);
   const [availabilityApproval, setAvailabilityApproval] = useState<AvailabilityApprovalDraft | null>(null);
-  // 토스트 자동 사라짐(성공·정보 알림이 화면에 계속 남지 않도록)
-  useEffect(() => {
-    if (!msg) return;
-    const t = setTimeout(() => setMsg(""), 3500);
-    return () => clearTimeout(t);
-  }, [msg]);
+  useAutoClear(msg, setMsg, "", 3500);
 
   // ── 자원(레일)·가용 ──
   const { data: resources = null } = useScheduleResources(); // [TBO-14 C2] 자원 피커 = Query(로컬 state·effect 대체)
@@ -191,19 +184,16 @@ export function ScheduleCalendar() {
   const captureRef = useRef<HTMLDivElement>(null);
   const [busyImg, setBusyImg] = useState(false);
 
-  // 관리자(데모 역할) — 스케줄 직접 추가
+  // 권한은 AppShell의 `/auth/me` 검증 계정에서만 파생한다. 실제 쓰기 허용은 백엔드가 최종 판정한다.
   const qc = useQueryClient(); // [TBO-16] 요청 생성 후 scheduleRequests 무효화(배지·승인센터 동일 모집단)
   const createScheduleRequest = useCreateScheduleRequest();
   // [B-4] 내 수업 요청(강사) — 배지·승인센터와 같은 useScheduleRequests 단일 queryKey 구독
   const { data: myRequests = [] } = useScheduleRequests();
   const pendingGhosts = useMemo(() => myRequests.filter((r) => r.status === "pending"), [myRequests]);
-  const role = useTacoStore((s) => s.currentRole);
-  const [claims, setClaims] = useState<ReturnType<typeof currentClaims>>(null);
-  useEffect(() => setClaims(currentClaims()), []);
-  const tokenRoles = claims?.roles ?? [];
-  const canManage = isAdmin(role); // 대표/매니저/관리자 — 모든 스케줄 추가
-  const isInstructor = tokenRoles.includes("instructor") && !tokenRoles.some((r) => isAdmin(r as AccountRole)); // 강사 — 본인 스케줄만 추가
-  const myInstructorId = isInstructor ? loginInstructorId() ?? undefined : undefined;
+  const access = useAccountAccess();
+  const canManage = access.can("calendar.manage");
+  const isInstructor = access.can("instructor.self");
+  const myInstructorId = access.instructorId ?? undefined;
   const canAdd = canManage || (isInstructor && myInstructorId != null);
   // start가 있으면 그 시각으로 프리필(빈 곳 더블클릭 — 피드백 2026-07-02 #4).
   // [유저별 추가 2026-07-03] 전역 "+ 스케줄 추가"(현행)와 별개로, 스플릿 컬럼(유저)에서 그 유저
@@ -221,7 +211,9 @@ export function ScheduleCalendar() {
     "subject",
     enumPreferenceCodec<ColorBy>(["subject", "instructor", "room", "student"]),
   );
-  const [fInstructors, setFInstructors] = useState<Set<number>>(new Set());
+  const [fInstructors, setFInstructors] = useState<Set<number>>(
+    () => myInstructorId != null ? new Set([myInstructorId]) : new Set(),
+  );
   const [fSubjects, setFSubjects] = useState<Set<string>>(new Set());
   const [fRooms, setFRooms] = useState<Set<number>>(new Set());
   const [fStudents, setFStudents] = useState<Set<number>>(new Set());
@@ -236,14 +228,7 @@ export function ScheduleCalendar() {
   //  미설정=전역 기간을 따름. from만 있고 to 없으면 from 하루.
   // [fit-to-width 2026-07-06] 그리드 폭 = 컨테이너 폭(가로 스크롤 제거 — 대표 지적 2·3, Lantiv 대응).
   const mainRef = useRef<HTMLDivElement>(null);
-  const [mainW, setMainW] = useState(1100);
-  useEffect(() => {
-    const el = mainRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((es) => { const w = es[0]?.contentRect.width; if (w) setMainW(w); });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const mainW = useElementWidth(mainRef, 1100);
   // [전역 cherry-pick 2026-07-06] 원하는 날짜만 골라 보기(불연속, 최대 14) — 설정 시 기간(period)보다 우선.
   //  그리드 축(dates)·조회(range=min~max)·리스트/시수(filtered 날짜 술어)가 같은 집합을 쓴다(모집단 단일).
   const [pickedDates, setPickedDates] = useState<string[]>([]);
@@ -268,12 +253,6 @@ export function ScheduleCalendar() {
   const dimFacetKey = (dim: SplitDim) => `dimension:${dim}`;
   const facetOf = (key: string) => paneFacets[key] ?? emptyCalendarFacetFilters();
   const setFacet = (key: string, value: CalendarFacetFilters) => setPaneFacets((current) => ({ ...current, [key]: value }));
-  useEffect(() => {
-    if (!isInstructor || myInstructorId == null) return;
-    setFInstructors((current) => current.size === 1 && current.has(myInstructorId) ? current : new Set([myInstructorId]));
-    setFStudents((current) => current.size ? new Set() : current);
-    setManualPanes((current) => current.filter((pane) => pane.dim === "room" || pane.dim === "subject"));
-  }, [isInstructor, myInstructorId]);
   const addManualPane = () => {
     if (!manualPanes.length) {
       const currentSeeds = isInstructor
@@ -345,12 +324,8 @@ export function ScheduleCalendar() {
   const [country, setCountry] = useState<CountryInfo | null>(null);
   // [KST 고정 축 2026-07-07] on=모든 컬럼을 KST 위치로 그림(같은 가로선=같은 실제 순간, 비교 최적).
   //  해외 컬럼은 칩에 현지시각 병기. off=컬럼별 현지 시각(자연스러움). 시차 편집·변환은 off일 때만.
-  const [kstFixed, setKstFixed] = usePersistedState<boolean>(
-    preferenceKeys.calendarKstFixed,
-    true,
-    booleanPreferenceCodec,
-  );
-  useEffect(() => { if (!kstFixed) setKstFixed(true); }, [kstFixed, setKstFixed]);
+  // 서비스 시간축 계약은 항상 KST다. 사용자/프리셋 상태로 다시 끌어내리지 않는다.
+  const kstFixed = true;
   const [paneCountry, setPaneCountry] = useState<Partial<Record<SplitDim, CountryInfo | null>>>({});
   const paneTzOf = (dim: SplitDim) => (dim in paneCountry ? (paneCountry[dim] ?? null) : country);
   // ── 뷰 프리셋(TBO-12 P1) — DB 자산(calendar_view_presets). 직렬화는 lib/domain/presets 단일 소스 ──
@@ -368,7 +343,6 @@ export function ScheduleCalendar() {
     SUBJECT_KIND_OPTIONS.forEach((o) => { if (st.fKinds.has(o.kind)) subj.add(o.value); });
     setFSubjects(subj); setFStatuses(st.fStatuses); setFModes(st.fModes); setGroupOnly(st.groupOnly);
     setCountry(st.country); setPaneCountry(st.paneCountry);
-    if (typeof st.kstFixed === "boolean") setKstFixed(true);
     if (typeof st.compactCols === "boolean") setCompactCols(st.compactCols);
     if (st.manualPanes) {
       const allowedPanes = isInstructor
@@ -1296,11 +1270,8 @@ export function ScheduleCalendar() {
 
   // 키보드: Ctrl/⌘+C=선택 수업 복사 · Ctrl/⌘+V=커서 위치 붙여넣기 · Esc=커서·선택 해제.
   //  입력 요소 포커스 중에는 무시(폼 타이핑 방해 금지).
-  // [C-2 명시화] latest-ref 패턴 — 핸들러 본문을 매 렌더 ref에 최신화하고, 리스너는 mount 1회만 등록.
-  //  종전엔 [rows,selEvent,clip,cursor,canAdd]에 eslint-disable로 pasteAt를 누락(stale closure 위험).
-  //  이제 kbdRef.current가 항상 최신 클로저(rows·pasteAt·allEnrollments 등 포함)라 재등록·누락 걱정 없음.
-  const kbdRef = useRef<(e: KeyboardEvent) => void>(() => {});
-  kbdRef.current = (e: KeyboardEvent) => {
+  // 최신 핸들러 ref와 전역 listener lifecycle은 공통 browser-sync hook이 소유한다.
+  useWindowKeydown((e) => {
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
     const mod = e.ctrlKey || e.metaKey;
@@ -1320,12 +1291,7 @@ export function ScheduleCalendar() {
     } else if (e.key === "Escape") {
       setCursor(null); setSelEvent(null); setSelBand(null);
     }
-  };
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => kbdRef.current(e);
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, []);
+  });
 
   // [감사 M6] 국가(시차) 변경 시 stale 커서·선택 해제 — KST 좌표 커서가 tz 뷰에 남아 오배치되는 것 방지.
   useEffect(() => { setCursor(null); setSelEvent(null); }, [country, paneCountry]);
@@ -2321,7 +2287,7 @@ export function ScheduleCalendar() {
               <span className="badge text-micro">
                 {manualPanes.length
                   ? `스플릿 모드 · ${isInstructor ? "강의실/과목" : "강사/학생/강의실"}은 각 표에서 선택`
-                  : `내 일정 · ${selected?.name ?? claims?.name ?? `강사 #${myInstructorId ?? "-"}`}`}
+                  : `내 일정 · ${selected?.name ?? access.account?.name ?? `강사 #${myInstructorId ?? "-"}`}`}
               </span>
             ) : undefined}
           />
@@ -3433,8 +3399,9 @@ function CreateModal({
         }),
     [mEnrollments, mStudents, courseId],
   );
-  const [pickedStudents, setPickedStudents] = useState<Set<number> | null>(null); // null=전원(기본)
-  useEffect(() => setPickedStudents(null), [courseId]); // 코스 변경 시 전원으로 리셋
+  const [pickedStudentState, setPickedStudentState] = useState<{ courseId: number; ids: Set<number> | null } | null>(null);
+  const pickedStudents = pickedStudentState?.courseId === courseId ? pickedStudentState.ids : null;
+  const setPickedStudents = (ids: Set<number> | null) => setPickedStudentState({ courseId, ids });
   const effPicked = pickedStudents ?? new Set(courseRoster.map((r) => r.id));
 
   // ── 가용/불가 대상(오너) — 시간·날짜·반복은 수업과 공유 ──

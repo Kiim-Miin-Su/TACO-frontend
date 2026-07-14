@@ -41,14 +41,20 @@ describe('scheduleRequests — 배지·To-do 동일 모집단(R1)', () => {
       ...emptySlice, currentRole: 'instructor' as const,
       scheduleRequests: [req({ id: 1, status: 'rejected', reason: '강의실 부족' }), req({ id: 2, status: 'pending' })],
     };
-    const { items } = buildTasks(s, 'instructor');
+    const { items } = buildTasks(s, 'instructor', 1);
     const rejected = items.find((t) => t.id === 'my-request-1');
     const pending = items.find((t) => t.id === 'my-request-2');
     expect(rejected?.counts).toBe(true);
     expect(rejected?.detail).toContain('강의실 부족'); // 반려 사유 노출(Q2 — 사유 필수의 소비처)
     expect(pending?.counts).toBe(false);
     expect(items.every((t) => t.href !== '/admin/approvals')).toBe(true); // 강사는 승인센터 미유도
-    expect(navBadges(s, 'instructor')['/calendar']).toBe(1); // 반려 1건 = 캘린더 탭 배지
+    expect(navBadges(s, 'instructor', 1)['/calendar']).toBe(1); // 반려 1건 = 캘린더 탭 배지
+  });
+
+  it('강사 식별자가 없으면 데모 강사로 폴백하지 않는다', () => {
+    const s = { ...emptySlice, currentRole: 'instructor' as const, scheduleRequests: [req({ id: 1, status: 'rejected' })] };
+    expect(buildTasks(s, 'instructor').items).toEqual([]);
+    expect(navBadges(s, 'instructor')).toEqual({});
   });
 
   it('역할 격리: 같은 데이터라도 학생/학부모 역할은 항목 0(권한 반영)', () => {

@@ -1,7 +1,6 @@
 'use client';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ConfirmModal, EmptyState, SectionCard, TableWrap } from '@/components/ui';
-import { useTacoStore } from '@/lib/store';
 import {
   useInstructors,
   useExpenses,
@@ -21,62 +20,49 @@ import {
   useRejectScheduleRequest,
   useProfileChangeRequests,
   useUsers,
+  usePendingAccounts,
+  useApprovePendingAccount,
+  useRejectPendingAccount,
 } from '@/lib/queries';
 import { won } from '@/lib/format';
-import { isAdmin, roleLabel } from '@/lib/roles';
+import { roleLabel } from '@/lib/roles';
 import { AdminHeader } from './AdminShell';
 import { categoryLabel } from '@/features/expenses/labels';
-import { api, type PendingAccount, type ScheduleRequestEx } from '@/lib/api';
-import { currentClaims, getToken } from '@/lib/auth';
+import { type ScheduleRequestEx } from '@/lib/api';
 import { AVAILABILITY_KIND_LABEL, RECURRENCE_SCOPE_LABEL, WEEKDAY_LABEL } from '@/lib/domain/approvals';
 import { ReasonModal } from '@/components/ReasonModal';
 import { RequestDetailModal } from './RequestDetailModal';
 import { ApprovalItemDetailModal, type ApprovalDetailItem } from './ApprovalItemDetailModal';
 import type { AccountRole } from '@/types';
 import { ProfileChangeRequestsSection } from './ProfileChangeRequestsSection';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 
 const ROLE_OPTS: AccountRole[] = ['instructor', 'manager', 'admin', 'super_admin'];
 
 // 가입 승인 대기(백엔드 계정) — 이메일 인증 완료 후 대표가 승인하면 로그인 가능.
 function MemberApprovals() {
-  const [rows, setRows] = useState<PendingAccount[]>([]);
+  const { data: rows = [], isError } = usePendingAccounts();
+  const approveAccount = useApprovePendingAccount();
+  const rejectAccount = useRejectPendingAccount();
   const [roleSel, setRoleSel] = useState<Record<number, string>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const [memberReject, setMemberReject] = useState<number | null>(null); // [TBO-28B] 반려 사유 필수 모달
 
-  // [C-2 2026-07-06] alive 게이터 주입 — 언마운트 후 setState 방지(초기 mount fetch가 늦게 도착하는 경우).
-  //  decide()의 재조회는 사용자 액션(마운트 상태)이라 기본값(항상 alive)로 호출.
-  const load = useCallback(async (isAlive: () => boolean = () => true) => {
-    const token = getToken();
-    if (!token) return;
-    try { const r = await api.auth.pending(); if (isAlive()) setRows(r); }
-    catch { if (isAlive()) setMsg('목록을 불러오지 못했습니다. (대표 권한 필요)'); }
-  }, []);
-  useEffect(() => {
-    let alive = true;
-    load(() => alive);
-    return () => { alive = false; };
-  }, [load]);
-
-  // [TBO-28B] 승인=원자 tx(백엔드) — 동시 결정 시 409(이미 처리됨) 메시지 표면화. 반려=사유 필수(ReasonModal).
-  async function decide(id: number, action: 'approve' | 'reject', reason?: string) {
-    const token = getToken();
-    if (!token) return;
-    try {
-      if (action === 'approve') await api.auth.approve(id, roleSel[id]);
-      else await api.auth.reject(id, reason ?? '');
-      setMsg(action === 'approve' ? '승인했습니다.' : '반려했습니다.');
-      await load();
-    } catch (e) {
-      const status = (e as { response?: { status?: number } }).response?.status;
-      setMsg(status === 409 ? '이미 처리된 계정입니다(목록을 새로고침했습니다).' : '처리 실패');
-      await load();
-    }
+  function decide(id: number, action: 'approve' | 'reject', reason?: string) {
+    const mutation = action === 'approve' ? approveAccount : rejectAccount;
+    const variables = action === 'approve' ? { id, role: roleSel[id] } : { id, reason: reason ?? '' };
+    mutation.mutate(variables as never, {
+      onSuccess: () => setMsg(action === 'approve' ? '승인했습니다.' : '반려했습니다.'),
+      onError: (error) => {
+        const status = (error as { response?: { status?: number } }).response?.status;
+        setMsg(status === 409 ? '이미 처리된 계정입니다(목록을 새로고침했습니다).' : '처리 실패');
+      },
+    });
   }
 
   return (
     <SectionCard title={`가입 승인 대기 (${rows.length})`}>
-      {msg && <div className="px-4 pt-3 text-caption text-accent">{msg}</div>}
+      {(msg || isError) && <div className="px-4 pt-3 text-caption text-accent">{msg ?? '목록을 불러오지 못했습니다. (대표 권한 필요)'}</div>}
       {rows.length === 0 ? (
         <EmptyState message="승인 대기 중인 가입 신청이 없습니다." />
       ) : (
@@ -120,15 +106,9 @@ function MemberApprovals() {
 
 // 승인 센터 = 관리자(매니저 이상). 단 가입 승인은 대표(super_admin) 전용.
 export function ApprovalsView() {
-  const currentRole = useTacoStore((s) => s.currentRole);
-  const tokenRoles = currentClaims()?.roles ?? [];
-  const roleForAccess: AccountRole =
-    tokenRoles.includes('super_admin') ? 'super_admin'
-    : tokenRoles.includes('admin') ? 'admin'
-    : tokenRoles.includes('manager') ? 'manager'
-    : tokenRoles.includes('instructor') ? 'instructor'
-    : currentRole;
-  const canManageApprovals = tokenRoles.length > 0 ? isAdmin(roleForAccess) : isAdmin(currentRole);
+  const { role: verifiedRole, can } = useAccountAccess();
+  const roleForAccess: AccountRole = verifiedRole ?? 'instructor';
+  const canManageApprovals = can('approval.manage');
   const { data: instructors = [] } = useInstructors();
   const { data: expenses = [] } = useExpenses();
   const { data: instructorPayouts = [] } = usePayouts();
@@ -144,7 +124,7 @@ export function ApprovalsView() {
   const rejectExpense = useRejectExpense();
   const confirmPayout = useConfirmPayout();
   const rejectPayout = useRejectPayout();
-  const isSuper = tokenRoles.includes('super_admin');
+  const isSuper = can('signup.decide');
   const instructorName = (id?: number) => id != null ? instructors.find((i) => i.id === id)?.name ?? '—' : '—';
 
   const [reportReject, setReportReject] = useState<number | null>(null);

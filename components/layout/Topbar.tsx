@@ -3,20 +3,23 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { IconSearch, IconBell } from '../ui/icons';
-import { useTacoStore } from '@/lib/store';
 import { useTaskData } from '@/lib/queries';
 import { roleLabel } from '@/lib/roles';
 import { buildTasks } from '@/lib/tasks';
 import { api } from '@/lib/api';
-import { myInstructorId } from '@/lib/auth';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 
 export default function Topbar() {
   const queryClient = useQueryClient();
-  const currentRole = useTacoStore((s) => s.currentRole);
-  const currentAccount = useTacoStore((s) => s.currentAccount);
+  const access = useAccountAccess();
+  const currentRole = access.role;
+  const currentAccount = access.account;
 
   // 알림 항목 — 서버 데이터는 TanStack Query(useAppData) 단일 소스에서 조립.
-  const { items, count } = buildTasks({ ...useTaskData(), currentRole }, currentRole, myInstructorId() ?? undefined);
+  const taskData = useTaskData();
+  const { items, count } = currentRole
+    ? buildTasks({ ...taskData, currentRole }, currentRole, access.instructorId ?? undefined)
+    : { items: [], count: 0 };
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 

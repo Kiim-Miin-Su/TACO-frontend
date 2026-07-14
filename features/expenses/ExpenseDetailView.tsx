@@ -2,9 +2,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Badge, SectionCard } from '@/components/ui';
-import { useTacoStore } from '@/lib/store';
 import { useExpenses, useApproveExpense, useRejectExpense } from '@/lib/queries';
-import { isAdmin } from '@/lib/roles';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 import { won } from '@/lib/format';
 import { ReasonModal } from '@/components/ReasonModal';
 import { categoryLabel, categoryTone, approvalLabel, approvalTone } from './labels';
@@ -12,7 +11,7 @@ import { categoryLabel, categoryTone, approvalLabel, approvalTone } from './labe
 export function ExpenseDetailView({ expenseId }: { expenseId: number }) {
   const { data: expenses = [] } = useExpenses();
   const expense = expenses.find((e) => e.id === expenseId);
-  const admin = isAdmin(useTacoStore((s) => s.currentRole));
+  const admin = useAccountAccess().can('admin.area');
   const approveExpense = useApproveExpense();
   const rejectExpense = useRejectExpense();
   const [modal, setModal] = useState<'reject' | 'viewReason' | null>(null);

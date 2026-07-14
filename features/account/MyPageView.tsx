@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Badge, EmptyState, Field, ModalShell, PageHeader, SectionCard, TableWrap } from "@/components/ui";
 import type { MyProfile } from "@/lib/api";
 import {
@@ -14,8 +14,6 @@ import {
 } from "@/lib/domain/profile";
 import { roleLabel } from "@/lib/roles";
 import { useCreateProfileChangeRequest, useMyProfile, useMyProfileChangeRequests } from "@/lib/queries";
-import type { AccountRole } from "@/types";
-import { useTacoStore } from "@/lib/store";
 
 const valueOrDash = (value?: string | null) => value?.trim() || "—";
 
@@ -93,13 +91,7 @@ export default function MyPageView() {
   const [editing, setEditing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const profile = profileQuery.data;
-  const setCurrentAccount = useTacoStore((state) => state.setCurrentAccount);
   const requests = [...(requestsQuery.data ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-
-  useEffect(() => {
-    if (!profile) return;
-    setCurrentAccount({ id: profile.id, name: profile.name, role: profile.role as AccountRole });
-  }, [profile, setCurrentAccount]);
 
   return (
     <div className="p-4 sm:p-6 max-w-[920px] mx-auto space-y-5">
@@ -127,7 +119,7 @@ export default function MyPageView() {
             <div><dt className="text-caption text-fg-subtle">연락처</dt><dd className="mt-0.5 break-words">{valueOrDash(profile.phone)}</dd></div>
             <div><dt className="text-caption text-fg-subtle">이메일</dt><dd className="mt-0.5 text-fg-muted break-all">{valueOrDash(profile.email)}</dd></div>
             <div><dt className="text-caption text-fg-subtle">Web ID</dt><dd className="mt-0.5 text-fg-muted break-all">{profile.webId}</dd></div>
-            <div><dt className="text-caption text-fg-subtle">역할</dt><dd className="mt-0.5 text-fg-muted">{roleLabel[profile.role as AccountRole] ?? profile.role}</dd></div>
+            <div><dt className="text-caption text-fg-subtle">역할</dt><dd className="mt-0.5 text-fg-muted">{roleLabel[profile.role as keyof typeof roleLabel] ?? profile.role}</dd></div>
             <div><dt className="text-caption text-fg-subtle">계정 상태</dt><dd className="mt-0.5 text-fg-muted">{profile.status}</dd></div>
             <div><dt className="text-caption text-fg-subtle">국가 코드</dt><dd className="mt-0.5 mono">{valueOrDash(profile.countryCode)}</dd></div>
             <div><dt className="text-caption text-fg-subtle">시간대</dt><dd className="mt-0.5 mono break-all">{valueOrDash(profile.timeZone)}</dd></div>

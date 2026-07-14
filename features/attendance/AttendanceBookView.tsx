@@ -10,9 +10,7 @@ import { useSchedule, useAttendance, useUpsertAttendance, useStudents, useCourse
 import { buildAttendanceBook, hoursLabel, nextAttendanceStatus } from "@/lib/domain/attendanceBook";
 import { paidTeachingHours } from "@/lib/domain/schedule";
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS } from "./AttMarker";
-import { useTacoStore } from "@/lib/store";
-import { isAdmin } from "@/lib/roles";
-import { myInstructorId as loginInstructorId } from "@/lib/auth";
+import { useAccountAccess } from "@/lib/useAccountAccess";
 import { EmptyState, HelpPopover, PageHeader, SectionCard, TableWrap } from "@/components/ui";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 
@@ -30,8 +28,9 @@ const ymOf = (iso: string) => iso.slice(0, 7);
 const thisYm = () => new Date().toISOString().slice(0, 7);
 
 export function AttendanceBookView() {
-  const role = useTacoStore((s) => s.currentRole);
-  const manager = isAdmin(role);
+  const access = useAccountAccess();
+  const role = access.role;
+  const manager = access.can("admin.area");
   const { data: rows = [] } = useSchedule();
   const { data: attendance = [] } = useAttendance();
   const { data: students = [] } = useStudents();
@@ -47,7 +46,7 @@ export function AttendanceBookView() {
   const [courseId, setCourseId] = useState<number | null>(null);
 
   // [TBO-21 P1] 로그인 강사의 도메인 강사 id(=JWT sub)만 신뢰한다. 해석 실패 시 전체 코스 폴백 금지.
-  const myInstId = role === "instructor" ? loginInstructorId() : null;
+  const myInstId = access.instructorId;
   const visibleCourses = useMemo(
     () => (role === "instructor" ? (myInstId != null ? courses.filter((c) => Number(c.instructorId) === myInstId) : []) : courses),
     [courses, myInstId, role],

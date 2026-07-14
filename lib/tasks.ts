@@ -34,7 +34,6 @@ export type TaskItem = {
 };
 
 // 대시보드/사이드바 데모에서 'instructor' 역할 = 박지훈(강사 id 1)로 매핑.
-export const DEMO_INSTRUCTOR_ID = 1;
 // 월 정산(재결제) 주기 기준 수업 횟수(데모). 주 2회 × 4주 = 8회.
 export const PAYMENT_CYCLE_SESSIONS = 8;
 
@@ -209,11 +208,10 @@ function instructorTasks(s: StoreSlice, instructorId: number): TaskItem[] {
   return out;
 }
 
-// [버그수정 2026-07-07] instructorId = 로그인 강사의 도메인 강사 id(auth.myInstructorId). 미지정 시 DEMO 폴백(테스트·미배선 대비).
-export function buildTasks(s: StoreSlice, role: AccountRole = s.currentRole, instructorId: number = DEMO_INSTRUCTOR_ID): { items: TaskItem[]; count: number } {
+export function buildTasks(s: StoreSlice, role: AccountRole = s.currentRole, instructorId?: number): { items: TaskItem[]; count: number } {
   let items: TaskItem[] = [];
   if (isAdmin(role)) items = adminTasks(s);
-  else if (role === 'instructor') items = instructorTasks(s, instructorId);
+  else if (role === 'instructor' && instructorId != null) items = instructorTasks(s, instructorId);
   // 학생/학부모는 운영 할 일 없음(일정은 캘린더에서)
   const count = items.filter((t) => t.counts).length;
   return { items, count };
@@ -222,13 +220,14 @@ export function buildTasks(s: StoreSlice, role: AccountRole = s.currentRole, ins
 // 사이드바 탭별 빨간 배지 개수 — 탭마다 명시적 기준(권한 반영). 0인 탭은 키 없음.
 // 기준(요구사항): 상담=다음 만남 날짜 미정 / 결제=미수 / 강사페이=미정산 / 지출=승인대기 /
 //   수업보고서=미작성(작성해야 할 세션당 1) / 관리자=미승인(승인 대기) 모두.
-export function navBadges(s: StoreSlice, role: AccountRole = s.currentRole, instructorId: number = DEMO_INSTRUCTOR_ID): Record<string, number> {
+export function navBadges(s: StoreSlice, role: AccountRole = s.currentRole, instructorId?: number): Record<string, number> {
   const out: Record<string, number> = {};
   const put = (nav: string, n: number) => { if (n > 0) out[nav] = n; };
 
   // 강사: 본인 수업보고서 미작성(보고서 건수) + 취소·미진행 보강 필요(캘린더 탭)
   // ⚠ 배지와 /reports 탭 리스트는 pendingReportSummary(같은 모집단)를 공유해야 한다(불일치 재발 방지).
   if (role === 'instructor') {
+    if (instructorId == null) return out;
     put('/reports', pendingReportSummary(s, instructorId).itemCount);
     // 보강 필요 + 반려된 내 수업 요청(재요청 필요) — 캘린더 탭
     put('/calendar', makeupNeededCount(s, instructorId) + s.scheduleRequests.filter((r) => r.status === 'rejected').length);

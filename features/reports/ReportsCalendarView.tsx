@@ -9,9 +9,7 @@ import {
   useSchedule, useCourses, useInstructors, useEnrollments, useStudents, useReports, useAttendance,
 } from '@/lib/queries';
 import { pendingReportSummary, rosterStudentIds } from '@/lib/reports';
-import { useTacoStore } from '@/lib/store';
-import { DEMO_INSTRUCTOR_ID } from '@/lib/tasks';
-import { myInstructorId } from '@/lib/auth';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 import type { AttendanceStatus, ReportStatus } from '@/types';
 
 const attLabel: Record<AttendanceStatus, string> = { present: '출석', late: '지각', absent: '결석', excused: '인정결석' };
@@ -21,6 +19,7 @@ const reportLabel: Record<ReportStatus, string> = { draft: '작성중', submitte
 import { WEEKDAYS_KO as WEEK, pad2 as pad } from '@/lib/domain/schedule';
 
 export function ReportsCalendarView() {
+  const access = useAccountAccess();
   const { data: classSessions = [] } = useSchedule();
   const { data: courses = [] } = useCourses();
   const { data: instructors = [] } = useInstructors();
@@ -31,8 +30,7 @@ export function ReportsCalendarView() {
   // slice(단일 소스 조립) — 배지(navBadges)와 같은 pendingReportSummary 모집단을 쓴다.
   const reportSlice = { classSessions, enrollments, sessionReports };
   // 역할 스코프: 강사는 본인 수업만(배지와 동일). 관리자·매니저는 전체.
-  const role = useTacoStore((s) => s.currentRole);
-  const scopeInstructorId = role === 'instructor' ? (myInstructorId() ?? DEMO_INSTRUCTOR_ID) : undefined;
+  const scopeInstructorId = access.can('instructor.self') ? (access.instructorId ?? undefined) : undefined;
   // 배지와 동일 모집단(전체 기간 + 역할 스코프): sessions=목록, itemCount=배지 숫자.
   const pending = pendingReportSummary(reportSlice, scopeInstructorId);
   const pendingIds = new Set(pending.sessions.map((s) => s.id));

@@ -5,9 +5,8 @@
 import { Fragment, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Badge, EmptyState, PageHeader, SectionCard, StatCard, TableWrap, type Tone } from '@/components/ui';
-import { useTacoStore } from '@/lib/store';
 import { useInstructors, usePayouts, usePayoutPreview } from '@/lib/queries';
-import { canAccessFinance } from '@/lib/roles';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 import { won } from '@/lib/format';
 import type { PayoutRowStatus } from '@/lib/api';
 
@@ -22,8 +21,7 @@ const monthRange = (ym: string) => {
 };
 
 export function PayoutDetailView({ instructorId }: { instructorId: number }) {
-  const role = useTacoStore((s) => s.currentRole);
-  const finance = canAccessFinance(role);
+  const finance = useAccountAccess().can('finance.access');
   const { data: instructors = [], isLoading: loadingInst } = useInstructors();
   const { data: allPayouts = [] } = usePayouts();
   const [ym, setYm] = useState(thisYm());

@@ -1,5 +1,5 @@
 "use client";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import type { ScheduleResources, ScheduleResource } from "@/types";
 
 type RType = "instructor" | "student" | "room";
@@ -34,13 +34,11 @@ function ResourcePanelImpl({
   const [tab, setTab] = useState<RType>(allowedTypes[0] ?? "room");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
-  useEffect(() => {
-    if (!allowedTypes.includes(tab)) setTab(allowedTypes[0] ?? "room");
-  }, [allowedTypes, tab]);
+  const activeTab = allowedTypes.includes(tab) ? tab : (allowedTypes[0] ?? "room");
 
   const list: ScheduleResource[] =
-    tab === "student" ? resources.students : tab === "instructor" ? resources.instructors : resources.rooms;
-  const picked = filterIds[tab]; // 이 탭 차원의 필터 선택(캘린더 필터바와 같은 상태 — 단일 소스)
+    activeTab === "student" ? resources.students : activeTab === "instructor" ? resources.instructors : resources.rooms;
+  const picked = filterIds[activeTab]; // 이 탭 차원의 필터 선택(캘린더 필터바와 같은 상태 — 단일 소스)
   const filtered = useMemo(() => {
     const n = q.trim().toLowerCase();
     const base = n ? list.filter((x) => x.name.toLowerCase().includes(n)) : list;
@@ -84,7 +82,7 @@ function ResourcePanelImpl({
               <button
                 key={t.key}
                 onClick={() => changeTab(t.key)}
-                className={`flex-1 h-9 text-caption font-medium ${tab === t.key ? "text-fg border-b-2 border-accent" : "text-fg-muted"}`}
+                className={`flex-1 h-9 text-caption font-medium ${activeTab === t.key ? "text-fg border-b-2 border-accent" : "text-fg-muted"}`}
               >
                 {t.label}
               </button>
@@ -93,7 +91,7 @@ function ResourcePanelImpl({
           <div className="p-2">
             <input
               className="input h-8 w-full text-body"
-              placeholder={`${tabs.find((t) => t.key === tab)?.label} 검색`}
+              placeholder={`${tabs.find((t) => t.key === activeTab)?.label} 검색`}
               value={q}
               onChange={(e) => { setQ(e.target.value); setPage(0); }}
             />
@@ -112,7 +110,7 @@ function ResourcePanelImpl({
                     className="min-w-0 flex-1 h-8 px-2 rounded flex items-center gap-2 text-left hover:bg-canvas-subtle"
                     title={inFilter ? "클릭 = 필터에서 제외" : "클릭 = 이 유저로 필터(스플릿·조회 반영)"}
                     aria-pressed={inFilter}
-                    onClick={() => onToggleFilter(tab, Number(r.id))}
+                    onClick={() => onToggleFilter(activeTab, Number(r.id))}
                   >
                     <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color ?? "var(--color-line)" }} />
                     <span className={`flex-1 text-left truncate text-fg ${inFilter ? "font-semibold" : ""}`}>{r.name}</span>

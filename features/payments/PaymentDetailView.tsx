@@ -3,14 +3,13 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Badge, Field, SectionCard } from '@/components/ui';
 import { usePayments, useStudents, useEnrollments, useCourses, useUpdatePayment, useMarkPaymentPaid } from '@/lib/queries';
-import { useTacoStore } from '@/lib/store';
-import { canAccessFinance } from '@/lib/roles';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 import type { PaymentMethod, PaymentStatus } from '@/types';
 import { won } from '@/lib/format';
 import { statusLabel, statusTone, methodLabel, METHODS, STATUSES } from './labels';
 
 export function PaymentDetailView({ paymentId }: { paymentId: number }) {
-  const finance = canAccessFinance(useTacoStore((s) => s.currentRole));
+  const finance = useAccountAccess().can('finance.access');
   const { data: payments = [] } = usePayments();
   const { data: students = [] } = useStudents();
   const { data: enrollments = [] } = useEnrollments();

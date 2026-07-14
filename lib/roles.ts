@@ -1,4 +1,5 @@
 import type { AccountRole } from '@/types';
+import { hasCapability } from '@/lib/access-control';
 
 export const roleLabel: Record<AccountRole, string> = {
   student: '학생',
@@ -13,7 +14,8 @@ export const roleLabel: Record<AccountRole, string> = {
 export const BACKOFFICE_ROLES: AccountRole[] = ['super_admin', 'admin', 'manager', 'instructor'];
 export const ROLES: AccountRole[] = BACKOFFICE_ROLES;
 
-export const isAdmin = (r: AccountRole) => r === 'super_admin' || r === 'manager' || r === 'admin';
-export const isCEO = (r: AccountRole) => r === 'super_admin'; // 경영 지표(총액·추이) 열람
-export const canAccessFinance = (r: AccountRole) => r === 'super_admin';
-export const isStudentOrParent = (r: AccountRole) => r === 'student' || r === 'parent';
+// 호환 wrapper. 새 권한 판정은 access-control의 capability 이름을 직접 사용한다.
+export const isAdmin = (r: AccountRole | null | undefined) => hasCapability(r, 'admin.area');
+export const isCEO = (r: AccountRole | null | undefined) => hasCapability(r, 'signup.decide');
+export const canAccessFinance = (r: AccountRole | null | undefined) => hasCapability(r, 'finance.access');
+export const isStudentOrParent = (r: AccountRole | null | undefined) => r === 'student' || r === 'parent';

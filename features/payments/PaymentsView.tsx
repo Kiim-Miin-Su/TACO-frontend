@@ -5,13 +5,12 @@ import { Badge, SectionCard, MonthCalendar, PageHeader, EmptyState, TableWrap } 
 import { usePayments, useStudents } from '@/lib/queries';
 import { usePersistedState } from '@/lib/usePersistedState';
 import { enumPreferenceCodec, preferenceKeys } from '@/lib/storage/preferences';
-import { useTacoStore } from '@/lib/store';
-import { canAccessFinance } from '@/lib/roles';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 import { won } from '@/lib/format';
 import { statusLabel, statusTone, methodLabel } from './labels';
 
 export function PaymentsView() {
-  const finance = canAccessFinance(useTacoStore((s) => s.currentRole));
+  const finance = useAccountAccess().can('finance.access');
   const { data: payments = [] } = usePayments();
   const { data: students = [] } = useStudents();
   // [C-2 2026-07-06] 목록/달력 보기 토글 typed preference 복원(새로고침에도 유지).

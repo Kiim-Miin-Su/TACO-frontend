@@ -16,7 +16,7 @@ export const preferenceKeys = {
   debugEnabled: "taco.debug.enabled",
 } as const;
 
-type ReadOptions = { legacyKeys?: readonly string[] };
+export type ReadOptions = { legacyKeys?: readonly string[] };
 
 const storage = () => (typeof window === "undefined" ? null : window.localStorage);
 

@@ -4,6 +4,7 @@ import type { ScheduleQuery } from "@/lib/api";
 import type { AvailabilityOwner } from "@/types";
 
 export const qk = {
+  auth: { pending: ["auth", "pending"] as const },
   schedule: {
     all: ["schedule"] as const,
     list: (q: ScheduleQuery, scope = "global") => ["schedule", "list", scope, q] as const,

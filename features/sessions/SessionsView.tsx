@@ -2,8 +2,7 @@
 import { useState } from "react";
 import { Badge, SectionCard, PageHeader, EmptyState, TableWrap, type Tone } from "@/components/ui";
 import { useSchedule, useCourses, useInstructors } from "@/lib/queries";
-import { useTacoStore } from "@/lib/store";
-import { isAdmin } from "@/lib/roles";
+import { useAccountAccess } from "@/lib/useAccountAccess";
 import type { SessionStatus } from "@/types";
 import { shortDate } from "@/lib/format";
 import { SessionForm } from "./SessionForm";
@@ -26,7 +25,7 @@ const label: Record<SessionStatus, string> = {
 export function SessionsView() {
   // [권한 정합] 수업 직접 개설(POST /schedule)은 BE ADMIN 전용 → 매니저 이상만 폼 노출(강사=403 방지).
   //  강사는 캘린더의 수업요청(schedule-requests) 경로로 개설.
-  const admin = isAdmin(useTacoStore((s) => s.currentRole));
+  const admin = useAccountAccess().can("calendar.manage");
   const { data: classSessions = [] } = useSchedule();
   const { data: courses = [] } = useCourses();
   const { data: instructors = [] } = useInstructors();

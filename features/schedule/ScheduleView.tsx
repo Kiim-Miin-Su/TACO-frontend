@@ -9,12 +9,13 @@ import { useTacoStore } from '@/lib/store';
 import { useEnrollments, useCourses, useSchedule, useAcademyEvents } from '@/lib/queries';
 import { isStudentOrParent } from '@/lib/roles';
 import { eventLabel, eventStyle } from '@/features/admin/labels';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 
 type ClassScope = 'mine' | 'all';
 type EventScope = 'important' | 'all' | 'none';
 
 export function ScheduleView() {
-  const currentRole = useTacoStore((s) => s.currentRole);
+  const currentRole = useAccountAccess().role;
   const currentStudentId = useTacoStore((s) => s.currentStudentId);
   const { data: enrollments = [] } = useEnrollments();
   const { data: courses = [] } = useCourses();

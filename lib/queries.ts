@@ -12,22 +12,13 @@ import {
   scheduleRequestListKey,
   upsertScheduleRequestCache,
 } from "@/lib/query-cache";
-import { useTacoStore } from "@/lib/store";
-import { canAccessFinance, isAdmin } from "@/lib/roles";
-import { currentClaims } from "@/lib/auth";
-import type { AccountRole, Instructor, SessionReport } from "@/types";
+import { canAccessFinance } from "@/lib/roles";
+import { useAccountAccess } from "@/lib/useAccountAccess";
+import type { Instructor, SessionReport } from "@/types";
 import { useState } from "react";
 
-// [TBO-21 B1] 정산 전체 조회는 대표 전용(403). 스토어 currentRole 기본값('super_admin')이 새로고침 직후
-//  JWT 하이드레이트 전에 대표로 잡혀 강사가 /payouts를 호출→403 나던 문제 → **토큰 역할**로 게이트.
-//  currentClaims()는 현재 쿠키 토큰을 읽어 실제 로그인 역할을 즉시 반영(서버선 null→비활성, 쿼리는 클라에서만 실행).
-const tokenIsAdmin = () => (currentClaims()?.roles ?? []).some((r) => isAdmin(r as AccountRole));
-const tokenCanAccessFinance = () => (currentClaims()?.roles ?? []).some((r) => canAccessFinance(r as AccountRole));
-const tokenIsInstructor = () => (currentClaims()?.roles ?? []).includes("instructor");
-export const tokenScopeKey = () => {
-  const c = currentClaims();
-  return c ? `${c.sub}:${(c.roles ?? []).join(',')}` : 'anon';
-};
+// Query scope와 enabled는 AppShell의 권위 `/auth/me` 검증을 통과한 currentAccount 한 곳에서 파생한다.
+// 쿠키 decode와 Zustand 기본 역할을 각각 재검사하던 이중 권한 판정은 제거했다.
 
 // 백엔드 보고서(status=draft|submitted|sent, approvalStatus=draft|submitted|approved|rejected)를 store 모델로 정규화.
 //  구형 응답 호환: approvalStatus가 없으면 status를 승인상태로 해석한다.
@@ -55,155 +46,170 @@ export const useSubjects = () => useQuery({ queryKey: qk.subjects.list(), queryF
 export const useCourses = () => useQuery({ queryKey: qk.courses.list(), queryFn: () => api.courses.list(), staleTime: CATALOG_STALE });
 export const useEnrollments = () => useQuery({ queryKey: qk.enrollments.list(), queryFn: () => api.enrollments.list(), staleTime: CATALOG_STALE });
 export const useSchedule = () => {
-  const scope = tokenScopeKey();
+  const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.schedule.list({}, scope), queryFn: ({ signal }) => api.schedule.list({}, { signal }) });
 };
 // [TBO-14] 캘린더 데이터층 — 기간·선택자원 파라미터 스케줄 조회. qk.schedule 하위키라 세션 변경(PATCH/생성/삭제·
 //  강사출결)이 qk.schedule.all 무효화로 자동 반영(M1 invalidate 단절 해소). 뷰는 이 데이터를 rows로 feed.
 export const useCalendarSchedule = (params: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number }) => {
-  const scope = tokenScopeKey();
+  const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.schedule.list(params, scope), queryFn: ({ signal }) => api.schedule.list(params, { signal }) });
 };
 // [TBO-14 C2] 캘린더 준정적 카탈로그 — 강의실·자원 피커. staleTime 5분(변경 빈도 낮음·쓰기 시 invalidate).
 export const useRooms = () => useQuery({ queryKey: qk.rooms.all(), queryFn: () => api.rooms.list(), staleTime: CATALOG_STALE });
 export const useScheduleResources = () => {
-  const scope = tokenScopeKey();
+  const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.schedule.resources(scope), queryFn: ({ signal }) => api.schedule.resources({ signal }), staleTime: CATALOG_STALE });
 };
 // [TBO-14 C2b] 전체 가용/불가 블록 — 캘린더 밴드 단일 소스(selBlocks는 뷰에서 owner 파생). 밴드 편집 시 invalidate.
 export const useAllAvailability = () => {
-  const scope = tokenScopeKey();
+  const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.availability.everything(scope), queryFn: ({ signal }) => api.availability.all({ signal }) });
 };
 export const useAttendance = () => {
-  const scope = tokenScopeKey();
+  const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.attendance.list(scope), queryFn: ({ signal }) => api.attendance.list({ signal }) });
 };
 export const usePayments = () => {
-  const role = useTacoStore((s) => s.currentRole);
-  return useQuery({ queryKey: qk.payments.list(), queryFn: () => api.payments.list(), enabled: canAccessFinance(role) && tokenCanAccessFinance() });
+  const { can } = useAccountAccess();
+  return useQuery({ queryKey: qk.payments.list(), queryFn: () => api.payments.list(), enabled: can("finance.access") });
 };
 export const useTransactions = () => {
-  const role = useTacoStore((s) => s.currentRole);
-  return useQuery({ queryKey: qk.transactions.list(), queryFn: () => api.transactions.list(), enabled: canAccessFinance(role) && tokenCanAccessFinance() });
+  const { can } = useAccountAccess();
+  return useQuery({ queryKey: qk.transactions.list(), queryFn: () => api.transactions.list(), enabled: can("finance.access") });
 };
 export const useExpenses = () => {
-  const role = useTacoStore((s) => s.currentRole);
-  return useQuery({ queryKey: qk.expenses.list(), queryFn: () => api.expenses.list(), enabled: canAccessFinance(role) && tokenCanAccessFinance() });
+  const { can } = useAccountAccess();
+  return useQuery({ queryKey: qk.expenses.list(), queryFn: () => api.expenses.list(), enabled: can("finance.access") });
 };
 // [TBO-21 RBAC] 정산 전체 조회는 대표 전용(403) — 비대표는 fetch 비활성(403 재시도 노이즈 방지)
 export const usePayouts = () => {
-  const role = useTacoStore((s) => s.currentRole);
-  return useQuery({ queryKey: qk.payouts.list(), queryFn: () => api.payouts.list(), enabled: canAccessFinance(role) && tokenCanAccessFinance() });
+  const { can } = useAccountAccess();
+  return useQuery({ queryKey: qk.payouts.list(), queryFn: () => api.payouts.list(), enabled: can("finance.access") });
 };
 export const useMyPayouts = () => {
-  const scope = tokenScopeKey();
-  return useQuery({ queryKey: qk.payouts.mine(scope), queryFn: () => api.payouts.mine(), enabled: tokenIsInstructor() });
+  const { scope, can } = useAccountAccess();
+  return useQuery({ queryKey: qk.payouts.mine(scope), queryFn: () => api.payouts.mine(), enabled: can("instructor.self") });
 };
 // [상태 무결성 2026-07-06] 산정 미리보기(읽기전용) — 강사·기간 키 캐시(PayoutsView 로컬 fetch 대체).
 //  mutation 성공 시 qk.payouts.all 무효화가 preview 키도 접두사로 포함 → 자동 재계산.
 export const usePayoutPreview = (instructorId: number | null, from: string, to: string) => {
-  const role = useTacoStore((s) => s.currentRole);
+  const { can } = useAccountAccess();
   return useQuery({
     queryKey: qk.payouts.preview(instructorId ?? 0, from, to),
     queryFn: () => api.payouts.preview(instructorId as number, from, to),
-    enabled: canAccessFinance(role) && tokenCanAccessFinance() && instructorId != null && !!from && !!to,
+    enabled: can("finance.access") && instructorId != null && !!from && !!to,
   });
 };
 export const useMyPayoutPreview = (from: string, to: string) => {
-  const scope = tokenScopeKey();
+  const { scope, can } = useAccountAccess();
   return useQuery({
     queryKey: qk.payouts.previewMine(scope, from, to),
     queryFn: () => api.payouts.previewMine(from, to),
-    enabled: tokenIsInstructor() && !!from && !!to,
+    enabled: can("instructor.self") && !!from && !!to,
   });
 };
 // [TBO-16 #9] 수업 요청 — 승인센터·배지(tasks)·캘린더가 **같은 queryKey를 구독**(단일 이벤트 객체).
 //  서버가 역할별 스코프 적용(강사=본인 요청만) — 클라 필터 불요.
-export const useScheduleRequests = () =>
-  useQuery({ queryKey: scheduleRequestListKey(tokenScopeKey()), queryFn: ({ signal }) => api.scheduleRequests.list(undefined, { signal }) });
+export const useScheduleRequests = () => {
+  const { scope } = useAccountAccess();
+  return useQuery({ queryKey: scheduleRequestListKey(scope), queryFn: ({ signal }) => api.scheduleRequests.list(undefined, { signal }) });
+};
 export const useCounselForms = () => useQuery({ queryKey: qk.counsel.forms(), queryFn: () => api.counsel.forms() });
 export const useCounselRounds = () => useQuery({ queryKey: qk.counsel.rounds(), queryFn: () => api.counsel.rounds() });
 export const useAcademyEvents = () => useQuery({ queryKey: qk.events.list(), queryFn: () => api.events.list() });
 // [TBO-19 Sprint4] 강사 계약(매니저 전용 — 계약 대비 실제 시수). 백엔드 GET이 ADMIN 게이트라 비관리자는 비활성.
 export const useInstructorContracts = () => {
-  const role = useTacoStore((s) => s.currentRole);
-  return useQuery({ queryKey: ["instructor-contracts", "list"] as const, queryFn: () => api.instructorContracts.list(), enabled: isAdmin(role) && tokenIsAdmin(), staleTime: CATALOG_STALE });
+  const { can } = useAccountAccess();
+  return useQuery({ queryKey: ["instructor-contracts", "list"] as const, queryFn: () => api.instructorContracts.list(), enabled: can("admin.area"), staleTime: CATALOG_STALE });
 };
 // [강사 출결 상세] 특정 강사의 기간 세션 — **권위 소스 /schedule 서버 필터**(instructorId·from·to). 참조 무결성:
 //  세션 데이터를 복제하지 않고 단일 소스에서 조회, qk.schedule 하위 키라 세션 변경 시 자동 무효화.
 export const useInstructorSessions = (instructorId: number | null, from?: string, to?: string) => {
-  const role = useTacoStore((s) => s.currentRole);
-  const scope = tokenScopeKey();
+  const { scope, can } = useAccountAccess();
   return useQuery({
     queryKey: qk.schedule.list({ instructorId: instructorId ?? undefined, from, to }, scope),
     queryFn: () => api.schedule.list({ instructorId: instructorId as number, from, to }),
-    enabled: isAdmin(role) && instructorId != null && !!from && !!to,
+    enabled: can("admin.area") && instructorId != null && !!from && !!to,
   });
 };
 // [R-6·C2C-b] 엔티티 변경 이력(audit_log) — ADMIN(토큰 게이트 동반). 세션 상세·승인센터 상세 모달 공용.
 //  entity = audit_log.entity 값('class_sessions'·'schedule_requests'·'availability_blocks' 등).
 export const useEntityAudit = (entity: string, entityId: number | null) => {
-  const role = useTacoStore((s) => s.currentRole);
+  const { can } = useAccountAccess();
   return useQuery({
     queryKey: ["audit", entity, entityId ?? 0] as const,
     queryFn: () => api.audit.list(entity, entityId as number),
-    enabled: isAdmin(role) && tokenIsAdmin() && entityId != null,
+    enabled: can("admin.area") && entityId != null,
   });
 };
 // [R-6] 세션 변경 이력 — entity='class_sessions' 별칭(기존 소비처 유지, 단일 구현=useEntityAudit).
 export const useSessionAudit = (sessionId: number | null) => useEntityAudit("class_sessions", sessionId);
 // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터. 서버 집계(DB 이관 시 GROUP BY 승격).
 export const useInstructorAttendanceSummary = (from?: string, to?: string, instructorId?: number) => {
-  const role = useTacoStore((s) => s.currentRole);
+  const { can } = useAccountAccess();
   return useQuery({
     queryKey: ["instructor-attendance-summary", from ?? null, to ?? null, instructorId ?? null] as const,
     queryFn: () => api.schedule.instructorAttendanceSummary(from, to, instructorId),
-    enabled: isAdmin(role) && tokenIsAdmin() && !!from && !!to,
+    enabled: can("admin.area") && !!from && !!to,
   });
 };
 export const useRoadmaps = () => useQuery({ queryKey: qk.roadmaps.list(), queryFn: () => api.roadmaps.list() });
 export const useRoadmapCourses = () => useQuery({ queryKey: qk.roadmaps.courses(), queryFn: () => api.roadmaps.courses() });
-export const useUsers = () =>
-  useQuery({ queryKey: qk.users.list(), queryFn: () => api.users.list(), enabled: tokenIsAdmin(), staleTime: CATALOG_STALE });
+export const usePendingAccounts = () => {
+  const { can } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.auth.pending,
+    queryFn: () => api.auth.pending(),
+    enabled: can("signup.decide"),
+  });
+};
+export const useUsers = () => {
+  const { can } = useAccountAccess();
+  return useQuery({ queryKey: qk.users.list(), queryFn: () => api.users.list(), enabled: can("admin.area"), staleTime: CATALOG_STALE });
+};
 export const useMyProfile = () => {
-  const scope = tokenScopeKey();
+  const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.profile.me(scope), queryFn: () => api.account.profile() });
 };
 export const useMyProfileChangeRequests = () => {
-  const scope = tokenScopeKey();
+  const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.profileChangeRequests.mine(scope), queryFn: () => api.profileChangeRequests.mine() });
 };
 export const useProfileChangeRequests = () => {
-  const scope = tokenScopeKey();
-  return useQuery({ queryKey: qk.profileChangeRequests.list(scope), queryFn: () => api.profileChangeRequests.list(), enabled: tokenIsAdmin() });
+  const { scope, can } = useAccountAccess();
+  return useQuery({ queryKey: qk.profileChangeRequests.list(scope), queryFn: () => api.profileChangeRequests.list(), enabled: can("approval.manage") });
 };
 export const useProfileChangeRequest = (id: number | null) => {
-  const scope = tokenScopeKey();
+  const { scope, can } = useAccountAccess();
   return useQuery({
     queryKey: qk.profileChangeRequests.detail(id ?? 0, scope),
     queryFn: () => api.profileChangeRequests.get(id as number),
-    enabled: tokenIsAdmin() && id != null,
+    enabled: can("approval.manage") && id != null,
   });
 };
 
 // 보고서는 store 모델로 매핑해서 반환(배지·리포트 화면이 store 형상 사용).
-export const useReports = () =>
-  useQuery({ queryKey: qk.reports.list(undefined, tokenScopeKey()), queryFn: async () => (await api.reports.list()).map(toStoreReport) });
+export const useReports = () => {
+  const { scope } = useAccountAccess();
+  return useQuery({ queryKey: qk.reports.list(undefined, scope), queryFn: async () => (await api.reports.list()).map(toStoreReport) });
+};
 
 // 강사 목록 = 스케줄 자원(resources)에서 파생(단일 소스). store.instructors 대체.
-export const useInstructors = () =>
-  useQuery({
-    queryKey: qk.schedule.resources(tokenScopeKey()),
+export const useInstructors = () => {
+  const { scope } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.schedule.resources(scope),
     queryFn: ({ signal }) => api.schedule.resources({ signal }),
     select: (res): Instructor[] => res.instructors.map((i) => ({ id: i.id, name: i.name, subjectName: i.sub })),
     staleTime: CATALOG_STALE,
   });
+};
 
 // 교차 도메인 slice — buildTasks/navBadges/lib.reports가 store 대신 이걸 받는다(전환용 컴포지트).
 // 각 배열은 로딩 전 빈 배열(뷰 안전). currentRole은 zustand(클라 상태)에서 별도로 읽는다.
 export function useAppData() {
-  const role = useTacoStore((s) => s.currentRole);
+  const { role } = useAccountAccess();
   const students = useStudents().data ?? [];
   const parents = useParents().data ?? [];
   const parentStudents = useParentStudents().data ?? [];
@@ -236,7 +242,7 @@ export function useAppData() {
 
 // 네비게이션 배지/알림은 buildTasks가 실제 사용하는 도메인만 구독한다.
 export function useTaskData() {
-  const role = useTacoStore((s) => s.currentRole);
+  const { role } = useAccountAccess();
   const financePayouts = usePayouts().data ?? [];
   const myPayouts = useMyPayouts().data ?? [];
   return {
@@ -267,6 +273,17 @@ export const useCreateCourse = () => useMutation({ mutationFn: api.courses.creat
 export const useCreateSubject = () => useMutation({ mutationFn: api.subjects.create, onSuccess: useInvalidator([qk.subjects.all]) });
 export const useCreateEvent = () => useMutation({ mutationFn: api.events.create, onSuccess: useInvalidator([qk.events.all]) });
 export const useCreateRoadmap = () => useMutation({ mutationFn: api.roadmaps.create, onSuccess: useInvalidator([qk.roadmaps.all]) });
+
+export const useApprovePendingAccount = () =>
+  useMutation({
+    mutationFn: (value: { id: number; role?: string }) => api.auth.approve(value.id, value.role),
+    onSuccess: useInvalidator([qk.auth.pending, qk.users.all, qk.schedule.all]),
+  });
+export const useRejectPendingAccount = () =>
+  useMutation({
+    mutationFn: (value: { id: number; reason: string }) => api.auth.reject(value.id, value.reason),
+    onSuccess: useInvalidator([qk.auth.pending, qk.users.all]),
+  });
 
 // 명단(학생·수강)
 export const useCreateStudent = () => useMutation({ mutationFn: api.students.create, onSuccess: useInvalidator([qk.students.all]) });
@@ -360,21 +377,23 @@ export const useRemoveSchedule = () => useMutation({ mutationFn: api.schedule.re
 // 수업 요청(TBO-16 #9) — 승인 시 세션이 생기므로 schedule도 무효화(참조 무결성 — 캘린더·배지 동시 갱신)
 export const useCreateScheduleRequest = () => {
   const qc = useQueryClient();
+  const { scope } = useAccountAccess();
   return useMutation({
     mutationFn: api.scheduleRequests.create,
     onSuccess: (data) => {
-      upsertScheduleRequestCache(qc, tokenScopeKey(), data.row);
+      upsertScheduleRequestCache(qc, scope, data.row);
       return invalidateScheduleRequests(qc);
     },
   });
 };
 export const useApproveScheduleRequest = () => {
   const qc = useQueryClient();
+  const { scope } = useAccountAccess();
   return useMutation({
     mutationFn: (v: { id: number; force?: boolean }) => api.scheduleRequests.approve(v.id, v.force),
     // [C2C-b] audit 프리픽스 무효화 — 상세 모달 '처리 이력'이 승인 직후 즉시 갱신
     onSuccess: async (data) => {
-      upsertScheduleRequestCache(qc, tokenScopeKey(), data.request);
+      upsertScheduleRequestCache(qc, scope, data.request);
       const kind = data.request.requestKind;
       await refreshScheduleRequestLifecycle(qc, {
         schedule: kind == null || kind === "session_create" || kind === "session_update" || kind === "session_delete",
@@ -385,10 +404,11 @@ export const useApproveScheduleRequest = () => {
 };
 export const useRejectScheduleRequest = () => {
   const qc = useQueryClient();
+  const { scope } = useAccountAccess();
   return useMutation({
     mutationFn: (v: { id: number; reason: string }) => api.scheduleRequests.reject(v.id, v.reason), // 사유 필수
     onSuccess: async (data) => {
-      upsertScheduleRequestCache(qc, tokenScopeKey(), data);
+      upsertScheduleRequestCache(qc, scope, data);
       await refreshScheduleRequestLifecycle(qc);
     },
   });
@@ -396,10 +416,11 @@ export const useRejectScheduleRequest = () => {
 // [C2C-b 청크2] pending 요청 수정(관리자) — 상세 모달 편집. 승인센터·배지·캘린더 고스트 동시 갱신
 export const useUpdateScheduleRequest = () => {
   const qc = useQueryClient();
+  const { scope } = useAccountAccess();
   return useMutation({
     mutationFn: (v: { id: number; body: Parameters<typeof api.scheduleRequests.update>[1] }) => api.scheduleRequests.update(v.id, v.body),
     onSuccess: async (data) => {
-      upsertScheduleRequestCache(qc, tokenScopeKey(), data);
+      upsertScheduleRequestCache(qc, scope, data);
       await refreshScheduleRequestLifecycle(qc);
     }, // 이력 즉시 갱신(상세 모달)
   });

@@ -4,15 +4,14 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Field, SectionCard } from '@/components/ui';
 import { useStudents, useCourses, useEnrollments, useCreatePayment } from '@/lib/queries';
-import { useTacoStore } from '@/lib/store';
-import { canAccessFinance } from '@/lib/roles';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 import type { PaymentMethod } from '@/types';
 import { won } from '@/lib/format';
 import { METHODS, methodLabel } from './labels';
 
 export function PaymentFormView() {
   const router = useRouter();
-  const finance = canAccessFinance(useTacoStore((s) => s.currentRole));
+  const finance = useAccountAccess().can('finance.access');
   const { data: students = [] } = useStudents();
   const { data: courses = [] } = useCourses();
   const { data: enrollments = [] } = useEnrollments();

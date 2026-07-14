@@ -1,13 +1,12 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { useTacoStore } from "@/lib/store";
-import { useScheduleResources, useTaskData } from "@/lib/queries";
-import { booleanPreferenceCodec, preferenceKeys, readPreference, writePreference } from "@/lib/storage/preferences";
-import { roleLabel, isCEO, isAdmin, canAccessFinance } from "@/lib/roles";
+import { useTaskData } from "@/lib/queries";
+import { booleanPreferenceCodec, preferenceKeys } from "@/lib/storage/preferences";
+import { roleLabel } from "@/lib/roles";
 import { navBadges } from "@/lib/tasks";
-import { myInstructorId } from "@/lib/auth";
+import { usePersistedState } from "@/lib/usePersistedState";
+import { useAccountAccess } from "@/lib/useAccountAccess";
 import {
   IconHome,
   IconUsers,
@@ -57,40 +56,32 @@ const groups: { title: string; items: Item[] }[] = [
   },
 ];
 
+const SIDEBAR_PREFERENCE_OPTIONS = { legacyKeys: ["sidebarCollapsed"] } as const;
+
 export default function Sidebar() {
   const pathname = usePathname();
   const isActive = (href: string) => href === "/" ? pathname === "/" : pathname.startsWith(href);
 
-  // 현재 역할/계정 표시는 로그인 JWT에서 AppShell이 동기화한 클라이언트 상태다.
-  const role = useTacoStore((s) => s.currentRole);
-  const currentAccount = useTacoStore((s) => s.currentAccount);
+  const access = useAccountAccess();
+  const role = access.role;
+  const currentAccount = access.account;
+  const taskData = useTaskData();
   // 탭별 알림 배지 — 서버 데이터는 TanStack Query(useAppData) 단일 소스에서 조립해 navBadges에 넘긴다.
   //  처리(리포트 작성·승인 등) 시 관련 쿼리가 invalidate되면 배지도 함께 갱신됨.
-  const badges = navBadges({ ...useTaskData(), currentRole: role }, role, myInstructorId() ?? undefined);
-  // 강사/학생 역할은 백엔드 자원에서 대표 인물명을 가져와 표시(참조 무결성: 역할↔표시 일치)
-  const resources = useScheduleResources().data;
-  const people = { instructor: resources?.instructors[0]?.name, student: resources?.students[0]?.name };
-  // 직책이 아니라 실제 이름. 로그인 계정 우선, 초기 hydrate 전에는 역할 기본 라벨.
-  const fallbackName =
-    role === "instructor" ? people.instructor ?? "강사"
-      : role === "student" ? people.student ?? "학생"
-        : role === "parent" ? "최영희"
-          : role === "manager" ? "이지원"
-            : "김민수"; // super_admin / admin
-  const identity = { name: currentAccount?.name ?? fallbackName };
+  const badges = role
+    ? navBadges({ ...taskData, currentRole: role }, role, access.instructorId ?? undefined)
+    : {};
 
   // 좌측 네비 접기/펴기 — 화면 가로 비율 조절. 선택값은 typed preference storage에 보존.
-  const [collapsed, setCollapsed] = useState(false);
-  useEffect(() => {
-    setCollapsed(readPreference(preferenceKeys.uiSidebarCollapsed, false, booleanPreferenceCodec, { legacyKeys: ["sidebarCollapsed"] }));
-  }, []);
-  const toggle = () => {
-    setCollapsed((v) => {
-      const next = !v;
-      writePreference(preferenceKeys.uiSidebarCollapsed, next, booleanPreferenceCodec);
-      return next;
-    });
-  };
+  const [collapsed, setCollapsed] = usePersistedState(
+    preferenceKeys.uiSidebarCollapsed,
+    false,
+    booleanPreferenceCodec,
+    SIDEBAR_PREFERENCE_OPTIONS,
+  );
+  const toggle = () => setCollapsed((value) => !value);
+
+  if (!role || !currentAccount) return null;
 
   return (
     <aside className={`${collapsed ? "w-14" : "w-14 sm:w-60"} shrink-0 border-r flex flex-col bg-canvas transition-[width] duration-200`}>
@@ -114,7 +105,7 @@ export default function Sidebar() {
       )}
 
       <nav className="flex-1 overflow-y-auto py-3">
-        {(isCEO(role)
+        {(access.can("signup.decide")
           ? [...groups, { title: "경영", items: [{ label: "경영 지표", icon: IconReceipt, href: "/insights" }] }]
           : groups
         )
@@ -122,8 +113,8 @@ export default function Sidebar() {
           .map((g) => ({
             ...g,
             items: g.items.filter((it: Item) =>
-              (!it.adminOnly || isAdmin(role)) &&
-              (!it.financeOnly || canAccessFinance(role) || (it.instructorVisible && role === "instructor")),
+              (!it.adminOnly || access.can("admin.area")) &&
+              (!it.financeOnly || access.can("finance.access") || (it.instructorVisible && access.can("instructor.self"))),
             ),
           }))
           .filter((g) => g.items.length > 0)
@@ -163,12 +154,12 @@ export default function Sidebar() {
       </nav>
 
       <div className={`border-t flex items-center ${collapsed ? "justify-center p-3" : "justify-center p-3 sm:justify-start sm:gap-2.5"}`}>
-        <div className="w-7 h-7 rounded-full bg-neutral-subtle grid place-items-center text-caption font-semibold text-fg-muted shrink-0" title={collapsed ? `${identity.name} · ${roleLabel[role]}` : undefined}>
-          {identity.name.slice(0, 1)}
+        <div className="w-7 h-7 rounded-full bg-neutral-subtle grid place-items-center text-caption font-semibold text-fg-muted shrink-0" title={collapsed ? `${currentAccount.name} · ${roleLabel[role]}` : undefined}>
+          {currentAccount.name.slice(0, 1)}
         </div>
         {!collapsed && (
           <div className="hidden leading-tight flex-1 sm:block">
-            <div className="text-body font-medium">{identity.name}</div>
+            <div className="text-body font-medium">{currentAccount.name}</div>
             <div className="text-micro text-fg-subtle">{roleLabel[role]}</div>
           </div>
         )}

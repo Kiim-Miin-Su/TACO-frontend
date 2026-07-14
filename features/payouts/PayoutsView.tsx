@@ -2,13 +2,12 @@
 import Link from 'next/link';
 import { Fragment, useCallback, useState } from 'react';
 import { Badge, EmptyState, Field, PageHeader, PromptModal, SectionCard, TableWrap, type Tone } from '@/components/ui';
-import { useTacoStore } from '@/lib/store';
 import {
   useSchedule, useCourses, useSubjects, useEnrollments, useStudents,
   useInstructors, usePayouts, usePayoutPreview, useMyPayouts, useMyPayoutPreview,
   useGeneratePayout, useConfirmPayout, usePayPayout, useAdjustPayout, useRejectPayout,
 } from '@/lib/queries';
-import { canAccessFinance } from '@/lib/roles';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 import { won } from '@/lib/format';
 import type { PayoutRow, PayoutRowStatus, PayoutLine } from '@/lib/api';
 import { ReasonModal } from '@/components/ReasonModal';
@@ -33,9 +32,9 @@ const monthRange = () => {
 };
 
 export function PayoutsView() {
-  const role = useTacoStore((s) => s.currentRole);
-  const finance = canAccessFinance(role);
-  const instructorSelf = role === 'instructor';
+  const access = useAccountAccess();
+  const finance = access.can('finance.access');
+  const instructorSelf = access.can('instructor.self');
   // 정산 근거를 사람이 읽을 수 있게 — 세션→시각, 코스→과목, 코스→수강 학생 조인(Query 훅).
   const { data: classSessions = [] } = useSchedule();
   const { data: courses = [] } = useCourses();

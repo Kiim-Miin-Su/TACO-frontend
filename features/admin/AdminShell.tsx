@@ -1,17 +1,17 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useTacoStore } from '@/lib/store';
-import { isAdmin, roleLabel } from '@/lib/roles';
+import { roleLabel } from '@/lib/roles';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 
 // 관리자 전용 가드 (매니저/관리자/대표만)
 export function AdminGuard({ children }: { children: React.ReactNode }) {
-  const role = useTacoStore((s) => s.currentRole);
-  if (!isAdmin(role)) {
+  const { role, can } = useAccountAccess();
+  if (!can('admin.area')) {
     return (
       <div className="p-6 max-w-[760px] mx-auto">
         <div className="card card-pad text-section text-fg-muted">
-          관리자 전용 화면입니다. 현재 역할: <b>{roleLabel[role]}</b>
+          관리자 전용 화면입니다. 현재 역할: <b>{role ? roleLabel[role] : '확인되지 않음'}</b>
         </div>
       </div>
     );

@@ -10,8 +10,7 @@ import {
   useStudents, useEnrollments, useCourses, useParentStudents, useParents,
   useAttendance, useReports, usePayments, useCounselForms,
 } from '@/lib/queries';
-import { useTacoStore } from '@/lib/store';
-import { canAccessFinance } from '@/lib/roles';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 import { STUDENT_STATUS_LABEL, STUDENT_STATUS_TONE } from '@/lib/domain/students';
 import { won, shortDate } from '@/lib/format';
 import { CountryBadge } from '@/features/calendar/CountryInput';
@@ -23,7 +22,7 @@ const enrollTone: Record<EnrollmentStatus, Tone> = { active: 'success', paused: 
 const enrollLabel: Record<EnrollmentStatus, string> = { active: '수강중', paused: '일시정지', completed: '수료', canceled: '취소' };
 
 export function StudentDetailView({ studentId }: { studentId: number }) {
-  const finance = canAccessFinance(useTacoStore((s) => s.currentRole));
+  const finance = useAccountAccess().can('finance.access');
   const { data: students = [], isLoading } = useStudents();
   const { data: enrollments = [] } = useEnrollments();
   const { data: courses = [] } = useCourses();

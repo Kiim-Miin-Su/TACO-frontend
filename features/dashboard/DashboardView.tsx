@@ -15,11 +15,10 @@ import {
 } from '@/components/ui';
 import Link from 'next/link';
 import { won, shortDate } from '@/lib/format';
-import { useTacoStore } from '@/lib/store';
 import { useAppData, useScheduleRequests } from '@/lib/queries';
-import { isCEO, isAdmin, roleLabel } from '@/lib/roles';
+import { roleLabel } from '@/lib/roles';
 import { buildTasks, type TaskItem } from '@/lib/tasks';
-import { myInstructorId } from '@/lib/auth';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 import { InstructorAttendanceSummary } from './InstructorAttendanceSummary';
 import type { EnrollmentStatus } from '@/types';
 import type { ScheduleRequestEx } from '@/lib/api';
@@ -140,12 +139,13 @@ function InstructorRequestStatusPanel({ courseName, instructorName }: { courseNa
 
 export function DashboardView() {
   // [참조/처리] 서버 데이터(수강·학생·코스 등)는 TanStack Query(useAppData) 단일 소스.
-  //  currentRole은 zustand(클라 상태)에서 별도로 읽어 buildTasks에 합성해 넘긴다.
+  //  권한과 강사 식별자는 `/auth/me` 검증 계정에서 파생한다.
   const appData = useAppData();
-  const role = useTacoStore((s) => s.currentRole);
-  const ceo = isCEO(role); // 경영 지표(총액·미수금·원장)
-  const admin = isAdmin(role); // 운영 데이터
-  const { items: tasks, count: taskCount } = buildTasks({ ...appData, currentRole: role }, role, myInstructorId() ?? undefined);
+  const access = useAccountAccess();
+  const role = access.role ?? 'instructor';
+  const ceo = access.can('finance.access');
+  const admin = access.can('admin.area');
+  const { items: tasks, count: taskCount } = buildTasks({ ...appData, currentRole: role }, role, access.instructorId ?? undefined);
 
   // 강사: 내 수업·리포트 중심 To-do 대시보드
   if (role === 'instructor') {

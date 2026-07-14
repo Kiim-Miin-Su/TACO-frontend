@@ -7,7 +7,7 @@ import { create } from 'zustand';
 import type { AccountRole } from '@/types';
 
 type TacoState = {
-  // JWT에서 파생한 현재 사용자 표시 상태. 서버 권한의 진실원은 여전히 서명된 JWT다.
+  // currentRole은 레거시 표시 호환값이다. 권한/query scope는 `/auth/me` 검증 뒤 currentAccount만 사용한다.
   currentRole: AccountRole;
   currentAccount: { id: number; name: string; role: AccountRole } | null;
   currentStudentId: number;

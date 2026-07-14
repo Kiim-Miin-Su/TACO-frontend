@@ -7,8 +7,7 @@ import { Badge, ConfirmModal, EmptyState, PageHeader, SectionCard, StatusDot, Ta
 import { useStudents, useEnrollments, useCourses, useParentStudents, useParents, useRemoveStudent } from "@/lib/queries";
 import { isActiveStudent, activeCourseNamesOf, STUDENT_STATUS_LABEL as label, STUDENT_STATUS_TONE } from "@/lib/domain/students";
 import { CountryBadge } from "@/features/calendar/CountryInput";
-import { useTacoStore } from "@/lib/store";
-import { isAdmin } from "@/lib/roles";
+import { useAccountAccess } from "@/lib/useAccountAccess";
 import type { Student } from "@/types";
 import { StudentForm } from "./StudentForm";
 import { useState } from "react";
@@ -16,7 +15,7 @@ import { useState } from "react";
 
 export function StudentsView() {
   // [TBO-20 M1] 학생 등록·퇴원 = 관리자 전용(BE students POST/DELETE=ADMIN 정합). 강사엔 쓰기 버튼 숨김(403 방지).
-  const admin = isAdmin(useTacoStore((s) => s.currentRole));
+  const admin = useAccountAccess().can("admin.area");
   const { data: students = [] } = useStudents();
   const { data: enrollments = [] } = useEnrollments();
   const { data: courses = [] } = useCourses();

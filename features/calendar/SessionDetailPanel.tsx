@@ -4,7 +4,7 @@
 //  - 속성 변경(색·상태·강의실·메모)은 부모 requestChange 경유 → PATCH /schedule/:id
 //    (반복 시리즈면 부모가 범위(scope) 확인 → 관련 조인·시수 무효화는 백엔드+쿼리 invalidate가 담당).
 //  - 더블클릭 상세편집 모달은 유지 — "상세 편집" 버튼으로도 진입(onOpenModal).
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import type { Room, ScheduleRow } from "@/types";
 import type { SchedulePatchBody } from "@/lib/api";
@@ -37,8 +37,8 @@ export function SessionDetailPanel({
   // [R-6] audit 행위자 id → 이름(강사면 이름, 그 외 관리자). 강사 식별자 통일(id=users.id).
   const actorName = (id: number) => allInstructors.find((i) => Number(i.id) === id)?.name ?? `관리자 #${id}`;
   // 편집 모드(TBO-10 #3): DetailModal과 동일한 SessionEditFields 공통 폼 — 모든 input 편집 가능.
-  const [editing, setEditing] = useState(false);
-  useEffect(() => setEditing(false), [row?.id]); // 선택 세션 변경 시 보기 모드로
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const editing = row != null && editingId === row.id;
 
   if (!row) {
     return (
@@ -68,8 +68,8 @@ export function SessionDetailPanel({
             rooms={rooms}
             instructors={instructors}
             compact
-            onSave={(patch, label) => { setEditing(false); onPatch(row, patch, label); }}
-            onCancel={() => setEditing(false)}
+            onSave={(patch, label) => { setEditingId(null); onPatch(row, patch, label); }}
+            onCancel={() => setEditingId(null)}
             onDelete={onDelete ? () => onDelete(row) : undefined}
           />
         ) : (
@@ -151,7 +151,7 @@ export function SessionDetailPanel({
         {/* [QA 2026-07-03] 좁은 우측 패널(w-64)에서 버튼 2개가 카드 밖으로 밀리던 오버플로 — flex-wrap 허용 */}
         <div className="flex justify-between gap-2 flex-wrap">
           {canEdit ? (
-            <button className="btn btn-sm btn-primary" onClick={() => setEditing(true)}>
+            <button className="btn btn-sm btn-primary" onClick={() => setEditingId(row.id)}>
               편집 — 모든 항목
             </button>
           ) : (
