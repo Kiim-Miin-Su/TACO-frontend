@@ -27,9 +27,11 @@ export default function Topbar() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const logout = () => {
+  const logout = async () => {
     // [TBO-28B] 보안 이벤트 기록(auth_events) — best-effort(실패해도 로그아웃 진행).
-    api.auth.logout().catch(() => undefined);
+    //  [28F QA 수정] clearToken을 먼저/동기로 실행하면 요청 인터셉터가 토큰을 읽기 전에 지워져
+    //  POST /auth/logout이 401로 미기록됐다 → 기록을 await한 뒤 토큰을 폐기한다.
+    try { await api.auth.logout(); } catch { /* 백엔드 미기동 등 — 로그아웃은 계속 */ }
     clearToken();
     setCurrentAccount(null);
     queryClient.clear(); // 다음 로그인 사용자가 이전 역할의 scoped cache를 보지 않도록 정리
