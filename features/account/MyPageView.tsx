@@ -2,88 +2,19 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Badge, EmptyState, Field, ModalShell, PageHeader, SectionCard, TableWrap } from "@/components/ui";
-import type { MyProfile } from "@/lib/api";
+import { Badge, EmptyState, PageHeader, SectionCard, TableWrap } from "@/components/ui";
 import {
-  buildProfileChangePayload,
   formatProfileDate,
   PROFILE_STATUS_LABEL,
   PROFILE_STATUS_TONE,
   profileRequestedSummary,
-  type ProfileChangeDraft,
 } from "@/lib/domain/profile";
 import { roleLabel } from "@/lib/roles";
-import { useCreateProfileChangeRequest, useMyProfile, useMyProfileChangeRequests } from "@/lib/queries";
+import { useMyProfile, useMyProfileChangeRequests } from "@/lib/queries";
+// [TBO-29B-4 V3] 변경 요청 모달은 인증 stepper 포함 별도 컴포넌트로 분리(단일 책임).
+import ProfileChangeModal from "./ProfileChangeModal";
 
 const valueOrDash = (value?: string | null) => value?.trim() || "—";
-
-function ProfileChangeModal({ profile, onClose, onCreated }: { profile: MyProfile; onClose: () => void; onCreated: () => void }) {
-  const createRequest = useCreateProfileChangeRequest();
-  const [draft, setDraft] = useState<ProfileChangeDraft>({
-    name: profile.name,
-    phone: profile.phone ?? "",
-    countryCode: profile.countryCode ?? "",
-    timeZone: profile.timeZone ?? "",
-    reason: "",
-  });
-  const [error, setError] = useState<string | null>(null);
-  const set = (field: keyof ProfileChangeDraft, value: string) => setDraft((current) => ({ ...current, [field]: value }));
-
-  function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    const result = buildProfileChangePayload(profile, draft);
-    if (!result.payload) {
-      setError(result.error ?? "변경 내용을 확인해 주세요.");
-      return;
-    }
-    createRequest.mutate(result.payload, {
-      onSuccess: onCreated,
-      onError: (caught) => {
-        const apiError = caught as { response?: { data?: { message?: string | string[] } } };
-        const message = apiError.response?.data?.message;
-        setError(Array.isArray(message) ? message.join(" ") : message ?? "프로필 변경을 요청하지 못했습니다.");
-      },
-    });
-  }
-
-  return (
-    <ModalShell
-      title="프로필 변경 요청"
-      size="md"
-      onClose={onClose}
-      footer={(
-        <>
-          <button type="button" className="btn btn-sm" onClick={onClose} disabled={createRequest.isPending}>취소</button>
-          <button type="submit" form="profile-change-form" className="btn btn-sm btn-primary" disabled={createRequest.isPending}>
-            {createRequest.isPending ? "요청 중..." : "변경 요청"}
-          </button>
-        </>
-      )}
-    >
-      <form id="profile-change-form" className="grid grid-cols-1 sm:grid-cols-2 gap-3" onSubmit={submit}>
-        <Field label="이름">
-          <input className="input w-full" data-modal-autofocus="true" required maxLength={50} value={draft.name} onChange={(event) => set("name", event.target.value)} />
-        </Field>
-        <Field label="연락처">
-          <input className="input w-full" type="tel" maxLength={20} value={draft.phone} onChange={(event) => set("phone", event.target.value)} />
-        </Field>
-        <Field label="국가 코드" hint="국가/권역 코드 (예: KR, US-W)">
-          <input className="input w-full uppercase" inputMode="text" maxLength={8} value={draft.countryCode} onChange={(event) => set("countryCode", event.target.value.toUpperCase())} />
-        </Field>
-        <Field label="시간대" hint="IANA 시간대 (예: Asia/Seoul)">
-          <input className="input w-full" maxLength={64} value={draft.timeZone} onChange={(event) => set("timeZone", event.target.value)} />
-        </Field>
-        <div className="sm:col-span-2">
-          <Field label="변경 사유">
-            <textarea className="input w-full min-h-24 resize-y" required maxLength={500} value={draft.reason} onChange={(event) => set("reason", event.target.value)} />
-          </Field>
-        </div>
-        {error && <p className="sm:col-span-2 text-body text-danger" role="alert">{error}</p>}
-      </form>
-    </ModalShell>
-  );
-}
 
 export default function MyPageView() {
   const profileQuery = useMyProfile();

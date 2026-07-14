@@ -259,6 +259,7 @@ export type MyProfile = {
 };
 export type ProfileChangeFields = {
   name?: string;
+  email?: string; // [TBO-29B-4] 이메일 변경 — 사전 인증(challenge) 필수, 비우기 불가
   phone?: string | null;
   countryCode?: string | null;
   timeZone?: string | null;
@@ -278,7 +279,29 @@ export type ProfileChangeRequest = {
   createdAt: string;
   updatedAt: string;
 };
-export type CreateProfileChangeRequestBody = ProfileChangeFields & { reason: string };
+// [TBO-29B-4] 모든 프로필 변경 요청은 현재 비밀번호 재확인 필수. 연락처(email/phone 채움) 변경은
+//  verified challenge id를 함께 보내 서버 tx 안에서 일회 소비된다.
+export type CreateProfileChangeRequestBody = ProfileChangeFields & {
+  reason: string;
+  currentPassword: string;
+  verificationChallengeId?: number;
+};
+// [TBO-29B-4] 연락처 인증 challenge — 응답은 masked target·상태·만료·재전송 시각만(§6).
+export type ProfileVerificationChannel = "email" | "sms";
+export type ProfileVerification = {
+  id: number;
+  channel: ProfileVerificationChannel;
+  maskedTarget: string;
+  status: "pending" | "verified" | "consumed" | "expired" | "locked";
+  expiresAt: string;
+  resendAvailableAt: string;
+  attemptsLeft?: number;
+};
+export type CreateProfileVerificationBody = {
+  currentPassword: string;
+  channel: ProfileVerificationChannel;
+  target: string;
+};
 // GET /users is the admin comparison source. New profile fields are optional while older servers roll forward.
 export type UserProfileSummary = Omit<MyProfile, "profileVersion"> & {
   profileVersion?: number;
@@ -422,6 +445,15 @@ export const api = {
       http.post<ProfileChangeRequest>(`/profile-change-requests/${id}/approve`, {}).then((r) => r.data),
     reject: (id: number, reason: string) =>
       http.post<ProfileChangeRequest>(`/profile-change-requests/${id}/reject`, { reason }).then((r) => r.data),
+  },
+  // [TBO-29B-4] 연락처 재인증 challenge — 발송(현재 비밀번호 재확인)·코드 확인(5회 잠금)·재전송(60초 cooldown).
+  profileVerifications: {
+    create: (body: CreateProfileVerificationBody) =>
+      http.post<ProfileVerification>("/profile-verifications", body).then((r) => r.data),
+    confirm: (id: number, code: string) =>
+      http.post<ProfileVerification>(`/profile-verifications/${id}/confirm`, { code }).then((r) => r.data),
+    resend: (id: number) =>
+      http.post<ProfileVerification>(`/profile-verifications/${id}/resend`, {}).then((r) => r.data),
   },
   // ── 스케줄(v5) ──
   schedule: {

@@ -459,6 +459,12 @@ export const useAdjustPayout = () =>
 export const useCreateProfileChangeRequest = () =>
   useMutation({ mutationFn: api.profileChangeRequests.create, onSuccess: useInvalidator([qk.profileChangeRequests.all]) });
 
+// [TBO-29B-4] 연락처 인증 challenge — 서버에 조회(GET)가 없는 모달-로컬 상태라 무효화 대상 쿼리 없음.
+export const useCreateProfileVerification = () => useMutation({ mutationFn: api.profileVerifications.create });
+export const useConfirmProfileVerification = () =>
+  useMutation({ mutationFn: (v: { id: number; code: string }) => api.profileVerifications.confirm(v.id, v.code) });
+export const useResendProfileVerification = () => useMutation({ mutationFn: api.profileVerifications.resend });
+
 const profileDecisionKeys = [qk.profileChangeRequests.all, qk.profile.all, qk.users.all, qk.schedule.all];
 export const useApproveProfileChangeRequest = () =>
   useMutation({ mutationFn: api.profileChangeRequests.approve, onSuccess: useInvalidator(profileDecisionKeys) });

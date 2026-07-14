@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MyProfile, ProfileChangeRequest } from "@/lib/api";
-import { buildProfileChangePayload, profileRequestDiff, profileRequestedSummary } from "./profile";
+import { buildProfileChangePayload, contactVerificationPlanOf, profileRequestDiff, profileRequestedSummary } from "./profile";
 
 const profile: MyProfile = {
   id: 7,
@@ -27,22 +27,55 @@ const request: ProfileChangeRequest = {
   updatedAt: "2026-07-14T01:00:00.000Z",
 };
 
+const baseDraft = {
+  name: profile.name,
+  email: profile.email ?? "",
+  phone: profile.phone ?? "",
+  countryCode: profile.countryCode ?? "",
+  timeZone: profile.timeZone ?? "",
+  reason: "변경 사유입니다",
+};
+
 describe("buildProfileChangePayload", () => {
   it("sends only changed flat fields and trims the required reason", () => {
     const result = buildProfileChangePayload(profile, {
-      name: profile.name,
+      ...baseDraft,
       phone: " 010-9999-0000 ",
       countryCode: "kr",
-      timeZone: profile.timeZone ?? "",
       reason: "  연락처 변경  ",
     });
     expect(result).toEqual({ payload: { phone: "010-9999-0000", reason: "연락처 변경" } });
   });
 
   it("rejects empty reasons and no-op changes", () => {
-    const unchanged = { name: profile.name, phone: profile.phone ?? "", countryCode: "KR", timeZone: "Asia/Seoul", reason: "" };
+    const unchanged = { ...baseDraft, reason: "" };
     expect(buildProfileChangePayload(profile, unchanged).error).toContain("사유");
     expect(buildProfileChangePayload(profile, { ...unchanged, reason: "변경 없음 확인" }).error).toContain("변경할");
+  });
+
+  // [TBO-29B-4] 이메일 변경 — 소문자 정규화·형식 검증·비우기 금지·phone 동시 변경 금지
+  it("normalizes a changed email to lowercase and validates its format", () => {
+    expect(buildProfileChangePayload(profile, { ...baseDraft, email: " New@TnAcademy.Test " })).toEqual({
+      payload: { email: "new@tnacademy.test", reason: "변경 사유입니다" },
+    });
+    expect(buildProfileChangePayload(profile, { ...baseDraft, email: "broken@" }).error).toContain("이메일 형식");
+    expect(buildProfileChangePayload(profile, { ...baseDraft, email: "" }).error).toContain("비워");
+  });
+
+  it("rejects malformed phones and simultaneous email+phone changes", () => {
+    expect(buildProfileChangePayload(profile, { ...baseDraft, phone: "abc" }).error).toContain("연락처 형식");
+    expect(
+      buildProfileChangePayload(profile, { ...baseDraft, email: "new@tnacademy.test", phone: "010-9999-0000" }).error,
+    ).toContain("하나씩만");
+  });
+});
+
+describe("contactVerificationPlanOf", () => {
+  it("requires a challenge on the new value for email/phone changes, none for clearing or non-contact fields", () => {
+    expect(contactVerificationPlanOf({ email: "new@tnacademy.test", reason: "r" })).toEqual({ channel: "email", target: "new@tnacademy.test" });
+    expect(contactVerificationPlanOf({ phone: "010-9999-0000", reason: "r" })).toEqual({ channel: "sms", target: "010-9999-0000" });
+    expect(contactVerificationPlanOf({ phone: null, reason: "r" })).toBeNull();
+    expect(contactVerificationPlanOf({ name: "박지훈", timeZone: "Asia/Seoul", reason: "r" })).toBeNull();
   });
 });
 
