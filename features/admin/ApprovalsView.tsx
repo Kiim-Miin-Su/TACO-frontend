@@ -306,7 +306,7 @@ export function ApprovalsView() {
       <div className="p-6 max-w-page mx-auto space-y-6">
         <AdminHeader />
         <div className="card card-pad text-section text-fg-muted">
-          🔒 승인 센터는 <b>관리자</b> 전용입니다. 현재 역할: {roleLabel[roleForAccess]} — 우측 상단에서 전환하세요.
+          승인 센터는 <b>관리자</b> 전용입니다. 현재 역할: {roleLabel[roleForAccess]}
         </div>
       </div>
     );

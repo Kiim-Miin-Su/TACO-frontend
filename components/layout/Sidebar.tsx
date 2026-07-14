@@ -52,16 +52,16 @@ const groups: { title: string; items: Item[] }[] = [
       { label: "출석부", icon: IconReport, href: "/attendance" }, // LMS형 회차×학생 매트릭스(2026-07-03)
       { label: "수업 보고서", icon: IconReport, href: "/reports" },
       { label: "관리자", icon: IconGrid, href: "/admin" },
-      { label: "설정", icon: IconSettings, href: "#" },
+      { label: "계정 보안", icon: IconSettings, href: "/account/security" },
     ],
   },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const isActive = (href: string) => href !== "#" && (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  const isActive = (href: string) => href === "/" ? pathname === "/" : pathname.startsWith(href);
 
-  // 현재 역할(데모 컨텍스트 — Topbar에서 전환)은 zustand(클라 상태).
+  // 현재 역할/계정 표시는 로그인 JWT에서 AppShell이 동기화한 클라이언트 상태다.
   const role = useTacoStore((s) => s.currentRole);
   const currentAccount = useTacoStore((s) => s.currentAccount);
   // 탭별 알림 배지 — 서버 데이터는 TanStack Query(useAppData) 단일 소스에서 조립해 navBadges에 넘긴다.
@@ -70,14 +70,14 @@ export default function Sidebar() {
   // 강사/학생 역할은 백엔드 자원에서 대표 인물명을 가져와 표시(참조 무결성: 역할↔표시 일치)
   const resources = useScheduleResources().data;
   const people = { instructor: resources?.instructors[0]?.name, student: resources?.students[0]?.name };
-  // 직책이 아니라 실제 이름. 토큰 우선 → 강사/학생은 백엔드 인물 → 데모 이름.
-  const demoName =
+  // 직책이 아니라 실제 이름. 로그인 계정 우선, 초기 hydrate 전에는 역할 기본 라벨.
+  const fallbackName =
     role === "instructor" ? people.instructor ?? "강사"
       : role === "student" ? people.student ?? "학생"
         : role === "parent" ? "최영희"
           : role === "manager" ? "이지원"
             : "김민수"; // super_admin / admin
-  const identity = { name: currentAccount?.name ?? demoName };
+  const identity = { name: currentAccount?.name ?? fallbackName };
 
   // 좌측 네비 접기/펴기 — 화면 가로 비율 조절. 선택값은 typed preference storage에 보존.
   const [collapsed, setCollapsed] = useState(false);

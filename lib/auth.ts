@@ -7,6 +7,7 @@ export interface TokenClaims {
   roles: string[]; // user_roles
   exp: number; // epoch seconds
   iat: number;
+  mustChangePassword?: boolean;
 }
 
 export function decodeToken(token: string): TokenClaims | null {

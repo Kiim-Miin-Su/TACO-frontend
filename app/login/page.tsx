@@ -7,8 +7,6 @@ import { api } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { useTacoStore } from "@/lib/store";
 import { AuthShell, AuthField } from "@/components/auth/AuthShell";
-import { DEMO_SWITCHER_ENABLED, DEV_ACCOUNTS } from "@/lib/dev-accounts";
-import { roleLabel } from "@/lib/roles";
 import type { AccountRole } from "@/types";
 
 function LoginForm() {
@@ -34,7 +32,7 @@ function LoginForm() {
       setCurrentRole(accountRole);
       setCurrentAccount({ id: res.account.id, name: res.account.name, role: accountRole });
       queryClient.clear(); // 로그인 계정/권한 변경 — 이전 역할의 서버 캐시 폐기
-      router.replace(params.get("redirect") || "/");
+      router.replace(res.account.mustChangePassword ? "/account/security" : params.get("redirect") || "/");
     } catch (e) {
       const ax = e as { response?: { data?: { message?: string } } };
       setErr(ax.response?.data?.message ?? "로그인에 실패했습니다.");
@@ -61,34 +59,7 @@ function LoginForm() {
         <Link href="/signup" className="font-medium text-accent hover:underline">가입 신청 →</Link>
       </div>
 
-      {/* [TBO-28B] 테스트 계정 퀵셀렉트 — NEXT_PUBLIC_ENABLE_DEMO_ACCOUNT_SWITCHER=true(개발)에서만.
-          production 빌드에서는 블록·데모 비밀번호 문자열이 번들에서 제거된다. */}
-      {DEMO_SWITCHER_ENABLED && DEV_ACCOUNTS.length > 0 && (
-      <div className="border-t pt-3 border-line-muted">
-        <div className="text-caption font-medium text-fg-muted mb-2">테스트 계정</div>
-        <div className="overflow-hidden rounded-md border border-line-muted">
-          {DEV_ACCOUNTS.map((d) => (
-            <button
-              key={d.webId}
-              type="button"
-              onClick={() => { setWebId(d.webId); setPassword(d.password); }}
-              className="grid w-full grid-cols-[64px_1fr] gap-x-3 border-b border-line-muted px-3 py-2 text-left text-caption last:border-b-0 hover:bg-canvas-subtle"
-              title={`${d.webId} / ${d.password}`}
-            >
-              <span className="font-medium text-fg-muted">{roleLabel[d.role]}</span>
-              <span className="min-w-0">
-                <span className="block font-medium text-fg">{d.name}</span>
-                <span className="block text-fg-subtle">
-                  ID <span className="mono text-fg-muted">{d.webId}</span>
-                  <span className="px-1.5">·</span>
-                  PW <span className="mono text-fg-muted">{d.password}</span>
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-      )}
+      {/* [TBO-29] 테스트 계정 퀵셀렉트는 폐지. 모든 사용자는 자신의 자격증명으로 로그인한다. */}
     </AuthShell>
   );
 }

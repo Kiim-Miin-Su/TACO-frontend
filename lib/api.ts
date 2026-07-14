@@ -240,7 +240,8 @@ http.interceptors.response.use(
 );
 
 export type LoginBody = { webId: string; password?: string };
-export type LoginResult = { accessToken: string; account: { id: number; name: string; role: string } };
+export type LoginResult = { accessToken: string; account: { id: number; name: string; role: string; mustChangePassword: boolean } };
+export type ChangeCredentialsBody = { currentPassword: string; newWebId?: string; newPassword?: string };
 export type SignupBody = { webId: string; name: string; email: string; password: string; role?: string };
 export type SignupResult = { ok: boolean; message: string; account: { id: number; webId: string; name: string; role: string; status: string }; devVerifyLink?: string };
 export type PendingAccount = { id: number; webId: string; name: string; email: string; role: string; status: string; emailVerified: boolean; createdAt: string };
@@ -269,6 +270,10 @@ export const api = {
       http.post<PendingAccount>(`/auth/approve/${id}`, { role, ...(reason ? { reason } : {}) }).then((r) => r.data),
     reject: (id: number, reason: string) =>
       http.post<PendingAccount>(`/auth/reject/${id}`, { reason }).then((r) => r.data),
+  },
+  account: {
+    changeCredentials: (body: ChangeCredentialsBody) =>
+      http.patch<{ id: number; webId: string; name: string; role: string; mustChangePassword: boolean }>("/users/me/credentials", body).then((r) => r.data),
   },
   students: {
     list: () => http.get<Student[]>("/students").then((r) => r.data),
