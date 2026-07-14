@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { IconSearch, IconBell } from '../ui/icons';
 import { useTacoStore } from '@/lib/store';
@@ -9,14 +8,12 @@ import { useTaskData } from '@/lib/queries';
 import { roleLabel } from '@/lib/roles';
 import { buildTasks } from '@/lib/tasks';
 import { api } from '@/lib/api';
-import { clearToken, myInstructorId } from '@/lib/auth';
+import { myInstructorId } from '@/lib/auth';
 
 export default function Topbar() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const currentRole = useTacoStore((s) => s.currentRole);
   const currentAccount = useTacoStore((s) => s.currentAccount);
-  const setCurrentAccount = useTacoStore((s) => s.setCurrentAccount);
 
   // 알림 항목 — 서버 데이터는 TanStack Query(useAppData) 단일 소스에서 조립.
   const { items, count } = buildTasks({ ...useTaskData(), currentRole }, currentRole, myInstructorId() ?? undefined);
@@ -28,10 +25,10 @@ export default function Topbar() {
     //  [28F QA 수정] clearToken을 먼저/동기로 실행하면 요청 인터셉터가 토큰을 읽기 전에 지워져
     //  POST /auth/logout이 401로 미기록됐다 → 기록을 await한 뒤 토큰을 폐기한다.
     try { await api.auth.logout(); } catch { /* 백엔드 미기동 등 — 로그아웃은 계속 */ }
-    clearToken();
-    setCurrentAccount(null);
-    queryClient.clear(); // 다음 로그인 사용자가 이전 역할의 scoped cache를 보지 않도록 정리
-    router.replace('/login');
+    await queryClient.cancelQueries();
+    // /logout route handler가 응답에서 cookie를 만료시킨다. 현재 React tree에서 토큰을 먼저 지우면
+    // active observer가 hard navigation 전에 무토큰 보호 API를 재호출할 수 있다.
+    window.location.replace('/logout');
   };
 
   // [TBO-29] 클라이언트 계정 전환은 폐지했다. 다른 계정은 로그아웃 후 실제 로그인한다.
@@ -46,16 +43,16 @@ export default function Topbar() {
   }, []);
 
   return (
-    <header className="h-14 shrink-0 border-b bg-canvas flex items-center gap-3 px-5">
-      <div className="relative w-80 max-w-[40vw]">
+    <header className="h-14 shrink-0 border-b bg-canvas flex items-center gap-2 px-3 sm:gap-3 sm:px-5">
+      <div className="relative hidden w-80 max-w-[40vw] md:block">
         <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-subtle" />
         <input className="input pl-8" placeholder="학생, 등록, 결제 검색…" aria-label="검색" />
       </div>
       <div className="flex-1" />
       {currentAccount && (
-        <span className="text-caption text-fg-muted" aria-label="로그인 계정">
+        <Link href="/account" className="hidden text-caption text-fg-muted hover:text-fg lg:block" aria-label="로그인 계정 마이 페이지">
           {currentAccount.name} · {roleLabel[currentAccount.role]}
-        </span>
+        </Link>
       )}
       {currentAccount && (
         <button className="btn btn-sm" onClick={logout} title="로그아웃">로그아웃</button>

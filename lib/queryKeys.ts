@@ -50,4 +50,15 @@ export const qk = {
     list: () => ["parents", "list"] as const,
     relations: () => ["parents", "relations"] as const,
   },
+  users: { all: ["users"] as const, list: () => ["users", "list"] as const },
+  profile: {
+    all: ["profile"] as const,
+    me: (scope = "global") => ["profile", "me", scope] as const,
+  },
+  profileChangeRequests: {
+    all: ["profileChangeRequests"] as const,
+    mine: (scope = "global") => ["profileChangeRequests", "mine", scope] as const,
+    list: (scope = "global") => ["profileChangeRequests", "list", scope] as const,
+    detail: (id: number, scope = "global") => ["profileChangeRequests", "detail", scope, id] as const,
+  },
 } as const;

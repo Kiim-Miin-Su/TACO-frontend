@@ -245,6 +245,46 @@ export type ChangeCredentialsBody = { currentPassword: string; newWebId?: string
 export type SignupBody = { webId: string; name: string; email: string; password: string; role?: string };
 export type SignupResult = { ok: boolean; message: string; account: { id: number; webId: string; name: string; role: string; status: string }; devVerifyLink?: string };
 export type PendingAccount = { id: number; webId: string; name: string; email: string; role: string; status: string; emailVerified: boolean; createdAt: string };
+export type MyProfile = {
+  id: number;
+  webId: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  role: string;
+  status: string;
+  countryCode?: string | null;
+  timeZone?: string | null;
+  profileVersion: number;
+};
+export type ProfileChangeFields = {
+  name?: string;
+  phone?: string | null;
+  countryCode?: string | null;
+  timeZone?: string | null;
+};
+export type ProfileChangeRequest = {
+  id: number;
+  requesterId: number;
+  beforeValues: ProfileChangeFields;
+  requestedChanges: ProfileChangeFields;
+  reason: string;
+  baseProfileVersion: number;
+  status: "pending" | "approved" | "rejected";
+  decidedBy?: number;
+  decidedAt?: string;
+  rejectionReason?: string;
+  appliedProfileVersion?: number;
+  createdAt: string;
+  updatedAt: string;
+};
+export type CreateProfileChangeRequestBody = ProfileChangeFields & { reason: string };
+// GET /users is the admin comparison source. New profile fields are optional while older servers roll forward.
+export type UserProfileSummary = Omit<MyProfile, "profileVersion"> & {
+  profileVersion?: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 // [통신 감사 2026-07-03] Authorization은 요청 인터셉터(getToken)가 전 요청에 단일 부착 —
 //  이전의 수동 authHeader(token)는 인터셉터가 덮어써 사실상 무시되던 이중 소스라 제거(통일).
@@ -260,7 +300,7 @@ export const api = {
       http.get<{ ok: boolean; message: string }>("/auth/verify-email", { params: { token } }).then((r) => r.data),
     // 토큰 검증(서버에서 claims 반환)
     me: () =>
-      http.get<{ sub: number; name: string; roles: string[] }>("/auth/me").then((r) => r.data),
+      http.get<{ sub: number; name: string; roles: string[]; mustChangePassword?: boolean }>("/auth/me").then((r) => r.data),
     // [TBO-28B] 로그아웃 — auth_events 보안 기록(베스트에포트 호출, 토큰 폐기는 클라이언트).
     logout: () => http.post<{ ok: boolean }>("/auth/logout", {}).then((r) => r.data),
     // 대표(super_admin) 전용 — 승인 대기 목록·승인·반려
@@ -274,6 +314,7 @@ export const api = {
   account: {
     changeCredentials: (body: ChangeCredentialsBody) =>
       http.patch<{ id: number; webId: string; name: string; role: string; mustChangePassword: boolean }>("/users/me/credentials", body).then((r) => r.data),
+    profile: () => http.get<MyProfile>("/users/me/profile").then((r) => r.data),
   },
   students: {
     list: () => http.get<Student[]>("/students").then((r) => r.data),
@@ -369,6 +410,18 @@ export const api = {
     // web id 존재 확인 (등록 폼 "확인하기")
     exists: (webId: string) =>
       http.get<WebIdCheckResult>("/users/exists", { params: { webId } }).then((r) => r.data),
+    list: () => http.get<UserProfileSummary[]>("/users").then((r) => r.data),
+  },
+  profileChangeRequests: {
+    mine: () => http.get<ProfileChangeRequest[]>("/profile-change-requests/mine").then((r) => r.data),
+    list: () => http.get<ProfileChangeRequest[]>("/profile-change-requests").then((r) => r.data),
+    get: (id: number) => http.get<ProfileChangeRequest>(`/profile-change-requests/${id}`).then((r) => r.data),
+    create: (body: CreateProfileChangeRequestBody) =>
+      http.post<ProfileChangeRequest>("/profile-change-requests", body).then((r) => r.data),
+    approve: (id: number) =>
+      http.post<ProfileChangeRequest>(`/profile-change-requests/${id}/approve`, {}).then((r) => r.data),
+    reject: (id: number, reason: string) =>
+      http.post<ProfileChangeRequest>(`/profile-change-requests/${id}/reject`, { reason }).then((r) => r.data),
   },
   // ── 스케줄(v5) ──
   schedule: {

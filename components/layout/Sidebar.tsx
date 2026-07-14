@@ -51,8 +51,8 @@ const groups: { title: string; items: Item[] }[] = [
     items: [
       { label: "출석부", icon: IconReport, href: "/attendance" }, // LMS형 회차×학생 매트릭스(2026-07-03)
       { label: "수업 보고서", icon: IconReport, href: "/reports" },
-      { label: "관리자", icon: IconGrid, href: "/admin" },
-      { label: "계정 보안", icon: IconSettings, href: "/account/security" },
+      { label: "관리자", icon: IconGrid, href: "/admin", adminOnly: true },
+      { label: "마이 페이지", icon: IconSettings, href: "/account" },
     ],
   },
 ];
@@ -93,18 +93,18 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className={`${collapsed ? "w-14" : "w-60"} shrink-0 border-r flex flex-col bg-canvas transition-[width] duration-200`}>
-      <div className={`h-14 flex items-center border-b ${collapsed ? "justify-center px-0" : "gap-2.5 px-4"}`}>
+    <aside className={`${collapsed ? "w-14" : "w-14 sm:w-60"} shrink-0 border-r flex flex-col bg-canvas transition-[width] duration-200`}>
+      <div className={`h-14 flex items-center border-b ${collapsed ? "justify-center px-0" : "justify-center px-0 sm:justify-start sm:gap-2.5 sm:px-4"}`}>
         <div className="w-7 h-7 rounded-md grid place-items-center text-fg-onemph font-bold text-body bg-[var(--color-fg)] shrink-0">
           <Link href="/">T</Link>
         </div>
         {!collapsed && (
           <>
-            <div className="leading-tight flex-1">
+            <div className="hidden leading-tight flex-1 sm:block">
               <div className="font-semibold text-section">TACO ERP</div>
               <div className="text-micro text-fg-subtle">TnAcademy</div>
             </div>
-            <button onClick={toggle} title="네비 접기" className="w-6 h-6 grid place-items-center rounded text-fg-subtle hover:bg-canvas-subtle text-section">«</button>
+            <button onClick={toggle} title="네비 접기" className="hidden w-6 h-6 place-items-center rounded text-fg-subtle hover:bg-canvas-subtle text-section sm:grid">«</button>
           </>
         )}
       </div>
@@ -128,8 +128,8 @@ export default function Sidebar() {
           }))
           .filter((g) => g.items.length > 0)
           .map((g) => (
-          <div key={g.title} className={`mb-3 ${collapsed ? "px-1.5" : "px-3"}`}>
-            {!collapsed && <div className="px-2 mb-1 text-micro font-semibold uppercase tracking-wide text-fg-subtle">{g.title}</div>}
+          <div key={g.title} className={`mb-3 ${collapsed ? "px-1.5" : "px-1.5 sm:px-3"}`}>
+            {!collapsed && <div className="hidden px-2 mb-1 text-micro font-semibold uppercase tracking-wide text-fg-subtle sm:block">{g.title}</div>}
             {g.items.map((it) => {
               const Icon = it.icon;
               const active = isActive(it.href);
@@ -137,21 +137,22 @@ export default function Sidebar() {
                 <Link
                   key={it.label}
                   href={it.href}
-                  title={collapsed ? it.label : undefined}
-                  className={`relative flex items-center h-8 rounded-md text-body mb-0.5 ${collapsed ? "justify-center px-0" : "gap-2.5 px-2"} ${
+                  title={it.label}
+                  aria-label={it.label}
+                  className={`relative flex items-center h-8 rounded-md text-body mb-0.5 ${collapsed ? "justify-center px-0" : "justify-center px-0 sm:justify-start sm:gap-2.5 sm:px-2"} ${
                     active ? "bg-neutral-subtle font-semibold text-fg" : "text-fg-muted hover:bg-canvas-subtle hover:text-fg"
                   }`}
                 >
                   <Icon className="text-fg-subtle" />
-                  {!collapsed && <span className="flex-1">{it.label}</span>}
+                  {!collapsed && <span className="hidden flex-1 sm:block">{it.label}</span>}
                   {/* 역할별 이벤트 빨간 배지(navBadges). 접힘 상태에선 점만. */}
                   {(badges[it.href] ?? 0) > 0 && (
                     <span
-                      className={`grid place-items-center rounded-full bg-danger text-[10px] font-bold text-white leading-none ${collapsed ? "absolute top-1 right-1 w-2 h-2" : "min-w-[16px] h-[16px] px-1"}`}
+                      className={`grid place-items-center rounded-full bg-danger text-[10px] font-bold text-white leading-none ${collapsed ? "absolute top-1 right-1 w-2 h-2" : "absolute top-1 right-1 w-2 h-2 sm:static sm:min-w-[16px] sm:h-[16px] sm:w-auto sm:px-1"}`}
 
                       title={`${badges[it.href]}건`}
                     >
-                      {collapsed ? "" : badges[it.href]}
+                      <span className={collapsed ? "hidden" : "hidden sm:inline"}>{badges[it.href]}</span>
                     </span>
                   )}
                 </Link>
@@ -161,12 +162,12 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className={`border-t p-3 flex items-center ${collapsed ? "justify-center" : "gap-2.5"}`}>
+      <div className={`border-t flex items-center ${collapsed ? "justify-center p-3" : "justify-center p-3 sm:justify-start sm:gap-2.5"}`}>
         <div className="w-7 h-7 rounded-full bg-neutral-subtle grid place-items-center text-caption font-semibold text-fg-muted shrink-0" title={collapsed ? `${identity.name} · ${roleLabel[role]}` : undefined}>
           {identity.name.slice(0, 1)}
         </div>
         {!collapsed && (
-          <div className="leading-tight flex-1">
+          <div className="hidden leading-tight flex-1 sm:block">
             <div className="text-body font-medium">{identity.name}</div>
             <div className="text-micro text-fg-subtle">{roleLabel[role]}</div>
           </div>

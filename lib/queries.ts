@@ -164,6 +164,28 @@ export const useInstructorAttendanceSummary = (from?: string, to?: string, instr
 };
 export const useRoadmaps = () => useQuery({ queryKey: qk.roadmaps.list(), queryFn: () => api.roadmaps.list() });
 export const useRoadmapCourses = () => useQuery({ queryKey: qk.roadmaps.courses(), queryFn: () => api.roadmaps.courses() });
+export const useUsers = () =>
+  useQuery({ queryKey: qk.users.list(), queryFn: () => api.users.list(), enabled: tokenIsAdmin(), staleTime: CATALOG_STALE });
+export const useMyProfile = () => {
+  const scope = tokenScopeKey();
+  return useQuery({ queryKey: qk.profile.me(scope), queryFn: () => api.account.profile() });
+};
+export const useMyProfileChangeRequests = () => {
+  const scope = tokenScopeKey();
+  return useQuery({ queryKey: qk.profileChangeRequests.mine(scope), queryFn: () => api.profileChangeRequests.mine() });
+};
+export const useProfileChangeRequests = () => {
+  const scope = tokenScopeKey();
+  return useQuery({ queryKey: qk.profileChangeRequests.list(scope), queryFn: () => api.profileChangeRequests.list(), enabled: tokenIsAdmin() });
+};
+export const useProfileChangeRequest = (id: number | null) => {
+  const scope = tokenScopeKey();
+  return useQuery({
+    queryKey: qk.profileChangeRequests.detail(id ?? 0, scope),
+    queryFn: () => api.profileChangeRequests.get(id as number),
+    enabled: tokenIsAdmin() && id != null,
+  });
+};
 
 // 보고서는 store 모델로 매핑해서 반환(배지·리포트 화면이 store 형상 사용).
 export const useReports = () =>
@@ -412,3 +434,15 @@ export const useRejectPayout = () =>
   useMutation({ mutationFn: (v: { id: number; reason?: string }) => api.payouts.reject(v.id, v.reason), onSuccess: useInvalidator([qk.payouts.all, qk.schedule.all]) });
 export const useAdjustPayout = () =>
   useMutation({ mutationFn: (v: { id: number; amount: number; reason?: string }) => api.payouts.adjust(v.id, v.amount, v.reason), onSuccess: useInvalidator([qk.payouts.all]) });
+
+export const useCreateProfileChangeRequest = () =>
+  useMutation({ mutationFn: api.profileChangeRequests.create, onSuccess: useInvalidator([qk.profileChangeRequests.all]) });
+
+const profileDecisionKeys = [qk.profileChangeRequests.all, qk.profile.all, qk.users.all, qk.schedule.all];
+export const useApproveProfileChangeRequest = () =>
+  useMutation({ mutationFn: api.profileChangeRequests.approve, onSuccess: useInvalidator(profileDecisionKeys) });
+export const useRejectProfileChangeRequest = () =>
+  useMutation({
+    mutationFn: (v: { id: number; reason: string }) => api.profileChangeRequests.reject(v.id, v.reason),
+    onSuccess: useInvalidator(profileDecisionKeys),
+  });

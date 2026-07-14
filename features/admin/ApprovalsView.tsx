@@ -19,6 +19,8 @@ import {
   useScheduleRequests,
   useApproveScheduleRequest,
   useRejectScheduleRequest,
+  useProfileChangeRequests,
+  useUsers,
 } from '@/lib/queries';
 import { won } from '@/lib/format';
 import { isAdmin, roleLabel } from '@/lib/roles';
@@ -31,6 +33,7 @@ import { ReasonModal } from '@/components/ReasonModal';
 import { RequestDetailModal } from './RequestDetailModal';
 import { ApprovalItemDetailModal, type ApprovalDetailItem } from './ApprovalItemDetailModal';
 import type { AccountRole } from '@/types';
+import { ProfileChangeRequestsSection } from './ProfileChangeRequestsSection';
 
 const ROLE_OPTS: AccountRole[] = ['instructor', 'manager', 'admin', 'super_admin'];
 
@@ -133,6 +136,8 @@ export function ApprovalsView() {
   const { data: students = [] } = useStudents();
   const { data: classSessions = [] } = useSchedule();
   const { data: courses = [] } = useCourses();
+  const { data: profileChangeRequests = [] } = useProfileChangeRequests();
+  const { data: users = [] } = useUsers();
   const approveReport = useApproveReport();
   const rejectReport = useRejectReport();
   const approveExpense = useApproveExpense();
@@ -158,6 +163,7 @@ export function ApprovalsView() {
   // [C2C-b] 행 클릭 상세 모달(대표 지시) — 승인/반려는 아래 기존 핸들러를 그대로 전달(단일 구현)
   const [detailReq, setDetailReq] = useState<ScheduleRequestEx | null>(null);
   const pendingRequests = scheduleRequests.filter((r) => r.status === 'pending');
+  const pendingProfileRequests = profileChangeRequests.filter((r) => r.status === 'pending');
   // 승인 — 충돌 409면 force 재시도 확인(세션 생성과 동일 규약: 서버 createSession 재검사)
   const onApproveRequest = (r: ScheduleRequestEx) => {
     approveRequest.mutate({ id: r.id }, {
@@ -315,6 +321,12 @@ export function ApprovalsView() {
   // [DESIGN §8] 대기>0 섹션이 위로, 0건 섹션은 하단 축약 스트립 — 빈 카드가 화면을 점유하지 않게.
   // 가입 승인(MemberApprovals)은 자체 페칭 컴포넌트라 정렬 대상에서 제외하고 항상 최상단.
   const sections: { key: string; count: number; node: ReactNode; label: string }[] = [
+    {
+      key: 'profile-requests',
+      count: pendingProfileRequests.length,
+      node: <ProfileChangeRequestsSection requests={pendingProfileRequests} users={users} />,
+      label: '프로필 변경 요청',
+    },
     { key: 'requests', count: pendingRequests.length, node: requestsSection, label: '수업·가용시간 요청' },
     {
       key: 'reports', count: pendingReports.length, label: '수업 보고서',
@@ -414,7 +426,7 @@ export function ApprovalsView() {
         </div>
       )}
 
-      <p className="text-caption text-fg-subtle">수업·가용시간 변경 요청과 보고서는 매니저 이상이 처리하고, 지출·강사 페이·가입 승인은 대표만 처리합니다.</p>
+      <p className="text-caption text-fg-subtle">프로필·수업·가용시간 변경 요청과 보고서는 매니저 이상이 처리하고, 지출·강사 페이·가입 승인은 대표만 처리합니다.</p>
 
       {detailItem && (
         <ApprovalItemDetailModal
