@@ -32,7 +32,12 @@ function LoginForm() {
       setCurrentRole(accountRole);
       setCurrentAccount({ id: res.account.id, name: res.account.name, role: accountRole });
       queryClient.clear(); // 로그인 계정/권한 변경 — 이전 역할의 서버 캐시 폐기
-      router.replace(res.account.mustChangePassword ? "/account/security" : params.get("redirect") || "/");
+      // [2026-07-15 대표 지시 ①] 관리자 계열(승인 권한 보유)은 로그인 직후 승인센터로 —
+      //  시범운영에서 대기 결재(가입·수업 변경·프로필)를 놓치지 않게 기본 랜딩을 승인 큐로 둔다.
+      //  명시적 redirect 파라미터가 있으면 그 목적지를 우선한다(딥링크 보존). 강사는 홈(캘린더 동선).
+      const isApprover = ["super_admin", "admin", "manager"].includes(accountRole);
+      const landing = params.get("redirect") || (isApprover ? "/admin/approvals" : "/");
+      router.replace(res.account.mustChangePassword ? "/account/security" : landing);
     } catch (e) {
       const ax = e as { response?: { data?: { message?: string } } };
       setErr(ax.response?.data?.message ?? "로그인에 실패했습니다.");
