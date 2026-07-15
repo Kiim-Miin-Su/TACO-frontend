@@ -173,6 +173,9 @@ export const useMyProfile = () => {
   const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.profile.me(scope), queryFn: () => api.account.profile() });
 };
+// [E0.5 ④] 국가·시간대 카탈로그 — 참조 데이터라 세션 내 재조회 불필요(CATALOG_STALE).
+export const useCountries = () =>
+  useQuery({ queryKey: qk.catalog.countries(), queryFn: () => api.catalog.countries(), staleTime: CATALOG_STALE });
 export const useMyProfileChangeRequests = () => {
   const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.profileChangeRequests.mine(scope), queryFn: () => api.profileChangeRequests.mine() });
@@ -481,8 +484,9 @@ export const useRejectPayout = () =>
 export const useAdjustPayout = () =>
   useMutation({ mutationFn: (v: { id: number; amount: number; reason?: string }) => api.payouts.adjust(v.id, v.amount, v.reason), onSuccess: useInvalidator([qk.payouts.all]) });
 
+// [E0.5 ①] 대표(super_admin)는 서버가 같은 tx에서 즉시 적용(approved 응답) — 프로필 쿼리도 무효화.
 export const useCreateProfileChangeRequest = () =>
-  useMutation({ mutationFn: api.profileChangeRequests.create, onSuccess: useInvalidator([qk.profileChangeRequests.all]) });
+  useMutation({ mutationFn: api.profileChangeRequests.create, onSuccess: useInvalidator([qk.profileChangeRequests.all, qk.profile.all]) });
 
 // [TBO-29B-4] 연락처 인증 challenge — 서버에 조회(GET)가 없는 모달-로컬 상태라 무효화 대상 쿼리 없음.
 export const useCreateProfileVerification = () => useMutation({ mutationFn: api.profileVerifications.create });

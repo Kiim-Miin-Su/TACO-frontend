@@ -256,10 +256,23 @@ http.interceptors.response.use(
 
 export type LoginBody = { webId: string; password?: string };
 export type LoginResult = { accessToken: string; account: { id: number; name: string; role: string; mustChangePassword: boolean } };
-export type ChangeCredentialsBody = { currentPassword: string; newWebId?: string; newPassword?: string };
-export type SignupBody = { webId: string; name: string; email: string; password: string; role?: string };
+// [E0.5 ⑥] name/email/phone은 첫 로그인 강제 변경(must_change_password)에서만 서버가 허용 —
+//  평시 프로필 변경은 마이 페이지 인증/승인 경로(29B-4)를 지난다.
+export type ChangeCredentialsBody = {
+  currentPassword: string; newWebId?: string; newPassword?: string;
+  name?: string; email?: string; phone?: string;
+};
+// [E0.5 ④b] 가입 폼 확장 — 전화·대학·전공·출생연도(승인 판단 근거, 승인 tx에서 강사 프로필 승계).
+export type SignupBody = {
+  webId: string; name: string; email: string; password: string; role?: string;
+  phone?: string; university?: string; major?: string; birthYear?: number;
+};
 export type SignupResult = { ok: boolean; message: string; account: { id: number; webId: string; name: string; role: string; status: string }; devVerifyLink?: string };
-export type PendingAccount = { id: number; webId: string; name: string; email: string; role: string; status: string; emailVerified: boolean; createdAt: string };
+export type PendingAccount = {
+  id: number; webId: string; name: string; email: string; role: string; status: string; emailVerified: boolean; createdAt: string;
+  // [E0.5 ④b] 지원자 제공 정보 — 승인센터 상세 표시(승인 판단 근거).
+  phone?: string | null; university?: string | null; major?: string | null; birthYear?: number | null;
+};
 export type MyProfile = {
   id: number;
   webId: string;
@@ -278,6 +291,16 @@ export type ProfileChangeFields = {
   phone?: string | null;
   countryCode?: string | null;
   timeZone?: string | null;
+};
+// [E0.5 ④] 국가·시간대 카탈로그 행 — BE countries 표(참조 데이터)와 1:1.
+export type CatalogCountry = {
+  id: number;
+  code: string; // ISO alpha-2 또는 권역 분할 코드(US-W)
+  nameKo: string;
+  nameEn: string;
+  timeZone: string; // 대표 IANA tz
+  flag?: string | null;
+  sortOrder: number;
 };
 export type ProfileChangeRequest = {
   id: number;
@@ -470,6 +493,10 @@ export const api = {
     exists: (webId: string) =>
       http.get<WebIdCheckResult>("/users/exists", { params: { webId } }).then((r) => r.data),
     list: () => http.get<UserProfileSummary[]>("/users").then((r) => r.data),
+  },
+  // [E0.5 ④] 참조 데이터 카탈로그 — 국가·시간대 토글 옵션(자유 입력 폐지)의 단일 소스(DB 권위).
+  catalog: {
+    countries: () => http.get<CatalogCountry[]>("/catalog/countries").then((r) => r.data),
   },
   profileChangeRequests: {
     mine: () => http.get<ProfileChangeRequest[]>("/profile-change-requests/mine").then((r) => r.data),

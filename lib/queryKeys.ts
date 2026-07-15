@@ -62,4 +62,8 @@ export const qk = {
     list: (scope = "global") => ["profileChangeRequests", "list", scope] as const,
     detail: (id: number, scope = "global") => ["profileChangeRequests", "detail", scope, id] as const,
   },
+  // [E0.5 ④] 참조 데이터 카탈로그(국가·시간대) — 계정 무관 전역 캐시.
+  catalog: {
+    countries: () => ["catalog", "countries"] as const,
+  },
 } as const;

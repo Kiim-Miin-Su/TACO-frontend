@@ -7,16 +7,18 @@
 //  상태 분리: 형식 오류 / 발송 중 / cooldown / 만료 / 잘못된 코드 / 잠김 / 인증 완료(요청 등록).
 import { useEffect, useRef, useState } from "react";
 import { Field, ModalShell } from "@/components/ui";
-import type { MyProfile, ProfileVerification } from "@/lib/api";
+import type { MyProfile, ProfileChangeRequest, ProfileVerification } from "@/lib/api";
 import {
   buildProfileChangePayload,
   contactVerificationPlanOf,
+  isValidEmailFormat,
   type ContactVerificationPlan,
   type ProfileChangeDraft,
   type ProfileChangePayload,
 } from "@/lib/domain/profile";
 import {
   useConfirmProfileVerification,
+  useCountries,
   useCreateProfileChangeRequest,
   useCreateProfileVerification,
   useResendProfileVerification,
@@ -59,7 +61,9 @@ const formatClock = (totalSeconds: number): string => {
 
 type VerifyContext = {
   challenge: ProfileVerification;
-  payload: ProfileChangePayload;
+  // [E0.5 ③] payload 없음 = 이메일 필드 옆 버튼으로 진입한 사전 인증 — verified 후 form으로
+  //  복귀해 최종 제출 때 챌린지를 소비한다. payload 있음 = 종전 제출-후-인증 경로(자동 등록).
+  payload?: ProfileChangePayload;
   currentPassword: string;
   plan: NonNullable<ContactVerificationPlan>;
   attemptsLeft: number;
@@ -73,7 +77,8 @@ export default function ProfileChangeModal({
 }: {
   profile: MyProfile;
   onClose: () => void;
-  onCreated: () => void;
+  // [E0.5 ①] 생성 결과를 넘긴다 — 대표(super_admin)는 서버가 즉시 적용해 status가 approved로 온다.
+  onCreated: (request: ProfileChangeRequest) => void;
 }) {
   const createRequest = useCreateProfileChangeRequest();
   const createVerification = useCreateProfileVerification();
@@ -90,6 +95,8 @@ export default function ProfileChangeModal({
   });
   const [currentPassword, setCurrentPassword] = useState("");
   const [verify, setVerify] = useState<VerifyContext | null>(null);
+  // [E0.5 ③] 모달 내 버튼으로 미리 완료해 둔 이메일 인증 — 최종 제출 시 target이 일치하면 소비.
+  const [verifiedChallenge, setVerifiedChallenge] = useState<{ id: number; target: string } | null>(null);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -114,7 +121,7 @@ export default function ProfileChangeModal({
     createRequest.mutate(
       { ...payload, currentPassword: password, ...(verificationChallengeId ? { verificationChallengeId } : {}) },
       {
-        onSuccess: onCreated,
+        onSuccess: (created) => onCreated(created),
         onError: (caught) => setError(apiErrorMessage(caught, "프로필 변경을 요청하지 못했습니다.")),
       },
     );
@@ -139,11 +146,46 @@ export default function ProfileChangeModal({
       submitRequest(payload, currentPassword);
       return;
     }
+    // [E0.5 ③] 모달 내 버튼으로 이미 인증을 끝낸 이메일이면 재인증 없이 바로 등록(챌린지 소비).
+    if (verifiedChallenge && verifiedChallenge.target === plan.target) {
+      submitRequest(payload, currentPassword, verifiedChallenge.id);
+      return;
+    }
     createVerification.mutate(
       { currentPassword, channel: plan.channel, target: plan.target },
       {
         onSuccess: (challenge) => {
           setVerify({ challenge, payload, currentPassword, plan, attemptsLeft: challenge.attemptsLeft ?? 5, locked: false });
+          setCode("");
+          setNotice(null);
+        },
+        onError: (caught) => setError(apiErrorMessage(caught, "인증 코드를 발송하지 못했습니다.")),
+      },
+    );
+  }
+
+  // ── [E0.5 ③] 이메일 필드 옆 버튼: 폼 제출 없이 인증 코드를 즉시 발송(단계 단축) ──
+  function sendEmailCode() {
+    setError(null);
+    setNotice(null);
+    if (!currentPassword) {
+      setError("인증 코드 발송에는 현재 비밀번호가 필요합니다. 먼저 입력해 주세요.");
+      return;
+    }
+    const target = draft.email.trim().toLowerCase();
+    if (!target || !isValidEmailFormat(target)) {
+      setError("인증할 이메일 형식이 올바르지 않습니다.");
+      return;
+    }
+    if (target === (profile.email ?? "").trim().toLowerCase()) {
+      setError("현재 이메일과 동일합니다. 변경할 새 이메일을 입력해 주세요.");
+      return;
+    }
+    createVerification.mutate(
+      { currentPassword, channel: "email", target },
+      {
+        onSuccess: (challenge) => {
+          setVerify({ challenge, currentPassword, plan: { channel: "email", target }, attemptsLeft: challenge.attemptsLeft ?? 5, locked: false });
           setCode("");
           setNotice(null);
         },
@@ -159,8 +201,8 @@ export default function ProfileChangeModal({
     setError(null);
     setNotice(null);
     if (verified) {
-      // 인증은 끝났고 요청 등록만 실패한 경우의 재시도 경로.
-      submitRequest(verify.payload, verify.currentPassword, verify.challenge.id);
+      // 인증은 끝났고 요청 등록만 실패한 경우의 재시도 경로(제출-후-인증 경로에만 존재).
+      if (verify.payload) submitRequest(verify.payload, verify.currentPassword, verify.challenge.id);
       return;
     }
     if (!/^\d{4,10}$/.test(code.trim())) {
@@ -171,6 +213,15 @@ export default function ProfileChangeModal({
       { id: verify.challenge.id, code: code.trim() },
       {
         onSuccess: (challenge) => {
+          // [E0.5 ③] 버튼 경로(payload 없음): form으로 복귀해 최종 제출 때 챌린지를 소비한다.
+          if (!verify.payload) {
+            setVerifiedChallenge({ id: challenge.id, target: verify.plan.target });
+            setVerify(null);
+            setCode("");
+            setError(null);
+            setNotice("이메일 인증 완료 — 나머지 항목을 확인하고 아래 버튼으로 저장하세요.");
+            return;
+          }
           setVerify((current) => (current ? { ...current, challenge } : current));
           setNotice("인증이 완료되었습니다. 변경 요청을 등록합니다...");
           submitRequest(verify.payload, verify.currentPassword, challenge.id);
@@ -219,10 +270,29 @@ export default function ProfileChangeModal({
   }
 
   const channelLabel = verify?.plan.channel === "sms" ? "문자" : "이메일";
+  // [E0.5 ①] 대표(super_admin)는 승인 없이 즉시 적용 — 라벨로 명확히 안내(요청/승인 어휘 제거).
+  const instantApply = profile.role === "super_admin";
+  // [E0.5 ③] 이메일 인증 버튼 상태 — 새 이메일이 입력됐고 아직 인증 전일 때만 발송 가능.
+  const emailTarget = draft.email.trim().toLowerCase();
+  const emailChanged = emailTarget !== (profile.email ?? "").trim().toLowerCase();
+  const emailPreVerified = !!verifiedChallenge && verifiedChallenge.target === emailTarget;
+
+  // [E0.5 ④] 국가·시간대는 카탈로그(DB countries 표) 토글 선택 — 자유 입력 폐지(서버도 동일 검증).
+  const countriesQuery = useCountries();
+  const countries = countriesQuery.data ?? [];
+  const countryInCatalog = !draft.countryCode || countries.some((c) => c.code === draft.countryCode);
+  const tzInCatalog = !draft.timeZone || countries.some((c) => c.timeZone === draft.timeZone);
+  function onCountrySelect(code: string) {
+    setDraft((current) => {
+      const country = countries.find((c) => c.code === code);
+      // 국가 선택 시 대표 시간대 자동 세팅(비우면 시간대는 유지 — 별도 선택 가능).
+      return { ...current, countryCode: code, ...(country ? { timeZone: country.timeZone } : {}) };
+    });
+  }
 
   return (
     <ModalShell
-      title={verify ? `연락처 인증 (${channelLabel})` : "프로필 변경 요청"}
+      title={verify ? `연락처 인증 (${channelLabel})` : instantApply ? "프로필 변경" : "프로필 변경 요청"}
       size="md"
       onClose={onClose}
       footer={
@@ -250,7 +320,11 @@ export default function ProfileChangeModal({
           <>
             <button type="button" className="btn btn-sm" onClick={onClose} disabled={busy}>취소</button>
             <button type="submit" form="profile-change-form" className="btn btn-sm btn-primary" disabled={busy}>
-              {createVerification.isPending ? "인증 코드 발송 중..." : createRequest.isPending ? "요청 중..." : "변경 요청"}
+              {createVerification.isPending
+                ? "인증 코드 발송 중..."
+                : createRequest.isPending
+                  ? (instantApply ? "적용 중..." : "요청 중...")
+                  : (instantApply ? "변경 (즉시 적용)" : "변경 요청")}
             </button>
           </>
         )
@@ -324,24 +398,78 @@ export default function ProfileChangeModal({
           <Field label="이름">
             <input className="input w-full" required maxLength={50} value={draft.name} onChange={(event) => set("name", event.target.value)} />
           </Field>
-          <Field label="이메일" hint="변경 시 새 이메일로 본인 인증이 필요합니다.">
-            <input className="input w-full" type="email" autoComplete="email" maxLength={320} value={draft.email} onChange={(event) => set("email", event.target.value)} />
+          {/* [E0.5 ③] 인증 코드 발송을 필드 옆 버튼으로 — 폼 전체 제출 없이 즉시 인증 시작 */}
+          <Field
+            label="이메일"
+            hint={emailPreVerified ? "새 이메일 인증 완료 — 저장하면 반영됩니다." : "변경 시 새 이메일로 본인 인증이 필요합니다."}
+          >
+            <div className="flex items-center gap-2">
+              <input
+                className="input min-w-0 flex-1"
+                type="email"
+                autoComplete="email"
+                maxLength={320}
+                value={draft.email}
+                onChange={(event) => set("email", event.target.value)}
+              />
+              <button
+                type="button"
+                className="btn btn-sm shrink-0"
+                onClick={sendEmailCode}
+                disabled={busy || !emailChanged || emailPreVerified || !emailTarget}
+                title={emailChanged ? "" : "현재 이메일과 다른 새 이메일을 입력하면 발송할 수 있습니다."}
+              >
+                {emailPreVerified ? "인증 완료" : createVerification.isPending ? "발송 중..." : "인증 코드 발송"}
+              </button>
+            </div>
           </Field>
           {/* [2026-07-15] SMS 인증은 추후 제공 — 형식 검증(010-1234-5678) + 관리자 승인으로 처리 */}
           <Field label="연락처" hint="010-1234-5678 형식 · SMS 인증은 추후 제공 예정(관리자 승인으로 처리)">
             <input className="input w-full" type="tel" autoComplete="tel" maxLength={20} placeholder="010-1234-5678" value={draft.phone} onChange={(event) => set("phone", event.target.value)} />
           </Field>
-          <Field label="국가 코드" hint="국가/권역 코드 (예: KR, US-W)">
-            <input className="input w-full uppercase" inputMode="text" maxLength={8} value={draft.countryCode} onChange={(event) => set("countryCode", event.target.value.toUpperCase())} />
+          {/* [E0.5 ④] 자유 입력 폐지 — 카탈로그 토글 선택(국가 선택 시 시간대 자동 세팅) */}
+          <Field label="국가" hint="선택하면 시간대가 자동 설정됩니다.">
+            <select
+              className="input w-full"
+              value={draft.countryCode}
+              disabled={countriesQuery.isPending}
+              onChange={(event) => onCountrySelect(event.target.value)}
+            >
+              <option value="">선택 안 함</option>
+              {!countryInCatalog && (
+                <option value={draft.countryCode}>{draft.countryCode} (카탈로그 외 — 변경 시 목록에서 선택)</option>
+              )}
+              {countries.map((country) => (
+                <option key={country.code} value={country.code}>
+                  {country.flag ? `${country.flag} ` : ""}{country.nameKo} ({country.code})
+                </option>
+              ))}
+            </select>
           </Field>
-          <Field label="시간대" hint="IANA 시간대 (예: Asia/Seoul)">
-            <input className="input w-full" maxLength={64} value={draft.timeZone} onChange={(event) => set("timeZone", event.target.value)} />
+          <Field label="시간대" hint="카탈로그 시간대 중에서 선택합니다.">
+            <select
+              className="input w-full"
+              value={draft.timeZone}
+              disabled={countriesQuery.isPending}
+              onChange={(event) => set("timeZone", event.target.value)}
+            >
+              <option value="">선택 안 함</option>
+              {!tzInCatalog && (
+                <option value={draft.timeZone}>{draft.timeZone} (카탈로그 외 — 변경 시 목록에서 선택)</option>
+              )}
+              {countries.map((country) => (
+                <option key={country.code} value={country.timeZone}>
+                  {country.timeZone} — {country.nameKo}
+                </option>
+              ))}
+            </select>
           </Field>
           <div className="sm:col-span-2">
             <Field label="변경 사유">
               <textarea className="input w-full min-h-24 resize-y" required maxLength={500} value={draft.reason} onChange={(event) => set("reason", event.target.value)} />
             </Field>
           </div>
+          {notice && <p className="sm:col-span-2 text-caption text-success" role="status">{notice}</p>}
           {error && <p className="sm:col-span-2 text-body text-danger" role="alert">{error}</p>}
         </form>
       )}

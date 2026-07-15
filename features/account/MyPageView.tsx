@@ -92,7 +92,13 @@ export default function MyPageView() {
         <ProfileChangeModal
           profile={profile}
           onClose={() => setEditing(false)}
-          onCreated={() => { setEditing(false); setMessage("프로필 변경 요청을 등록했습니다."); }}
+          // [E0.5 ①] 대표(super_admin)는 서버가 즉시 적용 — 응답 status로 메시지 분기.
+          onCreated={(request) => {
+            setEditing(false);
+            setMessage(request.status === "approved"
+              ? "프로필 변경이 즉시 적용되었습니다."
+              : "프로필 변경 요청을 등록했습니다. 승인 후 반영됩니다.");
+          }}
         />
       )}
     </div>
