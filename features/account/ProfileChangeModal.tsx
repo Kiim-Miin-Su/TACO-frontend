@@ -87,6 +87,7 @@ export default function ProfileChangeModal({
 
   const [draft, setDraft] = useState<ProfileChangeDraft>({
     name: profile.name,
+    webId: profile.webId, // [E0] 아이디 변경 — 승인제(대표는 즉시 적용), 적용 시 재로그인 필요
     email: profile.email ?? "",
     phone: profile.phone ?? "",
     countryCode: profile.countryCode ?? "",
@@ -397,6 +398,13 @@ export default function ProfileChangeModal({
           </div>
           <Field label="이름">
             <input className="input w-full" required maxLength={50} value={draft.name} onChange={(event) => set("name", event.target.value)} />
+          </Field>
+          {/* [E0] 아이디 즉시 변경 폐지 — 승인제(대표는 즉시 적용). 적용되면 기존 로그인이 모두 풀린다. */}
+          <Field
+            label="아이디"
+            hint={instantApply ? "변경 즉시 적용 — 적용 후 다시 로그인해야 합니다." : "변경은 대표 승인 후 적용 — 적용되면 다시 로그인해야 합니다."}
+          >
+            <input className="input w-full mono" autoComplete="username" minLength={3} maxLength={50} value={draft.webId} onChange={(event) => set("webId", event.target.value)} />
           </Field>
           {/* [E0.5 ③] 인증 코드 발송을 필드 옆 버튼으로 — 폼 전체 제출 없이 즉시 인증 시작 */}
           <Field

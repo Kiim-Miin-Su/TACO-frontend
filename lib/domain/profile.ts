@@ -10,6 +10,7 @@ import type { Tone } from "@/components/ui/tokens";
 
 export const PROFILE_FIELD_LABEL: Record<keyof ProfileChangeFields, string> = {
   name: "이름",
+  webId: "아이디", // [E0] 승인제 — 승인 시 재로그인 필요
   email: "이메일",
   phone: "연락처",
   countryCode: "국가 코드",
@@ -28,7 +29,7 @@ export const PROFILE_STATUS_TONE: Record<ProfileChangeRequest["status"], Tone> =
   rejected: "danger",
 };
 
-const PROFILE_FIELDS = ["name", "email", "phone", "countryCode", "timeZone"] as const;
+const PROFILE_FIELDS = ["name", "webId", "email", "phone", "countryCode", "timeZone"] as const;
 export type ProfileField = (typeof PROFILE_FIELDS)[number];
 export type ProfileChangeDraft = Record<ProfileField, string> & { reason: string };
 /** currentPassword·verificationChallengeId는 모달(인증 stepper)이 조립 — 빌더는 필드 diff·형식 검증만 담당. */
@@ -62,10 +63,14 @@ export function buildProfileChangePayload(
     const current = normalize(field, profile[field]);
     if (next !== current) {
       (changes as Record<ProfileField, string | null | undefined>)[field] =
-        field === "name" || field === "email" || next ? next : null;
+        field === "name" || field === "email" || field === "webId" || next ? next : null;
     }
   }
   if (changes.name === "") return { error: "이름은 비워 둘 수 없습니다." };
+  // [E0] 아이디 — 승인제 요청. 서버 최소 규칙(3자)과 동일 1차 방어.
+  if (changes.webId !== undefined && changes.webId !== null && changes.webId.length < 3) {
+    return { error: "아이디는 3자 이상 입력해 주세요." };
+  }
   if (changes.email !== undefined && changes.email === "") return { error: "이메일은 비워 둘 수 없습니다." };
   if (changes.email && !isValidEmailFormat(changes.email)) return { error: "이메일 형식이 올바르지 않습니다." };
   if (changes.phone != null && changes.phone !== "" && !isValidPhoneFormat(changes.phone)) {

@@ -29,6 +29,7 @@ const request: ProfileChangeRequest = {
 
 const baseDraft = {
   name: profile.name,
+  webId: profile.webId, // [E0] 아이디 변경 — 승인제 필드 편입
   email: profile.email ?? "",
   phone: profile.phone ?? "",
   countryCode: profile.countryCode ?? "",
@@ -70,6 +71,14 @@ describe("buildProfileChangePayload", () => {
     expect(
       buildProfileChangePayload(profile, { ...baseDraft, email: "new@tnacademy.test", phone: "010-9999-0000" }).error,
     ).toContain("하나씩만");
+  });
+
+  // [E0] 아이디(webId) — 승인제 요청 필드. 3자 미만 거부·변경 시 diff 포함.
+  it("accepts webId changes (approval path) and rejects too-short ids", () => {
+    expect(buildProfileChangePayload(profile, { ...baseDraft, webId: "new_teacher7" })).toEqual({
+      payload: { webId: "new_teacher7", reason: "변경 사유입니다" },
+    });
+    expect(buildProfileChangePayload(profile, { ...baseDraft, webId: "ab" }).error).toContain("3자");
   });
 });
 

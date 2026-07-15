@@ -93,11 +93,17 @@ export default function MyPageView() {
           profile={profile}
           onClose={() => setEditing(false)}
           // [E0.5 ①] 대표(super_admin)는 서버가 즉시 적용 — 응답 status로 메시지 분기.
+          // [E0] 아이디 변경이 적용되면 auth_version+1로 세션이 무효 — 재로그인 안내.
           onCreated={(request) => {
             setEditing(false);
+            const webIdChanged = request.requestedChanges?.webId !== undefined;
             setMessage(request.status === "approved"
-              ? "프로필 변경이 즉시 적용되었습니다."
-              : "프로필 변경 요청을 등록했습니다. 승인 후 반영됩니다.");
+              ? (webIdChanged
+                ? "아이디 변경이 적용되었습니다. 보안을 위해 다시 로그인해 주세요."
+                : "프로필 변경이 즉시 적용되었습니다.")
+              : (webIdChanged
+                ? "변경 요청을 등록했습니다. 아이디 변경은 승인되면 다시 로그인해야 합니다."
+                : "프로필 변경 요청을 등록했습니다. 승인 후 반영됩니다."));
           }}
         />
       )}

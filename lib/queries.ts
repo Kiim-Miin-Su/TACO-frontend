@@ -468,6 +468,9 @@ export const useUpsertAttendance = () => useMutation({ mutationFn: api.attendanc
 
 // 리포트(작성·제출·승인/반려) — 승인은 시수/정산 적격 변동
 export const useCreateReport = () => useMutation({ mutationFn: api.reports.create, onSuccess: useInvalidator([qk.reports.all]) });
+// [E0.6 H1] 기존 보고서 임시 저장(본문/숙제 수정) — 승인 전까지.
+export const useUpdateReport = () =>
+  useMutation({ mutationFn: (v: { id: number; content?: string; homework?: string }) => api.reports.update(v.id, v), onSuccess: useInvalidator([qk.reports.all]) });
 export const useSubmitReport = () => useMutation({ mutationFn: api.reports.submit, onSuccess: useInvalidator([qk.reports.all]) });
 export const useApproveReport = () =>
   useMutation({ mutationFn: (v: { id: number; approvedBy?: number }) => api.reports.approve(v.id, v.approvedBy), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });

@@ -6,6 +6,7 @@ import { logger } from "./log";
 import { safeLogValue, safeUrlForLog } from "./log-redaction";
 import { getToken, clearToken } from "./auth";
 import { isPublicRoute } from "./auth-routes";
+import { resetPreferences } from "./storage/preferences";
 import type {
   CalendarViewPreset,
   CreateViewPresetInput,
@@ -248,6 +249,7 @@ http.interceptors.response.use(
     ) {
       expiredRedirectStarted = true;
       clearToken();
+      resetPreferences(); // [E0 storage 감사] 세션 만료 경로도 취향 preference 정리(계정 간 누출 차단)
       window.location.assign("/login?expired=1");
     }
     return Promise.reject(err);
@@ -258,9 +260,12 @@ export type LoginBody = { webId: string; password?: string };
 export type LoginResult = { accessToken: string; account: { id: number; name: string; role: string; mustChangePassword: boolean } };
 // [E0.5 ⑥] name/email/phone은 첫 로그인 강제 변경(must_change_password)에서만 서버가 허용 —
 //  평시 프로필 변경은 마이 페이지 인증/승인 경로(29B-4)를 지난다.
+// [E0] newWebId도 강제 변경 흐름 전용(평시 아이디 변경 = 승인제). 평시 비밀번호 변경은
+//  본인 이메일 OTP(verificationChallengeId) 소비 필수.
 export type ChangeCredentialsBody = {
   currentPassword: string; newWebId?: string; newPassword?: string;
   name?: string; email?: string; phone?: string;
+  verificationChallengeId?: number;
 };
 // [E0.5 ④b] 가입 폼 확장 — 전화·대학·전공·출생연도(승인 판단 근거, 승인 tx에서 강사 프로필 승계).
 export type SignupBody = {
@@ -287,6 +292,7 @@ export type MyProfile = {
 };
 export type ProfileChangeFields = {
   name?: string;
+  webId?: string; // [E0] 아이디 변경 — 승인제(대표 결정). 승인 시 기존 세션 전부 무효(재로그인)
   email?: string; // [TBO-29B-4] 이메일 변경 — 사전 인증(challenge) 필수, 비우기 불가
   phone?: string | null;
   countryCode?: string | null;
@@ -579,6 +585,9 @@ export const api = {
       http.get<SessionReport[]>("/reports", { params: sessionId ? { sessionId } : undefined }).then((r) => r.data),
     create: (body: { sessionId: number; studentId: number; instructorId?: number; content: string; homework?: string; status?: "draft" | "submitted" }) =>
       http.post<SessionReport>("/reports", body).then((r) => r.data),
+    // [E0.6 H1] 기존 보고서 본문/숙제 수정(임시 저장) — 승인 전까지, 본인 보고서만.
+    update: (id: number, body: { content?: string; homework?: string }) =>
+      http.patch<SessionReport>(`/reports/${id}`, body).then((r) => r.data),
     submit: (id: number) => http.post<SessionReport>(`/reports/${id}/submit`, {}).then((r) => r.data),
     approve: (id: number, approvedBy?: number) =>
       http.post<SessionReport>(`/reports/${id}/approve`, { approvedBy }).then((r) => r.data),
