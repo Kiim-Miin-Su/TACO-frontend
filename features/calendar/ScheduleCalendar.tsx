@@ -158,6 +158,7 @@ export function ScheduleCalendar() {
   const openEditor = useCallback((r: ScheduleRow, tz: CountryInfo | null = null) => { setEditing(r); setEditingTz(tz); }, []);
   const [selEvent, setSelEvent] = useState<number | null>(null); // 단일 클릭 선택(애플식 — 리사이즈 핸들 노출)
   const [pending, setPending] = useState<Pending | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ row: ScheduleRow } | null>(null); // [C3] 반복 삭제 scope 선택
   const [accountingAck, setAccountingAck] = useState<AccountingAck | null>(null);
   // [오류5 2026-07-06] 리사이즈 미리보기 — start/end는 드래그 중인 컬럼의 "현지 분"(커밋용),
   //  dStart/dEnd는 프레임 불변 델타(±분). 다른 시차 컬럼(같은 세션)은 자기 좌표 + 델타로 그려
@@ -1046,6 +1047,11 @@ export function ScheduleCalendar() {
   // 프론트에서 먼저 화면을 반영하고, 백엔드 응답으로 확정(load)하거나 실패 시 스냅샷으로 롤백.
   // ── PATCH 적용(낙관적 + 충돌 시 확인 후 force) ──
   async function applyPatch(id: number, patch: SchedulePatchBody) {
+    // [TBO-29C C3] scope 편집은 series edit CAS 자동 회신 — 서버가 stale 명령을 409로 거른다.
+    if (patch.scope && patch.scope !== "this" && patch.expectedSeriesVersion == null) {
+      const seriesVersion = rows.find((r) => r.id === id)?.seriesVersion;
+      if (seriesVersion != null) patch = { ...patch, expectedSeriesVersion: seriesVersion };
+    }
     const snapshot = rows;
     setRows((rs) => rs.map((r) => (r.id === id ? applyScheduleRowPatch(r, patch) : r))); // 즉시 반영
     try {
@@ -1057,6 +1063,13 @@ export function ScheduleCalendar() {
       if (err.response?.status === 409) {
         const code = err.response.data?.code;
         const impact = err.response.data?.impact;
+        if (code === "SERIES_VERSION_STALE") {
+          // [C3] 다른 변경이 시리즈를 먼저 갱신 — 자동 강행하지 않고 최신 상태로 재동기화 후 재시도 유도.
+          setRows(snapshot);
+          setMsg("이 반복 수업이 방금 다른 변경으로 갱신됐습니다 — 최신 상태를 불러왔으니 다시 시도하세요.");
+          await load();
+          return;
+        }
         if (impact && (code === "ACCOUNTING_IMPACT_ACK_REQUIRED" || code === "PAYOUT_REVERSAL_REQUIRED")) {
           setRows(snapshot);
           setAccountingAck({ id, patch, impact, payoutLocked: code === "PAYOUT_REVERSAL_REQUIRED" });
@@ -1259,18 +1272,34 @@ export function ScheduleCalendar() {
       setScheduleDeleteApproval({ row });
       return;
     } // [TBO-16 #8] 강사는 직접 삭제 대신 승인 요청
+    // [TBO-29C C3] 반복 회차 삭제는 scope 선택(this/이후/전체) — 서버가 payout lock 전 회차 사전검증 + CAS.
+    const target = rows.find((r) => r.id === id);
+    if (target?.seriesId != null) { setPendingDelete({ row: target }); return; }
     if (!confirm("이 스케줄을 삭제할까요? (삭제 내역은 DB에 보존됩니다)")) return;
+    await performDelete(id);
+  }
+
+  async function performDelete(id: number, opts?: { scope?: "this" | "this_and_following" | "all"; expectedSeriesVersion?: number }) {
     const snapshot = rows;
-    setRows((rs) => rs.filter((r) => r.id !== id)); // 즉시 반영
+    const scope = opts?.scope ?? "this";
+    setRows((rs) => rs.filter((r) => r.id !== id)); // 즉시 반영(동반 회차는 서버 확정 후 load로 반영)
     setEditing(null);
     setSelEvent(null);
     try {
-      await api.schedule.remove(id);
-      setMsg("스케줄을 삭제했습니다.");
+      const res = await api.schedule.remove(id, scope !== "this" || opts?.expectedSeriesVersion != null ? opts : undefined);
+      setMsg(res.removedIds && res.removedIds.length > 1 ? `반복 일정 ${res.removedIds.length}건을 삭제했습니다.` : "스케줄을 삭제했습니다.");
       await load();
-    } catch {
+    } catch (e) {
+      const err = e as { response?: { status?: number; data?: { code?: string; message?: string } } };
       setRows(snapshot); // 실패 → 롤백
-      setMsg("삭제 실패");
+      if (err.response?.data?.code === "SERIES_VERSION_STALE") {
+        setMsg("이 반복 수업이 방금 다른 변경으로 갱신됐습니다 — 최신 상태를 불러왔으니 다시 시도하세요.");
+        await load();
+      } else if (err.response?.data?.code === "PAYOUT_REVERSAL_REQUIRED") {
+        setMsg(err.response.data.message ?? "정산서에 연결된 회차가 있어 삭제할 수 없습니다 — 정산 회수 후 다시 시도하세요.");
+      } else {
+        setMsg("삭제 실패");
+      }
     }
   }
 
@@ -2623,6 +2652,18 @@ export function ScheduleCalendar() {
             const p = pending;
             setPending(null);
             applyPatch(p.row.id, { ...p.patch, scope });
+          }}
+        />
+      )}
+
+      {pendingDelete && (
+        <RecurrencePrompt
+          label="반복 일정 삭제"
+          onCancel={() => setPendingDelete(null)}
+          onPick={(scope) => {
+            const p = pendingDelete;
+            setPendingDelete(null);
+            performDelete(p.row.id, { scope, expectedSeriesVersion: scope !== "this" ? p.row.seriesVersion : undefined });
           }}
         />
       )}

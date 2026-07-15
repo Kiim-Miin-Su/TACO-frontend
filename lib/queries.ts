@@ -372,7 +372,13 @@ export const useUpdateSchedule = () => {
     },
   };
 };
-export const useRemoveSchedule = () => useMutation({ mutationFn: api.schedule.remove, onSuccess: useInvalidator([qk.schedule.all, qk.reports.all, qk.payouts.all]) });
+export const useRemoveSchedule = () =>
+  useMutation({
+    // [TBO-29C C3] scope/CAS 인자와 TanStack context 인자 충돌 방지 — 명시 래핑
+    mutationFn: (vars: { id: number; scope?: "this" | "this_and_following" | "all"; expectedSeriesVersion?: number }) =>
+      api.schedule.remove(vars.id, vars.scope || vars.expectedSeriesVersion != null ? { scope: vars.scope, expectedSeriesVersion: vars.expectedSeriesVersion } : undefined),
+    onSuccess: useInvalidator([qk.schedule.all, qk.reports.all, qk.payouts.all]),
+  });
 
 // 수업 요청(TBO-16 #9) — 승인 시 세션이 생기므로 schedule도 무효화(참조 무결성 — 캘린더·배지 동시 갱신)
 export const useCreateScheduleRequest = () => {

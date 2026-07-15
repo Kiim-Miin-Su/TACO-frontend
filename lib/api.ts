@@ -142,6 +142,7 @@ export type SchedulePatchBody = {
   mode?: "in_person" | "online";
   // 반복 편집 범위(this=이 일정만 · this_and_following=이후 전부 · all=시리즈 전체). seriesId가 있을 때만 의미.
   scope?: "this" | "this_and_following" | "all"; force?: boolean;
+  expectedSeriesVersion?: number; // [TBO-29C C3] series edit CAS — 불일치 시 409 SERIES_VERSION_STALE
   acknowledgeAccountingImpact?: boolean;
 };
 // [TBO-19 Sprint4] 강사 계약(백엔드 로컬 타입 — @kms545487/contracts 미포함). DB 이관 시 contracts로 승격 검토.
@@ -489,9 +490,9 @@ export const api = {
       http.patch<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }>(`/schedule/${id}`, body).then((r) => r.data),
     conflicts: (body: ConflictCheckBody) =>
       http.post<Conflict[]>("/schedule/conflicts", body).then((r) => r.data),
-    // 세션 삭제(soft delete — v9)
-    remove: (id: number) =>
-      http.delete<{ id: number; deleted: boolean }>(`/schedule/${id}`).then((r) => r.data),
+    // 세션 삭제(soft delete — v9). [TBO-29C C3] scope(this/this_and_following/all) + series CAS 지원.
+    remove: (id: number, opts?: { scope?: "this" | "this_and_following" | "all"; expectedSeriesVersion?: number }) =>
+      http.delete<{ id: number; deleted: boolean; removedIds: number[] }>(`/schedule/${id}`, { params: opts }).then((r) => r.data),
   },
   // 강사 수업 요청 → 매니저 승인/반려(TBO-16 #9). 승인=서버가 createSession 재사용(409+force 동일 규약).
   scheduleRequests: {
