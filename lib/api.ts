@@ -365,6 +365,17 @@ export const api = {
     list: () => http.get<Student[]>("/students").then((r) => r.data),
     get: (id: number) => http.get<Student>(`/students/${id}`).then((r) => r.data),
     create: (body: CreateStudentInput) => http.post<Student>("/students", body).then((r) => r.data),
+    // [TBO-29D D2] 원자 등록 — 학생+보호자(선택)+수강(선택)+audit 단일 tx(부분 저장 불가).
+    register: (body: {
+      student: CreateStudentInput;
+      guardian?: { name: string; phone?: string; relation?: string; isPayer?: boolean; isPrimary?: boolean };
+      courseId?: number;
+    }) =>
+      http.post<{
+        student: Student;
+        guardian: { parent: Parent; relation: ParentStudent; linkedExisting: boolean } | null;
+        enrollment: Enrollment | null;
+      }>("/students/registrations", body).then((r) => r.data),
     // [피드백 2026-07-03] 캘린더 우측 패널 학생 정보 수정(출국/입국·상태 변경) — PATCH 부분 갱신.
     update: (id: number, patch: Partial<Pick<Student, "name" | "englishName" | "grade" | "phone" | "country" | "residenceType" | "status" | "memo">>) =>
       http.patch<Student>(`/students/${id}`, patch).then((r) => r.data),
@@ -427,6 +438,9 @@ export const api = {
   events: {
     list: () => http.get<AcademyEvent[]>("/events").then((r) => r.data),
     create: (input: CreateEventInput) => http.post<AcademyEvent>("/events", input).then((r) => r.data),
+    // [TBO-29D 요구 ⑥] 매니저 이상 — 수정(병합 후 구간 재검증)·소프트 삭제.
+    update: (id: number, patch: Partial<CreateEventInput>) => http.patch<AcademyEvent>(`/events/${id}`, patch).then((r) => r.data),
+    remove: (id: number) => http.delete<AcademyEvent>(`/events/${id}`).then((r) => r.data),
   },
   // [TBO-19 Sprint4] 강사 계약(읽기 전용 — 매니저) — 백엔드 로컬 타입(contracts 미포함)
   instructorContracts: {

@@ -95,7 +95,6 @@ export function StudentsView() {
                 <th>이름</th>
                 <th>학년</th>
                 <th>국가</th>
-                <th>Web ID</th>
                 <th>등록 코스</th>
                 <th>학부모</th>
                 <th>상태</th>
@@ -115,7 +114,6 @@ export function StudentsView() {
                     <td className="mono">{s.grade ?? "—"}</td>
                     {/* 국가(피드백 2026-07-02): 해외 학생 시차 시간표의 기준 — 미지정은 KR(국내) 간주 */}
                     <td><CountryBadge code={s.country} /></td>
-                    <td className="mono text-fg-muted">{s.webId ?? <span className="text-fg-subtle">미가입</span>}</td>
                     <td className="text-fg-muted max-w-[220px] truncate" title={cs.join(", ")}>{cs.length ? cs.join(", ") : "—"}</td>
                     <td className="text-fg-muted">{parentOf(s.id) ?? "—"}</td>
                     <td>

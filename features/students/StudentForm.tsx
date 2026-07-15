@@ -1,11 +1,12 @@
 'use client';
-// 학생 생성과 코스 등록은 백엔드로 전송한다(useCreateStudent → useCreateEnrollment).
-// 학부모 정보는 아직 백엔드 생성 엔드포인트가 없어 UI 전용이며 mutation에 포함되지 않는다.
+// [TBO-29D D3] 학생+보호자+수강을 **원자 등록 command**(POST /students/registrations) 하나로 전송 —
+//  구 2연타(createStudent→createEnrollment) 폐지(중간 실패 시 부분 저장이 가능했다).
+//  학생/학부모 webId 입력 제거: 학생·학부모는 백오피스 로그인 계정이 아니다(29A 계약 — users 행 없음).
+//  보호자 전화가 기존 보호자와 같으면 서버가 기존 행에 연결(upsert-or-link) — 성공 메시지로 안내.
 import { useState } from 'react';
 import { Field } from '@/components/ui';
-import { useCreateStudent, useCreateEnrollment, useCourses } from '@/lib/queries';
+import { useRegisterStudent, useCourses } from '@/lib/queries';
 import { COUNTRIES } from '@/lib/domain/tz'; // 국가(피드백 2026-07-02) — 해외 학생 시차 시간표 기준
-import { api } from '@/lib/api';
 
 type FormState = {
   name: string;
@@ -13,73 +14,58 @@ type FormState = {
   grade: string;
   country: string; // ISO alpha-2 — 기본 KR(국내)
   phone: string;
-  webId: string;
   courseId: string;
   parentName: string;
   parentPhone: string;
-  parentWebId: string;
   relation: string;
 };
 
-type VerifyState = { state: 'idle' | 'checking' | 'valid' | 'invalid'; name?: string };
-
 const empty: FormState = {
-  name: '', englishName: '', grade: '', country: 'KR', phone: '', webId: '', courseId: '',
-  parentName: '', parentPhone: '', parentWebId: '', relation: '모',
+  name: '', englishName: '', grade: '', country: 'KR', phone: '', courseId: '',
+  parentName: '', parentPhone: '', relation: '모',
 };
 
 export function StudentForm() {
-  const createStudent = useCreateStudent();
-  const createEnrollment = useCreateEnrollment();
+  const register = useRegisterStudent();
   const { data: courses = [] } = useCourses();
   const [f, setF] = useState<FormState>(empty);
-  const [studentWeb, setStudentWeb] = useState<VerifyState>({ state: 'idle' });
-  const [parentWeb, setParentWeb] = useState<VerifyState>({ state: 'idle' });
   const [err, setErr] = useState(''); // [C-1] alert 대체 — 인라인 검증 메시지
+  const [ok, setOk] = useState('');
   const set = (p: Partial<FormState>) => setF((prev) => ({ ...prev, ...p }));
-
-  const verify = async (webId: string, setV: (v: VerifyState) => void) => {
-    if (!webId.trim()) return;
-    setV({ state: 'checking' });
-    try {
-      const r = await api.users.exists(webId.trim());
-      setV(r.exists ? { state: 'valid', name: r.name } : { state: 'invalid' });
-    } catch {
-      setV({ state: 'invalid' });
-    }
-  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!f.name.trim()) return;
-    setErr('');
-    // web id를 입력했다면 반드시 "확인"으로 검증된 것만 허용
-    if (f.webId.trim() && studentWeb.state !== 'valid') {
-      setErr('학생 Web ID를 확인해 주세요.');
-      return;
-    }
-    if (f.parentName.trim() && f.parentWebId.trim() && parentWeb.state !== 'valid') {
-      setErr('학부모 Web ID를 확인해 주세요.');
-      return;
-    }
-    // 학부모 정보(parentName/parentPhone/parentWebId/relation)는 백엔드 생성
-    // 엔드포인트가 없어 mutation에서 제외한다. 폼 입력·검증 UI는 그대로 유지.
-    const studentInput = {
-      name: f.name.trim(),
-      englishName: f.englishName.trim() || undefined,
-      grade: f.grade ? Number(f.grade) : undefined,
-      country: f.country !== 'KR' ? f.country.split('-')[0] : undefined, // KR은 기본값 — 저장 생략(US-W→US)
-      phone: f.phone.trim() || undefined,
-      webId: f.webId.trim() || undefined,
-    };
-    createStudent.mutate(studentInput, {
-      onSuccess: (created) => {
-        if (f.courseId) createEnrollment.mutate({ studentId: created.id, courseId: Number(f.courseId) });
-        setF(empty);
-        setStudentWeb({ state: 'idle' });
-        setParentWeb({ state: 'idle' });
+    setErr(''); setOk('');
+    register.mutate(
+      {
+        student: {
+          name: f.name.trim(),
+          englishName: f.englishName.trim() || undefined,
+          grade: f.grade ? Number(f.grade) : undefined,
+          country: f.country !== 'KR' ? f.country.split('-')[0] : undefined, // KR은 기본값 — 저장 생략(US-W→US)
+          phone: f.phone.trim() || undefined,
+        },
+        guardian: f.parentName.trim()
+          ? { name: f.parentName.trim(), phone: f.parentPhone.trim() || undefined, relation: f.relation }
+          : undefined,
+        courseId: f.courseId ? Number(f.courseId) : undefined,
       },
-    });
+      {
+        onSuccess: (result) => {
+          setF(empty);
+          setOk(
+            result.guardian?.linkedExisting
+              ? `등록 완료 — 기존 보호자 ${result.guardian.parent.name}님과 연결했습니다.`
+              : '등록 완료',
+          );
+        },
+        onError: (e) => {
+          const msg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+          setErr(Array.isArray(msg) ? msg[0] : msg ?? '등록 실패 — 부분 저장 없이 전체가 취소되었습니다.');
+        },
+      },
+    );
   };
 
   return (
@@ -94,13 +80,6 @@ export function StudentForm() {
           </select>
         </Field>
         <Field label="연락처"><input className="input" value={f.phone} onChange={(e) => set({ phone: e.target.value })} placeholder="010-0000-0000" /></Field>
-        <WebIdField
-          label="학생 Web ID (선택)"
-          value={f.webId}
-          status={studentWeb}
-          onChange={(v) => { set({ webId: v }); setStudentWeb({ state: 'idle' }); }}
-          onVerify={() => verify(f.webId, setStudentWeb)}
-        />
         <Field label="등록 코스 (선택)">
           <select className="input" value={f.courseId} onChange={(e) => set({ courseId: e.target.value })}>
             <option value="">— 미등록 —</option>
@@ -109,7 +88,7 @@ export function StudentForm() {
         </Field>
       </Group>
 
-      <Group title="학부모 (선택 — 결제·연락 주체)">
+      <Group title="학부모 (선택 — 결제·연락 주체, 학생과 함께 원자 저장)">
         <Field label="학부모 이름"><input className="input" value={f.parentName} onChange={(e) => set({ parentName: e.target.value })} placeholder="김미경" /></Field>
         <Field label="관계">
           <select className="input" value={f.relation} onChange={(e) => set({ relation: e.target.value })}>
@@ -118,50 +97,17 @@ export function StudentForm() {
             <option value="보호자">보호자</option>
           </select>
         </Field>
-        <Field label="학부모 연락처"><input className="input" value={f.parentPhone} onChange={(e) => set({ parentPhone: e.target.value })} placeholder="010-0000-0000" /></Field>
-        <WebIdField
-          label="학부모 Web ID (선택)"
-          value={f.parentWebId}
-          status={parentWeb}
-          onChange={(v) => { set({ parentWebId: v }); setParentWeb({ state: 'idle' }); }}
-          onVerify={() => verify(f.parentWebId, setParentWeb)}
-        />
+        <Field label="학부모 연락처"><input className="input" value={f.parentPhone} onChange={(e) => set({ parentPhone: e.target.value })} placeholder="010-0000-0000 (같은 번호는 기존 보호자와 자동 연결)" /></Field>
       </Group>
 
       <div className="flex items-center justify-end gap-3">
         {err && <span className="text-caption text-danger">{err}</span>}
-        <button type="submit" className="btn btn-primary">학생 등록</button>
-      </div>
-    </form>
-  );
-}
-
-function WebIdField({
-  label, value, status, onChange, onVerify,
-}: {
-  label: string;
-  value: string;
-  status: VerifyState;
-  onChange: (v: string) => void;
-  onVerify: () => void;
-}) {
-  return (
-    <div className="block">
-      <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
-      <div className="flex gap-2">
-        <input className="input flex-1" value={value} onChange={(e) => onChange(e.target.value)} placeholder="로그인 계정 / 미가입 시 비움" />
-        <button
-          type="button"
-          className="btn btn-sm shrink-0"
-          disabled={!value.trim() || status.state === 'checking'}
-          onClick={onVerify}
-        >
-          {status.state === 'checking' ? '확인 중…' : '확인'}
+        {ok && <span className="text-caption text-success">{ok}</span>}
+        <button type="submit" className="btn btn-primary" disabled={register.isPending}>
+          {register.isPending ? '등록 중…' : '학생 등록'}
         </button>
       </div>
-      {status.state === 'valid' && <span className="text-caption text-success mt-1 inline-block">✓ {status.name} 확인됨</span>}
-      {status.state === 'invalid' && <span className="text-caption text-danger mt-1 inline-block">존재하지 않는 ID</span>}
-    </div>
+    </form>
   );
 }
 

@@ -273,6 +273,13 @@ function useInvalidator(keys: QueryKey[]) {
 export const useCreateCourse = () => useMutation({ mutationFn: api.courses.create, onSuccess: useInvalidator([qk.courses.all]) });
 export const useCreateSubject = () => useMutation({ mutationFn: api.subjects.create, onSuccess: useInvalidator([qk.subjects.all]) });
 export const useCreateEvent = () => useMutation({ mutationFn: api.events.create, onSuccess: useInvalidator([qk.events.all]) });
+// [TBO-29D 요구 ⑥] 매니저 이상 — 이벤트 수정/삭제(admin 이벤트 화면 + 캘린더 공통 일정 최신화).
+export const useUpdateEvent = () =>
+  useMutation({
+    mutationFn: (v: { id: number; patch: Parameters<typeof api.events.update>[1] }) => api.events.update(v.id, v.patch),
+    onSuccess: useInvalidator([qk.events.all]),
+  });
+export const useRemoveEvent = () => useMutation({ mutationFn: api.events.remove, onSuccess: useInvalidator([qk.events.all]) });
 export const useCreateRoadmap = () => useMutation({ mutationFn: api.roadmaps.create, onSuccess: useInvalidator([qk.roadmaps.all]) });
 
 export const useApprovePendingAccount = () =>
@@ -288,6 +295,12 @@ export const useRejectPendingAccount = () =>
 
 // 명단(학생·수강)
 export const useCreateStudent = () => useMutation({ mutationFn: api.students.create, onSuccess: useInvalidator([qk.students.all]) });
+// [TBO-29D D2] 원자 등록 — 학생·수강·보호자·관계가 한 tx로 생기므로 관련 캐시를 한 번에 무효화.
+export const useRegisterStudent = () =>
+  useMutation({
+    mutationFn: api.students.register,
+    onSuccess: useInvalidator([qk.students.all, qk.enrollments.all, qk.parents.all]),
+  });
 export const useUpdateStudent = () =>
   useMutation({
     mutationFn: (v: { id: number; patch: Parameters<typeof api.students.update>[1] }) => api.students.update(v.id, v.patch),
