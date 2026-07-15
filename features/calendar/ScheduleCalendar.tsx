@@ -2,12 +2,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, AvailabilityBlock, Attendance } from "@/types";
-import { api, type SchedulePatchBody, type ScheduleCreateBody, type AvailabilityUpsertBody, type CreateScheduleRequestBody } from "@/lib/api";
+import { api, type SchedulePatchBody, type ScheduleCreateBody, type ScheduleSeriesCreateBody, type AvailabilityUpsertBody, type CreateScheduleRequestBody } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/queryKeys";
 import { invalidateScheduleLifecycle } from "@/lib/query-cache";
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 D — 파일별 중복 toMin/fromMin/pad/WD 제거)
 import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, sessionEndMin, crossMidnightEnd, durationMinutesBetween, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
+import { seriesRuleToKst } from "@/lib/domain/series";
 import {
   PALETTE, STATUS_LABEL, MAX_SPLIT,
   matchesResourceFilter, sortByDateAsc,
@@ -1197,32 +1198,56 @@ export function ScheduleCalendar() {
     }
   }
 
-  // 반복 일정 생성(낙관적, 일괄). 같은 seriesId로 묶어 한 번에 생성 — 충돌은 자동 force(개별 확인 생략).
-  async function createSeries(bodies: ScheduleCreateBody[]) {
+  // [TBO-29C C2] 반복 일정 생성 — 관리자: 서버 bulk command 1회(원자 커밋 — 부분 회차 잔존 불가).
+  //  구 구현(단건 create loop + Promise.allSettled 보상 삭제 + 자동 force)은 브라우저 중단·삭제 실패 시
+  //  반쪽 시리즈가 남았고 클라이언트 Date.now() seriesId는 규칙·생성자를 설명하지 못했다 — 전부 폐기.
+  //  충돌은 자동 force하지 않고 전체 목록을 보여준 뒤 사용자가 감수 여부를 결정한다(단건과 동일 UX).
+  async function createSeriesCommand(body: ScheduleSeriesCreateBody, previews: ScheduleCreateBody[]) {
+    const snapshot = rows;
+    setRows((rs) => [...rs, ...previews.map(optimisticRow)]); // 낙관적 반영(스냅샷 롤백)
+    setCreating(null);
+    const send = async (force: boolean) => {
+      const res = await api.schedule.createSeries(force ? { ...body, force: true } : body);
+      setMsg(`반복 일정 ${res.rows.length}건을 추가했습니다${force ? " (충돌 감수)" : ""}.`);
+      await load(); // 서버 확정본으로 재동기화(schedule scope invalidate)
+    };
+    try {
+      await send(false);
+    } catch (e) {
+      const err = e as { response?: { status?: number; data?: { conflicts?: Conflict[] } } };
+      setRows(snapshot); // 롤백 후 사용자 결정
+      if (err.response?.status === 409) {
+        const cs = err.response.data?.conflicts ?? [];
+        if (confirm(`충돌 ${cs.length}건:\n${describeConflicts(cs)}\n\n그래도 추가할까요?`)) {
+          setRows((rs) => [...rs, ...previews.map(optimisticRow)]);
+          try { await send(true); }
+          catch { setRows(snapshot); setMsg("반복 일정 추가 실패"); await load(); }
+        }
+      } else {
+        setMsg("반복 일정 추가 실패");
+      }
+    }
+  }
+
+  // [TBO-29C C2] 강사 반복 — 회차별 승인 요청(각 요청·승인은 서버에서 원자). 시리즈 단위 bulk 요청
+  //  명령은 C3(요청/승인 동일 UoW)에서 다룬다. 중도 실패 시 접수/미접수 개수를 정확히 알린다.
+  async function createSeriesRequests(bodies: ScheduleCreateBody[]) {
     if (bodies.length === 0) return;
     if (bodies.length === 1) return createSession(bodies[0]);
-    const safe = bodies.map((b) => (isInstructor && myInstructorId != null ? { ...b, instructorId: myInstructorId } : b));
-    const snapshot = rows;
-    setRows((rs) => [...rs, ...safe.map(optimisticRow)]); // 즉시 반영
     setCreating(null);
-    const createdIds: number[] = []; // [M6] 중도 실패 시 보상 삭제용(반쪽 시리즈 잔존 방지)
+    let ok = 0;
     try {
-      for (const b of safe) {
-        try { const res = await api.schedule.create(b); createdIds.push(res.row.id); }
-        catch (e) {
-          const err = e as { response?: { status?: number } };
-          if (err.response?.status === 409) { const res = await api.schedule.create({ ...b, force: true }); createdIds.push(res.row.id); }
-          else throw e;
-        }
+      for (const b of bodies) {
+        await createScheduleRequest.mutateAsync({
+          courseId: b.courseId, instructorId: myInstructorId ?? b.instructorId, roomId: b.roomId,
+          sessionDate: b.sessionDate, startTime: b.startTime, endTime: b.endTime,
+          durationMinutes: b.durationMinutes, studentIds: b.studentIds, topic: b.topic, kind: b.kind, mode: b.mode,
+        });
+        ok += 1;
       }
-      setMsg(`반복 일정 ${safe.length}건을 추가했습니다.`);
-      await load();
+      setMsg(`반복 수업 승인 요청 ${ok}건을 보냈습니다 — 매니저 승인 시 캘린더에 반영됩니다.`);
     } catch {
-      // 보상: 이미 생성된 세션 삭제(서버에 반쪽 시리즈가 남지 않게 — 벌크 API 전까지의 최소 조치)
-      await Promise.allSettled(createdIds.map((cid) => api.schedule.remove(cid)));
-      setRows(snapshot);
-      setMsg("반복 일정 추가 실패 — 생성분을 되돌렸습니다");
-      await load();
+      setMsg(ok ? `승인 요청 ${ok}/${bodies.length}건만 접수됐습니다 — 나머지 회차를 다시 요청하세요.` : "요청 실패 — 입력을 확인하세요");
     }
   }
 
@@ -2631,7 +2656,8 @@ export function ScheduleCalendar() {
           ownerTz={creating.tz ?? undefined}
           onClose={() => setCreating(null)}
           onCreate={createSession}
-          onCreateSeries={createSeries}
+          onCreateSeries={createSeriesRequests}
+          onCreateSeriesCommand={createSeriesCommand}
           onCreateBlock={createBlock}
         />
       )}
@@ -3280,6 +3306,7 @@ function CreateModal({
   onClose,
   onCreate,
   onCreateSeries,
+  onCreateSeriesCommand,
   onCreateBlock,
 }: {
   resources: ScheduleResources;
@@ -3293,7 +3320,8 @@ function CreateModal({
   ownerTz?: CountryInfo | null; // [이슈1] 비KST 컬럼 추가 — 입력은 현지 시각, 저장 시 KST 역변환
   onClose: () => void;
   onCreate: (body: ScheduleCreateBody) => void;
-  onCreateSeries: (bodies: ScheduleCreateBody[]) => void;
+  onCreateSeries: (bodies: ScheduleCreateBody[]) => void; // 강사 — 회차별 승인 요청
+  onCreateSeriesCommand: (body: ScheduleSeriesCreateBody, previews: ScheduleCreateBody[]) => void; // 관리자 — bulk 원자 생성
   onCreateBlock: (body: AvailabilityUpsertBody, options?: { closeOnSuccess?: boolean }) => Promise<boolean>;
 }) {
   // [이슈1] 현지 tz의 (date, HH:mm) → KST 저장값. KST면 그대로. 저장은 항상 KST 단일 진실원.
@@ -3453,19 +3481,28 @@ function CreateModal({
     onClose();
   }
   function submitSession() {
-    const seriesId = repeat === "none" ? undefined : Date.now();
+    // [TBO-29C C2] 클라이언트 seriesId(Date.now()) 폐기 — 시리즈 ID·규칙은 서버가 발급/자산화.
     // 부분 선택 시에만 명시 코호트 전송(전원=미전송 — 코스 파생과 동일·하위 호환)
     const studentIds =
       pickedStudents != null && effPicked.size !== courseRoster.length ? [...effPicked] : undefined;
     // [이슈1] 각 발생일(현지)을 KST로 변환해 저장 — 종료는 시작과 같은 현지날짜 기준으로 변환.
     const mk = (dLocal: string): ScheduleCreateBody => {
       const ks = toKst(dLocal, start), ke = toKst(dLocal, end);
-      return { courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: ks.date, startTime: ks.time, endTime: ke.time, durationMinutes: durationMinutesBetween(start, end), memo: memo || undefined, color, status, seriesId, studentIds,
+      return { courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: ks.date, startTime: ks.time, endTime: ke.time, durationMinutes: durationMinutesBetween(start, end), memo: memo || undefined, color, status, studentIds,
         kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined, mode: sessionMode }; // [C2D] 강사 요청도 mode 보존
     };
     const days = occurrences();
-    if (days.length <= 1) onCreate(mk(days[0] ?? date));
-    else onCreateSeries(days.map(mk));
+    if (days.length <= 1) { onCreate(mk(days[0] ?? date)); return; }
+    if (requestMode) { onCreateSeries(days.map(mk)); return; } // 강사 — 회차별 승인 요청(C3에서 bulk 요청 통합 검토)
+    // 관리자 — KST 정규화 규칙만 전송(occurrence 날짜는 서버가 재계산·발급)
+    const rule = seriesRuleToKst({ date, untilDate, repeat: repeat === "none" ? "weekly" : repeat, customWds, toKst, start, end });
+    onCreateSeriesCommand({
+      courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, studentIds,
+      repeat: { kind: repeat === "weekly" ? "weekly" : "custom", weekdays: rule.weekdays, startsOn: rule.startsOn, endsOn: rule.endsOn },
+      startTime: rule.startTime, endTime: rule.endTime,
+      memo: memo || undefined, color, status,
+      kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined, mode: sessionMode,
+    }, days.map(mk));
   }
 
   return (

@@ -114,6 +114,20 @@ export type ScheduleCreateBody = {
   kind?: SessionKind; price?: number; // [v0.1.14] 종류(진단고사/상담)·세션 단건 가격
   mode?: "in_person" | "online";
 };
+// [TBO-29C C2] 반복 생성 bulk command — 단건 loop/클라이언트 seriesId(Date.now()) 폐기.
+//  서버가 series ID를 발급하고 날짜/요일/기간/시간/cohort/FK를 전체 정규화·원자 커밋.
+export type ScheduleSeriesCreateBody = {
+  courseId: number; instructorId?: number; roomId?: number; studentIds?: number[];
+  repeat: { kind: "weekly" | "custom"; weekdays: number[]; startsOn: string; endsOn: string };
+  startTime: string; endTime?: string; durationMinutes?: number; timeZone?: string;
+  topic?: string; memo?: string; color?: string; status?: string;
+  kind?: SessionKind; price?: number; mode?: "in_person" | "online"; force?: boolean;
+};
+export type ScheduleSeriesInfo = {
+  id: number; repeatKind: "weekly" | "custom"; weekdays: number[]; startsOn: string; endsOn: string;
+  startTime: string; durationMinutes: number; timeZone: string; version: number; createdBy?: number; updatedBy?: number;
+};
+
 export type AvailabilityUpsertBody = {
   id?: number; ownerType: AvailabilityOwner; ownerId: number; kind?: AvailabilityKindEx;
   weekday: number; startTime: string; endTime: string; effectiveFrom?: string; effectiveTo?: string;
@@ -467,6 +481,9 @@ export const api = {
     // 추천→배정·수동 추가 → { row, conflicts }. 충돌 시 409 → force로 재시도.
     create: (body: ScheduleCreateBody) =>
       http.post<{ row: ScheduleRow; conflicts: Conflict[] }>("/schedule", body).then((r) => r.data),
+    // [TBO-29C C2] 반복 생성 bulk — 서버 발급 series ID + 전체 원자 커밋(중간 실패=전부 롤백).
+    createSeries: (body: ScheduleSeriesCreateBody) =>
+      http.post<{ series: ScheduleSeriesInfo; rows: ScheduleRow[]; conflicts: Conflict[] }>("/schedule/series", body).then((r) => r.data),
     // 이동·리사이즈·편집 → { row, conflicts }. 충돌 시 409(서버) → force로 재시도.
     update: (id: number, body: SchedulePatchBody) =>
       http.patch<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }>(`/schedule/${id}`, body).then((r) => r.data),
