@@ -66,15 +66,19 @@ function MemberApprovals() {
       {rows.length === 0 ? (
         <EmptyState message="승인 대기 중인 가입 신청이 없습니다." />
       ) : (
-        <TableWrap minWidth={760}>
+        <TableWrap minWidth={980}>
         <table className="table">
-          <thead><tr><th>아이디</th><th>이름</th><th>이메일</th><th>이메일 인증</th><th>역할 지정</th><th className="text-right"></th></tr></thead>
+          {/* [E0.5 ④b] 지원자 제공 정보(전화·대학/전공·출생연도) — 승인 판단 근거 표시 */}
+          <thead><tr><th>아이디</th><th>이름</th><th>이메일</th><th>연락처</th><th>대학 (전공)</th><th>출생연도</th><th>이메일 인증</th><th>역할 지정</th><th className="text-right"></th></tr></thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
                 <td className="font-medium">{r.webId}</td>
                 <td>{r.name}</td>
                 <td className="text-fg-muted">{r.email}</td>
+                <td className="mono text-fg-muted whitespace-nowrap">{r.phone || "—"}</td>
+                <td className="text-fg-muted">{r.university ? `${r.university}${r.major ? ` (${r.major})` : ""}` : "—"}</td>
+                <td className="mono text-fg-muted">{r.birthYear ?? "—"}</td>
                 <td>{r.emailVerified ? <span className="text-success">완료</span> : <span className="text-fg-subtle">미완료</span>}</td>
                 <td>
                   <select className="input h-8 w-28" value={roleSel[r.id] ?? r.role}
