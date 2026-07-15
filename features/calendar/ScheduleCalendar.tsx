@@ -2617,13 +2617,16 @@ export function ScheduleCalendar() {
           onClose={() => { setEditing(null); setEditingTz(null); }}
           onDelete={() => deleteSession(editing.id)}
           onSave={async (patch) => {
-            const id = editing.id;
             // [이슈1] 비KST 편집: 폼에 입력한 현지 시각(sessionDate/start/end)을 KST 저장값으로 역변환.
             //  [R-9] 종료가 KST에서 다음날로 넘어가면(end<start) 백엔드가 **익일 종료**로 해석해
             //  durationMinutes로 저장한다(자정 크로스 정식 지원 — 구 400 거부 폐지).
             const kst = editingTz ? kstPatchTimes(patch, editingTz.tz) : patch;
+            const row = editing;
             setEditing(null); setEditingTz(null);
-            await applyPatch(id, kst);
+            // [29C 스팟체크 2026-07-15] applyPatch 직행이던 유일한 경로 — 강사가 상세 모달에서 저장하면
+            //  403 토스트("접근 권한이 없습니다")로 끝났다. 우측 패널·드래그와 동일하게 requestChange를
+            //  경유해 강사=승인 요청 모달, 관리자=기존 applyPatch(+반복 scope 재질문 규칙)로 통일한다.
+            requestChange(row, kst, "상세 편집");
           }}
         />
       )}
