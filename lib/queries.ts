@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient, type QueryKey } from "@tanstack/
 import { api, type SessionReport as ApiReport } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import {
+  invalidateCalendarCommand,
   invalidateScheduleRequests,
   refreshScheduleRequestLifecycle,
   scheduleRequestListKey,
@@ -329,8 +330,13 @@ export const useUpdateCounsel = () =>
 export const useCreateCounselRound = () =>
   useMutation({ mutationFn: (v: { formId: number; input: Parameters<typeof api.counsel.createRound>[1] }) => api.counsel.createRound(v.formId, v.input), onSuccess: useInvalidator([qk.counsel.all]) });
 
-// 스케줄(생성·수정·삭제) — 삭제/상태변경은 리포트·정산 적격에도 영향 → 폭넓게 무효화
-export const useCreateSchedule = () => useMutation({ mutationFn: api.schedule.create, onSuccess: useInvalidator([qk.schedule.all]) });
+// 스케줄(생성·수정·삭제) — [C4] 캘린더 명령 무효화 단일 소스(invalidateCalendarCommand)로 통일.
+const useCalendarCommandInvalidator = () => {
+  const qc = useQueryClient();
+  return () => invalidateCalendarCommand(qc);
+};
+export const useCreateSchedule = () => useMutation({ mutationFn: api.schedule.create, onSuccess: useCalendarCommandInvalidator() });
+export const useCreateScheduleSeries = () => useMutation({ mutationFn: api.schedule.createSeries, onSuccess: useCalendarCommandInvalidator() }); // [C2/C4] 반복 bulk
 export type AccountingImpactPrompt = {
   payoutLocked: boolean;
   impact: {
@@ -345,7 +351,7 @@ export const useUpdateSchedule = () => {
   const [pending, setPending] = useState<{ variables: Variables; prompt: AccountingImpactPrompt } | null>(null);
   const mutation = useMutation({
     mutationFn: (v: Variables) => api.schedule.update(v.id, v.body),
-    onSuccess: useInvalidator([qk.schedule.all, qk.reports.all, qk.payouts.all]),
+    onSuccess: useCalendarCommandInvalidator(), // [C4] 단일 무효화 — 시수·정산 미리보기 동시 재계산
   });
   const mutate: typeof mutation.mutate = (variables, options) => mutation.mutate(variables, {
     ...options,
@@ -377,7 +383,7 @@ export const useRemoveSchedule = () =>
     // [TBO-29C C3] scope/CAS 인자와 TanStack context 인자 충돌 방지 — 명시 래핑
     mutationFn: (vars: { id: number; scope?: "this" | "this_and_following" | "all"; expectedSeriesVersion?: number }) =>
       api.schedule.remove(vars.id, vars.scope || vars.expectedSeriesVersion != null ? { scope: vars.scope, expectedSeriesVersion: vars.expectedSeriesVersion } : undefined),
-    onSuccess: useInvalidator([qk.schedule.all, qk.reports.all, qk.payouts.all]),
+    onSuccess: useCalendarCommandInvalidator(), // [C4] 단일 무효화
   });
 
 // 수업 요청(TBO-16 #9) — 승인 시 세션이 생기므로 schedule도 무효화(참조 무결성 — 캘린더·배지 동시 갱신)
