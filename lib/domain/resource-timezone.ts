@@ -72,10 +72,18 @@ export function buildTimezonePaneGroups<TDim extends string, TPick extends { id:
 
   return populated.flatMap((group) => {
     if (timezoneKeys(group).size > 1) {
-      return group.picks.map((pick) => ({
+      // [TBO-29C C4.5] 시차 **그룹핑** — 같은 시차 멤버는 한 표(서브컬럼 유지), 다른 시차만 별도 표.
+      //  구 구현은 혼합 그룹을 리소스별 개별 표로 전부 쪼개 같은 시차끼리도 표가 분리됐다.
+      //  강사·학생이 같은 함수를 쓰므로 규칙도 자동으로 공통이다(선택 순서 보존).
+      const byTz = new Map<string, TPick[]>();
+      for (const pick of group.picks) {
+        const key = timezoneOf(group.dim, pick.id)?.tz ?? KST_TZ;
+        byTz.set(key, [...(byTz.get(key) ?? []), pick]);
+      }
+      return [...byTz.values()].map((picks) => ({
         dim: group.dim,
-        picks: [pick],
-        country: timezoneOf(group.dim, pick.id) ?? null,
+        picks,
+        country: timezoneOf(group.dim, picks[0].id) ?? null,
       }));
     }
     return [{

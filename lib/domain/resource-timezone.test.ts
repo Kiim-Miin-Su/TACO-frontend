@@ -66,4 +66,17 @@ describe("resource timezone resolver", () => {
       () => countryByCode("GB"),
     )).toEqual([]);
   });
+
+  it("[C4.5] groups same-timezone members into one pane and splits only differing timezones", () => {
+    const groups = buildTimezonePaneGroups(
+      [{ dim: "instructor" as const, picks: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }] }],
+      (_dim, id) => (id <= 2 ? countryByCode("KR") : id === 3 ? countryByCode("GB") : countryByCode("US")),
+    );
+    // KST 2명 = 한 표(서브컬럼), GB·US는 각각 별도 표 — 강사·학생 공통 규칙
+    expect(groups.map((group) => [group.picks.map((pick) => pick.id), group.country?.code ?? "KR"])).toEqual([
+      [[1, 2], "KR"],
+      [[3], "GB"],
+      [[4], "US"],
+    ]);
+  });
 });
