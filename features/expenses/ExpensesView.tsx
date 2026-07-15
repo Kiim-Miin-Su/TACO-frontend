@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { Badge, SectionCard, MonthCalendar, PageHeader, EmptyState, TableWrap } from '@/components/ui';
+import { Badge, SectionCard, MonthCalendar, PageHeader, EmptyState, LoadingState, TableWrap } from '@/components/ui';
 import { useExpenses } from '@/lib/queries';
 import { won } from '@/lib/format';
 import { categoryLabel, categoryTone, approvalLabel, approvalTone } from './labels';
@@ -11,7 +11,7 @@ import { useAccountAccess } from '@/lib/useAccountAccess';
 export function ExpensesView() {
   // 지출 목록은 TanStack Query에서 가져오고, 반려 사유는 클라이언트 전용 store에 유지.
   const finance = useAccountAccess().can('finance.access');
-  const { data: expenses = [] } = useExpenses();
+  const { data: expenses = [], isPending: loading } = useExpenses(); // [E0.6 H2]
   const [view, setView] = useState<'list' | 'calendar'>('list');
   const [viewReason, setViewReason] = useState<number | null>(null);
 
@@ -44,7 +44,9 @@ export function ExpensesView() {
 
       {view === 'list' ? (
         <SectionCard title={`지출 목록 (${expenses.length})`}>
-          {expenses.length === 0 ? (
+          {loading ? (
+            <LoadingState />
+          ) : expenses.length === 0 ? (
             <EmptyState message="등록된 지출이 없습니다. “지출 등록”으로 등록하세요." />
           ) : (
           <TableWrap>

@@ -5,7 +5,7 @@
 'use client';
 import { useState } from 'react';
 import { Badge, PromptModal, type Tone } from '@/components/ui';
-import { useReports, useReportTemplates, useCreateReportTemplate, useCreateReport, useSubmitReport } from '@/lib/queries';
+import { useReports, useReportTemplates, useCreateReportTemplate, useCreateReport, useSubmitReport, useUpdateReport } from '@/lib/queries';
 import type { ClassSession, ReportStatus, Student } from '@/types';
 
 const reportTone: Record<ReportStatus, Tone> = { draft: 'neutral', submitted: 'accent', sent: 'success' };
@@ -21,12 +21,17 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
   const { data: templates = [] } = useReportTemplates();
   const createTemplate = useCreateReportTemplate();
   const createReport = useCreateReport();
+  const updateReport = useUpdateReport();
   const submitReport = useSubmitReport();
   const report = sessionReports.find((r) => r.sessionId === session.id && r.studentId === student.id);
   const [content, setContent] = useState(report?.content ?? '');
   const [homework, setHomework] = useState(report?.homework ?? '');
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const status: ReportStatus = report?.status ?? 'draft';
+  const saving = createReport.isPending || updateReport.isPending || submitReport.isPending;
+  // 승인 후 불변(시수 반영) — 서버 400과 동일 규칙으로 편집 잠금.
+  const lockedByApproval = report?.approvalStatus === 'approved';
 
   const applyTemplate = (id: number) => {
     const t = templates.find((x) => x.id === id);
@@ -40,23 +45,42 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
     if (name.trim() && content.trim()) createTemplate.mutate({ name: name.trim(), content, homework: homework || undefined });
   };
 
-  const save = (submit: boolean) => {
-    // 기존 보고서가 있으면 제출(submit by id). 없으면 신규 생성(create). 백엔드가 (session,student) 단일화.
-    if (report) {
-      if (submit && report.approvalStatus !== 'submitted' && report.approvalStatus !== 'approved') {
-        submitReport.mutate(report.id);
-      }
-    } else {
-      createReport.mutate({
-        sessionId: session.id,
-        studentId: student.id,
-        instructorId: session.instructorId,
-        content,
-        homework: homework || undefined,
-        status: submit ? 'submitted' : 'draft',
-      });
-    }
+  // [E0.6 H1 2026-07-15] 저장 신뢰성 수정 — 종전엔 (1) 기존 보고서 '임시 저장'이 저장 경로 자체가
+  //  없었고 (2) '제출'이 편집한 본문을 보내지 않았고 (3) 결과와 무관하게 "저장됨"이 표시됐다.
+  //  → 기존 보고서는 PATCH(update)로 본문/숙제를 저장하고, 제출은 저장 후 상태 전환.
+  //  savedAt은 성공 콜백에서만, 실패는 saveError로 표시.
+  const markSaved = () => {
+    setSaveError(null);
     setSavedAt(new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }));
+  };
+  const failMessage = (caught: unknown): string => {
+    const err = caught as { response?: { data?: { message?: string | string[] } } };
+    const message = err.response?.data?.message;
+    return Array.isArray(message) ? message.join(' ') : message ?? '저장하지 못했습니다. 다시 시도해 주세요.';
+  };
+  const save = async (submit: boolean) => {
+    setSaveError(null);
+    try {
+      if (report) {
+        // 편집 내용 저장(승인 전) → 제출이면 상태 전환까지. 어느 단계든 실패 시 에러 표시.
+        await updateReport.mutateAsync({ id: report.id, content, homework });
+        if (submit && report.approvalStatus !== 'submitted' && report.approvalStatus !== 'approved') {
+          await submitReport.mutateAsync(report.id);
+        }
+      } else {
+        await createReport.mutateAsync({
+          sessionId: session.id,
+          studentId: student.id,
+          instructorId: session.instructorId,
+          content,
+          homework: homework || undefined,
+          status: submit ? 'submitted' : 'draft',
+        });
+      }
+      markSaved();
+    } catch (caught) {
+      setSaveError(failMessage(caught));
+    }
   };
 
   return (
@@ -92,17 +116,23 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
             className="input h-24 py-2 leading-relaxed"
             placeholder="오늘 수업 내용·태도·성취 (학부모 발송용)"
             value={content}
+            disabled={lockedByApproval}
             onChange={(e) => setContent(e.target.value)}
           />
           <input
             className="input mt-2"
             placeholder="숙제 (다음 수업 전까지)"
             value={homework}
+            disabled={lockedByApproval}
             onChange={(e) => setHomework(e.target.value)}
           />
+          {saveError && <p className="mt-2 text-caption text-danger" role="alert">{saveError}</p>}
+          {lockedByApproval && <p className="mt-2 text-caption text-fg-subtle">승인된 보고서는 수정할 수 없습니다(시수 반영됨).</p>}
           <div className="flex justify-end gap-2 mt-2">
-            <button className="btn btn-sm" onClick={() => save(false)}>임시 저장</button>
-            <button className="btn btn-sm btn-primary" disabled={!content.trim()} onClick={() => save(true)}>제출</button>
+            <button className="btn btn-sm" disabled={saving || lockedByApproval} onClick={() => save(false)}>
+              {saving ? '저장 중...' : '임시 저장'}
+            </button>
+            <button className="btn btn-sm btn-primary" disabled={!content.trim() || saving || lockedByApproval} onClick={() => save(true)}>제출</button>
           </div>
           {templateOpen && (
             <PromptModal

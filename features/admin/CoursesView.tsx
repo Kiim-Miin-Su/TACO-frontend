@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { SectionCard, EmptyState, TableWrap } from '@/components/ui';
+import { SectionCard, EmptyState, LoadingState, TableWrap } from '@/components/ui';
 import { api } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
 import { useCourses, useSubjects, useInstructors } from '@/lib/queries';
@@ -14,7 +14,7 @@ import { Field } from '@/components/ui';
 
 export function CoursesView() {
   const { data: subjects = [] } = useSubjects();
-  const { data: courses = [] } = useCourses();
+  const { data: courses = [], isPending: loading } = useCourses(); // [E0.6 H2]
   const { data: instructors = [] } = useInstructors();
   const subjectName = (id: number) => subjects.find((x) => x.id === id)?.name ?? '—';
   const instructorName = (id: number) => instructors.find((x) => x.id === id)?.name ?? '—';
@@ -28,7 +28,9 @@ export function CoursesView() {
           <SectionCard title="과목 추가"><SubjectForm /></SectionCard>
         </div>
         <SectionCard title={`코스 목록 (${courses.length})`}>
-          {courses.length === 0 ? (
+          {loading ? (
+            <LoadingState />
+          ) : courses.length === 0 ? (
             <EmptyState message="등록된 코스가 없습니다. 위에서 코스를 추가하세요." />
           ) : (
           <TableWrap>

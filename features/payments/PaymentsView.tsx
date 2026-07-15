@@ -1,7 +1,7 @@
 'use client';
 // 데이터 소스: TanStack Query 훅(usePayments/useStudents)에서 조회.
 import Link from 'next/link';
-import { Badge, SectionCard, MonthCalendar, PageHeader, EmptyState, TableWrap } from '@/components/ui';
+import { Badge, SectionCard, MonthCalendar, PageHeader, EmptyState, LoadingState, TableWrap } from '@/components/ui';
 import { usePayments, useStudents } from '@/lib/queries';
 import { usePersistedState } from '@/lib/usePersistedState';
 import { enumPreferenceCodec, preferenceKeys } from '@/lib/storage/preferences';
@@ -11,7 +11,7 @@ import { statusLabel, statusTone, methodLabel } from './labels';
 
 export function PaymentsView() {
   const finance = useAccountAccess().can('finance.access');
-  const { data: payments = [] } = usePayments();
+  const { data: payments = [], isPending: loading } = usePayments(); // [E0.6 H2] 로드 중 빈 상태 깜빡임 방지
   const { data: students = [] } = useStudents();
   // [C-2 2026-07-06] 목록/달력 보기 토글 typed preference 복원(새로고침에도 유지).
   const [view, setView] = usePersistedState<'list' | 'calendar'>(
@@ -54,7 +54,9 @@ export function PaymentsView() {
 
       {view === 'list' ? (
         <SectionCard title={`결제 목록 (${payments.length})`}>
-          {payments.length === 0 ? (
+          {loading ? (
+            <LoadingState />
+          ) : payments.length === 0 ? (
             <EmptyState message="등록된 결제가 없습니다. “신규 청구”로 등록하세요." />
           ) : (
           <TableWrap>

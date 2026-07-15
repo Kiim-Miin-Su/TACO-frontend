@@ -5,7 +5,7 @@
 'use client';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Badge, SectionCard, EmptyState, TableWrap, ConfirmModal, PromptModal } from '@/components/ui';
+import { Badge, SectionCard, EmptyState, LoadingState, TableWrap, ConfirmModal, PromptModal } from '@/components/ui';
 import { api } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
 import { useAcademyEvents, useRemoveEvent, useUpdateEvent } from '@/lib/queries';
@@ -15,7 +15,7 @@ import { Field } from '@/components/ui';
 import { eventLabel, eventTone, EVENT_TYPES, priorityLabel, EVENT_PRIORITIES } from './labels';
 
 export function EventsView() {
-  const { data: events = [] } = useAcademyEvents();
+  const { data: events = [], isPending: loading } = useAcademyEvents(); // [E0.6 H2]
   // [TBO-29D 요구 ⑥] 매니저 이상 수정/삭제 — 제목 수정은 PromptModal, 삭제는 ConfirmModal(soft delete).
   const update = useUpdateEvent();
   const removeEvent = useRemoveEvent();
@@ -27,7 +27,9 @@ export function EventsView() {
         <AdminHeader />
         <SectionCard title="학원 이벤트 발행"><EventForm /></SectionCard>
         <SectionCard title={`이벤트 목록 (${events.length})`}>
-          {events.length === 0 ? (
+          {loading ? (
+            <LoadingState />
+          ) : events.length === 0 ? (
             <EmptyState message="발행된 이벤트가 없습니다. 위에서 이벤트를 발행하세요." />
           ) : (
           <TableWrap>

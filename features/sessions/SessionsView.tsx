@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Badge, SectionCard, PageHeader, EmptyState, TableWrap, type Tone } from "@/components/ui";
+import { Badge, SectionCard, PageHeader, EmptyState, LoadingState, TableWrap, type Tone } from "@/components/ui";
 import { useSchedule, useCourses, useInstructors } from "@/lib/queries";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import type { SessionStatus } from "@/types";
@@ -26,7 +26,7 @@ export function SessionsView() {
   // [권한 정합] 수업 직접 개설(POST /schedule)은 BE ADMIN 전용 → 매니저 이상만 폼 노출(강사=403 방지).
   //  강사는 캘린더의 수업요청(schedule-requests) 경로로 개설.
   const admin = useAccountAccess().can("calendar.manage");
-  const { data: classSessions = [] } = useSchedule();
+  const { data: classSessions = [], isPending: loading } = useSchedule(); // [E0.6 H2]
   const { data: courses = [] } = useCourses();
   const { data: instructors = [] } = useInstructors();
 
@@ -60,7 +60,9 @@ export function SessionsView() {
           />
         }
       >
-        {rows.length === 0 ? (
+        {loading ? (
+          <LoadingState />
+        ) : rows.length === 0 ? (
           <EmptyState message={kw ? '검색 결과가 없습니다.' : '수업이 없습니다.'} />
         ) : (
         <TableWrap>

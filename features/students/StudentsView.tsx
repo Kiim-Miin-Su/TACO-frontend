@@ -3,7 +3,7 @@ import Link from "next/link";
 // 목록 데이터(students·enrollments·courses·parentStudents·parents)는 TanStack Query로 읽고,
 // 퇴원(소프트삭제)은 useRemoveStudent 훅(백엔드 DELETE /students/:id)으로 처리한다.
 // [DESIGN §8·§5.5] 첫 화면 = 목록(조회 우선). 등록 폼은 접이식 패널(기본 접힘) — 헤더 버튼 토글.
-import { Badge, ConfirmModal, EmptyState, PageHeader, SectionCard, StatusDot, TableWrap, type Tone } from "@/components/ui";
+import { Badge, ConfirmModal, EmptyState, LoadingState, PageHeader, SectionCard, StatusDot, TableWrap, type Tone } from "@/components/ui";
 import { useStudents, useEnrollments, useCourses, useParentStudents, useParents, useRemoveStudent } from "@/lib/queries";
 import { isActiveStudent, activeCourseNamesOf, STUDENT_STATUS_LABEL as label, STUDENT_STATUS_TONE } from "@/lib/domain/students";
 import { CountryBadge } from "@/features/calendar/CountryInput";
@@ -16,7 +16,7 @@ import { useState } from "react";
 export function StudentsView() {
   // [TBO-20 M1] 학생 등록·퇴원 = 관리자 전용(BE students POST/DELETE=ADMIN 정합). 강사엔 쓰기 버튼 숨김(403 방지).
   const admin = useAccountAccess().can("admin.area");
-  const { data: students = [] } = useStudents();
+  const { data: students = [], isPending: loading } = useStudents(); // [E0.6 H2]
   const { data: enrollments = [] } = useEnrollments();
   const { data: courses = [] } = useCourses();
   const { data: parentStudents = [] } = useParentStudents();
@@ -82,7 +82,9 @@ export function StudentsView() {
           </div>
         }
       >
-        {filtered.length === 0 ? (
+        {loading ? (
+          <LoadingState />
+        ) : filtered.length === 0 ? (
           <EmptyState
             message={kw ? "검색 결과가 없습니다." : "등록된 학생이 없습니다."}
             action={!kw && admin && <button className="btn btn-sm" onClick={() => setShowForm(true)}>+ 학생 등록</button>}

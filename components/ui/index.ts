@@ -3,6 +3,7 @@ export { Badge } from './Badge';
 export { PageHeader } from './PageHeader';
 export { Field } from './Field';
 export { EmptyState } from './EmptyState';
+export { LoadingState } from './LoadingState'; // [E0.6 H2] 목록 초기 로드 단일 규격
 export { TableWrap } from './TableWrap';
 export { ClickableTableRow } from './ClickableTableRow';
 export { ModalShell, PromptModal, ConfirmModal } from './Modal';
