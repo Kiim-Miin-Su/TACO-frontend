@@ -327,8 +327,9 @@ export default function ProfileChangeModal({
           <Field label="이메일" hint="변경 시 새 이메일로 본인 인증이 필요합니다.">
             <input className="input w-full" type="email" autoComplete="email" maxLength={320} value={draft.email} onChange={(event) => set("email", event.target.value)} />
           </Field>
-          <Field label="연락처" hint="변경 시 새 번호로 문자 인증이 필요합니다.">
-            <input className="input w-full" type="tel" autoComplete="tel" maxLength={20} value={draft.phone} onChange={(event) => set("phone", event.target.value)} />
+          {/* [2026-07-15] SMS 인증은 추후 제공 — 형식 검증(010-1234-5678) + 관리자 승인으로 처리 */}
+          <Field label="연락처" hint="010-1234-5678 형식 · SMS 인증은 추후 제공 예정(관리자 승인으로 처리)">
+            <input className="input w-full" type="tel" autoComplete="tel" maxLength={20} placeholder="010-1234-5678" value={draft.phone} onChange={(event) => set("phone", event.target.value)} />
           </Field>
           <Field label="국가 코드" hint="국가/권역 코드 (예: KR, US-W)">
             <input className="input w-full uppercase" inputMode="text" maxLength={8} value={draft.countryCode} onChange={(event) => set("countryCode", event.target.value.toUpperCase())} />

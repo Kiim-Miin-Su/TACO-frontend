@@ -63,7 +63,10 @@ describe("buildProfileChangePayload", () => {
   });
 
   it("rejects malformed phones and simultaneous email+phone changes", () => {
-    expect(buildProfileChangePayload(profile, { ...baseDraft, phone: "abc" }).error).toContain("연락처 형식");
+    expect(buildProfileChangePayload(profile, { ...baseDraft, phone: "abc" }).error).toContain("010-1234-5678 형식");
+    // [2026-07-15 SMS 추후] 느슨한 국제 형식(+44...)도 당분간 거부 — xxx-xxxx-xxxx만 허용(대표 지시)
+    expect(buildProfileChangePayload(profile, { ...baseDraft, phone: "+44 7911 123456" }).error).toContain("010-1234-5678 형식");
+    expect(buildProfileChangePayload(profile, { ...baseDraft, phone: "010-9999-0000" }).payload?.phone).toBe("010-9999-0000");
     expect(
       buildProfileChangePayload(profile, { ...baseDraft, email: "new@tnacademy.test", phone: "010-9999-0000" }).error,
     ).toContain("하나씩만");
@@ -71,9 +74,10 @@ describe("buildProfileChangePayload", () => {
 });
 
 describe("contactVerificationPlanOf", () => {
-  it("requires a challenge on the new value for email/phone changes, none for clearing or non-contact fields", () => {
+  it("email 변경만 challenge 필요 — phone은 SMS 추후 구현까지 인증 없이(형식+승인), 비우기/비연락처도 불요", () => {
     expect(contactVerificationPlanOf({ email: "new@tnacademy.test", reason: "r" })).toEqual({ channel: "email", target: "new@tnacademy.test" });
-    expect(contactVerificationPlanOf({ phone: "010-9999-0000", reason: "r" })).toEqual({ channel: "sms", target: "010-9999-0000" });
+    // [2026-07-15 SMS 추후 구현] phone 변경은 OTP 없이 접수 — provider 도입 시 planOf의 sms 분기 복원
+    expect(contactVerificationPlanOf({ phone: "010-9999-0000", reason: "r" })).toBeNull();
     expect(contactVerificationPlanOf({ phone: null, reason: "r" })).toBeNull();
     expect(contactVerificationPlanOf({ name: "박지훈", timeZone: "Asia/Seoul", reason: "r" })).toBeNull();
   });
