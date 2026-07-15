@@ -58,6 +58,12 @@ function LoginForm() {
         <span>계정이 없으신가요?</span>
         <Link href="/signup" className="font-medium text-accent hover:underline">가입 신청 →</Link>
       </div>
+      {/* [TBO-29C C5] 비로그인 복구 — 아이디 찾기·비밀번호 재설정 */}
+      <div className="flex items-center justify-center gap-2 text-caption text-fg-muted">
+        <Link href="/recover" className="hover:underline">아이디 찾기</Link>
+        <span aria-hidden>·</span>
+        <Link href="/recover?tab=password" className="hover:underline">비밀번호 재설정</Link>
+      </div>
 
       {/* [TBO-29] 테스트 계정 퀵셀렉트는 폐지. 모든 사용자는 자신의 자격증명으로 로그인한다. */}
     </AuthShell>

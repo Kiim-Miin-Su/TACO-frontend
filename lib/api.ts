@@ -341,6 +341,13 @@ export const api = {
       http.get<{ sub: number; name: string; roles: string[]; mustChangePassword?: boolean }>("/auth/me").then((r) => r.data),
     // [TBO-28B] 로그아웃 — auth_events 보안 기록(베스트에포트 호출, 토큰 폐기는 클라이언트).
     logout: () => http.post<{ ok: boolean }>("/auth/logout", {}).then((r) => r.data),
+    // [TBO-29C C5] 비로그인 복구 — 응답은 계정 존재와 무관하게 동일(dev 환경만 devWebId/devResetUrl 노출)
+    recoverId: (email: string) =>
+      http.post<{ ok: boolean; message: string; devWebId?: string }>("/auth/recover-id", { email }).then((r) => r.data),
+    recoverPassword: (webId: string, email: string) =>
+      http.post<{ ok: boolean; message: string; devResetUrl?: string }>("/auth/recover-password", { webId, email }).then((r) => r.data),
+    resetPassword: (token: string, newPassword: string) =>
+      http.post<{ ok: boolean }>("/auth/reset-password", { token, newPassword }).then((r) => r.data),
     // 대표(super_admin) 전용 — 승인 대기 목록·승인·반려
     // [TBO-28B] 승인=원자 tx(상태+승인메타+강사프로필+audit, 동시 결정 409) · 반려=사유 필수(400)
     pending: () => http.get<PendingAccount[]>("/auth/pending").then((r) => r.data),
