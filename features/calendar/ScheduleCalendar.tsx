@@ -8,6 +8,7 @@ import { qk } from "@/lib/queryKeys";
 import { invalidateScheduleLifecycle } from "@/lib/query-cache";
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 D — 파일별 중복 toMin/fromMin/pad/WD 제거)
 import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, sessionEndMin, crossMidnightEnd, durationMinutesBetween, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
+import { useAcademyEvents } from "@/lib/queries"; // [TBO-29D ⑤] 학원 공통 일정(전 직원 공통 표시)
 import { ScheduleCreateModal } from "./ScheduleCreateModal";
 import {
   PALETTE, STATUS_LABEL, MAX_SPLIT,
@@ -448,6 +449,8 @@ export function ScheduleCalendar() {
   const previewRef = useRef<{ id: number; start: number; end: number; dStart: number; dEnd: number } | null>(null);
 
   const weekStart = useMemo(() => mondayOf(anchor), [anchor]);
+  // [TBO-29D ⑤] 학원 공통 일정(입시 설명회·모의고사·휴원 등) — 역할 무관 전 직원에게 표시.
+  const { data: academyEvents = [] } = useAcademyEvents();
   // 기간(period)을 지정하면 **뷰 자체가 그 날짜들로 재구성**(피드백: 4일 선택=4일만 표시). 상한 14일.
   const dates = useMemo(() => {
     if (pickedDates.length) return [...new Set(pickedDates)].sort().slice(0, 14); // cherry-pick 우선
@@ -2346,6 +2349,35 @@ export function ScheduleCalendar() {
               {/* 조작법(클릭·드래그·삭제)은 헤더 ⓘ 팝오버로 이동(DESIGN §5.5) */}
             </p>
           )}
+
+          {/* [TBO-29D ⑤] 학원 공통 일정 스트립 — 현재 보이는 날짜와 겹치는 이벤트(전 직원 공통·조회 전용).
+              CUD는 관리자 화면(매니저 이상 — 요구 ⑥). 강사 개인 필터와 무관하게 항상 노출된다. */}
+          {(() => {
+            const visibleFrom = dates[0];
+            const visibleTo = dates[dates.length - 1];
+            const visible = academyEvents.filter((ev) => ev.startDate <= visibleTo && ev.endDate >= visibleFrom);
+            if (!visible.length) return null;
+            const typeIcon: Record<string, string> = { notice: "📢", exam: "📝", holiday: "🏖", closure: "🚪", event: "🎓" };
+            return (
+              <div className="flex items-center gap-2 flex-wrap text-caption" data-academy-events>
+                <span className="font-semibold text-fg-muted shrink-0">📌 학원 일정</span>
+                {visible.map((ev) => (
+                  <span
+                    key={ev.id}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-canvas-subtle"
+                    title={`${ev.title} · ${ev.startDate}${ev.endDate !== ev.startDate ? `~${ev.endDate}` : ""}${ev.memo ? ` · ${ev.memo}` : ""}`}
+                  >
+                    <span>{typeIcon[ev.type] ?? "📌"}</span>
+                    <span className={ev.priority === "high" ? "font-semibold" : ""}>{ev.title}</span>
+                    <span className="text-fg-subtle mono">
+                      {ev.startDate.slice(5).replace("-", "/")}
+                      {ev.endDate !== ev.startDate ? `~${ev.endDate.slice(5).replace("-", "/")}` : ""}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
 
           {msg && (
             <div

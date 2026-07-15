@@ -5,10 +5,10 @@
 'use client';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Badge, SectionCard, EmptyState, TableWrap } from '@/components/ui';
+import { Badge, SectionCard, EmptyState, TableWrap, ConfirmModal, PromptModal } from '@/components/ui';
 import { api } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
-import { useAcademyEvents } from '@/lib/queries';
+import { useAcademyEvents, useRemoveEvent, useUpdateEvent } from '@/lib/queries';
 import type { EventType, EventPriority } from '@/types';
 import { AdminGuard, AdminHeader } from './AdminShell';
 import { Field } from '@/components/ui';
@@ -16,6 +16,11 @@ import { eventLabel, eventTone, EVENT_TYPES, priorityLabel, EVENT_PRIORITIES } f
 
 export function EventsView() {
   const { data: events = [] } = useAcademyEvents();
+  // [TBO-29D 요구 ⑥] 매니저 이상 수정/삭제 — 제목 수정은 PromptModal, 삭제는 ConfirmModal(soft delete).
+  const update = useUpdateEvent();
+  const removeEvent = useRemoveEvent();
+  const [editing, setEditing] = useState<{ id: number; title: string } | null>(null);
+  const [removing, setRemoving] = useState<{ id: number; title: string } | null>(null);
   return (
     <AdminGuard>
       <div className="p-6 max-w-page mx-auto space-y-6">
@@ -27,7 +32,7 @@ export function EventsView() {
           ) : (
           <TableWrap>
           <table className="table">
-            <thead><tr><th>제목</th><th>유형</th><th>우선순위</th><th>기간</th></tr></thead>
+            <thead><tr><th>제목</th><th>유형</th><th>우선순위</th><th>기간</th><th></th></tr></thead>
             <tbody>
               {events.map((e) => (
                 <tr key={e.id}>
@@ -35,6 +40,10 @@ export function EventsView() {
                   <td><Badge tone={eventTone[e.type]}>{eventLabel[e.type]}</Badge></td>
                   <td>{e.priority === 'high' ? <Badge tone="danger">★ 중요</Badge> : <span className="text-fg-muted">{priorityLabel[e.priority]}</span>}</td>
                   <td className="mono text-fg-muted">{e.startDate}{e.endDate !== e.startDate ? ` ~ ${e.endDate}` : ''}</td>
+                  <td className="text-right whitespace-nowrap">
+                    <button className="btn btn-sm mr-1.5" onClick={() => setEditing({ id: e.id, title: e.title })}>수정</button>
+                    <button className="btn btn-sm text-danger" onClick={() => setRemoving({ id: e.id, title: e.title })}>삭제</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -42,6 +51,29 @@ export function EventsView() {
           </TableWrap>
           )}
         </SectionCard>
+        {editing && (
+          <PromptModal
+            title="이벤트 제목 수정"
+            fields={[{ name: 'title', label: '제목', initial: editing.title }]}
+            submitLabel="수정"
+            onClose={() => setEditing(null)}
+            onSubmit={(values) => {
+              const title = (values.title ?? '').trim();
+              if (title) update.mutate({ id: editing.id, patch: { title } });
+              setEditing(null);
+            }}
+          />
+        )}
+        {removing && (
+          <ConfirmModal
+            title="이벤트 삭제"
+            message={`"${removing.title}" 이벤트를 삭제할까요? (삭제 내역은 DB에 보존됩니다)`}
+            confirmLabel="삭제"
+            danger
+            onClose={() => setRemoving(null)}
+            onConfirm={() => { removeEvent.mutate(removing.id); setRemoving(null); }}
+          />
+        )}
       </div>
     </AdminGuard>
   );
