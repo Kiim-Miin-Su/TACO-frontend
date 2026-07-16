@@ -363,6 +363,14 @@ export const useUpdateCounsel = () =>
 export const useCreateCounselRound = () =>
   useMutation({ mutationFn: (v: { formId: number; input: Parameters<typeof api.counsel.createRound>[1] }) => api.counsel.createRound(v.formId, v.input), onSuccess: useInvalidator([qk.counsel.all]) });
 
+// [B6 C4/EP9] 가용/불가 블록 쓰기 — ScheduleCalendar 수동 api.availability.* 잔재의 중앙 훅화.
+//  무효화는 availability.all만(EP5 — 블록은 세션·출결·리포트·정산 데이터와 무관, 종전
+//  reloadSelBlocks=invalidate(qk.availability.all)와 동일 범위. 승인 필요 409 처리는 호출부 소관).
+export const useUpsertAvailability = () =>
+  useMutation({ mutationFn: api.availability.upsert, onSuccess: useInvalidator([qk.availability.all]) });
+export const useRemoveAvailability = () =>
+  useMutation({ mutationFn: api.availability.remove, onSuccess: useInvalidator([qk.availability.all]) });
+
 // 스케줄(생성·수정·삭제) — [C4] 캘린더 명령 무효화 단일 소스(invalidateCalendarCommand)로 통일.
 const useCalendarCommandInvalidator = () => {
   const qc = useQueryClient();

@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, AvailabilityBlock, Attendance } from "@/types";
-import { api, type SchedulePatchBody, type ScheduleCreateBody, type ScheduleSeriesCreateBody, type AvailabilityUpsertBody, type CreateScheduleRequestBody } from "@/lib/api";
+// [B6 C4] api 값 import 제거 — 이 화면의 쓰기는 전부 중앙 mutation 훅 경유(타입만 사용).
+import type { SchedulePatchBody, ScheduleCreateBody, ScheduleSeriesCreateBody, AvailabilityUpsertBody, CreateScheduleRequestBody } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/queryKeys";
 import { invalidateScheduleLifecycle } from "@/lib/query-cache";
@@ -10,6 +11,7 @@ import { invalidateScheduleLifecycle } from "@/lib/query-cache";
 import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, sessionEndMin, crossMidnightEnd, durationMinutesBetween, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
 import { useAcademyEvents } from "@/lib/queries"; // [TBO-29D ⑤] 학원 공통 일정(전 직원 공통 표시)
 import { ScheduleCreateModal } from "./ScheduleCreateModal";
+import { MonthGrid } from "./MonthGrid"; // [B6 C4/EP9] 월간 그리드 파일 분리(표시 전용)
 import {
   PALETTE, STATUS_LABEL, MAX_SPLIT,
   matchesResourceFilter, sortByDateAsc,
@@ -32,6 +34,15 @@ import {
   useScheduleResources,
   useAllAvailability,
   useCreateScheduleRequest,
+  // [B6 C4/EP9] 관리자 직접 쓰기도 중앙 mutation 훅으로 — 수동 api.* + 수동 무효화 잔재 제거.
+  //  훅 onSuccess가 무효화(스케줄=캘린더 명령 7-scope, 가용=availability만)를 담당하므로
+  //  성공 직후의 명시 load()/reloadSelBlocks()는 제거했다(이중 refetch 방지).
+  useCreateSchedule,
+  useCreateScheduleSeries,
+  useUpdateSchedule,
+  useRemoveSchedule,
+  useUpsertAvailability,
+  useRemoveAvailability,
 } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
 import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, kstPatchTimes, type CountryInfo, type TzShiftedRow, splitKstBand } from "@/lib/domain/tz";
@@ -205,6 +216,15 @@ export function ScheduleCalendar() {
   // 권한은 AppShell의 `/auth/me` 검증 계정에서만 파생한다. 실제 쓰기 허용은 백엔드가 최종 판정한다.
   const qc = useQueryClient(); // [TBO-16] 요청 생성 후 scheduleRequests 무효화(배지·승인센터 동일 모집단)
   const createScheduleRequest = useCreateScheduleRequest();
+  // [B6 C4] 중앙 mutation 훅 — mutateAsync로 기존 낙관적 흐름(setRows 스냅샷/롤백)은 그대로 유지하고
+  //  쓰기 경로와 무효화만 공용 계층으로 통일. useUpdateSchedule의 accountingPrompt 인터셉트는 mutate
+  //  전용이라 mutateAsync엔 안 걸림 — 이 화면은 409 회계영향을 자체 모달(accountingAck)로 처리한다.
+  const createScheduleM = useCreateSchedule();
+  const createScheduleSeriesM = useCreateScheduleSeries();
+  const updateScheduleM = useUpdateSchedule();
+  const removeScheduleM = useRemoveSchedule();
+  const upsertAvailabilityM = useUpsertAvailability();
+  const removeAvailabilityM = useRemoveAvailability();
   // [B-4] 내 수업 요청(강사) — 배지·승인센터와 같은 useScheduleRequests 단일 queryKey 구독
   const { data: myRequests = [] } = useScheduleRequests();
   const pendingGhosts = useMemo(() => myRequests.filter((r) => r.status === "pending"), [myRequests]);
@@ -888,11 +908,10 @@ export function ScheduleCalendar() {
   //  생성 모달이 열려 있는 동안 실패 사유를 모달 안 인라인 에러로 표시할 수 있도록(승인 전환 시 message 없음).
   async function createBlock(body: AvailabilityUpsertBody, options: { closeOnSuccess?: boolean } = {}): Promise<{ ok: boolean; message?: string }> {
     try {
-      await api.availability.upsert(body);
+      // [B6 C4] 훅 onSuccess가 invalidate(qk.availability.all) — allBlocks refetch → 전체 컬럼·선택
+      //  유저 밴드 동시 갱신(버그수정 2026-07-03 이슈3·4의 "항상 갱신" 규약을 훅이 승계).
+      await upsertAvailabilityM.mutateAsync(body);
       if (options.closeOnSuccess !== false) setCreating(null);
-      // [버그수정 2026-07-03 이슈3·4] 스플릿 컬럼 밴드는 allBlocks 소스라 항상 갱신해야 새 블록(학생 불가·
-      //  가용 초록)이 즉시 렌더됨. 기존엔 selected==owner일 때만 갱신 → 다른 유저 컬럼에 추가하면 미표시.
-      reloadSelBlocks(); // invalidate(qk.availability.all) → allBlocks refetch → 전체 컬럼·선택 유저 밴드 동시 갱신
       return { ok: true };
     } catch (e) {
       if (openAvailabilityApprovalFromError(e, { action: "upsert", body, summary: availabilitySummary(body) })) return { ok: false };
@@ -915,7 +934,7 @@ export function ScheduleCalendar() {
     setConfirmReq({
       title: "시간 블록 삭제", message: "이 시간 블록을 삭제할까요?", confirmLabel: "삭제", danger: true,
       onConfirm: async () => {
-        try { await api.availability.remove(id); reloadSelBlocks(); } catch (e) {
+        try { await removeAvailabilityM.mutateAsync(id); } catch (e) {
           if (openAvailabilityApprovalFromError(e, { action: "delete", targetAvailabilityId: id, summary: `${AVAILABILITY_KIND_LABEL[b?.kind ?? "available"]} 삭제` })) return;
           alertAvailabilityError("삭제 실패");
         }
@@ -932,14 +951,13 @@ export function ScheduleCalendar() {
       : ({ ownerType: "instructor", ownerId: 0 } as const); // orig 없으면 아래 remove 경로만 수행
     try {
       if (scope === "all" || !orig) {
-        await api.availability.remove(c.id);
+        await removeAvailabilityM.mutateAsync(c.id);
       } else if (scope === "this_and_following") {
-        await api.availability.upsert({ id: c.id, ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: orig.effectiveFrom, effectiveTo: addDaysISO(c.date, -1) });
+        await upsertAvailabilityM.mutateAsync({ id: c.id, ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: orig.effectiveFrom, effectiveTo: addDaysISO(c.date, -1) });
       } else {
-        await api.availability.upsert({ id: c.id, ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: orig.effectiveFrom, effectiveTo: addDaysISO(c.date, -1) });
-        await api.availability.upsert({ ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: addDaysISO(c.date, 7), effectiveTo: orig.effectiveTo });
+        await upsertAvailabilityM.mutateAsync({ id: c.id, ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: orig.effectiveFrom, effectiveTo: addDaysISO(c.date, -1) });
+        await upsertAvailabilityM.mutateAsync({ ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: addDaysISO(c.date, 7), effectiveTo: orig.effectiveTo });
       }
-      reloadSelBlocks();
     } catch (e) {
       if (orig) {
         const fallback =
@@ -967,18 +985,17 @@ export function ScheduleCalendar() {
     try {
       if (scope === "all" || !orig) {
         // 전체: 시간/요일만 바꾸고 기존 기간(effectiveFrom/To)은 보존.
-        await api.availability.upsert({ id: c.id, ...newPos, effectiveFrom: orig?.effectiveFrom, effectiveTo: orig?.effectiveTo });
+        await upsertAvailabilityM.mutateAsync({ id: c.id, ...newPos, effectiveFrom: orig?.effectiveFrom, effectiveTo: orig?.effectiveTo });
       } else if (scope === "this_and_following") {
         // 원본을 이번 주 직전까지로 제한 + 새 규칙을 이번 주부터.
-        await api.availability.upsert({ id: c.id, ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: orig.effectiveFrom, effectiveTo: addDaysISO(c.origDate, -1) });
-        await api.availability.upsert({ ...newPos, effectiveFrom: c.newDate, effectiveTo: orig.effectiveTo });
+        await upsertAvailabilityM.mutateAsync({ id: c.id, ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: orig.effectiveFrom, effectiveTo: addDaysISO(c.origDate, -1) });
+        await upsertAvailabilityM.mutateAsync({ ...newPos, effectiveFrom: c.newDate, effectiveTo: orig.effectiveTo });
       } else {
         // 이번 주만: 원본 분할(이번 주 직전까지 + 다음 주부터 재개) + 이번 주 1회 새 위치.
-        await api.availability.upsert({ id: c.id, ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: orig.effectiveFrom, effectiveTo: addDaysISO(c.origDate, -1) });
-        await api.availability.upsert({ ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: addDaysISO(c.origDate, 7), effectiveTo: orig.effectiveTo });
-        await api.availability.upsert({ ...newPos, effectiveFrom: c.newDate, effectiveTo: c.newDate });
+        await upsertAvailabilityM.mutateAsync({ id: c.id, ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: orig.effectiveFrom, effectiveTo: addDaysISO(c.origDate, -1) });
+        await upsertAvailabilityM.mutateAsync({ ...owner, kind: orig.kind, weekday: orig.weekday, startTime: orig.startTime, endTime: orig.endTime, effectiveFrom: addDaysISO(c.origDate, 7), effectiveTo: orig.effectiveTo });
+        await upsertAvailabilityM.mutateAsync({ ...newPos, effectiveFrom: c.newDate, effectiveTo: c.newDate });
       }
-      reloadSelBlocks();
     } catch (e) {
       if (orig) {
         const fallback = {
@@ -1083,9 +1100,9 @@ export function ScheduleCalendar() {
     const snapshot = rows;
     setRows((rs) => rs.map((r) => (r.id === id ? applyScheduleRowPatch(r, patch) : r))); // 즉시 반영
     try {
-      const res = await api.schedule.update(id, patch);
+      // [B6 C4] 훅 onSuccess가 캘린더 명령 무효화 → 스케줄 쿼리 refetch → rows reconcile(명시 load 불요)
+      const res = await updateScheduleM.mutateAsync({ id, body: patch });
       if (res.updated > 1) setMsg(`반복 일정 ${res.updated}건 함께 수정되었습니다.`);
-      await load(); // 서버 확정으로 reconcile
     } catch (e) {
       const err = e as { response?: { status?: number; data?: { code?: string; conflicts?: Conflict[]; impact?: AccountingImpact } } };
       if (err.response?.status === 409) {
@@ -1111,7 +1128,7 @@ export function ScheduleCalendar() {
           onConfirm: async () => {
             setRows((rs) => rs.map((r) => (r.id === id ? applyScheduleRowPatch(r, patch) : r)));
             // [M4] force 재시도도 실패할 수 있음(네트워크·400) — 미처리 거부/유령 낙관 상태 방지
-            try { await api.schedule.update(id, { ...patch, force: true }); await load(); }
+            try { await updateScheduleM.mutateAsync({ id, body: { ...patch, force: true } }); }
             catch { setRows(snapshot); setMsg("수정 실패"); }
           },
         });
@@ -1223,8 +1240,7 @@ export function ScheduleCalendar() {
     setRows((rs) => [...rs, optimisticRow(safe)]); // 즉시 반영
     setCreating(null);
     try {
-      await api.schedule.create(safe);
-      await load();
+      await createScheduleM.mutateAsync(safe); // [B6 C4] 무효화는 훅 onSuccess(캘린더 명령)
     } catch (e) {
       const err = e as { response?: { status?: number; data?: { conflicts?: Conflict[] } } };
       if (err.response?.status === 409) {
@@ -1236,7 +1252,7 @@ export function ScheduleCalendar() {
           onConfirm: async () => {
             setRows((rs) => [...rs, optimisticRow(safe)]);
             // [M4] force 재시도 실패 시에도 롤백(미처리 거부 방지)
-            try { await api.schedule.create({ ...safe, force: true }); await load(); }
+            try { await createScheduleM.mutateAsync({ ...safe, force: true }); }
             catch { setRows(snapshot); setMsg("스케줄 추가 실패"); }
           },
         });
@@ -1256,9 +1272,9 @@ export function ScheduleCalendar() {
     setRows((rs) => [...rs, ...previews.map(optimisticRow)]); // 낙관적 반영(스냅샷 롤백)
     setCreating(null);
     const send = async (force: boolean) => {
-      const res = await api.schedule.createSeries(force ? { ...body, force: true } : body);
+      // [B6 C4] 서버 확정본 재동기화는 훅 onSuccess(캘린더 명령 무효화)가 담당
+      const res = await createScheduleSeriesM.mutateAsync(force ? { ...body, force: true } : body);
       setMsg(`반복 일정 ${res.rows.length}건을 추가했습니다${force ? " (충돌 감수)" : ""}.`);
-      await load(); // 서버 확정본으로 재동기화(schedule scope invalidate)
     };
     try {
       await send(false);
@@ -1329,9 +1345,13 @@ export function ScheduleCalendar() {
     setEditing(null);
     setSelEvent(null);
     try {
-      const res = await api.schedule.remove(id, scope !== "this" || opts?.expectedSeriesVersion != null ? opts : undefined);
+      // [B6 C4] 중앙 훅 — scope=this(기본값)는 인자 자체를 생략해 종전과 동일한 요청 형태 유지
+      const res = await removeScheduleM.mutateAsync({
+        id,
+        ...(scope !== "this" ? { scope } : {}),
+        ...(opts?.expectedSeriesVersion != null ? { expectedSeriesVersion: opts.expectedSeriesVersion } : {}),
+      });
       setMsg(res.removedIds && res.removedIds.length > 1 ? `반복 일정 ${res.removedIds.length}건을 삭제했습니다.` : "스케줄을 삭제했습니다.");
-      await load();
     } catch (e) {
       const err = e as { response?: { status?: number; data?: { code?: string; message?: string } } };
       setRows(snapshot); // 실패 → 롤백
@@ -2839,100 +2859,6 @@ export function ScheduleCalendar() {
           onConfirm={() => { const req = confirmReq; setConfirmReq(null); void req.onConfirm(); }}
         />
       )}
-    </div>
-  );
-}
-
-// ── 월간 그리드 ──
-function MonthGrid({
-  anchor,
-  rows,
-  colorOf,
-  onPick,
-  onPickDay,
-  onCreateDay,
-}: {
-  anchor: string;
-  rows: ScheduleRow[];
-  colorOf: (r: ScheduleRow) => string;
-  onPick: (r: ScheduleRow) => void;
-  onPickDay: (date: string) => void;
-  onCreateDay: (date: string) => void;
-}) {
-  const ym = anchor.slice(0, 7);
-  const firstWd = weekdayOf(`${ym}-01`);
-  const last = new Date(Date.UTC(Number(anchor.slice(0, 4)), Number(anchor.slice(5, 7)), 0)).getUTCDate();
-  const cells: (string | null)[] = [
-    ...Array(firstWd).fill(null),
-    ...Array.from({ length: last }, (_, i) => `${ym}-${pad(i + 1)}`),
-  ];
-  const byDay = useMemo(() => {
-    const m = new Map<string, ScheduleRow[]>();
-    rows.forEach((r) => {
-      const a = m.get(r.sessionDate) ?? [];
-      a.push(r);
-      m.set(r.sessionDate, a);
-    });
-    m.forEach((a) => a.sort((x, y) => (x.startTime ?? "").localeCompare(y.startTime ?? "")));
-    return m;
-  }, [rows]);
-
-  return (
-    <div className="card overflow-hidden">
-      <div className="grid grid-cols-7 border-b">
-        {WD.map((w, i) => (
-          <div
-            key={w}
-            className={`px-3 py-2 text-caption font-semibold ${i === 0 ? "text-danger" : i === 6 ? "text-accent" : "text-fg-muted"}`}
-          >
-            {w}
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-7">
-        {cells.map((date, idx) => (
-          <div
-            key={idx}
-            className={`min-h-[104px] border-b border-r p-1.5 ${date ? "cursor-pointer" : ""}`}
-            style={{ borderColor: "var(--color-line-muted)" }}
-            onDoubleClick={(e) => { if (date && (e.target as HTMLElement).closest("[data-evt]") == null) onCreateDay(date); }}
-            title={date ? "더블클릭으로 일정 추가" : undefined}
-          >
-            {date && (
-              <button
-                className={`text-caption mb-1 px-1 rounded hover:bg-canvas-subtle ${date === todayISO() ? "font-bold text-accent" : "text-fg-subtle"}`}
-                onClick={() => onPickDay(date)}
-                title="일간 보기"
-              >
-                {Number(date.slice(8))}
-              </button>
-            )}
-            <div className="space-y-1">
-              {(date ? (byDay.get(date) ?? []) : []).slice(0, 4).map((r) => (
-                <button
-                  key={r.id}
-                  data-evt
-                  onClick={() => onPick(r)}
-                  onDoubleClick={(e) => { e.stopPropagation(); onPick(r); }}
-                  className="block w-full text-left rounded px-1.5 py-0.5 text-micro text-white truncate"
-                  style={{ background: colorOf(r) }}
-                  title={`${r.startTime ?? ""}–${r.endTime ?? ""} ${r.courseName} · ${r.instructorName}`}
-                >
-                  <span className="mono">
-                    {r.startTime ?? ""}–{r.endTime ?? ""}
-                  </span>{" "}
-                  {r.courseName}
-                </button>
-              ))}
-              {date && (byDay.get(date)?.length ?? 0) > 4 && (
-                <button className="text-micro text-fg-muted hover:underline px-1" onClick={() => onPickDay(date)}>
-                  +{(byDay.get(date)?.length ?? 0) - 4} 더보기
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
