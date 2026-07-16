@@ -464,6 +464,7 @@ export const api = {
   },
   payments: {
     list: () => http.get<Payment[]>("/payments").then((r) => r.data),
+    get: (id: number) => http.get<Payment>(`/payments/${id}`).then((r) => r.data), // [B7 E3] 상세 단건
     create: (input: CreatePaymentInput) => http.post<Payment>("/payments", input).then((r) => r.data),
     update: (id: number, patch: UpdatePaymentInput) => http.patch<Payment>(`/payments/${id}`, patch).then((r) => r.data),
     markPaid: (id: number) => http.post<Payment>(`/payments/${id}/pay`, {}).then((r) => r.data),
@@ -472,6 +473,7 @@ export const api = {
   },
   expenses: {
     list: () => http.get<Expense[]>("/expenses").then((r) => r.data),
+    get: (id: number) => http.get<Expense>(`/expenses/${id}`).then((r) => r.data), // [B7 E3] 상세 단건
     create: (input: CreateExpenseInput) => http.post<Expense>("/expenses", input).then((r) => r.data),
     approve: (id: number) => http.post<Expense>(`/expenses/${id}/approve`, {}).then((r) => r.data),
     // 반려 사유 **필수**(Q2 2026-07-06 — 반려류 패턴 통일). 서버 저장(Expense.rejectedReason).
@@ -493,6 +495,7 @@ export const api = {
   },
   courses: {
     list: () => http.get<Course[]>("/courses").then((r) => r.data),
+    get: (id: number) => http.get<Course>(`/courses/${id}`).then((r) => r.data), // [B7 E3] 상세 단건
     create: (input: CreateCourseInput) => http.post<Course>("/courses", input).then((r) => r.data),
   },
   subjects: {
@@ -501,6 +504,7 @@ export const api = {
   },
   counsel: {
     forms: () => http.get<CounselForm[]>("/counsel").then((r) => r.data),
+    get: (id: number) => http.get<CounselForm>(`/counsel/${id}`).then((r) => r.data), // [B7 E3] 상세 단건(BE 신설)
     rounds: (counselFormId?: number) =>
       http.get<CounselRound[]>("/counsel/rounds", { params: counselFormId ? { counselFormId } : undefined }).then((r) => r.data),
     create: (input: CreateCounselInput) => http.post<CounselForm>("/counsel", input).then((r) => r.data),
@@ -575,6 +579,8 @@ export const api = {
   schedule: {
     list: (q: ScheduleQuery = {}, options: ApiReadOptions = {}) =>
       http.get<ScheduleRow[]>("/schedule", { ...options, params: q }).then((r) => r.data),
+    // [B7 E3] 상세 단건(BE 신설) — 목록과 동일 enriched ScheduleRow. 강사는 본인 세션만(404→403).
+    get: (id: number) => http.get<ScheduleRow>(`/schedule/${id}`).then((r) => r.data),
     // 자원 피커(강사·강의실·학생)
     resources: (options: ApiReadOptions = {}) => http.get<ScheduleResources>("/schedule/resources", options).then((r) => r.data),
     // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터

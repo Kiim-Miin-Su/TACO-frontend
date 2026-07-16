@@ -199,6 +199,33 @@ export const useProfileChangeRequest = (id: number | null) => {
   });
 };
 
+// ── [B7 E3] 상세 단건 훅 — full-list 후 클라 find 대체. 404/403은 axios 에러로 흘러
+//  DetailStates가 구분 렌더한다. 규약: 404/403은 최종 상태라 재시도하지 않음(무의미한 재요청 차단).
+//  키는 도메인 루트 하위 — 기존 쓰기 훅의 .all 루트 무효화가 상세도 자동 갱신(별도 배선 불요).
+const detailRetry = (failureCount: number, error: unknown) => {
+  const status = (error as { response?: { status?: number } }).response?.status;
+  if (status === 404 || status === 403) return false;
+  return failureCount < 2;
+};
+export const useStudent = (id: number | null) =>
+  useQuery({ queryKey: qk.students.detail(id ?? 0), queryFn: () => api.students.get(id as number), enabled: id != null, retry: detailRetry });
+export const useScheduleSession = (id: number | null) => {
+  const { scope } = useAccountAccess();
+  return useQuery({ queryKey: qk.schedule.detail(id ?? 0, scope), queryFn: () => api.schedule.get(id as number), enabled: id != null, retry: detailRetry });
+};
+export const useCounselForm = (id: number | null) =>
+  useQuery({ queryKey: qk.counsel.form(id ?? 0), queryFn: () => api.counsel.get(id as number), enabled: id != null, retry: detailRetry });
+export const usePayment = (id: number | null) => {
+  const { can } = useAccountAccess();
+  return useQuery({ queryKey: qk.payments.detail(id ?? 0), queryFn: () => api.payments.get(id as number), enabled: can("finance.access") && id != null, retry: detailRetry });
+};
+export const useExpense = (id: number | null) => {
+  const { can } = useAccountAccess();
+  return useQuery({ queryKey: qk.expenses.detail(id ?? 0), queryFn: () => api.expenses.get(id as number), enabled: can("finance.access") && id != null, retry: detailRetry });
+};
+export const useCourse = (id: number | null) =>
+  useQuery({ queryKey: qk.courses.detail(id ?? 0), queryFn: () => api.courses.get(id as number), enabled: id != null, retry: detailRetry });
+
 // 보고서는 store 모델로 매핑해서 반환(배지·리포트 화면이 store 형상 사용).
 export const useReports = () => {
   const { scope } = useAccountAccess();

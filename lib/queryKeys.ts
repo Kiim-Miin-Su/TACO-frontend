@@ -9,6 +9,8 @@ export const qk = {
     all: ["schedule"] as const,
     list: (q: ScheduleQuery, scope = "global") => ["schedule", "list", scope, q] as const,
     resources: (scope = "global") => ["schedule", "resources", scope] as const,
+    // [B7 E3] 상세 단건 — 루트("schedule") 하위라 기존 캘린더 명령 무효화가 자동 포함.
+    detail: (id: number, scope = "global") => ["schedule", "detail", scope, id] as const,
   },
   availability: {
     all: ["availability"] as const,
@@ -26,15 +28,16 @@ export const qk = {
     previewMine: (scope: string, from: string, to: string) => ["payouts", "previewMine", scope, from, to] as const,
   },
   reports: { all: ["reports"] as const, list: (sessionId?: number, scope = "global") => ["reports", "list", scope, sessionId ?? null] as const },
-  students: { all: ["students"] as const, list: () => ["students", "list"] as const },
-  payments: { all: ["payments"] as const, list: () => ["payments", "list"] as const },
-  expenses: { all: ["expenses"] as const, list: () => ["expenses", "list"] as const },
-  courses: { all: ["courses"] as const, list: () => ["courses", "list"] as const },
+  students: { all: ["students"] as const, list: () => ["students", "list"] as const, detail: (id: number) => ["students", "detail", id] as const }, // [B7 E3]
+  payments: { all: ["payments"] as const, list: () => ["payments", "list"] as const, detail: (id: number) => ["payments", "detail", id] as const }, // [B7 E3]
+  expenses: { all: ["expenses"] as const, list: () => ["expenses", "list"] as const, detail: (id: number) => ["expenses", "detail", id] as const }, // [B7 E3]
+  courses: { all: ["courses"] as const, list: () => ["courses", "list"] as const, detail: (id: number) => ["courses", "detail", id] as const }, // [B7 E3]
   subjects: { all: ["subjects"] as const, list: () => ["subjects", "list"] as const },
   enrollments: { all: ["enrollments"] as const, list: (studentId?: number) => ["enrollments", "list", studentId ?? null] as const },
   counsel: {
     all: ["counsel"] as const,
     forms: () => ["counsel", "forms"] as const,
+    form: (id: number) => ["counsel", "form", id] as const, // [B7 E3] 상세 단건
     rounds: (counselFormId?: number) => ["counsel", "rounds", counselFormId ?? null] as const,
   },
   transactions: { all: ["transactions"] as const, list: () => ["transactions", "list"] as const },

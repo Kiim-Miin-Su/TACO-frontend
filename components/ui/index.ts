@@ -4,6 +4,7 @@ export { PageHeader } from './PageHeader';
 export { Field } from './Field';
 export { EmptyState } from './EmptyState';
 export { LoadingState } from './LoadingState'; // [E0.6 H2] 목록 초기 로드 단일 규격
+export { DetailStates } from './DetailStates'; // [B7 E3] 상세 공통 상태 셸(로딩/404/403/오류)
 export { TableWrap } from './TableWrap';
 export { ClickableTableRow } from './ClickableTableRow';
 export { ModalShell, PromptModal, ConfirmModal } from './Modal';
