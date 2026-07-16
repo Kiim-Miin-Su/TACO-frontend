@@ -1,7 +1,8 @@
 'use client';
+// [B6 C3 2026-07-16] 행 전체 클릭 = 지출 상세(ClickableTableRow href) — 셀 '상세' Link·반려 사유 버튼은 중첩 제외로 유지.
 import { useState } from 'react';
 import Link from 'next/link';
-import { Badge, SectionCard, MonthCalendar, PageHeader, EmptyState, LoadingState, TableWrap } from '@/components/ui';
+import { Badge, ClickableTableRow, SectionCard, MonthCalendar, PageHeader, EmptyState, LoadingState, TableWrap } from '@/components/ui';
 import { useExpenses } from '@/lib/queries';
 import { dateOnly, won } from '@/lib/format';
 import { categoryLabel, categoryTone, approvalLabel, approvalTone } from './labels';
@@ -64,7 +65,7 @@ export function ExpensesView() {
             </thead>
             <tbody>
               {expenses.map((e) => (
-                <tr key={e.id}>
+                <ClickableTableRow key={e.id} href={`/expenses/${e.id}`} label={`${e.title} 지출 상세`}>
                   <td className="font-medium">{e.title}</td>
                   <td><Badge tone={categoryTone[e.category]}>{categoryLabel[e.category]}</Badge></td>
                   <td className="text-fg-muted">{e.vendor ?? '—'}</td>
@@ -78,7 +79,7 @@ export function ExpensesView() {
                   {/* [E0.6 M] 날짜 표기 통일 — 공용 dateOnly(ISO가 들어와도 날짜만) */}
                   <td className="text-right mono text-fg-muted">{dateOnly(e.spentAt)}</td>
                   <td className="text-right"><Link href={`/expenses/${e.id}`} className="btn btn-sm">상세</Link></td>
-                </tr>
+                </ClickableTableRow>
               ))}
             </tbody>
           </table>

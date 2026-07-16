@@ -1,7 +1,8 @@
 'use client';
 // 데이터 소스: TanStack Query 훅(usePayments/useStudents)에서 조회.
+// [B6 C3 2026-07-16] 행 전체 클릭 = 결제 상세(ClickableTableRow href) — 셀 '상세' Link는 유지(중첩 제외).
 import Link from 'next/link';
-import { Badge, SectionCard, MonthCalendar, PageHeader, EmptyState, LoadingState, TableWrap } from '@/components/ui';
+import { Badge, ClickableTableRow, SectionCard, MonthCalendar, PageHeader, EmptyState, LoadingState, TableWrap } from '@/components/ui';
 import { usePayments, useStudents } from '@/lib/queries';
 import { usePersistedState } from '@/lib/usePersistedState';
 import { enumPreferenceCodec, preferenceKeys } from '@/lib/storage/preferences';
@@ -75,7 +76,7 @@ export function PaymentsView() {
             </thead>
             <tbody>
               {payments.map((p) => (
-                <tr key={p.id}>
+                <ClickableTableRow key={p.id} href={`/payments/${p.id}`} label={`${nameOf(p.studentId)} 결제 상세`}>
                   <td className="font-medium">{nameOf(p.studentId)}</td>
                   <td className="text-right mono">{won(p.amount)}</td>
                   <td className="text-fg-muted">{p.paymentMethod ? methodLabel[p.paymentMethod] : '—'}</td>
@@ -84,7 +85,7 @@ export function PaymentsView() {
                   <td className="text-right mono text-fg-muted">{dateOnly(p.createdAt)}</td>
                   <td className="text-right mono text-fg-muted">{dateOnly(p.paidAt)}</td>
                   <td className="text-right"><Link href={`/payments/${p.id}`} className="btn btn-sm">상세</Link></td>
-                </tr>
+                </ClickableTableRow>
               ))}
             </tbody>
           </table>

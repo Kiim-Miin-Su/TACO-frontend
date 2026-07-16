@@ -1,7 +1,8 @@
 "use client";
 
+// [B6 C3 2026-07-16] 수기 role/tabIndex/onKeyDown 복제 행 제거 — ClickableTableRow(onActivate)로 통일.
 import { useState } from "react";
-import { Badge, EmptyState, ModalShell, SectionCard, TableWrap } from "@/components/ui";
+import { Badge, ClickableTableRow, EmptyState, ModalShell, SectionCard, TableWrap } from "@/components/ui";
 import { ReasonModal } from "@/components/ReasonModal";
 import type { ProfileChangeRequest, UserProfileSummary } from "@/lib/api";
 import {
@@ -129,14 +130,11 @@ export function ProfileChangeRequestsSection({ requests, users }: { requests: Pr
               {requests.map((request) => {
                 const requester = users.find((user) => user.id === request.requesterId);
                 return (
-                  <tr
+                  <ClickableTableRow
                     key={request.id}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`${requester?.name ?? `사용자 ${request.requesterId}`} 프로필 변경 요청 상세`}
-                    className="cursor-pointer hover:bg-canvas-subtle focus-visible:outline-none focus-visible:[&>td]:bg-[var(--color-accent-subtle)]"
-                    onClick={() => setSelected(request)}
-                    onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelected(request); } }}
+                    onActivate={() => setSelected(request)}
+                    label={`${requester?.name ?? `사용자 ${request.requesterId}`} 프로필 변경 요청 상세`}
+                    className="hover:bg-canvas-subtle"
                     title="클릭 — 프로필 변경 요청 상세"
                   >
                     <td className="font-medium">{requester?.name ?? `사용자 #${request.requesterId}`}</td>
@@ -144,7 +142,7 @@ export function ProfileChangeRequestsSection({ requests, users }: { requests: Pr
                     <td className="text-fg-muted max-w-[240px] truncate" title={request.reason}>{request.reason}</td>
                     <td className="mono text-fg-muted whitespace-nowrap">{formatProfileDate(request.createdAt)}</td>
                     <td className="text-right"><button className="btn btn-sm" onClick={(event) => { event.stopPropagation(); setSelected(request); }}>상세</button></td>
-                  </tr>
+                  </ClickableTableRow>
                 );
               })}
             </tbody>

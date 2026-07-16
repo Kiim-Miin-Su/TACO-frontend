@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Badge, EmptyState, PageHeader, SectionCard, TableWrap } from "@/components/ui";
+import { Badge, EmptyState, LoadingState, PageHeader, SectionCard, TableWrap } from "@/components/ui";
 import {
   formatProfileDate,
   PROFILE_STATUS_LABEL,
@@ -41,7 +41,8 @@ export default function MyPageView() {
         )}
       >
         {profileQuery.isPending ? (
-          <div className="px-4 py-8 text-body text-fg-muted">프로필을 불러오는 중...</div>
+          /* [B6 C3 2026-07-16] 자체 div 로딩 문구 → LoadingState(skeleton) 규격 */
+          <LoadingState message="프로필을 불러오는 중..." />
         ) : profileQuery.isError || !profile ? (
           <EmptyState message="프로필을 불러오지 못했습니다." />
         ) : (
@@ -61,7 +62,8 @@ export default function MyPageView() {
 
       <SectionCard title={`변경 요청 이력 (${requests.length})`}>
         {requestsQuery.isPending ? (
-          <div className="px-4 py-8 text-body text-fg-muted">요청 이력을 불러오는 중...</div>
+          /* [B6 C3 2026-07-16] 자체 div 로딩 문구 → LoadingState(skeleton) 규격 */
+          <LoadingState message="요청 이력을 불러오는 중..." />
         ) : requestsQuery.isError ? (
           <EmptyState message="변경 요청 이력을 불러오지 못했습니다." />
         ) : requests.length === 0 ? (

@@ -276,6 +276,11 @@ export default function ProfileChangeModal({
 
   const channelLabel = verify?.plan.channel === "sms" ? "문자" : "이메일";
   // [E0.5 ①] 대표(super_admin)는 승인 없이 즉시 적용 — 라벨로 명확히 안내(요청/승인 어휘 제거).
+  // [B6 C3 2026-07-16] capability 전환 예외(raw 비교 유지) — 판정 대상이 로그인 계정이 아니라
+  //  "편집 대상 프로필"의 역할. ROLE_CAPABILITIES상 signup.decide는 super_admin 전용이라 값은
+  //  동치지만, MyProfile.role은 서버 string(AccountRole 미보장)이고 hasCapability는
+  //  ROLE_CAPABILITIES[role]을 직접 인덱싱해 도메인 밖 문자열이면 false가 아니라 런타임 오류가
+  //  된다(캐스팅도 비건전). 안전한 raw 비교를 의도적으로 유지한다.
   const instantApply = profile.role === "super_admin";
   // [E0.5 ③] 이메일 인증 버튼 상태 — 새 이메일이 입력됐고 아직 인증 전일 때만 발송 가능.
   const emailTarget = draft.email.trim().toLowerCase();

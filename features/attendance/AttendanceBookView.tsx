@@ -11,7 +11,7 @@ import { buildAttendanceBook, hoursLabel, nextAttendanceStatus } from "@/lib/dom
 import { paidTeachingHours } from "@/lib/domain/schedule";
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS } from "./AttMarker";
 import { useAccountAccess } from "@/lib/useAccountAccess";
-import { EmptyState, HelpPopover, PageHeader, SectionCard, TableWrap } from "@/components/ui";
+import { EmptyState, HelpPopover, LoadingState, PageHeader, SectionCard, TableWrap } from "@/components/ui";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 
 // 상태 배지(셀) — LMS 관례: P/L/A/E 원형 + 색
@@ -29,9 +29,11 @@ const thisYm = () => new Date().toISOString().slice(0, 7);
 
 export function AttendanceBookView() {
   const access = useAccountAccess();
-  const role = access.role;
   const manager = access.can("admin.area");
-  const { data: rows = [] } = useSchedule();
+  // [B6 C3 2026-07-16] role 비교 → capability(instructor.self는 instructor 역할에만 부여 — 동치).
+  const instructorSelf = access.can("instructor.self");
+  // [B6 C3 2026-07-16] isPending 구독 — 로드 중 "…회차가 없습니다" 깜빡임 방지(E0.6 H2 규칙). 주 쿼리=schedule.
+  const { data: rows = [], isPending: loadingSchedule } = useSchedule();
   const { data: attendance = [] } = useAttendance();
   const { data: students = [] } = useStudents();
   const { data: courses = [] } = useCourses();
@@ -48,8 +50,8 @@ export function AttendanceBookView() {
   // [TBO-21 P1] 로그인 강사의 도메인 강사 id(=JWT sub)만 신뢰한다. 해석 실패 시 전체 코스 폴백 금지.
   const myInstId = access.instructorId;
   const visibleCourses = useMemo(
-    () => (role === "instructor" ? (myInstId != null ? courses.filter((c) => Number(c.instructorId) === myInstId) : []) : courses),
-    [courses, myInstId, role],
+    () => (instructorSelf ? (myInstId != null ? courses.filter((c) => Number(c.instructorId) === myInstId) : []) : courses),
+    [courses, myInstId, instructorSelf],
   );
   const curCourse = visibleCourses.find((c) => Number(c.id) === courseId) ?? visibleCourses[0];
 
@@ -159,7 +161,7 @@ export function AttendanceBookView() {
         actions={
           <>
             {/* [TBO-19] 강사도 '내 출석' 탭 접근(본인 읽기 전용). 매니저는 '강사 출석'(전 강사 편집). */}
-            {(manager || role === "instructor") && (
+            {(manager || instructorSelf) && (
               <div className="flex rounded-md overflow-hidden border">
                 {(["student", "instructor"] as const).map((t) => (
                   <button key={t} className={`btn btn-sm rounded-none border-0 ${tab === t ? "badge-accent" : ""}`} onClick={() => setTab(t)}>
@@ -196,7 +198,9 @@ export function AttendanceBookView() {
             </select>
           }
         >
-          {!book.columns.length ? (
+          {loadingSchedule ? (
+            <LoadingState />
+          ) : !book.columns.length ? (
             <EmptyState message={`${ym}에 이 코스의 회차가 없습니다.`} />
           ) : (
             <TableWrap>
@@ -307,7 +311,9 @@ export function AttendanceBookView() {
             </div>
           }
         >
-          {!filteredInstructorBook.length ? (
+          {loadingSchedule ? (
+            <LoadingState />
+          ) : !filteredInstructorBook.length ? (
             <EmptyState message={attFilter === "all" && attSubject === "all" ? `${ym}에 진행된 회차가 없습니다.` : "해당 조건(과목·출결 상태)의 회차가 없습니다."} />
           ) : (
             <TableWrap>

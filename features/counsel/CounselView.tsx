@@ -3,7 +3,7 @@
 //  종전엔 한 페이지에 캘린더+폼+목록이 쌓여 가독성이 낮았음 → 목록(검색)·예약(캘린더)·폼(페이지)으로 분리.
 import { useState } from 'react';
 import Link from 'next/link';
-import { Badge, ClickableTableRow, SectionCard, PageHeader, EmptyState, TableWrap } from '@/components/ui';
+import { Badge, ClickableTableRow, SectionCard, PageHeader, EmptyState, LoadingState, TableWrap } from '@/components/ui';
 // 서버 상태(상담 폼·회차)는 TanStack Query 훅에서 구독한다(zustand store 대체).
 import { useCounselForms, useCounselRounds } from '@/lib/queries';
 import { CounselCalendar } from './CounselCalendar';
@@ -12,7 +12,8 @@ import { statusLabel, statusTone, sourceLabel } from './labels';
 type Tab = 'list' | 'calendar';
 
 export function CounselView() {
-  const { data: forms = [] } = useCounselForms();
+  // [B6 C3 2026-07-16] isPending 구독 — 로드 중 "접수된 상담카드가 없습니다" 깜빡임 방지(E0.6 H2 규칙).
+  const { data: forms = [], isPending: loading } = useCounselForms();
   const { data: rounds = [] } = useCounselRounds();
   const roundCount = (formId: number) => rounds.filter((r) => r.counselFormId === formId).length;
 
@@ -60,7 +61,9 @@ export function CounselView() {
             />
           }
         >
-          {filtered.length === 0 ? (
+          {loading ? (
+            <LoadingState />
+          ) : filtered.length === 0 ? (
             <EmptyState message={needle ? '검색 결과가 없습니다.' : '접수된 상담카드가 없습니다. 우측 상단 “+ 상담 신청”으로 시작하세요.'} />
           ) : (
             <TableWrap>

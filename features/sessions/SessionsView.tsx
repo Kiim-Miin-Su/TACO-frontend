@@ -1,6 +1,8 @@
 "use client";
+// [B6 C3 2026-07-16] 행 전체 클릭 = 상세 진입(ClickableTableRow href) — 셀 native <a>는 Link로 교체.
 import { useState } from "react";
-import { Badge, SectionCard, PageHeader, EmptyState, LoadingState, TableWrap, type Tone } from "@/components/ui";
+import Link from "next/link";
+import { Badge, ClickableTableRow, SectionCard, PageHeader, EmptyState, LoadingState, TableWrap, type Tone } from "@/components/ui";
 import { useSchedule, useCourses, useInstructors } from "@/lib/queries";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import type { SessionStatus } from "@/types";
@@ -82,7 +84,11 @@ export function SessionsView() {
               const course = courses.find((c) => c.id === cs.courseId);
               const instructor = instructors.find((i) => i.id === cs.instructorId);
               return (
-                <tr key={cs.id}>
+                <ClickableTableRow
+                  key={cs.id}
+                  href={`/sessions/${cs.id}`}
+                  label={`${shortDate(cs.sessionDate)} ${course?.name ?? "수업"} 상세 · 출석`}
+                >
                   <td className="mono">{shortDate(cs.sessionDate)}</td>
                   <td className="font-medium">{course?.name ?? "—"}</td>
                   <td className="text-fg-muted">{instructor?.name ?? "—"}</td>
@@ -91,11 +97,11 @@ export function SessionsView() {
                     <Badge tone={tone[cs.status]}>{label[cs.status]}</Badge>
                   </td>
                   <td className="text-right">
-                    <a href={`/sessions/${cs.id}`} className="btn btn-sm">
+                    <Link href={`/sessions/${cs.id}`} className="btn btn-sm">
                       상세 · 출석
-                    </a>
+                    </Link>
                   </td>
-                </tr>
+                </ClickableTableRow>
               );
             })}
           </tbody>

@@ -2,6 +2,7 @@
 import {
   Badge,
   EmptyState,
+  LoadingState,
   PageHeader,
   StatCard,
   SectionCard,
@@ -15,7 +16,7 @@ import {
 } from '@/components/ui';
 import Link from 'next/link';
 import { won, shortDate } from '@/lib/format';
-import { useAppData, useScheduleRequests } from '@/lib/queries';
+import { useAppData, useEnrollments, useScheduleRequests } from '@/lib/queries';
 import { roleLabel } from '@/lib/roles';
 import { buildTasks, type TaskItem } from '@/lib/tasks';
 import { useAccountAccess } from '@/lib/useAccountAccess';
@@ -141,6 +142,9 @@ export function DashboardView() {
   // [참조/처리] 서버 데이터(수강·학생·코스 등)는 TanStack Query(useAppData) 단일 소스.
   //  권한과 강사 식별자는 `/auth/me` 검증 계정에서 파생한다.
   const appData = useAppData();
+  // [B6 C3 2026-07-16] '최근 수강 등록' isPending — useAppData는 data만 노출하므로 동일 쿼리를
+  //  직접 구독(queryKey 동일 → 캐시 공유, 추가 fetch 없음). 로드 중 빈 표 대신 skeleton.
+  const enrollmentsQuery = useEnrollments();
   const access = useAccountAccess();
   const role = access.role ?? 'instructor';
   const ceo = access.can('finance.access');
@@ -148,7 +152,8 @@ export function DashboardView() {
   const { items: tasks, count: taskCount } = buildTasks({ ...appData, currentRole: role }, role, access.instructorId ?? undefined);
 
   // 강사: 내 수업·리포트 중심 To-do 대시보드
-  if (role === 'instructor') {
+  // [B6 C3 2026-07-16] role 비교 → capability(instructor.self는 instructor 역할에만 부여 — 동치).
+  if (access.can('instructor.self')) {
     const reportTasks = tasks.filter((t) => t.group === 'report');
     const classTasks = tasks.filter((t) => t.group === 'class' || t.group === 'schedule'); // [UX H2] 내 수업 요청(반려·대기)도 수업 카드에
     const instructorName = (id?: number) => id != null ? appData.instructors.find((i) => i.id === id)?.name ?? '—' : '—';
@@ -273,6 +278,12 @@ export function DashboardView() {
       </div>
 
       <SectionCard title="최근 수강 등록" action={<Link href="/students" className="btn btn-sm">학생 관리</Link>}>
+        {/* [B6 C3 2026-07-16] 로드 중 skeleton → 완료 후에만 빈 상태/표(E0.6 H2 규칙) */}
+        {enrollmentsQuery.isPending ? (
+          <LoadingState />
+        ) : recent.length === 0 ? (
+          <EmptyState message="수강 등록이 없습니다." />
+        ) : (
         <TableWrap>
           <table className="table">
               <thead>
@@ -304,6 +315,7 @@ export function DashboardView() {
               </tbody>
           </table>
         </TableWrap>
+        )}
       </SectionCard>
 
       {/* [TBO-19] 관리자 대시보드 — 강사 출결 현황(월/기간/강사 필터). manager 이상만. */}

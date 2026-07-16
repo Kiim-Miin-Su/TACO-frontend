@@ -4,7 +4,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { Badge, SectionCard, PageHeader, type Tone } from '@/components/ui';
+import { Badge, EmptyState, LoadingState, SectionCard, PageHeader, type Tone } from '@/components/ui';
 import {
   useSchedule, useCourses, useInstructors, useEnrollments, useStudents, useReports, useAttendance,
 } from '@/lib/queries';
@@ -20,7 +20,8 @@ import { WEEKDAYS_KO as WEEK, pad2 as pad } from '@/lib/domain/schedule';
 
 export function ReportsCalendarView() {
   const access = useAccountAccess();
-  const { data: classSessions = [] } = useSchedule();
+  // [B6 C3 2026-07-16] isPending 구독 — 로드 중 "…없습니다" 깜빡임 방지(E0.6 H2 규칙). 주 쿼리=schedule.
+  const { data: classSessions = [], isPending: loadingSessions } = useSchedule();
   const { data: courses = [] } = useCourses();
   const { data: instructors = [] } = useInstructors();
   const { data: enrollments = [] } = useEnrollments();
@@ -152,8 +153,11 @@ export function ReportsCalendarView() {
               </button>
             }
           >
-            {monthSessions.length === 0 ? (
-              <div className="p-4 text-body text-fg-subtle">{needOnly ? '이 달 작성할 리포트가 없습니다.' : '이 달 수업이 없습니다.'}</div>
+            {loadingSessions ? (
+              <LoadingState />
+            ) : monthSessions.length === 0 ? (
+              /* [B6 C3 2026-07-16] 자체 div 빈 상태 → EmptyState 규격 */
+              <EmptyState message={needOnly ? '이 달 작성할 리포트가 없습니다.' : '이 달 수업이 없습니다.'} />
             ) : (
               <table className="table">
                 <thead><tr><th>날짜</th><th>수업</th><th>강사</th><th className="text-right">리포트</th><th></th></tr></thead>
@@ -209,7 +213,8 @@ export function ReportsCalendarView() {
                 </div>
               );
             })}
-            {roster.length === 0 && <div className="p-4 text-body text-fg-subtle">수강생이 없습니다.</div>}
+            {/* [B6 C3 2026-07-16] 자체 div 빈 상태 → EmptyState 규격 */}
+            {roster.length === 0 && <EmptyState message="수강생이 없습니다." />}
           </div>
         </SectionCard>
       )}

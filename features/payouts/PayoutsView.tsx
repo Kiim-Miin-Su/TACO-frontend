@@ -1,7 +1,9 @@
 'use client';
+// [B6 C3 2026-07-16] 행 전체 클릭 = 강사 정산 상세(ClickableTableRow href) — 확장 토글·관리 버튼은 중첩 제외로 유지.
+//  '내 정산서' isPending 구독(빈 상태 깜빡임 제거) + 근거 확장 빈 상태 EmptyState compact 규격화.
 import Link from 'next/link';
 import { Fragment, useCallback, useState } from 'react';
-import { Badge, EmptyState, Field, PageHeader, PromptModal, SectionCard, TableWrap, type Tone } from '@/components/ui';
+import { Badge, ClickableTableRow, EmptyState, Field, LoadingState, PageHeader, PromptModal, SectionCard, TableWrap, type Tone } from '@/components/ui';
 import {
   useSchedule, useCourses, useSubjects, useEnrollments, useStudents,
   useInstructors, usePayouts, usePayoutPreview, useMyPayouts, useMyPayoutPreview,
@@ -143,7 +145,10 @@ export function PayoutsView() {
           </div>
         </SectionCard>
         <SectionCard title={`내 정산서 (${payouts.length})`}>
-          {payouts.length === 0 ? (
+          {/* [E0.6 H2] 로드 중 빈 상태 깜빡임 방지 — EmptyState는 로드 완료 후에만 */}
+          {myPayoutsQ.isPending ? (
+            <LoadingState />
+          ) : payouts.length === 0 ? (
             <EmptyState message="아직 생성된 정산서가 없습니다." />
           ) : (
             <TableWrap minWidth={720}>
@@ -282,7 +287,8 @@ export function PayoutsView() {
             )}
             {filtered.map((p) => (
               <Fragment key={p.id}>
-              <tr>
+              {/* 행 클릭 = 강사 정산 상세 이동 — 확장 토글/승인·지급 버튼은 ClickableTableRow 중첩 제외가 담당 */}
+              <ClickableTableRow href={`/payouts/${p.instructorId}`} label={`${instructorName(p.instructorId)} 정산 상세`}>
                 <td className="font-medium">
                   <button className="hover:underline" onClick={() => setExpanded(expanded === p.id ? null : p.id)} title="정산 근거 보기">
                     {expanded === p.id ? '▾' : '▸'} {instructorName(p.instructorId)}
@@ -329,14 +335,14 @@ export function PayoutsView() {
                     </div>
                   )}
                 </td>
-              </tr>
+              </ClickableTableRow>
               {expanded === p.id && (
                 <tr>
                   <td colSpan={6} className="bg-canvas-subtle">
                     <div className="p-2">
                       <div className="text-caption text-fg-muted mb-1">정산 근거 — 언제·과목·학생별 내역 ({p.lines.length}건)</div>
                       {p.lines.length === 0 ? (
-                        <div className="text-caption text-fg-subtle px-1 py-2">연결된 수업 내역이 없습니다.</div>
+                        <EmptyState compact message="연결된 수업 내역이 없습니다." />
                       ) : (
                         <table className="table">
                           <thead><tr><th>일시</th><th>과목</th><th>수업</th><th>학생</th><th className="text-right">시수</th><th className="text-right">페이</th></tr></thead>

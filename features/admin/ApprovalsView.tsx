@@ -1,6 +1,7 @@
 'use client';
+// [B6 C3 2026-07-16] 승인 행 클릭 진입 — 수기 <tr onClick> 제거, ClickableTableRow(onActivate)로 통일(키보드 접근 포함).
 import { useState, type ReactNode } from 'react';
-import { ConfirmModal, EmptyState, SectionCard, TableWrap } from '@/components/ui';
+import { ClickableTableRow, ConfirmModal, EmptyState, SectionCard, TableWrap } from '@/components/ui';
 import {
   useInstructors,
   useExpenses,
@@ -252,7 +253,13 @@ export function ApprovalsView() {
             {pendingRequests.map((r) => {
               const isApproving = approvingRequestId === r.id;
               return (
-                <tr key={r.id} className="cursor-pointer hover:bg-canvas-subtle" onClick={() => setDetailReq(r)} title="클릭 — 요청 상세(변경 내용·영향 수업·이력)">
+                <ClickableTableRow
+                  key={r.id}
+                  onActivate={() => setDetailReq(r)}
+                  label={`${instructorName(r.instructorId ?? r.availabilityOwnerId ?? r.requesterId)} — ${requestTitle(r)} 요청 상세`}
+                  className="hover:bg-canvas-subtle"
+                  title="클릭 — 요청 상세(변경 내용·영향 수업·이력)"
+                >
                   <td className="font-medium">{instructorName(r.instructorId ?? r.availabilityOwnerId ?? r.requesterId)}</td>
                   <td className="mono text-fg-muted">{requestWhen(r)}</td>
                   <td className="text-fg-muted">{requestTitle(r)}</td>
@@ -263,7 +270,7 @@ export function ApprovalsView() {
                     </button>
                     <button className="btn btn-sm btn-danger" disabled={approveRequest.isPending} onClick={(e) => { e.stopPropagation(); setRequestReject(r.id); }}>반려</button>
                   </td>
-                </tr>
+                </ClickableTableRow>
               );
             })}
           </tbody>
@@ -338,7 +345,14 @@ export function ApprovalsView() {
             <thead><tr><th>강사</th><th>학생</th><th>수업</th><th>내용</th><th className="text-right"></th></tr></thead>
             <tbody>
               {pendingReports.map((r) => (
-                <tr key={r.id} data-testid={`approval-report-row-${r.id}`} className="cursor-pointer hover:bg-canvas-subtle" onClick={() => setDetailItem({ kind: 'report', row: r })} title="클릭 — 보고서 상세">
+                <ClickableTableRow
+                  key={r.id}
+                  testId={`approval-report-row-${r.id}`}
+                  onActivate={() => setDetailItem({ kind: 'report', row: r })}
+                  label={`${instructorName(r.instructorId)} — ${studentName(r.studentId)} 보고서 상세`}
+                  className="hover:bg-canvas-subtle"
+                  title="클릭 — 보고서 상세"
+                >
                   <td className="font-medium">{instructorName(r.instructorId)}</td>
                   <td>{studentName(r.studentId)}</td>
                   <td className="text-fg-muted">{sessionInfo(r.sessionId)}</td>
@@ -347,7 +361,7 @@ export function ApprovalsView() {
                     <button className="btn btn-sm btn-primary mr-1.5" disabled={approveReport.isPending} onClick={(e) => { e.stopPropagation(); approveReport.mutate({ id: r.id }, feedback('reports', '보고서를 승인했습니다 — 시수 정산 대상에 반영됩니다.')); }}>승인</button>
                     <button className="btn btn-sm btn-danger" onClick={(e) => { e.stopPropagation(); setReportReject(r.id); }}>반려</button>
                   </td>
-                </tr>
+                </ClickableTableRow>
               ))}
             </tbody>
           </table>
@@ -365,7 +379,14 @@ export function ApprovalsView() {
             <thead><tr><th>항목</th><th>분류</th><th className="text-right">금액</th><th>지출일</th><th></th></tr></thead>
             <tbody>
               {pendingExpenses.map((e) => (
-                <tr key={e.id} data-testid={`approval-expense-row-${e.id}`} className="cursor-pointer hover:bg-canvas-subtle" onClick={() => setDetailItem({ kind: 'expense', row: e })} title="클릭 — 지출 상세">
+                <ClickableTableRow
+                  key={e.id}
+                  testId={`approval-expense-row-${e.id}`}
+                  onActivate={() => setDetailItem({ kind: 'expense', row: e })}
+                  label={`${e.title} 지출 상세`}
+                  className="hover:bg-canvas-subtle"
+                  title="클릭 — 지출 상세"
+                >
                   <td className="font-medium">{e.title}</td>
                   <td className="text-fg-muted">{categoryLabel[e.category]}</td>
                   <td className="text-right mono">{won(e.amount)}</td>
@@ -374,7 +395,7 @@ export function ApprovalsView() {
                     <button className="btn btn-sm btn-primary mr-1.5" disabled={approveExpense.isPending} onClick={(ev) => { ev.stopPropagation(); approveExpense.mutate(e.id, feedback('expenses', '지출을 승인했습니다.')); }}>승인</button>
                     <button className="btn btn-sm btn-danger" onClick={(ev) => { ev.stopPropagation(); setExpenseReject(e.id); }}>반려</button>
                   </td>
-                </tr>
+                </ClickableTableRow>
               ))}
             </tbody>
           </table>
@@ -392,7 +413,14 @@ export function ApprovalsView() {
             <thead><tr><th>강사</th><th>기간</th><th className="text-right">금액</th><th></th></tr></thead>
             <tbody>
               {pendingPayouts.map((p) => (
-                <tr key={p.id} data-testid={`approval-payout-row-${p.id}`} className="cursor-pointer hover:bg-canvas-subtle" onClick={() => setDetailItem({ kind: 'payout', row: p })} title="클릭 — 페이 상세">
+                <ClickableTableRow
+                  key={p.id}
+                  testId={`approval-payout-row-${p.id}`}
+                  onActivate={() => setDetailItem({ kind: 'payout', row: p })}
+                  label={`${instructorName(p.instructorId)} 페이 상세`}
+                  className="hover:bg-canvas-subtle"
+                  title="클릭 — 페이 상세"
+                >
                   <td className="font-medium">{instructorName(p.instructorId)}</td>
                   <td className="mono text-fg-muted">{p.periodStart} ~ {p.periodEnd}</td>
                   <td className="text-right mono">{won(p.amount)} <span className="text-fg-subtle">({p.sessionCount ?? 0}회)</span></td>
@@ -400,7 +428,7 @@ export function ApprovalsView() {
                     <button className="btn btn-sm btn-primary mr-1.5" disabled={confirmPayout.isPending} onClick={(e) => { e.stopPropagation(); confirmPayout.mutate(p.id, feedback('payouts', '페이 지급을 확정했습니다.')); }}>승인</button>
                     <button className="btn btn-sm btn-danger" onClick={(e) => { e.stopPropagation(); setPayoutReject(p.id); }}>반려</button>
                   </td>
-                </tr>
+                </ClickableTableRow>
               ))}
             </tbody>
           </table>

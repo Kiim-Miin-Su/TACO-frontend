@@ -8,7 +8,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { AttendanceStatus, InstructorAttendanceStatus } from '@/types';
-import { EmptyState, PageHeader, SectionCard, StatCard, TableWrap } from '@/components/ui';
+import { EmptyState, LoadingState, PageHeader, SectionCard, StatCard, TableWrap } from '@/components/ui';
 import { useInstructors, useInstructorSessions, useUpdateSchedule, useAttendance, useUpsertAttendance } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { paidTeachingHours, countsForPay, WEEKDAYS_KO as WD } from '@/lib/domain/schedule';
@@ -127,7 +127,8 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
 
       <SectionCard title={`회차 상세 (${held.length})`}>
         {isLoading ? (
-          <EmptyState message="불러오는 중…" />
+          /* [B6 C3 2026-07-16] 로드 중 EmptyState 오용 → LoadingState(skeleton) 규격 */
+          <LoadingState />
         ) : !held.length ? (
           <EmptyState message="해당 기간에 진행된 회차가 없습니다." />
         ) : (
@@ -177,7 +178,8 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
                             <div className="p-2 space-y-1.5">
                               <div className="text-caption font-semibold text-fg-muted">학생 출결 ({cohort.length}명)</div>
                               {!cohort.length ? (
-                                <div className="text-caption text-fg-subtle">배정된 학생이 없습니다.</div>
+                                /* [B6 C3 2026-07-16] 자체 div 빈 상태 → EmptyState 규격(compact) */
+                                <EmptyState compact message="배정된 학생이 없습니다." />
                               ) : (
                                 <div className="flex flex-wrap gap-x-4 gap-y-1.5">
                                   {cohort.map((st) => (

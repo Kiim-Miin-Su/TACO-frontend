@@ -3,7 +3,7 @@
 //  집계는 서버(GET /schedule/instructor-attendance-summary) — DB 이관 시 SQL GROUP BY로 승격(프론트 무변경).
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { SectionCard, EmptyState, TableWrap } from '@/components/ui';
+import { SectionCard, EmptyState, LoadingState, TableWrap } from '@/components/ui';
 import { useInstructors, useInstructorAttendanceSummary } from '@/lib/queries';
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -77,7 +77,8 @@ export function InstructorAttendanceSummary() {
         </div>
       )}
       {isLoading ? (
-        <EmptyState message="집계 중…" />
+        /* [B6 C3 2026-07-16] 로드 중 EmptyState 오용 → LoadingState(skeleton) 규격 — 대시보드 요약 카드라 compact */
+        <LoadingState compact message="집계 중…" />
       ) : !rows.length ? (
         <EmptyState message={`${label}에 진행된 회차가 없습니다.`} />
       ) : (

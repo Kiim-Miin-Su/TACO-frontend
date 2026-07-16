@@ -2,9 +2,10 @@
 //  쓰기=중앙 훅(useCreateCourse/useCreateSubject) — 성공 시 해당 queryKey invalidate로 목록 자동 갱신.
 //  [B6 C2] 인라인 useMutation 사설 정의 제거 — 중앙 훅만 사용(E1 불변식 2).
 'use client';
+// [B6 C3 2026-07-16] 행 전체 클릭 = 코스 상세(ClickableTableRow href) — 코스명 Link는 유지(중첩 제외).
 import Link from 'next/link';
 import { useState } from 'react';
-import { SectionCard, EmptyState, LoadingState, TableWrap } from '@/components/ui';
+import { ClickableTableRow, SectionCard, EmptyState, LoadingState, TableWrap } from '@/components/ui';
 import { useCourses, useSubjects, useInstructors, useCreateCourse, useCreateSubject } from '@/lib/queries';
 import { won } from '@/lib/format';
 import { AdminGuard, AdminHeader } from './AdminShell';
@@ -38,7 +39,7 @@ export function CoursesView() {
             <thead><tr><th>코스</th><th>과목</th><th>강사</th><th className="text-right">정가</th></tr></thead>
             <tbody>
               {courses.map((c) => (
-                <tr key={c.id}>
+                <ClickableTableRow key={c.id} href={`/admin/courses/${c.id}`} label={`${c.name} 코스 상세`}>
                   <td className="font-medium">
                     {c.color && <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ background: c.color }} />}
                     {/* [TBO-20 20-C] 코스명 클릭 → 코스 상세(수강생·세션·로드맵) */}
@@ -47,7 +48,7 @@ export function CoursesView() {
                   <td className="text-fg-muted">{subjectName(c.subjectId)}</td>
                   <td className="text-fg-muted">{instructorName(c.instructorId)}</td>
                   <td className="text-right mono">{won(c.price)}</td>
-                </tr>
+                </ClickableTableRow>
               ))}
             </tbody>
           </table>
