@@ -4,7 +4,7 @@
 import axios, { type AxiosRequestConfig } from "axios";
 import { logger } from "./log";
 import { safeLogValue, safeUrlForLog } from "./log-redaction";
-import { getToken, clearToken } from "./auth";
+import { getToken, clearToken, setToken } from "./auth";
 import { isPublicRoute } from "./auth-routes";
 import { resetPreferences } from "./storage/preferences";
 import type {
@@ -205,7 +205,29 @@ export const http = axios.create({
   baseURL: `${BASE}/api`,
   headers: { "Content-Type": "application/json" },
   timeout: 10000,
+  // [대표 지시 ④ 2026-07-16] refresh token은 httpOnly 쿠키로만 운반 — 교차 출처(BE 직접 호출)에서도
+  //  쿠키가 동봉되도록 credentials 활성(BE CORS는 origin 반사+credentials:true).
+  withCredentials: true,
 });
+
+// [대표 지시 ④] access token 만료(401) 시 조용한 갱신 — 단일 비행(single-flight) refresh 후 원 요청
+//  1회 재시도. 갱신 실패(=refresh도 만료/폐기)면 기존 만료 리다이렉트 경로로 넘어간다.
+//  ⚠ 재귀 방지: refresh 호출은 인터셉터 없는 bare axios로.
+let refreshInFlight: Promise<string | null> | null = null;
+function refreshAccessToken(): Promise<string | null> {
+  if (!refreshInFlight) {
+    refreshInFlight = axios
+      .post<{ accessToken: string }>(`${BASE}/api/auth/refresh`, {}, { withCredentials: true, timeout: 10000 })
+      .then((r) => {
+        setToken(r.data.accessToken);
+        return r.data.accessToken;
+      })
+      .catch(() => null)
+      .finally(() => { refreshInFlight = null; });
+  }
+  return refreshInFlight;
+}
+const AUTH_ENDPOINTS = /\/auth\/(login|refresh|logout)/;
 
 // 모든 API 요청/응답/에러를 한 곳에서 로깅 — 문제 발생 시 콘솔에서 어떤 호출이 실패했는지 즉시 확인.
 // (브라우저 콘솔에서 [TACO:api] 로 필터. 운영 debug 플래그는 lib/storage/preferences에서 관리)
@@ -230,7 +252,7 @@ http.interceptors.response.use(
     apiLog.debug(`← ${res.status} ${res.config.method?.toUpperCase() ?? ""} ${safeUrlForLog(res.config.url)} ${meta ? `${Date.now() - meta.start}ms #${meta.seq}` : ""}`);
     return res;
   },
-  (err) => {
+  async (err) => {
     if (axios.isCancel(err)) return Promise.reject(err);
     const status = err?.response?.status ?? "ERR";
     const meta = (err?.config as unknown as MetaConfig)?.meta;
@@ -238,7 +260,22 @@ http.interceptors.response.use(
       `✗ ${status} ${err?.config?.method?.toUpperCase() ?? ""} ${safeUrlForLog(err?.config?.url)} ${meta ? `${Date.now() - meta.start}ms #${meta.seq}` : ""}`,
       safeLogValue(err?.response?.data ?? err?.message),
     );
-    // 401(토큰 없음/만료): 조용히 실패하지 않고 로그인으로 유도 — 세션이 끊긴 걸 사용자에게 알림.
+    // [대표 지시 ④] 401 → refresh 회전으로 조용한 갱신 시도(1회) — 성공 시 원 요청 재실행.
+    //  auth 계열 엔드포인트 자신·이미 재시도한 요청은 제외(무한 루프 방지).
+    const cfg = err?.config as (AxiosRequestConfig & { _retried?: boolean }) | undefined;
+    if (
+      status === 401 && cfg && !cfg._retried &&
+      typeof window !== "undefined" &&
+      !AUTH_ENDPOINTS.test(String(cfg.url ?? ""))
+    ) {
+      const renewed = await refreshAccessToken();
+      if (renewed) {
+        cfg._retried = true;
+        cfg.headers = { ...(cfg.headers as object), Authorization: `Bearer ${renewed}` } as never;
+        return http.request(cfg);
+      }
+    }
+    // 401(토큰 없음/만료 + 갱신 실패): 조용히 실패하지 않고 로그인으로 유도 — 세션이 끊긴 걸 사용자에게 알림.
     // 단, 로그인 시도 자체의 401(잘못된 자격)이나 공개 경로에선 리다이렉트하지 않음.
     if (
       status === 401 &&
