@@ -19,6 +19,11 @@ const focusableSelector = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
+// [B6 C1 2026-07-16] 중첩 모달(예: 생성 모달 위 승인 요청 모달) 지원 — Escape/Tab 키는
+//  **최상단 모달만** 처리한다. 종전엔 window keydown 리스너가 모달 수만큼 등록돼 Escape 한 번에
+//  전부 닫혔다(사설 모달 → ModalShell 전면 이관으로 중첩이 공용 계층에 들어오며 표면화).
+const modalStack: symbol[] = [];
+
 export function ModalShell({
   title,
   children,
@@ -44,12 +49,15 @@ export function ModalShell({
   }, [onClose]);
 
   useEffect(() => {
+    const stackToken = Symbol("modal");
+    modalStack.push(stackToken);
     restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const panel = panelRef.current;
     const first = panel?.querySelector<HTMLElement>("[data-modal-autofocus]") ?? panel?.querySelector<HTMLElement>(focusableSelector);
     (first ?? panel)?.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (modalStack[modalStack.length - 1] !== stackToken) return; // 최상단 모달만 키 처리
       if (event.key === "Escape") {
         event.preventDefault();
         onCloseRef.current();
@@ -74,6 +82,8 @@ export function ModalShell({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
+      const stackIndex = modalStack.indexOf(stackToken);
+      if (stackIndex >= 0) modalStack.splice(stackIndex, 1);
       window.removeEventListener("keydown", onKeyDown);
       const restoreFocus = restoreFocusRef.current;
       window.setTimeout(() => restoreFocus?.focus(), 0);

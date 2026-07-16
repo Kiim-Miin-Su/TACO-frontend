@@ -8,8 +8,9 @@
 //   · 처리 이력 = audit_log(entity='schedule_requests') — ChangeHistory 재사용(R-6과 동일 컴포넌트)
 //  액션: 승인/반려 = 부모(ApprovalsView) 기존 핸들러 재사용(force 분기·ReasonModal 사유 필수).
 //  [청크2] 수정 = PATCH /schedule-requests/:id (pending·관리자) — useUpdateScheduleRequest, 변경 필드만 전송(audit diff 최소화).
+// [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
 import { useMemo, useState } from 'react';
-import { EmptyState } from '@/components/ui';
+import { EmptyState, ModalShell } from '@/components/ui';
 import { ChangeHistory } from '@/features/calendar/ChangeHistory';
 import { useAllAvailability, useSchedule, useRooms, useStudents, useScheduleRequests, useUpdateScheduleRequest } from '@/lib/queries';
 import {
@@ -133,167 +134,167 @@ export function RequestDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[55] grid place-items-center p-4 bg-black/35" onClick={onClose}>
-      <div className="card card-pad w-[560px] max-w-[95vw] max-h-[85vh] flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2 shrink-0">
+    <ModalShell
+      size="md"
+      onClose={onClose}
+      title={(
+        <div className="flex items-center gap-2">
           <div className="font-semibold">{kindLabel} #{r.id}</div>
           <span className={`badge text-micro ${r.status === 'pending' ? 'badge-attention' : r.status === 'approved' ? 'badge-success' : 'badge-danger'}`}>{statusLabel}</span>
           {editable && !readOnly && !editing && <button className="btn btn-sm" onClick={startEdit}>수정</button>}
           <button className="btn btn-sm ml-auto" onClick={onClose}>닫기</button>
         </div>
+      )}
+      bodyClassName="space-y-3 pr-1"
+      footer={r.status === 'pending' && !readOnly && !editing && (
+        <>
+          <button className="btn btn-sm btn-danger" onClick={() => onReject(r)}>반려</button>
+          <button className="btn btn-sm btn-primary" onClick={() => onApprove(r)}>승인</button>
+        </>
+      )}
+    >
+      {/* 누가·언제 */}
+      <section className="rounded-md border p-3 space-y-1">
+        <MetaRow label="요청자">{instructorName(r.requesterId)}</MetaRow>
+        <MetaRow label="요청 시각"><span className="mono">{fmtRequestAt(r.createdAt)}</span></MetaRow>
+        {r.decidedBy != null && (
+          <MetaRow label="처리">
+            {actorName(r.decidedBy)} · <span className="mono">{fmtRequestAt(r.decidedAt)}</span>
+          </MetaRow>
+        )}
+        {r.reason && <MetaRow label="반려 사유">{r.reason}</MetaRow>}
+        {r.requestReason && <MetaRow label="요청 사유">{r.requestReason}</MetaRow>}
+        {r.changeSummary && <MetaRow label="요약">{r.changeSummary}</MetaRow>}
+      </section>
 
-        <div className="space-y-3 min-h-0 overflow-y-auto pr-1">
-          {/* 누가·언제 */}
-          <section className="rounded-md border p-3 space-y-1">
-            <MetaRow label="요청자">{instructorName(r.requesterId)}</MetaRow>
-            <MetaRow label="요청 시각"><span className="mono">{fmtRequestAt(r.createdAt)}</span></MetaRow>
-            {r.decidedBy != null && (
-              <MetaRow label="처리">
-                {actorName(r.decidedBy)} · <span className="mono">{fmtRequestAt(r.decidedAt)}</span>
-              </MetaRow>
-            )}
-            {r.reason && <MetaRow label="반려 사유">{r.reason}</MetaRow>}
-            {r.requestReason && <MetaRow label="요청 사유">{r.requestReason}</MetaRow>}
-            {r.changeSummary && <MetaRow label="요약">{r.changeSummary}</MetaRow>}
-          </section>
-
-          {/* 무엇을·어떻게 — availability는 before→after diff, 수업 생성은 요청 필드 전체. 수정 모드=편집 폼 */}
-          <section className="rounded-md border overflow-hidden">
-            <div className="px-3 py-2 text-caption font-medium bg-canvas-subtle">
-              {editing ? (
-                <>요청 내용 수정 — 저장 시 감사 이력(diff)에 기록됩니다</>
-              ) : isAvailability ? (
-                <>요청 내용 — {AVAILABILITY_KIND_LABEL[targetBlock?.kind ?? r.availabilityKind ?? 'available']}{r.targetAvailabilityId != null ? ` (대상 블록 #${r.targetAvailabilityId})` : ' (신규)'}</>
-              ) : (
-                <>요청 내용 — {r.requestKind === 'session_delete' ? `수업 삭제${r.targetSessionId != null ? ` (대상 세션 #${r.targetSessionId})` : ''}` : r.requestKind === 'session_update' ? `수업 변경${r.targetSessionId != null ? ` (대상 세션 #${r.targetSessionId})` : ''}` : '새 수업'}</>
-              )}
-            </div>
-            {editing ? (
-              <div className="p-3 space-y-2">
-                {isAvailability ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    <EditField label="종류">
-                      <select className="input" value={form.availabilityKind} onChange={set('availabilityKind')}>
-                        <option value="available">가용시간</option>
-                        <option value="unavailable">불가시간</option>
-                        <option value="online_only">온라인만 가능</option>
-                      </select>
-                    </EditField>
-                    <EditField label="요일">
-                      <select className="input" value={form.availabilityWeekday} onChange={set('availabilityWeekday')}>
-                        {WEEKDAY_LABEL.map((w, i) => <option key={i} value={i}>{w}</option>)}
-                      </select>
-                    </EditField>
-                    <EditField label="시작"><input type="time" className="input" value={form.availabilityStartTime} onChange={set('availabilityStartTime')} /></EditField>
-                    <EditField label="종료"><input type="time" className="input" value={form.availabilityEndTime} onChange={set('availabilityEndTime')} /></EditField>
-                    <EditField label="적용 시작(선택)"><input type="date" className="input" value={form.availabilityEffectiveFrom} onChange={set('availabilityEffectiveFrom')} /></EditField>
-                    <EditField label="적용 종료(선택)"><input type="date" className="input" value={form.availabilityEffectiveTo} onChange={set('availabilityEffectiveTo')} /></EditField>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    <EditField label="날짜"><input type="date" className="input" value={form.sessionDate} onChange={set('sessionDate')} /></EditField>
-                    <EditField label="강의실">
-                      <select className="input" value={form.roomId} onChange={set('roomId')}>
-                        <option value="">미지정</option>
-                        {rooms.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-                      </select>
-                    </EditField>
-                    <EditField label="시작"><input type="time" className="input" value={form.startTime} onChange={set('startTime')} /></EditField>
-                    <EditField label="종료"><input type="time" className="input" value={form.endTime} onChange={set('endTime')} /></EditField>
-                    <EditField label="종류">
-                      <select className="input" value={form.kind} onChange={set('kind')}>
-                        <option value="class">수업</option>
-                        <option value="level_test">진단고사</option>
-                        <option value="counsel">상담</option>
-                      </select>
-                    </EditField>
-                    <EditField label="수업방식">
-                      <select className="input" value={form.mode} onChange={set('mode')}>
-                        <option value="in_person">대면</option>
-                        <option value="online">비대면</option>
-                      </select>
-                    </EditField>
-                    <div className="col-span-2">
-                      <EditField label="주제"><input type="text" className="input w-full" value={form.topic} onChange={set('topic')} maxLength={200} /></EditField>
-                    </div>
-                  </div>
-                )}
-                {err && <div className="text-caption text-danger">{err}</div>}
-                <div className="flex justify-end gap-2">
-                  <button className="btn btn-sm" onClick={() => { setEditing(false); setErr(null); }}>취소</button>
-                  <button className="btn btn-sm btn-primary" disabled={updateRequest.isPending} onClick={saveEdit}>{updateRequest.isPending ? '저장 중…' : '저장'}</button>
-                </div>
-              </div>
-            ) : isAvailability ? (
-              targetBlock == null && r.targetAvailabilityId != null ? (
-                <div className="p-3 text-caption text-fg-muted">대상 블록 #{r.targetAvailabilityId}을 찾을 수 없습니다(이미 변경·삭제되었을 수 있음).</div>
-              ) : (
-                <table className="table">
-                  <thead><tr><th>항목</th><th>현재</th><th>요청</th></tr></thead>
-                  <tbody>
-                    {diffRows.map((d) => (
-                      <tr key={d.label}>
-                        <td className="text-fg-muted">{d.label}</td>
-                        <td className="mono">{d.before}</td>
-                        <td className={`mono ${d.changed ? 'font-semibold text-accent' : 'text-fg-subtle'}`}>{d.after}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )
-            ) : (
-              <div className="p-3 grid grid-cols-2 gap-x-4 gap-y-1">
-                <MetaRow label="코스">{courseName(r.courseId)}</MetaRow>
-                <MetaRow label="강사">{instructorName(r.instructorId)}</MetaRow>
-                <MetaRow label="날짜"><span className="mono">{r.sessionDate ?? '—'}</span></MetaRow>
-                <MetaRow label="시간"><span className="mono">{r.startTime ?? '—'}{r.endTime ? `~${r.endTime}` : ''}{r.durationMinutes ? ` (${r.durationMinutes}분)` : ''}</span></MetaRow>
-                <MetaRow label="강의실">{roomName(r.roomId)}</MetaRow>
-                <MetaRow label="종류">{SESSION_KIND_LABEL[r.kind ?? 'class'] ?? r.kind}</MetaRow>
-                {r.scope && <MetaRow label="반복 범위">{RECURRENCE_SCOPE_LABEL[r.scope] ?? r.scope}</MetaRow>}
-                <MetaRow label="수업방식">{(r.mode ?? 'in_person') === 'online' ? '비대면' : '대면'}</MetaRow>
-                <div className="col-span-2"><MetaRow label="학생">{studentNames(r.studentIds)}</MetaRow></div>
-                {r.topic && <div className="col-span-2"><MetaRow label="주제">{r.topic}</MetaRow></div>}
-              </div>
-            )}
-          </section>
-
-          {/* 영향 수업 — 요청 저장 시점의 impact 스냅샷 id를 권위 소스(/schedule)로 조인 */}
-          {(r.impactSessionIds?.length ?? 0) > 0 && (
-            <section className="rounded-md border overflow-hidden">
-              <div className="px-3 py-2 text-caption font-medium bg-canvas-subtle">영향 수업 {r.impactSessionIds!.length}건</div>
-              <div className="divide-y max-h-44 overflow-y-auto">
-                {impacted.map(({ id, row }) => (
-                  <div key={id} className="px-3 py-1.5 text-body flex items-baseline gap-2">
-                    {row ? (
-                      <>
-                        <span className="mono text-fg-muted shrink-0">{row.sessionDate} {row.startTime}{row.endTime ? `~${row.endTime}` : ''}</span>
-                        <span className="truncate">{row.courseName} · {row.instructorName}</span>
-                      </>
-                    ) : (
-                      <span className="text-fg-muted">수업 #{id} (조회 범위 밖·삭제됨)</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* 처리 이력 — audit_log 그대로(생성→수정→승인/반려), R-6 ChangeHistory 재사용 */}
-          {!readOnly && (
-            <section className="rounded-md border p-3">
-              <div className="text-caption font-medium mb-1.5">처리 이력</div>
-              <ChangeHistory entity="schedule_requests" entityId={r.id} actorName={(id) => actorName(id)} fieldLabels={REQUEST_FIELD_LABEL} />
-            </section>
+      {/* 무엇을·어떻게 — availability는 before→after diff, 수업 생성은 요청 필드 전체. 수정 모드=편집 폼 */}
+      <section className="rounded-md border overflow-hidden">
+        <div className="px-3 py-2 text-caption font-medium bg-canvas-subtle">
+          {editing ? (
+            <>요청 내용 수정 — 저장 시 감사 이력(diff)에 기록됩니다</>
+          ) : isAvailability ? (
+            <>요청 내용 — {AVAILABILITY_KIND_LABEL[targetBlock?.kind ?? r.availabilityKind ?? 'available']}{r.targetAvailabilityId != null ? ` (대상 블록 #${r.targetAvailabilityId})` : ' (신규)'}</>
+          ) : (
+            <>요청 내용 — {r.requestKind === 'session_delete' ? `수업 삭제${r.targetSessionId != null ? ` (대상 세션 #${r.targetSessionId})` : ''}` : r.requestKind === 'session_update' ? `수업 변경${r.targetSessionId != null ? ` (대상 세션 #${r.targetSessionId})` : ''}` : '새 수업'}</>
           )}
         </div>
-
-        {r.status === 'pending' && !readOnly && !editing && (
-          <div className="flex justify-end gap-2 pt-1 shrink-0 border-t">
-            <button className="btn btn-sm btn-danger mt-2" onClick={() => onReject(r)}>반려</button>
-            <button className="btn btn-sm btn-primary mt-2" onClick={() => onApprove(r)}>승인</button>
+        {editing ? (
+          <div className="p-3 space-y-2">
+            {isAvailability ? (
+              <div className="grid grid-cols-2 gap-2">
+                <EditField label="종류">
+                  <select className="input" value={form.availabilityKind} onChange={set('availabilityKind')}>
+                    <option value="available">가용시간</option>
+                    <option value="unavailable">불가시간</option>
+                    <option value="online_only">온라인만 가능</option>
+                  </select>
+                </EditField>
+                <EditField label="요일">
+                  <select className="input" value={form.availabilityWeekday} onChange={set('availabilityWeekday')}>
+                    {WEEKDAY_LABEL.map((w, i) => <option key={i} value={i}>{w}</option>)}
+                  </select>
+                </EditField>
+                <EditField label="시작"><input type="time" className="input" value={form.availabilityStartTime} onChange={set('availabilityStartTime')} /></EditField>
+                <EditField label="종료"><input type="time" className="input" value={form.availabilityEndTime} onChange={set('availabilityEndTime')} /></EditField>
+                <EditField label="적용 시작(선택)"><input type="date" className="input" value={form.availabilityEffectiveFrom} onChange={set('availabilityEffectiveFrom')} /></EditField>
+                <EditField label="적용 종료(선택)"><input type="date" className="input" value={form.availabilityEffectiveTo} onChange={set('availabilityEffectiveTo')} /></EditField>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <EditField label="날짜"><input type="date" className="input" value={form.sessionDate} onChange={set('sessionDate')} /></EditField>
+                <EditField label="강의실">
+                  <select className="input" value={form.roomId} onChange={set('roomId')}>
+                    <option value="">미지정</option>
+                    {rooms.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                  </select>
+                </EditField>
+                <EditField label="시작"><input type="time" className="input" value={form.startTime} onChange={set('startTime')} /></EditField>
+                <EditField label="종료"><input type="time" className="input" value={form.endTime} onChange={set('endTime')} /></EditField>
+                <EditField label="종류">
+                  <select className="input" value={form.kind} onChange={set('kind')}>
+                    <option value="class">수업</option>
+                    <option value="level_test">진단고사</option>
+                    <option value="counsel">상담</option>
+                  </select>
+                </EditField>
+                <EditField label="수업방식">
+                  <select className="input" value={form.mode} onChange={set('mode')}>
+                    <option value="in_person">대면</option>
+                    <option value="online">비대면</option>
+                  </select>
+                </EditField>
+                <div className="col-span-2">
+                  <EditField label="주제"><input type="text" className="input w-full" value={form.topic} onChange={set('topic')} maxLength={200} /></EditField>
+                </div>
+              </div>
+            )}
+            {err && <div className="text-caption text-danger">{err}</div>}
+            <div className="flex justify-end gap-2">
+              <button className="btn btn-sm" onClick={() => { setEditing(false); setErr(null); }}>취소</button>
+              <button className="btn btn-sm btn-primary" disabled={updateRequest.isPending} onClick={saveEdit}>{updateRequest.isPending ? '저장 중…' : '저장'}</button>
+            </div>
+          </div>
+        ) : isAvailability ? (
+          targetBlock == null && r.targetAvailabilityId != null ? (
+            <div className="p-3 text-caption text-fg-muted">대상 블록 #{r.targetAvailabilityId}을 찾을 수 없습니다(이미 변경·삭제되었을 수 있음).</div>
+          ) : (
+            <table className="table">
+              <thead><tr><th>항목</th><th>현재</th><th>요청</th></tr></thead>
+              <tbody>
+                {diffRows.map((d) => (
+                  <tr key={d.label}>
+                    <td className="text-fg-muted">{d.label}</td>
+                    <td className="mono">{d.before}</td>
+                    <td className={`mono ${d.changed ? 'font-semibold text-accent' : 'text-fg-subtle'}`}>{d.after}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        ) : (
+          <div className="p-3 grid grid-cols-2 gap-x-4 gap-y-1">
+            <MetaRow label="코스">{courseName(r.courseId)}</MetaRow>
+            <MetaRow label="강사">{instructorName(r.instructorId)}</MetaRow>
+            <MetaRow label="날짜"><span className="mono">{r.sessionDate ?? '—'}</span></MetaRow>
+            <MetaRow label="시간"><span className="mono">{r.startTime ?? '—'}{r.endTime ? `~${r.endTime}` : ''}{r.durationMinutes ? ` (${r.durationMinutes}분)` : ''}</span></MetaRow>
+            <MetaRow label="강의실">{roomName(r.roomId)}</MetaRow>
+            <MetaRow label="종류">{SESSION_KIND_LABEL[r.kind ?? 'class'] ?? r.kind}</MetaRow>
+            {r.scope && <MetaRow label="반복 범위">{RECURRENCE_SCOPE_LABEL[r.scope] ?? r.scope}</MetaRow>}
+            <MetaRow label="수업방식">{(r.mode ?? 'in_person') === 'online' ? '비대면' : '대면'}</MetaRow>
+            <div className="col-span-2"><MetaRow label="학생">{studentNames(r.studentIds)}</MetaRow></div>
+            {r.topic && <div className="col-span-2"><MetaRow label="주제">{r.topic}</MetaRow></div>}
           </div>
         )}
-      </div>
-    </div>
+      </section>
+
+      {/* 영향 수업 — 요청 저장 시점의 impact 스냅샷 id를 권위 소스(/schedule)로 조인 */}
+      {(r.impactSessionIds?.length ?? 0) > 0 && (
+        <section className="rounded-md border overflow-hidden">
+          <div className="px-3 py-2 text-caption font-medium bg-canvas-subtle">영향 수업 {r.impactSessionIds!.length}건</div>
+          <div className="divide-y max-h-44 overflow-y-auto">
+            {impacted.map(({ id, row }) => (
+              <div key={id} className="px-3 py-1.5 text-body flex items-baseline gap-2">
+                {row ? (
+                  <>
+                    <span className="mono text-fg-muted shrink-0">{row.sessionDate} {row.startTime}{row.endTime ? `~${row.endTime}` : ''}</span>
+                    <span className="truncate">{row.courseName} · {row.instructorName}</span>
+                  </>
+                ) : (
+                  <span className="text-fg-muted">수업 #{id} (조회 범위 밖·삭제됨)</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 처리 이력 — audit_log 그대로(생성→수정→승인/반려), R-6 ChangeHistory 재사용 */}
+      {!readOnly && (
+        <section className="rounded-md border p-3">
+          <div className="text-caption font-medium mb-1.5">처리 이력</div>
+          <ChangeHistory entity="schedule_requests" entityId={r.id} actorName={(id) => actorName(id)} fieldLabels={REQUEST_FIELD_LABEL} />
+        </section>
+      )}
+    </ModalShell>
   );
 }

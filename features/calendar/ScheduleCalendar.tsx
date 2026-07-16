@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, AvailabilityBlock, Attendance } from "@/types";
 import { api, type SchedulePatchBody, type ScheduleCreateBody, type ScheduleSeriesCreateBody, type AvailabilityUpsertBody, type CreateScheduleRequestBody } from "@/lib/api";
@@ -59,8 +59,22 @@ import { SessionEditFields, ColorPicker, TimeSelect } from "./SessionEditFields"
 import { CalendarSplitPane, type SplitPaneDef } from "./CalendarSplitPane";
 import { CalendarFilterBar, type Period } from "./CalendarFilterBar";
 import { CalendarPaneFilters } from "./CalendarPaneFilters";
-import { Field, HelpPopover, PageHeader } from "@/components/ui";
+import { ConfirmModal, Field, HelpPopover, PageHeader } from "@/components/ui";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
+// [B6 C1 2026-07-16] 인라인 사설 모달 6종 → ModalShell 계열로 이관·파일 분리(E1 + EP9 선행 절단).
+//  window.confirm/alert 잔재도 ConfirmModal·인라인 배너로 전면 치환(신규 네이티브 다이얼로그 금지).
+import {
+  AvailabilityApprovalModal,
+  ScheduleChangeApprovalModal,
+  ScheduleDeleteApprovalModal,
+  type AvailabilityApprovalDraft,
+  type AvailabilityImpact,
+  type ScheduleChangeApprovalDraft,
+  type ScheduleDeleteApprovalDraft,
+} from "./modals/ApprovalRequestModals";
+import { BlockEditModal } from "./modals/BlockEditModal";
+import { SessionDetailModal } from "./modals/SessionDetailModal";
+import { RecurrencePrompt } from "./modals/RecurrencePrompt";
 import { SessionListPanel } from "./SessionListPanel";
 import { SessionDetailPanel } from "./SessionDetailPanel";
 import type { RecurrenceScope } from "@kms545487/contracts";
@@ -130,12 +144,9 @@ type AccountingImpact = {
   delta: { teachingMinutes: number; payoutEligibleMinutes: number; computedAmount: number };
 };
 type AccountingAck = { id: number; patch: SchedulePatchBody; impact: AccountingImpact; payoutLocked: boolean };
-type ScheduleChangeApprovalDraft = { row: ScheduleRow; patch: SchedulePatchBody; label: string };
-type ScheduleDeleteApprovalDraft = { row: ScheduleRow };
-type AvailabilityImpact = { sessionId: number; sessionDate: string; startTime?: string; endTime?: string; reason?: string };
-type AvailabilityApprovalDraft =
-  | { action: "upsert"; body: AvailabilityUpsertBody; impacted: AvailabilityImpact[]; summary: string }
-  | { action: "delete"; targetAvailabilityId: number; impacted: AvailabilityImpact[]; summary: string };
+// 승인 요청 드래프트 타입은 modals/ApprovalRequestModals(모달과의 계약)에서 import — 여기선 seed만 정의.
+// [B6 C1] window.confirm 대체 — 확인 요청을 상태로 보관하고 ConfirmModal 하나로 렌더(충돌 강행·삭제 확인).
+type ConfirmRequest = { title: string; message: ReactNode; confirmLabel?: string; danger?: boolean; onConfirm: () => void | Promise<void> };
 type AvailabilityApprovalSeed =
   | { action: "upsert"; body: AvailabilityUpsertBody; summary: string }
   | { action: "delete"; targetAvailabilityId: number; summary: string };
@@ -170,6 +181,9 @@ export function ScheduleCalendar() {
   const [scheduleChangeApproval, setScheduleChangeApproval] = useState<ScheduleChangeApprovalDraft | null>(null);
   const [scheduleDeleteApproval, setScheduleDeleteApproval] = useState<ScheduleDeleteApprovalDraft | null>(null);
   const [availabilityApproval, setAvailabilityApproval] = useState<AvailabilityApprovalDraft | null>(null);
+  // [B6 C1] window.confirm 대체 상태 — 충돌 강행/삭제 확인을 ConfirmModal로. 낙관 상태는 모달 결정 대기
+  //  중 유지하지 않는다(먼저 롤백 → 확인 시 재적용) — 동기 confirm과 달리 대기 중 렌더가 계속되기 때문.
+  const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null);
   useAutoClear(msg, setMsg, "", 3500);
 
   // ── 자원(레일)·가용 ──
@@ -841,8 +855,9 @@ export function ScheduleCalendar() {
     return `${AVAILABILITY_KIND_LABEL[body.kind ?? "available"]} · ${WD[body.weekday]} ${body.startTime}~${body.endTime}`;
   }
 
+  // [B6 C1] window.alert 제거 — 오류는 상단 인라인 배너(msg)로. 모달이 떠 있는 동안의 실패는
+  //  createBlock 반환값(message)을 통해 모달 안 인라인 에러로도 표시된다(이중 채널).
   function alertAvailabilityError(message: string) {
-    alert(message);
     setMsg(message);
   }
 
@@ -869,21 +884,23 @@ export function ScheduleCalendar() {
     }
   }
 
-  // 가용/불가 블록 생성(모달에서 호출)
-  async function createBlock(body: AvailabilityUpsertBody, options: { closeOnSuccess?: boolean } = {}): Promise<boolean> {
+  // 가용/불가 블록 생성(모달에서 호출) — [B6 C1] 반환을 {ok, message?}로 확장: alert 제거 후에도
+  //  생성 모달이 열려 있는 동안 실패 사유를 모달 안 인라인 에러로 표시할 수 있도록(승인 전환 시 message 없음).
+  async function createBlock(body: AvailabilityUpsertBody, options: { closeOnSuccess?: boolean } = {}): Promise<{ ok: boolean; message?: string }> {
     try {
       await api.availability.upsert(body);
       if (options.closeOnSuccess !== false) setCreating(null);
       // [버그수정 2026-07-03 이슈3·4] 스플릿 컬럼 밴드는 allBlocks 소스라 항상 갱신해야 새 블록(학생 불가·
       //  가용 초록)이 즉시 렌더됨. 기존엔 selected==owner일 때만 갱신 → 다른 유저 컬럼에 추가하면 미표시.
       reloadSelBlocks(); // invalidate(qk.availability.all) → allBlocks refetch → 전체 컬럼·선택 유저 밴드 동시 갱신
-      return true;
+      return { ok: true };
     } catch (e) {
-      if (openAvailabilityApprovalFromError(e, { action: "upsert", body, summary: availabilitySummary(body) })) return false;
+      if (openAvailabilityApprovalFromError(e, { action: "upsert", body, summary: availabilitySummary(body) })) return { ok: false };
       // 겹침(409) 등 백엔드 메시지를 그대로 노출 — "이미 지정된 불가시간과 겹칩니다" 경고.
       const err = e as { response?: { data?: { message?: string } } };
-      alertAvailabilityError(err.response?.data?.message ?? "가용/불가 저장 실패");
-      return false;
+      const message = err.response?.data?.message ?? "가용/불가 저장 실패";
+      alertAvailabilityError(message);
+      return { ok: false, message };
     }
   }
   // [스플릿 자체 편집 2026-07-03] 블록 조회는 전체(allBlocks) 우선 — 어느 컬럼의 밴드든 동일 편집 체인.
@@ -895,11 +912,15 @@ export function ScheduleCalendar() {
     const b = findBlock(id);
     const singleWeek = !!(b?.effectiveFrom && b.effectiveFrom === b.effectiveTo);
     if (b && weekDate && !singleWeek) { setBlockDelScope({ id, kind: b.kind, date: weekDate }); return; }
-    if (!confirm("이 시간 블록을 삭제할까요?")) return;
-    try { await api.availability.remove(id); reloadSelBlocks(); } catch (e) {
-      if (openAvailabilityApprovalFromError(e, { action: "delete", targetAvailabilityId: id, summary: `${AVAILABILITY_KIND_LABEL[b?.kind ?? "available"]} 삭제` })) return;
-      alertAvailabilityError("삭제 실패");
-    }
+    setConfirmReq({
+      title: "시간 블록 삭제", message: "이 시간 블록을 삭제할까요?", confirmLabel: "삭제", danger: true,
+      onConfirm: async () => {
+        try { await api.availability.remove(id); reloadSelBlocks(); } catch (e) {
+          if (openAvailabilityApprovalFromError(e, { action: "delete", targetAvailabilityId: id, summary: `${AVAILABILITY_KIND_LABEL[b?.kind ?? "available"]} 삭제` })) return;
+          alertAvailabilityError("삭제 실패");
+        }
+      },
+    });
   }
   // 삭제 범위 적용: 전체=행 삭제 · 이후=이번 주 직전까지로 컷 · 이번 주만=원본 분할(이번 주만 제거).
   async function applyBlockDeleteScope(scope: "this" | "this_and_following" | "all") {
@@ -1045,6 +1066,10 @@ export function ScheduleCalendar() {
   function describeConflicts(cs: Conflict[]): string {
     return formatScheduleConflicts(cs, { rows, resources, rooms });
   }
+  // [B6 C1] 충돌 강행 확인 본문(구 window.confirm 문구 그대로 — 줄바꿈 보존)
+  const conflictMessage = (cs: Conflict[], question: string): ReactNode => (
+    <span className="whitespace-pre-wrap">{`충돌 ${cs.length}건:\n${describeConflicts(cs)}\n\n${question}`}</span>
+  );
 
   // ── 낙관적 업데이트(렌더 레이턴시 해소) ──
   // 프론트에서 먼저 화면을 반영하고, 백엔드 응답으로 확정(load)하거나 실패 시 스냅샷으로 롤백.
@@ -1079,13 +1104,17 @@ export function ScheduleCalendar() {
           return;
         }
         const cs = err.response.data?.conflicts ?? [];
-        if (confirm(`충돌 ${cs.length}건:\n${describeConflicts(cs)}\n\n그래도 적용할까요?`)) {
-          // [M4] force 재시도도 실패할 수 있음(네트워크·400) — 미처리 거부/유령 낙관 상태 방지
-          try { await api.schedule.update(id, { ...patch, force: true }); await load(); }
-          catch { setRows(snapshot); setMsg("수정 실패"); }
-        } else {
-          setRows(snapshot); // 취소 → 롤백
-        }
+        setRows(snapshot); // [B6 C1] 모달 결정 대기 중 낙관 상태 유지 금지 — 먼저 롤백, 확인 시 재적용
+        setConfirmReq({
+          title: "일정 충돌", confirmLabel: "그래도 적용",
+          message: conflictMessage(cs, "그래도 적용할까요?"),
+          onConfirm: async () => {
+            setRows((rs) => rs.map((r) => (r.id === id ? applyScheduleRowPatch(r, patch) : r)));
+            // [M4] force 재시도도 실패할 수 있음(네트워크·400) — 미처리 거부/유령 낙관 상태 방지
+            try { await api.schedule.update(id, { ...patch, force: true }); await load(); }
+            catch { setRows(snapshot); setMsg("수정 실패"); }
+          },
+        });
       } else {
         setRows(snapshot); // 실패 → 롤백
         // [개방 2026-07-06] 서버 사유 표면화 — 예: 학생 재배정 시 "코스 수강생이 아님"(400) 원인 안내
@@ -1200,13 +1229,17 @@ export function ScheduleCalendar() {
       const err = e as { response?: { status?: number; data?: { conflicts?: Conflict[] } } };
       if (err.response?.status === 409) {
         const cs = err.response.data?.conflicts ?? [];
-        if (confirm(`충돌 ${cs.length}건:\n${describeConflicts(cs)}\n\n그래도 추가할까요?`)) {
-          // [M4] force 재시도 실패 시에도 롤백(미처리 거부 방지)
-          try { await api.schedule.create({ ...safe, force: true }); await load(); }
-          catch { setRows(snapshot); setMsg("스케줄 추가 실패"); }
-        } else {
-          setRows(snapshot); // 취소 → 롤백
-        }
+        setRows(snapshot); // [B6 C1] 먼저 롤백 — 확인 시 낙관 재적용 후 force
+        setConfirmReq({
+          title: "일정 충돌", confirmLabel: "그래도 추가",
+          message: conflictMessage(cs, "그래도 추가할까요?"),
+          onConfirm: async () => {
+            setRows((rs) => [...rs, optimisticRow(safe)]);
+            // [M4] force 재시도 실패 시에도 롤백(미처리 거부 방지)
+            try { await api.schedule.create({ ...safe, force: true }); await load(); }
+            catch { setRows(snapshot); setMsg("스케줄 추가 실패"); }
+          },
+        });
       } else {
         setRows(snapshot);
         setMsg("스케줄 추가 실패");
@@ -1234,11 +1267,15 @@ export function ScheduleCalendar() {
       setRows(snapshot); // 롤백 후 사용자 결정
       if (err.response?.status === 409) {
         const cs = err.response.data?.conflicts ?? [];
-        if (confirm(`충돌 ${cs.length}건:\n${describeConflicts(cs)}\n\n그래도 추가할까요?`)) {
-          setRows((rs) => [...rs, ...previews.map(optimisticRow)]);
-          try { await send(true); }
-          catch { setRows(snapshot); setMsg("반복 일정 추가 실패"); await load(); }
-        }
+        setConfirmReq({
+          title: "일정 충돌", confirmLabel: "그래도 추가",
+          message: conflictMessage(cs, "그래도 추가할까요?"),
+          onConfirm: async () => {
+            setRows((rs) => [...rs, ...previews.map(optimisticRow)]);
+            try { await send(true); }
+            catch { setRows(snapshot); setMsg("반복 일정 추가 실패"); await load(); }
+          },
+        });
       } else {
         setMsg("반복 일정 추가 실패");
       }
@@ -1278,8 +1315,11 @@ export function ScheduleCalendar() {
     // [TBO-29C C3] 반복 회차 삭제는 scope 선택(this/이후/전체) — 서버가 payout lock 전 회차 사전검증 + CAS.
     const target = rows.find((r) => r.id === id);
     if (target?.seriesId != null) { setPendingDelete({ row: target }); return; }
-    if (!confirm("이 스케줄을 삭제할까요? (삭제 내역은 DB에 보존됩니다)")) return;
-    await performDelete(id);
+    setConfirmReq({
+      title: "스케줄 삭제", message: "이 스케줄을 삭제할까요? (삭제 내역은 DB에 보존됩니다)",
+      confirmLabel: "삭제", danger: true,
+      onConfirm: () => performDelete(id),
+    });
   }
 
   async function performDelete(id: number, opts?: { scope?: "this" | "this_and_following" | "all"; expectedSeriesVersion?: number }) {
@@ -2656,7 +2696,7 @@ export function ScheduleCalendar() {
       </div>
 
       {editing && (
-        <DetailModal
+        <SessionDetailModal
           row={editing}
           rooms={rooms}
           instructors={(resources?.instructors ?? []).map((i) => ({ id: Number(i.id), name: i.name }))}
@@ -2788,260 +2828,20 @@ export function ScheduleCalendar() {
           onSubmit={(requestReason, scope) => submitScheduleDeleteApproval(scheduleDeleteApproval, requestReason, scope)}
         />
       )}
+      {/* [B6 C1] window.confirm 대체 — 항상 마지막 렌더(중첩 시 최상단, ModalShell 스택이 키 입력 게이트) */}
+      {confirmReq && (
+        <ConfirmModal
+          title={confirmReq.title}
+          message={confirmReq.message}
+          confirmLabel={confirmReq.confirmLabel}
+          danger={confirmReq.danger}
+          onClose={() => setConfirmReq(null)}
+          onConfirm={() => { const req = confirmReq; setConfirmReq(null); void req.onConfirm(); }}
+        />
+      )}
     </div>
   );
 }
-
-function ScheduleChangeApprovalModal({
-  draft, onClose, onSubmit,
-}: {
-  draft: ScheduleChangeApprovalDraft;
-  onClose: () => void;
-  onSubmit: (requestReason: string, scope: RecurrenceScope) => void;
-}) {
-  const next = applyScheduleRowPatch(draft.row, draft.patch);
-  const [requestReason, setRequestReason] = useState("");
-  const [scope, setScope] = useState<RecurrenceScope>((draft.patch.scope as RecurrenceScope | undefined) ?? "this");
-  const reason = requestReason.trim();
-  const hasSeries = draft.row.seriesId != null;
-  return (
-    <div className="fixed inset-0 z-[55] grid place-items-center p-4 bg-black/35" onClick={onClose}>
-      <div className="card card-pad w-[480px] max-w-[95vw] max-h-[85vh] flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
-        <div className="font-semibold">수업 변경 승인 요청</div>
-        <div className="space-y-3 text-body text-fg-muted">
-          <p>강사는 확정된 수업을 직접 변경할 수 없습니다. 아래 변경안을 승인센터로 보냅니다.</p>
-          <div className="rounded-md border overflow-hidden">
-            <div className="px-3 py-2 text-caption font-medium bg-canvas-subtle">{draft.label}</div>
-            <div className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-1 px-3 py-2 text-caption">
-              <span className="text-fg-subtle">현재</span>
-              <span className="mono">{draft.row.sessionDate} {draft.row.startTime}{draft.row.endTime ? `~${draft.row.endTime}` : ""}</span>
-              <span className="text-fg-subtle">요청</span>
-              <span className="mono">{next.sessionDate} {next.startTime}{next.endTime ? `~${next.endTime}` : ""}</span>
-              <span className="text-fg-subtle">수업</span>
-              <span>{draft.row.courseName} · {draft.row.instructorName}</span>
-            </div>
-          </div>
-          {hasSeries && (
-            <Field label="반복 적용 범위">
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  ["this", "이번 수업만"],
-                  ["this_and_following", "이번 이후"],
-                  ["all", "전체 반복"],
-                ].map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={`btn btn-sm ${scope === value ? "btn-primary" : ""}`}
-                    onClick={() => setScope(value as RecurrenceScope)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </Field>
-          )}
-          <Field label="요청 사유">
-            <textarea
-              className="input min-h-[96px] resize-y"
-              value={requestReason}
-              onChange={(e) => setRequestReason(e.target.value)}
-              maxLength={500}
-              placeholder="예: 학부모 요청으로 이번 수업 시간을 30분 늦춰야 합니다."
-            />
-          </Field>
-        </div>
-        <div className="flex justify-end gap-2 pt-1 shrink-0">
-          <button className="btn btn-sm" onClick={onClose}>취소</button>
-          <button className="btn btn-sm btn-primary" disabled={!reason} onClick={() => onSubmit(reason, hasSeries ? scope : "this")}>승인 요청 보내기</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ScheduleDeleteApprovalModal({
-  draft, onClose, onSubmit,
-}: {
-  draft: ScheduleDeleteApprovalDraft;
-  onClose: () => void;
-  onSubmit: (requestReason: string, scope: RecurrenceScope) => void;
-}) {
-  const r = draft.row;
-  const [requestReason, setRequestReason] = useState("");
-  const [scope, setScope] = useState<RecurrenceScope>("this");
-  const reason = requestReason.trim();
-  const hasSeries = r.seriesId != null;
-  return (
-    <div className="fixed inset-0 z-[55] grid place-items-center p-4 bg-black/35" onClick={onClose}>
-      <div className="card card-pad w-[480px] max-w-[95vw] max-h-[85vh] flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
-        <div className="font-semibold">수업 삭제 승인 요청</div>
-        <div className="space-y-3 text-body text-fg-muted">
-          <p>강사는 확정된 수업을 직접 삭제할 수 없습니다. 아래 수업 삭제안을 승인센터로 보냅니다.</p>
-          <div className="rounded-md border overflow-hidden">
-            <div className="px-3 py-2 text-caption font-medium bg-canvas-subtle">삭제 요청 대상</div>
-            <div className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-1 px-3 py-2 text-caption">
-              <span className="text-fg-subtle">일시</span>
-              <span className="mono">{r.sessionDate} {r.startTime}{r.endTime ? `~${r.endTime}` : ""}</span>
-              <span className="text-fg-subtle">수업</span>
-              <span>{r.courseName} · {r.instructorName}</span>
-              <span className="text-fg-subtle">강의실</span>
-              <span>{r.roomName ?? "미지정"}</span>
-            </div>
-          </div>
-          {hasSeries && (
-            <Field label="반복 적용 범위">
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  ["this", "이번 수업만"],
-                  ["this_and_following", "이번 이후"],
-                  ["all", "전체 반복"],
-                ].map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={`btn btn-sm ${scope === value ? "btn-primary" : ""}`}
-                    onClick={() => setScope(value as RecurrenceScope)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </Field>
-          )}
-          <Field label="요청 사유">
-            <textarea
-              className="input min-h-[96px] resize-y"
-              value={requestReason}
-              onChange={(e) => setRequestReason(e.target.value)}
-              maxLength={500}
-              placeholder="예: 학생 요청으로 이번 수업을 취소해야 합니다."
-            />
-          </Field>
-        </div>
-        <div className="flex justify-end gap-2 pt-1 shrink-0">
-          <button className="btn btn-sm" onClick={onClose}>취소</button>
-          <button className="btn btn-sm btn-primary" disabled={!reason} onClick={() => onSubmit(reason, hasSeries ? scope : "this")}>삭제 승인 요청 보내기</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AvailabilityApprovalModal({
-  draft, rows, onClose, onSubmit,
-}: {
-  draft: AvailabilityApprovalDraft;
-  rows: ScheduleRow[];
-  onClose: () => void;
-  onSubmit: (requestReason: string) => void;
-}) {
-  const [requestReason, setRequestReason] = useState("");
-  const reason = requestReason.trim();
-  const impacted = draft.impacted.map((x) => {
-    const row = rows.find((r) => r.id === x.sessionId);
-    return {
-      id: x.sessionId,
-      title: row ? `${row.courseName} · ${row.instructorName}` : `수업 #${x.sessionId}`,
-      time: `${x.sessionDate} ${x.startTime ?? row?.startTime ?? ""}${x.endTime ?? row?.endTime ? `~${x.endTime ?? row?.endTime}` : ""}`,
-    };
-  });
-  return (
-    <div className="fixed inset-0 z-[55] grid place-items-center p-4 bg-black/35" onClick={onClose}>
-      <div className="card card-pad w-[480px] max-w-[95vw] max-h-[85vh] flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
-        <div className="font-semibold">승인 요청 필요</div>
-        <div className="space-y-2 min-h-0 overflow-y-auto">
-          <p className="text-body text-fg-muted">
-            {draft.summary} 변경은 이미 잡힌 수업에 영향을 줍니다. 승인센터로 요청을 보냅니다.
-          </p>
-          <div className="rounded-md border overflow-hidden">
-            <div className="px-3 py-2 text-caption font-medium bg-canvas-subtle">영향 수업 {impacted.length}건</div>
-            <div className="divide-y max-h-48 overflow-y-auto">
-              {impacted.map((x) => (
-                <div key={x.id} className="px-3 py-2">
-                  <div className="text-body font-medium">{x.title}</div>
-                  <div className="text-caption text-fg-muted mono">{x.time}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <Field label="요청 사유">
-            <textarea
-              className="input min-h-[96px] resize-y"
-              value={requestReason}
-              onChange={(e) => setRequestReason(e.target.value)}
-              maxLength={500}
-              placeholder="예: 이미 잡힌 수업과 겹치지만 해당 시간대를 온라인만 가능으로 바꿔야 합니다."
-            />
-          </Field>
-        </div>
-        <div className="flex justify-end gap-2 pt-1 shrink-0">
-          <button className="btn btn-sm" onClick={onClose}>취소</button>
-          <button className="btn btn-sm btn-primary" disabled={!reason} onClick={() => onSubmit(reason)}>승인 요청 보내기</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── 불가/가용 블록 수정 모달(더블클릭) ──
-function BlockEditModal({
-  block, onClose, onSave, onDelete,
-}: {
-  block: AvailabilityBlock;
-  onClose: () => void;
-  onSave: (body: AvailabilityUpsertBody) => void;
-  onDelete: () => void;
-}) {
-  const [kind, setKind] = useState<AvailabilityBlock["kind"] | "online_only">(block.kind);
-  const [weekday, setWeekday] = useState<number>(block.weekday);
-  const [start, setStart] = useState(block.startTime);
-  const [end, setEnd] = useState(block.endTime);
-  const [from, setFrom] = useState(block.effectiveFrom ?? "");
-  const [to, setTo] = useState(block.effectiveTo ?? "");
-  const periodOk = !from || !to || from <= to;
-  const valid = start < end && periodOk;
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/35" onClick={onClose}>
-      <div className="card card-pad w-[380px] max-w-[95vw] max-h-[90vh] overflow-y-auto space-y-3" onClick={(e) => e.stopPropagation()}>
-        <div className="font-semibold">{AVAILABILITY_KIND_LABEL[kind]} 수정</div>
-        <Field label="종류">
-          <select className="input" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
-            <option value="unavailable">불가(차단)</option>
-            <option value="available">가용</option>
-            <option value="online_only">온라인만 가능</option>
-          </select>
-        </Field>
-        <Field label="요일">
-          <select className="input" value={weekday} onChange={(e) => setWeekday(Number(e.target.value))}>
-            {WD.map((w, d) => <option key={d} value={d}>{w}</option>)}
-          </select>
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="시작"><input type="time" step={900} className="input" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
-          <Field label="종료"><input type="time" step={900} className="input" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="기간 시작 (선택)"><input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
-          <Field label="기간 종료 (선택)"><input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
-        </div>
-        <p className="text-caption text-fg-muted">매주 {WD[weekday]}요일 반복. 기간을 비우면 무기한, 지정하면 그 기간에만 적용.</p>
-        {!periodOk && <p className="text-caption text-danger">기간 시작이 종료보다 늦을 수 없습니다.</p>}
-        <div className="flex justify-between gap-2 pt-1">
-          <button className="btn btn-sm text-danger" onClick={onDelete}>삭제</button>
-          <div className="flex gap-2">
-            <button className="btn" onClick={onClose}>취소</button>
-            <button className="btn btn-primary" disabled={!valid}
-              onClick={() => onSave({ id: block.id, ownerType: block.ownerType, ownerId: block.ownerId, kind, weekday, startTime: start, endTime: end, effectiveFrom: from || undefined, effectiveTo: to || undefined })}>
-              저장
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 
 // ── 월간 그리드 ──
 function MonthGrid({
@@ -3137,147 +2937,5 @@ function MonthGrid({
   );
 }
 
-// ── 상세 + 편집 모달 — 편집 폼은 SessionEditFields 공통(우측 패널과 동일 폼·검증·패치 빌드) ──
-function DetailModal({
-  row,
-  rooms,
-  instructors,
-  colorOf,
-  ownerTz,
-  onClose,
-  onSave,
-  onDelete,
-}: {
-  row: ScheduleRow;
-  rooms: Room[];
-  instructors: { id: number; name: string }[];
-  colorOf: (r: ScheduleRow) => string;
-  ownerTz?: CountryInfo | null; // [이슈1] 비KST 편집이면 이 tz(현지 시각 입력 → 저장 시 KST 변환)
-  onClose: () => void;
-  onSave: (patch: SchedulePatchBody) => void;
-  onDelete: () => void;
-}) {
-  const [mode, setMode] = useState<"detail" | "edit">("detail");
-  const isSeries = row.seriesId != null;
-
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/35" onClick={onClose}>
-      <div className="card card-pad w-[440px] max-w-[95vw] max-h-[90vh] overflow-y-auto space-y-3" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start gap-2">
-          <span className="inline-block w-3 h-3 rounded-sm mt-1.5 shrink-0" style={{ background: colorOf(row) }} />
-          <div className="flex-1">
-            <div className="font-semibold">{row.courseName}</div>
-            <div className="text-fg-subtle text-caption">
-              {row.subjectName} · {row.instructorName}
-              {row.studentNames?.length ? ` · ${row.studentNames.join(", ")}` : ""}
-            </div>
-          </div>
-          {isSeries && <span className="badge badge-accent">반복</span>}
-        </div>
-
-        {mode === "detail" ? (
-          <>
-            <dl className="grid grid-cols-[64px_1fr] gap-y-1.5 text-body">
-              <Dt>날짜</Dt>
-              <dd>
-                {row.sessionDate} ({WD[weekdayOf(row.sessionDate)]})
-              </dd>
-              <Dt>시간</Dt>
-              <dd className="mono">
-                {row.startTime ?? "-"} – {row.endTime ?? "-"} ({row.durationMinutes}분)
-              </dd>
-              <Dt>강의실</Dt>
-              <dd>{row.roomName ?? "미지정"}</dd>
-              <Dt>학생</Dt>
-              <dd>{row.studentNames?.length ? row.studentNames.join(", ") : "—"}</dd>
-              <Dt>상태</Dt>
-              <dd>{STATUS_LABEL[row.status] ?? row.status}</dd>
-              {row.topic && (
-                <>
-                  <Dt>주제</Dt>
-                  <dd>{row.topic}</dd>
-                </>
-              )}
-              <Dt>메모</Dt>
-              <dd className="whitespace-pre-wrap">{row.memo ? row.memo : <span className="text-fg-subtle">—</span>}</dd>
-            </dl>
-            <div className="flex justify-between gap-2 pt-1">
-              <Link href={`/sessions/${row.id}`} className="btn btn-sm">
-                강의 상세 페이지 →
-              </Link>
-              <div className="flex gap-2">
-                <button className="btn btn-sm" onClick={onClose}>
-                  닫기
-                </button>
-                <button className="btn btn-sm btn-primary" onClick={() => setMode("edit")}>
-                  편집
-                </button>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            {ownerTz && ownerTz.tz !== KST_TZ && (
-              <p className="text-caption px-1 text-accent">
-                🌐 {ownerTz.name} 현지 시각으로 입력하세요 — 저장 시 한국 시간(KST)으로 변환됩니다.
-              </p>
-            )}
-            <SessionEditFields
-              row={row}
-              rooms={rooms}
-              instructors={instructors}
-              onSave={(patch) => onSave(patch)}
-              onCancel={() => setMode("detail")}
-              onDelete={onDelete}
-            />
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── 반복 일정 변경 범위 묻기(드래그·리사이즈 후) ──
-function RecurrencePrompt({
-  label,
-  onPick,
-  onCancel,
-}: {
-  label: string;
-  onPick: (scope: "this" | "this_and_following" | "all") => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/35" onClick={onCancel}>
-      <div className="card card-pad w-[360px] space-y-3" onClick={(e) => e.stopPropagation()}>
-        <div className="font-semibold">반복 일정 수정</div>
-        <p className="text-body text-fg-muted">{label} — 어디까지 적용할까요?</p>
-        <div className="grid gap-2">
-          <button className="btn" onClick={() => onPick("this")}>
-            이 일정만
-          </button>
-          <button className="btn" onClick={() => onPick("this_and_following")}>
-            이 일정 및 이후 전부
-          </button>
-          <button className="btn" onClick={() => onPick("all")}>
-            시리즈 전체
-          </button>
-        </div>
-        <div className="flex justify-end pt-1">
-          <button className="btn btn-sm" onClick={onCancel}>
-            취소
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── CreateModal 공용 폼 조각(수업·가용·불가 3탭 재사용 — 이슈3) ──
-const DUR_PRESETS = [30, 60, 90, 120, 150, 180] as const;
-const durLabel = (m: number) => (m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간${m % 60 ? "30분" : ""}`);
-
-function Dt({ children }: { children: React.ReactNode }) {
-  return <dt className="text-fg-muted">{children}</dt>;
-}
+// [B6 C1] DetailModal·RecurrencePrompt·승인 요청 모달 3종·BlockEditModal은 modals/로 분리(ModalShell 이관).
 // Field·ColorPicker는 SessionEditFields.tsx에서 import(폼 프리미티브 단일 소스).

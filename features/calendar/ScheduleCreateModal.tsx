@@ -6,7 +6,8 @@
 import { useCallback, useMemo, useState } from "react";
 import type { AvailabilityUpsertBody, ScheduleCreateBody, ScheduleSeriesCreateBody } from "@/lib/api";
 import type { Room, ScheduleResource, ScheduleResources } from "@/types";
-import { Field } from "@/components/ui";
+// [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
+import { Field, ModalShell } from "@/components/ui";
 import { ColorPicker, TimeSelect } from "./SessionEditFields";
 import { STATUS_LABEL } from "@/lib/domain/lantiv";
 import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
@@ -152,7 +153,8 @@ export function ScheduleCreateModal({
   onCreate: (body: ScheduleCreateBody) => void;
   onCreateSeries: (bodies: ScheduleCreateBody[]) => void; // 강사 — 회차별 승인 요청
   onCreateSeriesCommand: (body: ScheduleSeriesCreateBody, previews: ScheduleCreateBody[]) => void; // 관리자 — bulk 원자 생성
-  onCreateBlock: (body: AvailabilityUpsertBody, options?: { closeOnSuccess?: boolean }) => Promise<boolean>;
+  // [B6 C1] {ok, message?} — 실패 사유를 모달 안 인라인 에러로 표시(window.alert 폐지). 승인 전환 시 message 없음.
+  onCreateBlock: (body: AvailabilityUpsertBody, options?: { closeOnSuccess?: boolean }) => Promise<{ ok: boolean; message?: string }>;
 }) {
   // [이슈1] 현지 tz의 (date, HH:mm) → KST 저장값. KST면 그대로. 저장은 항상 KST 단일 진실원.
   const tzActive = !!ownerTz && ownerTz.tz !== KST_TZ;
@@ -270,6 +272,8 @@ export function ScheduleCreateModal({
   const [bId, setBId] = useState<number | "">(lockOwner ? lockInstructorId! : (defaultOwner?.id ?? ""));
   const ownerList = bType === "instructor" ? resources.instructors : bType === "student" ? resources.students : rooms.map((r) => ({ id: r.id, name: r.name }));
   const blockValid = bId !== "" && start < end && (repeat !== "custom" || customWds.length > 0);
+  // [B6 C1] 블록 저장 실패 인라인 에러(구 window.alert 대체) — 모달이 열린 채 실패 사유를 보여준다.
+  const [blockError, setBlockError] = useState<string | null>(null);
   // 블록 생성: 반복 규칙(그날만=일회성 / 매주 / 커스텀)을 effectiveFrom·effectiveTo로 변환.
   //  - 일회성: 그 날짜 한 주만(effectiveFrom=effectiveTo=date).
   //  - 매주/커스텀: 선택 요일마다 date부터 종료일(untilDate)까지 반복.
@@ -306,9 +310,10 @@ export function ScheduleCreateModal({
         }
       }
     }
+    setBlockError(null);
     for (const body of bodies) {
-      const ok = await onCreateBlock(body, { closeOnSuccess: false });
-      if (!ok) return;
+      const res = await onCreateBlock(body, { closeOnSuccess: false });
+      if (!res.ok) { if (res.message) setBlockError(res.message); return; } // 승인 전환(message 없음)은 조용히 유지
     }
     onClose();
   }
@@ -338,17 +343,31 @@ export function ScheduleCreateModal({
   }
 
   return (
-    // TBO-09 #4: 모달이 화면보다 커져 "추가" 버튼이 가려지는 문제 — 최대 크기 명시 + 본문만 스크롤 + 푸터 고정.
-    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/35" onClick={onClose}>
-      <div
-        className="card w-[460px] max-w-[95vw] flex flex-col overflow-hidden"
-        style={{ maxHeight: "min(85vh, 720px)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="card-pad overflow-y-auto space-y-3 flex-1 min-h-0">
+    // TBO-09 #4(모달이 화면보다 커져 버튼 가려짐)는 ModalShell이 담당 — 본문만 스크롤 + 푸터 고정.
+    <ModalShell
+      title="스케줄 추가"
+      onClose={onClose}
+      size="md"
+      bodyClassName="space-y-3"
+      footer={(
+        <>
+          {blockError && <span className="text-caption text-danger mr-auto self-center" role="alert">{blockError}</span>}
+          <button className="btn" onClick={onClose}>취소</button>
+          {type === "session" ? (
+            <button className="btn btn-primary" disabled={!sessionValid || (repeat !== "none" && occurrences().length === 0)} onClick={submitSession}>
+              {requestMode ? "승인 요청 보내기" : repeat === "none" ? "수업 추가" : `반복 추가 (${occurrences().length}회)`}
+            </button>
+          ) : (
+            <button className="btn btn-primary" disabled={!blockValid} onClick={submitBlocks}>
+              {AVAILABILITY_KIND_LABEL[type === "unavailable" ? "unavailable" : type === "online_only" ? "online_only" : "available"]} 추가
+            </button>
+          )}
+        </>
+      )}
+    >
         <div className="flex rounded-md overflow-hidden border">
           {([["session", "수업"], ["available", "가용"], ["unavailable", "불가"], ["online_only", "온라인만"]] as const).map(([v, lbl]) => (
-            <button key={v} className={`btn btn-sm flex-1 rounded-none border-0 ${type === v ? "badge-accent" : ""}`} onClick={() => setType(v)}>{lbl}</button>
+            <button key={v} className={`btn btn-sm flex-1 rounded-none border-0 ${type === v ? "badge-accent" : ""}`} onClick={() => { setType(v); setBlockError(null); }}>{lbl}</button>
           ))}
         </div>
         {requestMode && type === "session" && (
@@ -494,21 +513,6 @@ export function ScheduleCreateModal({
             <p className="text-caption text-fg-muted">{repeat === "none" ? "일회성 — 이 날짜에 한 번만 적용." : "매주 반복 — 이 날짜부터 종료일까지."}</p>
           </>
         )}
-        </div>
-        {/* 고정 푸터 — 스크롤과 무관하게 추가/취소 버튼 항상 노출 */}
-        <div className="px-4 py-3 border-t flex justify-end gap-2 shrink-0">
-          <button className="btn" onClick={onClose}>취소</button>
-          {type === "session" ? (
-            <button className="btn btn-primary" disabled={!sessionValid || (repeat !== "none" && occurrences().length === 0)} onClick={submitSession}>
-              {requestMode ? "승인 요청 보내기" : repeat === "none" ? "수업 추가" : `반복 추가 (${occurrences().length}회)`}
-            </button>
-          ) : (
-            <button className="btn btn-primary" disabled={!blockValid} onClick={submitBlocks}>
-              {AVAILABILITY_KIND_LABEL[type === "unavailable" ? "unavailable" : type === "online_only" ? "online_only" : "available"]} 추가
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
