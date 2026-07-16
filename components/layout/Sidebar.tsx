@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useTaskData } from "@/lib/queries";
+import { useTaskData, useNavSeen } from "@/lib/queries";
 import { booleanPreferenceCodec, preferenceKeys } from "@/lib/storage/preferences";
 import { roleLabel } from "@/lib/roles";
 import { navBadges } from "@/lib/tasks";
@@ -66,10 +66,12 @@ export default function Sidebar() {
   const role = access.role;
   const currentAccount = access.account;
   const taskData = useTaskData();
+  // [B3 2026-07-16] 탭별 마지막 열람 시각 — 열람 후 새 활동 없으면 뱃지 숨김(서버 영속·기기 간 동기).
+  const { data: navSeen } = useNavSeen();
   // 탭별 알림 배지 — 서버 데이터는 TanStack Query(useAppData) 단일 소스에서 조립해 navBadges에 넘긴다.
   //  처리(리포트 작성·승인 등) 시 관련 쿼리가 invalidate되면 배지도 함께 갱신됨.
   const badges = role
-    ? navBadges({ ...taskData, currentRole: role }, role, access.instructorId ?? undefined)
+    ? navBadges({ ...taskData, currentRole: role }, role, access.instructorId ?? undefined, navSeen)
     : {};
 
   // 좌측 네비 접기/펴기 — 화면 가로 비율 조절. 선택값은 typed preference storage에 보존.

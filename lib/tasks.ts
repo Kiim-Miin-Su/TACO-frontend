@@ -16,7 +16,7 @@ import type {
 } from '@/types';
 import type { Tone } from '@/components/ui';
 import { isAdmin } from '@/lib/roles';
-import { pendingReportSessions, pendingReportSummary, type ReportSlice } from '@/lib/reports';
+import { pendingReportSessions, pendingReportSummary, sessionEndMs, type ReportSlice } from '@/lib/reports';
 import { makeupNeeds, makeupNeededCount, MAKEUP_REASON_LABEL } from '@/lib/makeup';
 
 // 회계상 분리: pay(강사 페이=출금) / expense(지출=출금) / payment(결제·수납=입금) / counsel(상담) / report·class(강사)
@@ -231,36 +231,67 @@ export function buildTasks(s: StoreSlice, role: AccountRole = s.currentRole, ins
 // 사이드바 탭별 빨간 배지 개수 — 탭마다 명시적 기준(권한 반영). 0인 탭은 키 없음.
 // 기준(요구사항): 상담=다음 만남 날짜 미정 / 결제=미수 / 강사페이=미정산 / 지출=승인대기 /
 //   수업보고서=미작성(작성해야 할 세션당 1) / 관리자=미승인(승인 대기) 모두.
-export function navBadges(s: StoreSlice, role: AccountRole = s.currentRole, instructorId?: number): Record<string, number> {
+// [B3 2026-07-16 대표 결정 ①] seen(탭별 마지막 열람 시각) — 열람 이후 새 활동이 없으면 뱃지를 숨긴다.
+//  각 항목의 활동 시각(updatedAt ?? createdAt, 보고서 대기는 세션 종료 시각)과 대조 — 탭 진입 시
+//  FE가 서버에 last-seen을 upsert(useMarkNavSeen)하므로 기기 간에도 동일하게 사라진다.
+const latestActivityMs = (rows: ReadonlyArray<unknown>): number =>
+  rows.reduce<number>((max, r) => {
+    const row = r as { updatedAt?: string; createdAt?: string };
+    return Math.max(max, Date.parse(row.updatedAt ?? row.createdAt ?? '') || 0);
+  }, 0);
+
+export function navBadges(
+  s: StoreSlice,
+  role: AccountRole = s.currentRole,
+  instructorId?: number,
+  seen?: Record<string, string>,
+): Record<string, number> {
   const out: Record<string, number> = {};
-  const put = (nav: string, n: number) => { if (n > 0) out[nav] = n; };
+  const put = (nav: string, n: number, latestMs = Number.POSITIVE_INFINITY) => {
+    if (n <= 0) return;
+    // 열람 게이트 — nav 키는 슬래시 제거('/admin'→'admin'). 열람 시각 ≥ 마지막 활동이면 숨김.
+    const seenAt = seen?.[nav.replace(/^\//, '')];
+    if (seenAt && Date.parse(seenAt) >= latestMs) return;
+    out[nav] = n;
+  };
 
   // 강사: 본인 수업보고서 미작성(보고서 건수) + 취소·미진행 보강 필요(캘린더 탭)
   // ⚠ 배지와 /reports 탭 리스트는 pendingReportSummary(같은 모집단)를 공유해야 한다(불일치 재발 방지).
   if (role === 'instructor') {
     if (instructorId == null) return out;
-    put('/reports', pendingReportSummary(s, instructorId).itemCount);
+    put('/reports', pendingReportSummary(s, instructorId).itemCount,
+      latestActivityMs(pendingReportSessions(s, instructorId).map((ses) => ({ updatedAt: new Date(sessionEndMs(ses)).toISOString() }))));
     // 보강 필요 + 반려된 내 수업 요청(재요청 필요) — 캘린더 탭
-    put('/calendar', makeupNeededCount(s, instructorId) + s.scheduleRequests.filter((r) => r.status === 'rejected').length);
+    const myMakeup = makeupNeeds(s, instructorId).filter((m) => !m.resolved);
+    const myRejected = s.scheduleRequests.filter((r) => r.status === 'rejected');
+    put('/calendar', myMakeup.length + myRejected.length,
+      Math.max(latestActivityMs(myMakeup.map((m) => m.session)), latestActivityMs(myRejected)));
     return out;
   }
   if (!isAdmin(role)) return out; // 학생/학부모 등은 알림 없음
 
   // 관리자/매니저
   // [대표 지시 ⑭] 보강 미배정(결강인데 보강 날짜 미정) — 강사 배지와 같은 단일 정의(lib/makeup) 전체 집계.
-  put('/calendar', makeupNeededCount(s));
-  put('/counsel', s.counselForms.filter((c) => c.status !== 'dropped' && !c.nextContactAt).length); // 다음 만남 날짜 미정(이탈 제외)
-  put('/payments', s.payments.filter((p) => p.status === 'pending').length); // 미수(미납)
-  put('/payouts', s.instructorPayouts.filter((p) => p.status === 'pending' || p.status === 'confirmed').length); // 미정산(미지급)
-  put('/expenses', s.expenses.filter((e) => e.status === 'requested').length); // 승인 대기
-  put('/reports', pendingReportSummary(s).itemCount); // 미작성 보고서 건수(전체) — 탭 리스트와 동일 모집단
+  const adminMakeup = makeupNeeds(s).filter((m) => !m.resolved);
+  put('/calendar', adminMakeup.length, latestActivityMs(adminMakeup.map((m) => m.session)));
+  const counselRows = s.counselForms.filter((c) => c.status !== 'dropped' && !c.nextContactAt);
+  put('/counsel', counselRows.length, latestActivityMs(counselRows)); // 다음 만남 날짜 미정(이탈 제외)
+  const paymentRows = s.payments.filter((p) => p.status === 'pending');
+  put('/payments', paymentRows.length, latestActivityMs(paymentRows)); // 미수(미납)
+  const payoutRows = s.instructorPayouts.filter((p) => p.status === 'pending' || p.status === 'confirmed');
+  put('/payouts', payoutRows.length, latestActivityMs(payoutRows)); // 미정산(미지급)
+  const expenseRows = s.expenses.filter((e) => e.status === 'requested');
+  put('/expenses', expenseRows.length, latestActivityMs(expenseRows)); // 승인 대기
+  put('/reports', pendingReportSummary(s).itemCount,
+    latestActivityMs(pendingReportSessions(s).map((ses) => ({ updatedAt: new Date(sessionEndMs(ses)).toISOString() })))); // 미작성 보고서 건수(전체) — 탭 리스트와 동일 모집단
 
   // 관리자(승인 센터): 미승인 모두 = 보고서 승인대기 + 지출 승인대기 + 강사페이 승인대기 (가입 승인은 백엔드 계정)
-  const reportApprove = s.sessionReports.filter((r) => (r.status === 'submitted' || r.approvalStatus === 'submitted') && r.approvalStatus !== 'approved').length;
-  const expenseApprove = s.expenses.filter((e) => e.status === 'requested').length;
-  const payoutApprove = s.instructorPayouts.filter((p) => p.status === 'pending').length;
-  const requestApprove = s.scheduleRequests.filter((r) => r.status === 'pending').length; // TBO-16 #9
-  put('/admin', reportApprove + expenseApprove + payoutApprove + requestApprove);
+  const reportApproveRows = s.sessionReports.filter((r) => (r.status === 'submitted' || r.approvalStatus === 'submitted') && r.approvalStatus !== 'approved');
+  const expenseApproveRows = expenseRows;
+  const payoutApproveRows = s.instructorPayouts.filter((p) => p.status === 'pending');
+  const requestApproveRows = s.scheduleRequests.filter((r) => r.status === 'pending'); // TBO-16 #9
+  put('/admin', reportApproveRows.length + expenseApproveRows.length + payoutApproveRows.length + requestApproveRows.length,
+    Math.max(latestActivityMs(reportApproveRows), latestActivityMs(expenseApproveRows), latestActivityMs(payoutApproveRows), latestActivityMs(requestApproveRows)));
 
   return out;
 }

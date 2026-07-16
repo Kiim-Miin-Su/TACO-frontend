@@ -174,6 +174,12 @@ export const useMyProfile = () => {
   return useQuery({ queryKey: qk.profile.me(scope), queryFn: () => api.account.profile() });
 };
 // [E0.5 ④] 국가·시간대 카탈로그 — 참조 데이터라 세션 내 재조회 불필요(CATALOG_STALE).
+// [B3 2026-07-16] 알림 뱃지 읽음 — 탭별 last-seen(서버 영속). 마킹 성공 시 맵 무효화.
+export const useNavSeen = () =>
+  useQuery({ queryKey: qk.navSeen.all, queryFn: () => api.navSeen.list(), staleTime: 15_000 });
+export const useMarkNavSeen = () =>
+  useMutation({ mutationFn: (navKey: string) => api.navSeen.mark(navKey), onSuccess: useInvalidator([qk.navSeen.all]) });
+
 export const useCountries = () =>
   useQuery({ queryKey: qk.catalog.countries(), queryFn: () => api.catalog.countries(), staleTime: CATALOG_STALE });
 export const useMyProfileChangeRequests = () => {

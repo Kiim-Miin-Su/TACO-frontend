@@ -432,6 +432,11 @@ export const api = {
       http.patch<{ id: number; webId: string; name: string; role: string; mustChangePassword: boolean }>("/users/me/credentials", body).then((r) => r.data),
     profile: () => http.get<MyProfile>("/users/me/profile").then((r) => r.data),
   },
+  // [B3 2026-07-16] 알림 뱃지 읽음 — 탭별 마지막 열람 시각(서버 영속, 본인 것만).
+  navSeen: {
+    list: () => http.get<Record<string, string>>("/nav-seen").then((r) => r.data),
+    mark: (navKey: string) => http.put<{ navKey: string; lastSeenAt: string }>("/nav-seen", { navKey }).then((r) => r.data),
+  },
   students: {
     list: () => http.get<Student[]>("/students").then((r) => r.data),
     get: (id: number) => http.get<Student>(`/students/${id}`).then((r) => r.data),

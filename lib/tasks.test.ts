@@ -85,3 +85,25 @@ describe('보강 미배정 — 매니저 배지·To-do', () => {
     expect(navBadges(s, 'manager')['/calendar']).toBeUndefined();
   });
 });
+
+// [B3 2026-07-16 대표 결정 ①] 열람(last-seen) 게이트 — 탭 진입 후 뱃지 숨김, 새 활동엔 재표시.
+describe('알림 뱃지 읽음(last-seen) 게이트', () => {
+  const canceled = { id: 31, courseId: 10, instructorId: 1, sessionDate: '2026-01-05', startTime: '16:00', durationMinutes: 60, status: 'canceled' as const, updatedAt: '2026-07-16T10:00:00.000Z' };
+
+  it('열람 시각 ≥ 마지막 활동이면 뱃지 숨김, 이후 새 활동(updatedAt 전진)이면 재표시', () => {
+    const s = { ...emptySlice, classSessions: [canceled] };
+    expect(navBadges(s, 'manager')['/calendar']).toBe(1); // 미열람 — 표시
+    const seenAfter = { calendar: '2026-07-16T11:00:00.000Z' }; // 활동 이후 열람
+    expect(navBadges(s, 'manager', undefined, seenAfter)['/calendar']).toBeUndefined();
+    // 새 활동(더 늦은 updatedAt의 결강) → 다시 표시
+    const newer = { ...canceled, id: 32, updatedAt: '2026-07-16T12:00:00.000Z' };
+    const s2 = { ...emptySlice, classSessions: [canceled, newer] };
+    expect(navBadges(s2, 'manager', undefined, seenAfter)['/calendar']).toBe(2);
+  });
+
+  it('열람 시각이 활동보다 이르면 계속 표시(놓친 알림 보존)', () => {
+    const s = { ...emptySlice, classSessions: [canceled] };
+    const seenBefore = { calendar: '2026-07-16T09:00:00.000Z' };
+    expect(navBadges(s, 'manager', undefined, seenBefore)['/calendar']).toBe(1);
+  });
+});
