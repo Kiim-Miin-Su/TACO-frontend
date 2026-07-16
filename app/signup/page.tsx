@@ -3,6 +3,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { AuthShell, AuthField } from "@/components/auth/AuthShell";
+// [B6 C2] 검증 규칙 단일 소스 — 전화·출생연도(계정 보안 화면과 같은 규칙·같은 문구).
+import { BIRTH_YEAR_MAX, BIRTH_YEAR_MIN, isValidBirthYear, isValidKrPhone } from "@/lib/validation";
 
 const ROLE_OPTIONS = [
   { value: "instructor", label: "강사" },
@@ -25,15 +27,15 @@ export default function SignupPage() {
     e.preventDefault();
     setBusy(true);
     setErr(null);
-    // 전화 형식은 서버(SignupDto)와 동일 규칙 — SMS 인증 유예 중엔 형식 방어만(§13.87).
-    if (form.phone && !/^\d{2,3}-\d{3,4}-\d{4}$/.test(form.phone.trim())) {
+    // 전화 형식은 서버(SignupDto)와 동일 규칙 — SMS 인증 유예 중엔 형식 방어만(§13.87). [B6 C2] lib/validation 단일 소스.
+    if (form.phone && !isValidKrPhone(form.phone)) {
       setErr("전화번호는 010-1234-5678 형식으로 입력해 주세요.");
       setBusy(false);
       return;
     }
     const birthYear = form.birthYear.trim() ? Number(form.birthYear.trim()) : undefined;
-    if (form.birthYear.trim() && (!Number.isInteger(birthYear) || birthYear! < 1940 || birthYear! > 2020)) {
-      setErr("출생연도는 1940~2020 사이의 숫자로 입력해 주세요.");
+    if (form.birthYear.trim() && !isValidBirthYear(form.birthYear)) {
+      setErr(`출생연도는 ${BIRTH_YEAR_MIN}~${BIRTH_YEAR_MAX} 사이의 숫자로 입력해 주세요.`);
       setBusy(false);
       return;
     }

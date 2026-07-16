@@ -1,13 +1,11 @@
 // [참조/처리] 관리자 코스/과목 카탈로그. 읽기=TanStack Query(useCourses·useSubjects·useInstructors),
-//  쓰기=api.courses/subjects.create → 성공 시 해당 queryKey invalidate로 목록 자동 갱신(단일 소스).
+//  쓰기=중앙 훅(useCreateCourse/useCreateSubject) — 성공 시 해당 queryKey invalidate로 목록 자동 갱신.
+//  [B6 C2] 인라인 useMutation 사설 정의 제거 — 중앙 훅만 사용(E1 불변식 2).
 'use client';
 import Link from 'next/link';
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { SectionCard, EmptyState, LoadingState, TableWrap } from '@/components/ui';
-import { api } from '@/lib/api';
-import { qk } from '@/lib/queryKeys';
-import { useCourses, useSubjects, useInstructors } from '@/lib/queries';
+import { useCourses, useSubjects, useInstructors, useCreateCourse, useCreateSubject } from '@/lib/queries';
 import { won } from '@/lib/format';
 import { AdminGuard, AdminHeader } from './AdminShell';
 import { Field } from '@/components/ui';
@@ -65,13 +63,9 @@ export function CoursesView() {
 const COURSE_PALETTE = ['#0969da', '#1a7f37', '#8250df', '#bf3989', '#9a6700', '#1b7c83'];
 
 function CourseForm() {
-  const qc = useQueryClient();
   const { data: subjects = [] } = useSubjects();
   const { data: instructors = [] } = useInstructors();
-  const addCourse = useMutation({
-    mutationFn: api.courses.create,
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.courses.all }),
-  });
+  const addCourse = useCreateCourse();
   const [name, setName] = useState('');
   const [subjectId, setSubjectId] = useState('');
   const [instructorId, setInstructorId] = useState('');
@@ -137,11 +131,7 @@ function CourseForm() {
 }
 
 function SubjectForm() {
-  const qc = useQueryClient();
-  const addSubject = useMutation({
-    mutationFn: api.subjects.create,
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.subjects.all }),
-  });
+  const addSubject = useCreateSubject();
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   // [E0.6 M 2026-07-16] CourseForm과 동일 규약 — 인라인 검증+onError+제출 중 비활성.

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { AuthShell, AuthField } from "@/components/auth/AuthShell";
+// [B6 C2] 비밀번호 길이를 byte 기준 단일 소스로 — 계정 보안 화면과 규칙 불일치(char 기준) 정정.
+import { PASSWORD_MIN_BYTES, passwordByteLength, passwordLengthError } from "@/lib/validation";
 
 function ResetForm() {
   const params = useSearchParams();
@@ -18,7 +20,9 @@ function ResetForm() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || pw.length < 8 || pw !== pw2) return;
+    const lengthError = passwordLengthError(pw);
+    if (!token || pw !== pw2) return;
+    if (lengthError) { setErr(lengthError); return; }
     setBusy(true); setErr(null);
     try {
       await api.auth.resetPassword(token, pw);
@@ -59,7 +63,7 @@ function ResetForm() {
           </AuthField>
           {mismatch && <p className="text-caption text-danger">비밀번호가 일치하지 않습니다.</p>}
           {err && <p className="text-caption text-danger">{err}</p>}
-          <button className="btn btn-primary w-full h-10" disabled={busy || pw.length < 8 || pw !== pw2}>
+          <button className="btn btn-primary w-full h-10" disabled={busy || passwordByteLength(pw) < PASSWORD_MIN_BYTES || pw !== pw2}>
             {busy ? "변경 중…" : "비밀번호 변경"}
           </button>
         </form>

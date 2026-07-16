@@ -42,10 +42,27 @@ export async function invalidateScheduleLifecycle(queryClient: QueryClient): Pro
   await invalidateCalendarCommand(queryClient);
 }
 
+// [B6 C2/EP5 P2] kind별 부분 무효화 복원 — 호출부(useApproveScheduleRequest)가 계산해 넘기던
+//  options를 C4가 버리고 있었다. **가용/불가 전용 요청**(availability=true·schedule=false)은 세션·
+//  출결·리포트·정산 데이터와 무관하므로 3-scope만 무효화한다. 세션 계열이거나 kind가 불명확하면
+//  C4 규약(7-scope) 유지 — 정확성 우선, 축소는 무해가 증명된 경우만(B6 문서 §4).
+const AVAILABILITY_COMMAND_SCOPES = [
+  qk.availability.all,
+  qk.scheduleRequests.all,
+  ["audit"] as const,
+] as const;
+
 export async function refreshScheduleRequestLifecycle(
   queryClient: QueryClient,
-  _options: { schedule?: boolean; availability?: boolean } = {},
+  options: { schedule?: boolean; availability?: boolean } = {},
 ): Promise<void> {
-  // [C4] 요청 생명주기도 캘린더 명령 무효화로 통일(요청 kind별 부분 무효화 폐기).
+  if (options.availability === true && options.schedule === false) {
+    await Promise.all(
+      AVAILABILITY_COMMAND_SCOPES.map((key) =>
+        queryClient.invalidateQueries({ queryKey: key as unknown as readonly unknown[], refetchType: "active" }),
+      ),
+    );
+    return;
+  }
   await invalidateCalendarCommand(queryClient);
 }

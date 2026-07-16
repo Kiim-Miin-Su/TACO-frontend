@@ -1,14 +1,12 @@
 // [참조/처리] 관리자 학원 이벤트 발행/목록 화면.
 //  - 목록: useAcademyEvents()(TanStack Query 단일 소스, GET /events).
-//  - 발행: api.events.create(POST /events, 관리자 토큰 필요) 성공 시 qk.events 무효화 → 목록 자동 재패칭.
+//  - 발행: useCreateEvent(중앙 훅 — 성공 시 qk.events 무효화 → 목록 자동 재패칭).
 //    구간 무결성(종료일 ≥ 시작일)은 폼에서 선검증 + 서버 400 재검증. 다른 엔티티 참조(FK) 없음.
+//  [B6 C2] 인라인 useMutation(api.events.create 사설 정의) 제거 — 중앙 훅만 사용(E1 불변식 2).
 'use client';
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Badge, SectionCard, EmptyState, LoadingState, TableWrap, ConfirmModal, PromptModal } from '@/components/ui';
-import { api } from '@/lib/api';
-import { qk } from '@/lib/queryKeys';
-import { useAcademyEvents, useRemoveEvent, useUpdateEvent } from '@/lib/queries';
+import { useAcademyEvents, useCreateEvent, useRemoveEvent, useUpdateEvent } from '@/lib/queries';
 import type { EventType, EventPriority } from '@/types';
 import { AdminGuard, AdminHeader } from './AdminShell';
 import { Field } from '@/components/ui';
@@ -83,7 +81,6 @@ export function EventsView() {
 
 // [B5 2026-07-16] export — 캘린더 학원 일정 스트립의 인라인 추가가 같은 폼을 재사용(사설 사본 금지).
 export function EventForm({ compact = false, onDone }: { compact?: boolean; onDone?: () => void } = {}) {
-  const qc = useQueryClient();
   const [title, setTitle] = useState('');
   const [type, setType] = useState<EventType>('notice');
   const [priority, setPriority] = useState<EventPriority>('normal');
@@ -92,16 +89,8 @@ export function EventForm({ compact = false, onDone }: { compact?: boolean; onDo
   const [memo, setMemo] = useState('');
   const [error, setError] = useState('');
 
-  // 백엔드가 단일 소스 — POST 후 events 쿼리 무효화 → 재패칭이 store를 갱신(AppShell 하이드레이션).
-  const create = useMutation({
-    mutationFn: api.events.create,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.events.all });
-      setTitle(''); setType('notice'); setPriority('normal'); setStartDate(''); setEndDate(''); setMemo(''); setError('');
-      onDone?.(); // [B5] 인라인(캘린더) 사용 시 발행 후 접기
-    },
-    onError: () => setError('발행에 실패했습니다. 날짜 구간(종료일 ≥ 시작일)과 권한을 확인하세요.'),
-  });
+  // 백엔드가 단일 소스 — 중앙 훅(useCreateEvent)이 성공 시 qk.events 무효화 → 재패칭이 store를 갱신.
+  const create = useCreateEvent();
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,7 +98,17 @@ export function EventForm({ compact = false, onDone }: { compact?: boolean; onDo
     const end = endDate || startDate;
     // 캘린더 구간 무결성: 클라이언트에서도 선검증(서버도 400으로 재검증).
     if (end < startDate) { setError('종료일은 시작일 이후여야 합니다.'); return; }
-    create.mutate({ title: title.trim(), type, priority, startDate, endDate: end, memo: memo.trim() || undefined });
+    create.mutate(
+      { title: title.trim(), type, priority, startDate, endDate: end, memo: memo.trim() || undefined },
+      {
+        // [B6 C2 규격] 성공=폼 리셋, 실패=인라인 에러 — 중앙 훅은 무효화만, 화면 반응은 호출부 소관.
+        onSuccess: () => {
+          setTitle(''); setType('notice'); setPriority('normal'); setStartDate(''); setEndDate(''); setMemo(''); setError('');
+          onDone?.(); // [B5] 인라인(캘린더) 사용 시 발행 후 접기
+        },
+        onError: () => setError('발행에 실패했습니다. 날짜 구간(종료일 ≥ 시작일)과 권한을 확인하세요.'),
+      },
+    );
   };
 
   return (

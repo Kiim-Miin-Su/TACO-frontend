@@ -7,6 +7,7 @@ import type {
   UserProfileSummary,
 } from "@/lib/api";
 import type { Tone } from "@/components/ui/tokens";
+import { REASON_MAX, REASON_MIN, WEB_ID_MIN, isValidPhoneAny } from "@/lib/validation";
 
 export const PROFILE_FIELD_LABEL: Record<keyof ProfileChangeFields, string> = {
   name: "이름",
@@ -38,12 +39,8 @@ export type ProfileChangePayload = Omit<CreateProfileChangeRequestBody, "current
 // [TBO-29B-4] 클라이언트 1차 형식 검증 — 권위는 서버 정규화(email lowercase·phone E.164)에 있고
 //  여기서는 발송 전에 명백한 형식 오류만 거른다(백엔드 §5와 동일 계열 규칙).
 export const isValidEmailFormat = (value: string) => value.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
-// [2026-07-16 SENS 준비] 국내 xxx-xxxx-xxxx + 국제 E.164(+국가코드, 공백/하이픈 허용) 복원 —
-//  해외 강사/학생 번호 대비. 서버는 libphonenumber 정규화로 이중 방어(권위).
-export const isValidPhoneFormat = (value: string) => {
-  const compact = value.replace(/[\s-]/g, "");
-  return /^\d{2,3}-\d{3,4}-\d{4}$/.test(value.trim()) || /^\+[1-9]\d{7,14}$/.test(compact);
-};
+// [B6 C2 2026-07-16] 전화·사유·아이디 규칙은 lib/validation 단일 소스로 이관 — 여기선 별칭만 유지(호환).
+export const isValidPhoneFormat = isValidPhoneAny;
 
 const normalize = (field: ProfileField, value?: string | null) => {
   const trimmed = (value ?? "").trim();
@@ -57,8 +54,8 @@ export function buildProfileChangePayload(
   draft: ProfileChangeDraft,
 ): { payload?: ProfileChangePayload; error?: string } {
   const reason = draft.reason.trim();
-  if (reason.length < 5) return { error: "변경 사유는 5자 이상 입력해 주세요." };
-  if (reason.length > 500) return { error: "변경 사유는 500자 이하여야 합니다." };
+  if (reason.length < REASON_MIN) return { error: `변경 사유는 ${REASON_MIN}자 이상 입력해 주세요.` };
+  if (reason.length > REASON_MAX) return { error: `변경 사유는 ${REASON_MAX}자 이하여야 합니다.` };
 
   const changes: ProfileChangeFields = {};
   for (const field of PROFILE_FIELDS) {
@@ -71,8 +68,8 @@ export function buildProfileChangePayload(
   }
   if (changes.name === "") return { error: "이름은 비워 둘 수 없습니다." };
   // [E0] 아이디 — 승인제 요청. 서버 최소 규칙(3자)과 동일 1차 방어.
-  if (changes.webId !== undefined && changes.webId !== null && changes.webId.length < 3) {
-    return { error: "아이디는 3자 이상 입력해 주세요." };
+  if (changes.webId !== undefined && changes.webId !== null && changes.webId.length < WEB_ID_MIN) {
+    return { error: `아이디는 ${WEB_ID_MIN}자 이상 입력해 주세요.` };
   }
   if (changes.email !== undefined && changes.email === "") return { error: "이메일은 비워 둘 수 없습니다." };
   if (changes.email && !isValidEmailFormat(changes.email)) return { error: "이메일 형식이 올바르지 않습니다." };

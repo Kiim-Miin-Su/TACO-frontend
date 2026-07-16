@@ -273,9 +273,11 @@ export function useTaskData() {
 // ── 뮤테이션 훅 (중앙화) ──
 // 쓰기는 전부 백엔드 API 경유 + 성공 시 관련 queryKey invalidate → Query(및 store 하이드레이션) 자동 갱신.
 // 각 뷰는 아래 훅만 호출(useMutation+invalidate 반복 제거 = 함수 통일).
+// [B6 C2/EP5] refetchType "active"로 query-cache 헬퍼와 정책 일원화 — 종전 미지정(all)은 비활성
+//  화면의 쿼리까지 즉시 refetch했다. invalidate 표시는 남으므로 비활성 쿼리는 다음 마운트에 재조회.
 function useInvalidator(keys: QueryKey[]) {
   const qc = useQueryClient();
-  return () => Promise.all(keys.map((key) => qc.invalidateQueries({ queryKey: key })));
+  return () => Promise.all(keys.map((key) => qc.invalidateQueries({ queryKey: key, refetchType: "active" })));
 }
 
 // 카탈로그
@@ -296,11 +298,15 @@ export const useUpdateRoom = () =>
   useMutation({ mutationFn: (v: { id: number; patch: Parameters<typeof api.rooms.update>[1] }) => api.rooms.update(v.id, v.patch), onSuccess: useInvalidator([qk.rooms.all()]) });
 export const useRemoveRoom = () => useMutation({ mutationFn: api.rooms.remove, onSuccess: useInvalidator([qk.rooms.all()]) });
 
-export const useApprovePendingAccount = () =>
-  useMutation({
+export const useApprovePendingAccount = () => {
+  const { scope } = useAccountAccess();
+  return useMutation({
     mutationFn: (value: { id: number; role?: string }) => api.auth.approve(value.id, value.role),
-    onSuccess: useInvalidator([qk.auth.pending, qk.users.all, qk.schedule.all]),
+    // [B6 C2/EP5 P6] 계정 승인이 캘린더에서 바꾸는 것은 강사 리소스 목록뿐 — schedule 전체(all)가 아니라
+    //  resources(scope)만 무효화(세션·출결 데이터는 무관).
+    onSuccess: useInvalidator([qk.auth.pending, qk.users.all, qk.schedule.resources(scope)]),
   });
+};
 export const useRejectPendingAccount = () =>
   useMutation({
     mutationFn: (value: { id: number; reason: string }) => api.auth.reject(value.id, value.reason),
@@ -507,6 +513,9 @@ export const useCreateProfileVerification = () => useMutation({ mutationFn: api.
 export const useConfirmProfileVerification = () =>
   useMutation({ mutationFn: (v: { id: number; code: string }) => api.profileVerifications.confirm(v.id, v.code) });
 export const useResendProfileVerification = () => useMutation({ mutationFn: api.profileVerifications.resend });
+// [B6 C2] 자격증명 변경(아이디/비밀번호 ± 첫 로그인 프로필) — 성공 시 화면이 전체 로그아웃 정리
+//  (clearToken + queryClient.clear + resetPreferences)를 수행하므로 개별 무효화는 없음.
+export const useChangeCredentials = () => useMutation({ mutationFn: api.account.changeCredentials });
 
 const profileDecisionKeys = [qk.profileChangeRequests.all, qk.profile.all, qk.users.all, qk.schedule.all];
 export const useApproveProfileChangeRequest = () =>

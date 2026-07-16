@@ -17,10 +17,13 @@ import { api, type ProfileVerification } from "@/lib/api";
 import { clearToken, currentClaims } from "@/lib/auth";
 import { resetPreferences } from "@/lib/storage/preferences";
 import { useTacoStore } from "@/lib/store";
-import { useCountries } from "@/lib/queries";
+// [B6 C2] 쓰기 3종(인증 발송/확인·자격증명 변경)을 중앙 mutation 훅으로 — 수동 api.* 잔재 제거(E1).
+import { useChangeCredentials, useConfirmProfileVerification, useCountries, useCreateProfileVerification } from "@/lib/queries";
 import { roleLabel } from "@/lib/roles";
 import type { AccountRole } from "@/types";
 import { isValidEmailFormat } from "@/lib/domain/profile";
+// [B6 C2] 검증 규칙 단일 소스(lib/validation) — OTP·전화·출생연도·비밀번호 byte 기준.
+import { BIRTH_YEAR_MAX, BIRTH_YEAR_MIN, isValidBirthYear, isValidKrPhone, isValidOtpCode, passwordLengthError } from "@/lib/validation";
 import { ProfileDetailsFields, type ProfileDetailsValues } from "./ProfileDetailsFields";
 
 const apiErrorMessage = (caught: unknown, fallback: string): string => {
@@ -60,8 +63,11 @@ export default function SecuritySettingsView() {
   const [otpVerified, setOtpVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false); // 다단계 흐름(발송→확인→변경)을 하나로 묶는 화면 상태
   const countriesQuery = useCountries();
+  const createVerification = useCreateProfileVerification();
+  const confirmVerification = useConfirmProfileVerification();
+  const changeCredentials = useChangeCredentials();
 
   // 이메일을 인증 후 수정하면 그 인증은 대상 불일치 — 상태로 명확히 리셋한다.
   const emailNormalized = profileDraft.email.trim().toLowerCase();
@@ -96,7 +102,7 @@ export default function SecuritySettingsView() {
         }
         target = me.email;
       }
-      const challenge = await api.profileVerifications.create({
+      const challenge = await createVerification.mutateAsync({
         currentPassword,
         channel: "email",
         target,
@@ -117,10 +123,10 @@ export default function SecuritySettingsView() {
     if (!otp) return;
     setError(null);
     setNotice(null);
-    if (!/^\d{4,10}$/.test(otpCode.trim())) return setError("인증 코드는 4~10자리 숫자입니다.");
+    if (!isValidOtpCode(otpCode)) return setError("인증 코드는 4~10자리 숫자입니다.");
     setBusy(true);
     try {
-      await api.profileVerifications.confirm(otp.id, otpCode.trim());
+      await confirmVerification.mutateAsync({ id: otp.id, code: otpCode.trim() });
       setOtpVerified(true);
       setNotice(forced ? "이메일 인증 완료 — 나머지 항목을 확인하고 설정을 완료하세요." : "이메일 인증 완료 — 이제 비밀번호를 변경할 수 있습니다.");
     } catch (caught) {
@@ -138,18 +144,19 @@ export default function SecuritySettingsView() {
     if (forced && (!nextWebId || !newPassword)) return setError("첫 로그인에서는 새 아이디와 새 비밀번호를 모두 입력해 주세요.");
     if (!forced && !newPassword) return setError("새 비밀번호를 입력해 주세요.");
     if (newPassword && newPassword !== confirmPassword) return setError("새 비밀번호 확인이 일치하지 않습니다.");
-    if (newPassword && new TextEncoder().encode(newPassword).length < 8) return setError("새 비밀번호는 8바이트 이상이어야 합니다.");
-    if (newPassword && new TextEncoder().encode(newPassword).length > 72) return setError("새 비밀번호는 72바이트 이하여야 합니다.");
+    // [B6 C2] byte 기준 검증은 lib/validation 단일 소스(reset-password와 동일 규칙·동일 문구).
+    const passwordError = newPassword ? passwordLengthError(newPassword) : null;
+    if (passwordError) return setError(passwordError);
     // [E0.5 ⑥] 강제 변경 흐름의 프로필 검증 — 가입 폼과 동일 규칙(이메일 형식·전화 010-1234-5678).
     if (forced) {
       if (!profileDraft.name.trim()) return setError("이름을 입력해 주세요.");
       if (!emailNormalized || !isValidEmailFormat(emailNormalized)) return setError("이메일 형식이 올바르지 않습니다.");
-      if (!profileDraft.phone.trim() || !/^\d{2,3}-\d{3,4}-\d{4}$/.test(profileDraft.phone.trim())) {
+      if (!profileDraft.phone.trim() || !isValidKrPhone(profileDraft.phone)) {
         return setError("전화번호는 010-1234-5678 형식으로 입력해 주세요.");
       }
       const year = profileDraft.birthYear?.trim();
-      if (year && (!/^\d{4}$/.test(year) || Number(year) < 1900 || Number(year) > 2100)) {
-        return setError("출생연도는 1900~2100 사이 4자리로 입력해 주세요.");
+      if (year && !isValidBirthYear(year)) {
+        return setError(`출생연도는 ${BIRTH_YEAR_MIN}~${BIRTH_YEAR_MAX} 사이 4자리로 입력해 주세요.`);
       }
       // [2026-07-16] 설정할 이메일의 OTP 인증 필수(서버도 400로 강제) — 대상 일치까지 확인.
       if (!otp || !emailVerifiedForCurrentTarget) {
@@ -162,7 +169,7 @@ export default function SecuritySettingsView() {
     }
     setBusy(true);
     try {
-      await api.account.changeCredentials({
+      await changeCredentials.mutateAsync({
         currentPassword,
         ...(forced && nextWebId ? { newWebId: nextWebId } : {}),
         ...(newPassword ? { newPassword } : {}),

@@ -24,6 +24,7 @@ import {
   useResendProfileVerification,
 } from "@/lib/queries";
 import { roleLabel } from "@/lib/roles";
+import { isValidOtpCode } from "@/lib/validation"; // [B6 C2] 검증 규칙 단일 소스
 import { ProfileDetailsFields } from "./ProfileDetailsFields";
 
 const apiErrorMessage = (caught: unknown, fallback: string): string => {
@@ -209,7 +210,7 @@ export default function ProfileChangeModal({
       if (verify.payload) submitRequest(verify.payload, verify.currentPassword, verify.challenge.id);
       return;
     }
-    if (!/^\d{4,10}$/.test(code.trim())) {
+    if (!isValidOtpCode(code)) {
       setError("인증 코드는 4~10자리 숫자입니다.");
       return;
     }
