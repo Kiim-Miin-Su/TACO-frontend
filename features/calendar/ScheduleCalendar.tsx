@@ -65,6 +65,7 @@ import { SessionListPanel } from "./SessionListPanel";
 import { SessionDetailPanel } from "./SessionDetailPanel";
 import type { RecurrenceScope } from "@kms545487/contracts";
 import { useAutoClear, useElementWidth, useMounted, useWindowKeydown } from "@/lib/hooks/browser-sync";
+import { EventForm } from "@/features/admin/EventsView"; // [B5] 학원 일정 인라인 발행 — 단일 폼 재사용
 
 // ── 그리드 상수 (애플/구글 캘린더 스타일: 넓고 시간 단위가 또렷하게) ──
 const START_H = 0,
@@ -195,6 +196,7 @@ export function ScheduleCalendar() {
   const pendingGhosts = useMemo(() => myRequests.filter((r) => r.status === "pending"), [myRequests]);
   const access = useAccountAccess();
   const canManage = access.can("calendar.manage");
+  const [showEventForm, setShowEventForm] = useState(false); // [B5] 학원 일정 인라인 발행 토글
   const isInstructor = access.can("instructor.self");
   const myInstructorId = access.instructorId ?? undefined;
   const canAdd = canManage || (isInstructor && myInstructorId != null);
@@ -2356,11 +2358,19 @@ export function ScheduleCalendar() {
             const visibleFrom = dates[0];
             const visibleTo = dates[dates.length - 1];
             const visible = academyEvents.filter((ev) => ev.startDate <= visibleTo && ev.endDate >= visibleFrom);
-            if (!visible.length) return null;
+            // [B5 2026-07-16 대표 결정 ③] 일반수업+진단고사+모의고사(행사)+상담을 한 캘린더에서 —
+            //  모의고사(type=exam) 등 학원 일정을 캘린더에서 바로 추가(매니저 이상, EventForm 재사용).
+            if (!visible.length && !canManage) return null;
             const typeIcon: Record<string, string> = { notice: "📢", exam: "📝", holiday: "🏖", closure: "🚪", event: "🎓" };
             return (
               <div className="flex items-center gap-2 flex-wrap text-caption" data-academy-events>
                 <span className="font-semibold text-fg-muted shrink-0">📌 학원 일정</span>
+                {canManage && (
+                  <button type="button" className="btn btn-xs" onClick={() => setShowEventForm((v) => !v)}
+                    title="모의고사·휴원 등 학원 일정을 캘린더에서 바로 발행 (매니저 이상)">
+                    {showEventForm ? "닫기" : "+ 학원 일정"}
+                  </button>
+                )}
                 {visible.map((ev) => (
                   <span
                     key={ev.id}
@@ -2378,6 +2388,12 @@ export function ScheduleCalendar() {
               </div>
             );
           })()}
+          {/* [B5] 학원 일정 인라인 발행 — admin EventsView의 EventForm 단일 컴포넌트 재사용 */}
+          {showEventForm && canManage && (
+            <div className="card border rounded-lg" data-event-inline-form>
+              <EventForm compact onDone={() => setShowEventForm(false)} />
+            </div>
+          )}
 
           {msg && (
             <div

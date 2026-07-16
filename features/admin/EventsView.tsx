@@ -81,7 +81,8 @@ export function EventsView() {
   );
 }
 
-function EventForm() {
+// [B5 2026-07-16] export — 캘린더 학원 일정 스트립의 인라인 추가가 같은 폼을 재사용(사설 사본 금지).
+export function EventForm({ compact = false, onDone }: { compact?: boolean; onDone?: () => void } = {}) {
   const qc = useQueryClient();
   const [title, setTitle] = useState('');
   const [type, setType] = useState<EventType>('notice');
@@ -97,6 +98,7 @@ function EventForm() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.events.all });
       setTitle(''); setType('notice'); setPriority('normal'); setStartDate(''); setEndDate(''); setMemo(''); setError('');
+      onDone?.(); // [B5] 인라인(캘린더) 사용 시 발행 후 접기
     },
     onError: () => setError('발행에 실패했습니다. 날짜 구간(종료일 ≥ 시작일)과 권한을 확인하세요.'),
   });
@@ -111,7 +113,7 @@ function EventForm() {
   };
 
   return (
-    <form onSubmit={submit} className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+    <form onSubmit={submit} className={compact ? "p-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-caption" : "p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"}>
       <Field label="제목 *"><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="여름 특강 등록 시작" /></Field>
       <Field label="유형">
         <select className="input" value={type} onChange={(e) => setType(e.target.value as EventType)}>
@@ -126,7 +128,7 @@ function EventForm() {
       <Field label="시작일 *"><input type="date" className="input" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></Field>
       <Field label="종료일"><input type="date" className="input" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></Field>
       <Field label="메모"><input className="input" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="비고" /></Field>
-      <div className="lg:col-span-3 flex items-center justify-end gap-3">
+      <div className={compact ? "sm:col-span-2 flex items-center justify-end gap-3" : "lg:col-span-3 flex items-center justify-end gap-3"}>
         {error && <span className="text-sm text-danger">{error}</span>}
         <button type="submit" className="btn btn-primary" disabled={create.isPending}>
           {create.isPending ? '발행 중…' : '이벤트 발행'}
