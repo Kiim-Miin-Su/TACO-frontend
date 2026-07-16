@@ -1,9 +1,12 @@
 "use client";
 
 // [E0 2026-07-15] 계정 보안 — 두 흐름의 화면.
-//  · 첫 로그인 강제 변경(forced): 아이디+비밀번호+프로필(이름·이메일·휴대폰) 통합 설정(E0.5 ⑥).
-//    부트스트랩 컨텍스트라 이메일 OTP는 예외.
-//  · 평시(비강제): 비밀번호 변경만 — 현재 비밀번호 재확인 + **본인 이메일 OTP** 소비(대표 참고사항).
+//  · 첫 로그인 강제 변경(forced): 아이디+비밀번호+프로필 통합 설정(E0.5 ⑥).
+//    [대표 추가요청 2026-07-16] ① users 수정 가능 컬럼 전부(국가·시간대·출신교·전공·출생연도,
+//    직책은 읽기 전용) ② **설정할 이메일의 OTP 인증 필수**(부트스트랩 무인증 예외 폐지 — 오타
+//    이메일이 verified로 박히면 복구·알림이 죽은 주소로 가는 위험) ③ 필드 UI는
+//    ProfileDetailsFields 공용 컴포넌트(마이 페이지 프로필 변경 모달과 단일 소스).
+//  · 평시(비강제): 비밀번호 변경만 — 현재 비밀번호 재확인 + 본인 이메일 OTP 소비(대표 참고사항).
 //    아이디 변경은 마이 페이지의 프로필 변경 요청(승인제)로 이동 — 안내만 표시.
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -14,6 +17,11 @@ import { api, type ProfileVerification } from "@/lib/api";
 import { clearToken, currentClaims } from "@/lib/auth";
 import { resetPreferences } from "@/lib/storage/preferences";
 import { useTacoStore } from "@/lib/store";
+import { useCountries } from "@/lib/queries";
+import { roleLabel } from "@/lib/roles";
+import type { AccountRole } from "@/types";
+import { isValidEmailFormat } from "@/lib/domain/profile";
+import { ProfileDetailsFields, type ProfileDetailsValues } from "./ProfileDetailsFields";
 
 const apiErrorMessage = (caught: unknown, fallback: string): string => {
   const apiError = caught as { response?: { data?: { message?: string | string[] } } };
@@ -25,22 +33,39 @@ export default function SecuritySettingsView() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const setCurrentAccount = useTacoStore((s) => s.setCurrentAccount);
-  const forced = currentClaims()?.mustChangePassword === true;
+  const claims = currentClaims();
+  const forced = claims?.mustChangePassword === true;
+  const myRole = (claims?.roles?.[0] ?? null) as AccountRole | null;
   const [currentPassword, setCurrentPassword] = useState("");
   const [newWebId, setNewWebId] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  // [E0.5 ⑥] 첫 로그인 강제 변경에서 가입 폼처럼 프로필까지 한 번에 — 이름(claim 프리필)·이메일·휴대폰.
-  const [name, setName] = useState(currentClaims()?.name ?? "");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  // [E0] 평시 비밀번호 변경용 본인 이메일 OTP — 발송→코드 확인→verified 후 제출 시 소비.
+  // [E0.5 ⑥ + 2026-07-16 확장] 첫 로그인 강제 변경 — users 수정 가능 컬럼 전부를 한 번에.
+  const [profileDraft, setProfileDraft] = useState<ProfileDetailsValues>({
+    name: claims?.name ?? "",
+    email: "",
+    phone: "",
+    countryCode: "KR",
+    timeZone: "Asia/Seoul",
+    university: "",
+    major: "",
+    birthYear: "",
+  });
+  const patchProfile = (patch: Partial<ProfileDetailsValues>) =>
+    setProfileDraft((current) => ({ ...current, ...patch }));
+  // 이메일 OTP — forced: 대상=**설정할 새 이메일** / 평시: 대상=본인 현재 이메일(서버 조회).
   const [otp, setOtp] = useState<ProfileVerification | null>(null);
+  const [otpTarget, setOtpTarget] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [otpVerified, setOtpVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const countriesQuery = useCountries();
+
+  // 이메일을 인증 후 수정하면 그 인증은 대상 불일치 — 상태로 명확히 리셋한다.
+  const emailNormalized = profileDraft.email.trim().toLowerCase();
+  const emailVerifiedForCurrentTarget = otpVerified && otpTarget === emailNormalized;
 
   function logout() {
     clearToken();
@@ -56,18 +81,28 @@ export default function SecuritySettingsView() {
     if (!currentPassword) return setError("인증 코드 발송에는 현재 비밀번호가 필요합니다. 먼저 입력해 주세요.");
     setBusy(true);
     try {
-      // 대상은 항상 **본인 계정의 현재 이메일** — 서버가 프로필에서 확인하므로 값 입력을 받지 않는다.
-      const me = await api.account.profile();
-      if (!me.email) {
-        setError("등록된 이메일이 없습니다. 마이 페이지에서 이메일을 먼저 등록해 주세요.");
-        return;
+      // forced: 화면에 입력한 새 이메일로 발송(본인 소유 실증). 평시: 등록된 본인 이메일(서버 확인).
+      let target = emailNormalized;
+      if (forced) {
+        if (!target || !isValidEmailFormat(target)) {
+          setError("인증할 이메일 형식이 올바르지 않습니다.");
+          return;
+        }
+      } else {
+        const me = await api.account.profile();
+        if (!me.email) {
+          setError("등록된 이메일이 없습니다. 마이 페이지에서 이메일을 먼저 등록해 주세요.");
+          return;
+        }
+        target = me.email;
       }
       const challenge = await api.profileVerifications.create({
         currentPassword,
         channel: "email",
-        target: me.email,
+        target,
       });
       setOtp(challenge);
+      setOtpTarget(target.trim().toLowerCase());
       setOtpCode("");
       setOtpVerified(false);
       setNotice(`${challenge.maskedTarget}(으)로 인증 코드를 보냈습니다.`);
@@ -87,7 +122,7 @@ export default function SecuritySettingsView() {
     try {
       await api.profileVerifications.confirm(otp.id, otpCode.trim());
       setOtpVerified(true);
-      setNotice("이메일 인증 완료 — 이제 비밀번호를 변경할 수 있습니다.");
+      setNotice(forced ? "이메일 인증 완료 — 나머지 항목을 확인하고 설정을 완료하세요." : "이메일 인증 완료 — 이제 비밀번호를 변경할 수 있습니다.");
     } catch (caught) {
       setError(apiErrorMessage(caught, "인증 코드를 확인하지 못했습니다."));
     } finally {
@@ -107,9 +142,19 @@ export default function SecuritySettingsView() {
     if (newPassword && new TextEncoder().encode(newPassword).length > 72) return setError("새 비밀번호는 72바이트 이하여야 합니다.");
     // [E0.5 ⑥] 강제 변경 흐름의 프로필 검증 — 가입 폼과 동일 규칙(이메일 형식·전화 010-1234-5678).
     if (forced) {
-      if (!name.trim()) return setError("이름을 입력해 주세요.");
-      if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) return setError("이메일 형식이 올바르지 않습니다.");
-      if (!phone.trim() || !/^\d{2,3}-\d{3,4}-\d{4}$/.test(phone.trim())) return setError("전화번호는 010-1234-5678 형식으로 입력해 주세요.");
+      if (!profileDraft.name.trim()) return setError("이름을 입력해 주세요.");
+      if (!emailNormalized || !isValidEmailFormat(emailNormalized)) return setError("이메일 형식이 올바르지 않습니다.");
+      if (!profileDraft.phone.trim() || !/^\d{2,3}-\d{3,4}-\d{4}$/.test(profileDraft.phone.trim())) {
+        return setError("전화번호는 010-1234-5678 형식으로 입력해 주세요.");
+      }
+      const year = profileDraft.birthYear?.trim();
+      if (year && (!/^\d{4}$/.test(year) || Number(year) < 1900 || Number(year) > 2100)) {
+        return setError("출생연도는 1900~2100 사이 4자리로 입력해 주세요.");
+      }
+      // [2026-07-16] 설정할 이메일의 OTP 인증 필수(서버도 400로 강제) — 대상 일치까지 확인.
+      if (!otp || !emailVerifiedForCurrentTarget) {
+        return setError("이메일 인증을 먼저 완료해 주세요. (인증 코드 발송 → 코드 확인)");
+      }
     }
     // [E0] 평시 비밀번호 변경 = 본인 이메일 OTP 필수(서버도 동일 검증 — 소비는 같은 tx).
     if (!forced && (!otp || !otpVerified)) {
@@ -121,8 +166,19 @@ export default function SecuritySettingsView() {
         currentPassword,
         ...(forced && nextWebId ? { newWebId: nextWebId } : {}),
         ...(newPassword ? { newPassword } : {}),
-        ...(forced ? { name: name.trim(), email: email.trim(), phone: phone.trim() } : {}),
-        ...(!forced && otp ? { verificationChallengeId: otp.id } : {}),
+        ...(forced
+          ? {
+              name: profileDraft.name.trim(),
+              email: emailNormalized,
+              phone: profileDraft.phone.trim(),
+              ...(profileDraft.countryCode ? { countryCode: profileDraft.countryCode } : {}),
+              ...(profileDraft.timeZone ? { timeZone: profileDraft.timeZone } : {}),
+              ...(profileDraft.university?.trim() ? { university: profileDraft.university.trim() } : {}),
+              ...(profileDraft.major?.trim() ? { major: profileDraft.major.trim() } : {}),
+              ...(profileDraft.birthYear?.trim() ? { birthYear: Number(profileDraft.birthYear.trim()) } : {}),
+            }
+          : {}),
+        ...(otp ? { verificationChallengeId: otp.id } : {}),
       });
       clearToken();
       setCurrentAccount(null);
@@ -135,6 +191,27 @@ export default function SecuritySettingsView() {
       setBusy(false);
     }
   }
+
+  // OTP 코드 확인 행 — forced(이메일 필드 아래)·평시(본인 확인 섹션) 공용.
+  const otpCodeRow = otp && !(forced ? emailVerifiedForCurrentTarget : otpVerified) ? (
+    <div className="flex flex-wrap items-end gap-2">
+      <div className="min-w-0 flex-1">
+        <Field label="인증 코드">
+          <input
+            className="input w-full mono tracking-widest"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={10}
+            placeholder="6자리 숫자"
+            value={otpCode}
+            onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+          />
+        </Field>
+      </div>
+      <button type="button" className="btn btn-sm shrink-0" onClick={confirmOtp} disabled={busy}>코드 확인</button>
+      <button type="button" className="btn btn-sm shrink-0" onClick={sendOtp} disabled={busy}>재전송</button>
+    </div>
+  ) : null;
 
   return (
     <div className="p-6 max-w-[720px] mx-auto space-y-5">
@@ -157,11 +234,31 @@ export default function SecuritySettingsView() {
         <Field label="새 비밀번호 확인"><input className="input w-full" type="password" autoComplete="new-password" required maxLength={72} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} /></Field>
         {forced ? (
           <div className="border-t pt-4 space-y-4">
-            {/* [E0.5 ⑥ 대표 지시] 가입 폼 재사용 — 첫 로그인에서 프로필(이름·이메일·휴대폰)까지 한 번에 */}
-            <p className="text-caption text-fg-muted">프로필 정보 — 비밀번호 찾기·알림 수신에 사용됩니다.</p>
-            <Field label="이름"><input className="input w-full" required maxLength={50} value={name} onChange={(e) => setName(e.target.value)} placeholder="김민선" /></Field>
-            <Field label="이메일"><input className="input w-full" type="email" autoComplete="email" required maxLength={320} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@tnacademy.com" /></Field>
-            <Field label="휴대폰"><input className="input w-full" type="tel" autoComplete="tel" required maxLength={20} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="010-1234-5678" /></Field>
+            {/* [2026-07-16 대표 추가요청] users 수정 가능 컬럼 전부 + 이메일 인증 — 공용 필드 컴포넌트 재사용 */}
+            <p className="text-caption text-fg-muted">프로필 정보 — 비밀번호 찾기·알림 수신·캘린더 시간대에 사용됩니다.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <ProfileDetailsFields
+                values={profileDraft}
+                onPatch={(patch) => {
+                  patchProfile(patch);
+                  // 인증된 이메일을 수정하면 인증 무효 — 대상 불일치 상태를 즉시 반영.
+                  if (patch.email !== undefined) setOtpVerified(false);
+                }}
+                countries={countriesQuery.data ?? []}
+                countriesPending={countriesQuery.isPending}
+                roleLabel={myRole ? roleLabel[myRole] : undefined}
+                extended
+                requireAll
+                emailAction={{
+                  label: emailVerifiedForCurrentTarget ? "인증 완료" : busy ? "발송 중..." : otp && otpTarget === emailNormalized ? "재전송" : "인증 코드 발송",
+                  disabled: busy || emailVerifiedForCurrentTarget || !emailNormalized,
+                  onClick: sendOtp,
+                }}
+                emailHint={emailVerifiedForCurrentTarget ? "이메일 인증 완료 — 설정을 완료하면 이 주소가 등록됩니다." : "설정할 이메일로 본인 인증이 필요합니다."}
+                phoneHint="010-1234-5678 형식"
+              />
+            </div>
+            {otpCodeRow}
           </div>
         ) : (
           <div className="border-t pt-4 space-y-3">
@@ -170,23 +267,7 @@ export default function SecuritySettingsView() {
             {otpVerified ? (
               <p className="text-body text-success" role="status">이메일 인증 완료</p>
             ) : otp ? (
-              <div className="flex flex-wrap items-end gap-2">
-                <div className="min-w-0 flex-1">
-                  <Field label="인증 코드">
-                    <input
-                      className="input w-full mono tracking-widest"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      maxLength={10}
-                      placeholder="6자리 숫자"
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-                    />
-                  </Field>
-                </div>
-                <button type="button" className="btn btn-sm shrink-0" onClick={confirmOtp} disabled={busy}>코드 확인</button>
-                <button type="button" className="btn btn-sm shrink-0" onClick={sendOtp} disabled={busy}>재전송</button>
-              </div>
+              otpCodeRow
             ) : (
               <button type="button" className="btn btn-sm" onClick={sendOtp} disabled={busy}>
                 {busy ? "발송 중..." : "인증 코드 발송"}
@@ -198,7 +279,7 @@ export default function SecuritySettingsView() {
         {error && <p className="text-body text-danger" role="alert">{error}</p>}
         <div className="flex items-center justify-between gap-3">
           <button type="button" className="btn" onClick={logout} disabled={busy}>로그아웃</button>
-          <button className="btn btn-primary" disabled={busy || (!forced && !otpVerified)}>
+          <button className="btn btn-primary" disabled={busy || (forced ? !emailVerifiedForCurrentTarget : !otpVerified)}>
             {busy ? "변경 중..." : forced ? "계정 정보 설정 완료" : "비밀번호 변경"}
           </button>
         </div>

@@ -265,6 +265,9 @@ export type LoginResult = { accessToken: string; account: { id: number; name: st
 export type ChangeCredentialsBody = {
   currentPassword: string; newWebId?: string; newPassword?: string;
   name?: string; email?: string; phone?: string;
+  // [대표 추가요청 2026-07-16] 첫 로그인 통합 설정 — users 수정 가능 컬럼 전부(강제 변경 흐름 전용).
+  //  이메일은 설정할 새 이메일의 OTP verified challenge 소비 필수(verificationChallengeId).
+  countryCode?: string; timeZone?: string; university?: string; major?: string; birthYear?: number;
   verificationChallengeId?: number;
 };
 // [E0.5 ④b] 가입 폼 확장 — 전화·대학·전공·출생연도(승인 판단 근거, 승인 tx에서 강사 프로필 승계).

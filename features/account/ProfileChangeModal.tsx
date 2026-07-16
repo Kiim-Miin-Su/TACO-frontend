@@ -23,6 +23,8 @@ import {
   useCreateProfileVerification,
   useResendProfileVerification,
 } from "@/lib/queries";
+import { roleLabel } from "@/lib/roles";
+import { ProfileDetailsFields } from "./ProfileDetailsFields";
 
 const apiErrorMessage = (caught: unknown, fallback: string): string => {
   const apiError = caught as { response?: { data?: { message?: string | string[] } } };
@@ -280,17 +282,10 @@ export default function ProfileChangeModal({
   const emailPreVerified = !!verifiedChallenge && verifiedChallenge.target === emailTarget;
 
   // [E0.5 ④] 국가·시간대는 카탈로그(DB countries 표) 토글 선택 — 자유 입력 폐지(서버도 동일 검증).
+  //  [2026-07-16 ③] 셀렉트·자동 시간대 로직은 ProfileDetailsFields(공용)로 이동 — 첫 로그인 통합
+  //  설정과 단일 소스.
   const countriesQuery = useCountries();
   const countries = countriesQuery.data ?? [];
-  const countryInCatalog = !draft.countryCode || countries.some((c) => c.code === draft.countryCode);
-  const tzInCatalog = !draft.timeZone || countries.some((c) => c.timeZone === draft.timeZone);
-  function onCountrySelect(code: string) {
-    setDraft((current) => {
-      const country = countries.find((c) => c.code === code);
-      // 국가 선택 시 대표 시간대 자동 세팅(비우면 시간대는 유지 — 별도 선택 가능).
-      return { ...current, countryCode: code, ...(country ? { timeZone: country.timeZone } : {}) };
-    });
-  }
 
   return (
     <ModalShell
@@ -397,9 +392,6 @@ export default function ProfileChangeModal({
               />
             </Field>
           </div>
-          <Field label="이름">
-            <input className="input w-full" required maxLength={50} value={draft.name} onChange={(event) => set("name", event.target.value)} />
-          </Field>
           {/* [E0] 아이디 즉시 변경 폐지 — 승인제(대표는 즉시 적용). 적용되면 기존 로그인이 모두 풀린다. */}
           <Field
             label="아이디"
@@ -407,77 +399,30 @@ export default function ProfileChangeModal({
           >
             <input className="input w-full mono" autoComplete="username" minLength={3} maxLength={50} value={draft.webId} onChange={(event) => set("webId", event.target.value)} />
           </Field>
-          {/* [E0.5 ③] 인증 코드 발송을 필드 옆 버튼으로 — 폼 전체 제출 없이 즉시 인증 시작 */}
-          <Field
-            label="이메일"
-            hint={emailPreVerified ? "새 이메일 인증 완료 — 저장하면 반영됩니다." : "변경 시 새 이메일로 본인 인증이 필요합니다."}
-          >
-            <div className="flex items-center gap-2">
-              <input
-                className="input min-w-0 flex-1"
-                type="email"
-                autoComplete="email"
-                maxLength={320}
-                value={draft.email}
-                onChange={(event) => set("email", event.target.value)}
-              />
-              <button
-                type="button"
-                className="btn btn-sm shrink-0"
-                onClick={sendEmailCode}
-                disabled={busy || !emailChanged || emailPreVerified || !emailTarget}
-                title={emailChanged ? "" : "현재 이메일과 다른 새 이메일을 입력하면 발송할 수 있습니다."}
-              >
-                {emailPreVerified ? "인증 완료" : createVerification.isPending ? "발송 중..." : "인증 코드 발송"}
-              </button>
-            </div>
-          </Field>
-          {/* [2026-07-16] SMS 인증은 BE 가용 플래그로 동적 — env 투입 시 힌트·스테퍼 자동 전환 */}
-          <Field
-            label="연락처"
-            hint={profile.smsVerificationAvailable
+          {/* [2026-07-16 ③] 프로필 필드 = ProfileDetailsFields 공용(첫 로그인 통합 설정과 단일 소스).
+              이메일 인증 버튼([E0.5 ③] 필드 옆 발송)·SMS 동적 힌트도 공용 경로로 주입한다. */}
+          <ProfileDetailsFields
+            values={{
+              name: draft.name,
+              email: draft.email,
+              phone: draft.phone,
+              countryCode: draft.countryCode,
+              timeZone: draft.timeZone,
+            }}
+            onPatch={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+            countries={countries}
+            countriesPending={countriesQuery.isPending}
+            roleLabel={roleLabel[profile.role as keyof typeof roleLabel] ?? profile.role}
+            emailAction={{
+              label: emailPreVerified ? "인증 완료" : createVerification.isPending ? "발송 중..." : "인증 코드 발송",
+              disabled: busy || !emailChanged || emailPreVerified || !emailTarget,
+              onClick: sendEmailCode,
+            }}
+            emailHint={emailPreVerified ? "새 이메일 인증 완료 — 저장하면 반영됩니다." : "변경 시 새 이메일로 본인 인증이 필요합니다."}
+            phoneHint={profile.smsVerificationAvailable
               ? "변경 시 새 번호로 문자(SMS) 인증이 필요합니다."
               : "010-1234-5678 또는 +국가코드 형식 · SMS 인증 제공 전까지 관리자 승인으로 처리"}
-          >
-            <input className="input w-full" type="tel" autoComplete="tel" maxLength={20} placeholder="010-1234-5678" value={draft.phone} onChange={(event) => set("phone", event.target.value)} />
-          </Field>
-          {/* [E0.5 ④] 자유 입력 폐지 — 카탈로그 토글 선택(국가 선택 시 시간대 자동 세팅) */}
-          <Field label="국가" hint="선택하면 시간대가 자동 설정됩니다.">
-            <select
-              className="input w-full"
-              value={draft.countryCode}
-              disabled={countriesQuery.isPending}
-              onChange={(event) => onCountrySelect(event.target.value)}
-            >
-              <option value="">선택 안 함</option>
-              {!countryInCatalog && (
-                <option value={draft.countryCode}>{draft.countryCode} (카탈로그 외 — 변경 시 목록에서 선택)</option>
-              )}
-              {countries.map((country) => (
-                <option key={country.code} value={country.code}>
-                  {country.flag ? `${country.flag} ` : ""}{country.nameKo} ({country.code})
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="시간대" hint="카탈로그 시간대 중에서 선택합니다.">
-            <select
-              className="input w-full"
-              value={draft.timeZone}
-              disabled={countriesQuery.isPending}
-              onChange={(event) => set("timeZone", event.target.value)}
-            >
-              <option value="">선택 안 함</option>
-              {!tzInCatalog && (
-                <option value={draft.timeZone}>{draft.timeZone} (카탈로그 외 — 변경 시 목록에서 선택)</option>
-              )}
-              {countries.map((country) => (
-                <option key={country.code} value={country.timeZone}>
-                  {country.timeZone} — {country.nameKo}
-                </option>
-              ))}
-            </select>
-          </Field>
+          />
           <div className="sm:col-span-2">
             <Field label="변경 사유">
               <textarea className="input w-full min-h-24 resize-y" required maxLength={500} value={draft.reason} onChange={(event) => set("reason", event.target.value)} />
