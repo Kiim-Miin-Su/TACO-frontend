@@ -7,11 +7,14 @@ import Link from 'next/link';
 import { Badge, EmptyState, PageHeader, SectionCard, StatCard, TableWrap, type Tone } from '@/components/ui';
 import { useInstructors, usePayouts, usePayoutPreview } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
-import { won } from '@/lib/format';
-import type { PayoutRowStatus } from '@/lib/api';
+import { won, dateOnly } from '@/lib/format'; // [B9 E5 2026-07-16] dateOnly — 회수 일시 표기
+import type { PayoutRow, PayoutRowStatus } from '@/lib/api';
 
 const statusLabel: Record<PayoutRowStatus, string> = { pending: '승인대기', confirmed: '승인됨', paid: '지급완료', rejected: '반려' };
 const statusTone: Record<PayoutRowStatus, Tone> = { pending: 'attention', confirmed: 'accent', paid: 'success', rejected: 'danger' };
+// [B9 E5 2026-07-16] 지급 회수(status='rejected'+reversedAt)는 '반려'와 구분해 '회수됨'으로 표기.
+//  이 화면은 읽기 전용(편집·회수 액션은 강사 페이 화면) — 표기만 추가.
+const isReversed = (p: PayoutRow) => p.status === 'rejected' && !!p.reversedAt;
 const hrs = (min?: number) => `${((min ?? 0) / 60).toFixed(1)}h`;
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const thisYm = () => new Date().toISOString().slice(0, 7);
@@ -133,14 +136,21 @@ export function PayoutDetailView({ instructorId }: { instructorId: number }) {
                         <td className="mono text-fg-muted">{hrs(p.totalMinutes)}</td>
                         <td className="mono">{won(p.computedAmount)}</td>
                         <td className="mono font-medium">{won(p.amount)}{p.adjustedAmount != null && p.adjustedAmount !== p.computedAmount ? ' *' : ''}</td>
-                        <td><Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge></td>
+                        {/* [B9 E5 2026-07-16] 회수됨 구분 배지(툴팁 = 회수 일자) */}
+                        <td>
+                          {isReversed(p)
+                            ? <span title={`지급 회수됨 — ${dateOnly(p.reversedAt)}`}><Badge tone="danger">회수됨</Badge></span>
+                            : <Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge>}
+                        </td>
                       </tr>
                       {isOpen && (
                         <tr>
                           <td colSpan={7} className="bg-canvas-subtle">
                             <div className="p-2 space-y-1">
                               {p.adjustReason && <div className="text-caption text-attention">조정 사유: {p.adjustReason}</div>}
-                              {p.rejectedReason && <div className="text-caption text-danger">반려 사유: {p.rejectedReason}</div>}
+                              {/* [B9 E5 2026-07-16] 회수 일시 + 사유 라벨 구분(회수 vs 반려) */}
+                              {isReversed(p) && <div className="text-caption text-danger">지급 회수됨 — {dateOnly(p.reversedAt)}</div>}
+                              {p.rejectedReason && <div className="text-caption text-danger">{isReversed(p) ? '회수 사유' : '반려 사유'}: {p.rejectedReason}</div>}
                               <table className="table text-caption">
                                 <thead><tr><th>날짜</th><th>코스</th><th>시수</th><th>시급</th><th className="text-right">금액</th></tr></thead>
                                 <tbody>

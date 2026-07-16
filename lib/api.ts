@@ -192,6 +192,8 @@ export type PayoutRow = {
   adjustedAmount?: number; adjustReason?: string; amount: number;
   status: PayoutRowStatus; lines: PayoutLine[]; rejectedReason?: string;
   paidAt?: string; confirmedAt?: string; createdAt: string; updatedAt: string;
+  // [B9 E5 2026-07-16] 지급 회수 — 회수된 정산은 status='rejected' + reversedAt(ISO) 세트(반려와 구분 표기)
+  reversedAt?: string;
 };
 export type LedgerTx = {
   id: number; direction: "in" | "out"; category: string; label: string;
@@ -675,5 +677,9 @@ export const api = {
     // 지급 완료(confirmed → paid) + 통합 원장 출금 기록
     pay: (id: number) =>
       http.post<{ payout: PayoutRow; transaction: LedgerTx }>(`/payouts/${id}/pay`, {}).then((r) => r.data),
+    // [B9 E5 2026-07-16] 지급 회수(paid → rejected+reversedAt) + 원장 반대 분개 — 대표 전용.
+    //  사유 필수(서버 DTO MinLength 5 — 미달 시 400).
+    reverse: (id: number, reason: string) =>
+      http.post<{ payout: PayoutRow; transaction: LedgerTx }>(`/payouts/${id}/reverse`, { reason }).then((r) => r.data),
   },
 };

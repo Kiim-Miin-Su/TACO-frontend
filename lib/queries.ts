@@ -536,6 +536,10 @@ export const useConfirmPayout = () => useMutation({ mutationFn: api.payouts.conf
 export const usePayPayout = () => useMutation({ mutationFn: api.payouts.pay, onSuccess: useInvalidator([qk.payouts.all, qk.transactions.all]) });
 export const useRejectPayout = () =>
   useMutation({ mutationFn: (v: { id: number; reason?: string }) => api.payouts.reject(v.id, v.reason), onSuccess: useInvalidator([qk.payouts.all, qk.schedule.all]) });
+// [B9 E5 2026-07-16] 지급 회수(paid → rejected+reversedAt) — 원장 반대 분개(transactions) 반영 +
+//  세션 잠금 해제가 캘린더 편집 가능성에 반영(useRejectPayout과 동일 근거로 schedule도 무효화).
+export const useReversePayout = () =>
+  useMutation({ mutationFn: (v: { id: number; reason: string }) => api.payouts.reverse(v.id, v.reason), onSuccess: useInvalidator([qk.payouts.all, qk.transactions.all, qk.schedule.all]) });
 export const useAdjustPayout = () =>
   useMutation({ mutationFn: (v: { id: number; amount: number; reason?: string }) => api.payouts.adjust(v.id, v.amount, v.reason), onSuccess: useInvalidator([qk.payouts.all]) });
 

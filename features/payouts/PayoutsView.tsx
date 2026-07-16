@@ -8,9 +8,10 @@ import {
   useSchedule, useCourses, useSubjects, useEnrollments, useStudents,
   useInstructors, usePayouts, usePayoutPreview, useMyPayouts, useMyPayoutPreview,
   useGeneratePayout, useConfirmPayout, usePayPayout, useAdjustPayout, useRejectPayout,
+  useReversePayout, // [B9 E5 2026-07-16] 지급 회수
 } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
-import { won } from '@/lib/format';
+import { won, dateOnly } from '@/lib/format'; // [B9 E5 2026-07-16] dateOnly — 회수 일자 툴팁
 import type { PayoutRow, PayoutRowStatus, PayoutLine } from '@/lib/api';
 import { ReasonModal } from '@/components/ReasonModal';
 
@@ -20,6 +21,15 @@ const statusLabel: Record<PayoutRowStatus, string> = {
 const statusTone: Record<PayoutRowStatus, Tone> = {
   pending: 'attention', confirmed: 'accent', paid: 'success', rejected: 'danger',
 };
+// [B9 E5 2026-07-16] 지급 회수된 정산(status='rejected' + reversedAt)은 '반려' 배지 자리에 '회수됨'으로 구분 표기.
+//  기존 Badge 컴포넌트 사용 · 툴팁 = 회수 일자.
+const isReversed = (p: PayoutRow) => p.status === 'rejected' && !!p.reversedAt;
+const PayoutStatusBadge = ({ p }: { p: PayoutRow }) =>
+  isReversed(p) ? (
+    <span title={`지급 회수됨 — ${dateOnly(p.reversedAt)}`}><Badge tone="danger">회수됨</Badge></span>
+  ) : (
+    <Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge>
+  );
 const hours = (min?: number) => `${((min ?? 0) / 60).toFixed(1)}h`;
 
 // 기본 산정 기간 = 이번 달 1일~말일(하드코딩 금지 — DESIGN §8 공통)
@@ -96,7 +106,8 @@ export function PayoutsView() {
   const payM = usePayPayout();
   const adjustM = useAdjustPayout();
   const rejectM = useRejectPayout();
-  const busy = generateM.isPending || confirmM.isPending || payM.isPending || adjustM.isPending || rejectM.isPending;
+  const reverseM = useReversePayout(); // [B9 E5 2026-07-16] 지급 회수(paid → rejected+reversedAt)
+  const busy = generateM.isPending || confirmM.isPending || payM.isPending || adjustM.isPending || rejectM.isPending || reverseM.isPending;
 
   const generate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,8 +116,8 @@ export function PayoutsView() {
   };
   // [DESIGN §5.5] 급여 수정 — prompt 2연타 대신 금액+사유 한 화면 모달
   const [adjustModal, setAdjustModal] = useState<PayoutRow | null>(null);
-  // 반려 사유 모달(입력/보기)
-  const [reasonModal, setReasonModal] = useState<{ mode: 'input' | 'view'; payout: PayoutRow } | null>(null);
+  // 반려 사유 모달(입력/보기) — [B9 E5 2026-07-16] action='reverse'면 같은 모달로 지급 회수 사유 입력
+  const [reasonModal, setReasonModal] = useState<{ mode: 'input' | 'view'; payout: PayoutRow; action?: 'reject' | 'reverse' } | null>(null);
 
   if (!finance && !instructorSelf) {
     return (
@@ -158,7 +169,7 @@ export function PayoutsView() {
                   {payouts.map((p) => (
                     <tr key={p.id}>
                       <td className="mono text-fg-muted">{p.periodStart} ~ {p.periodEnd}</td>
-                      <td><Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge></td>
+                      <td><PayoutStatusBadge p={p} /></td>{/* [B9 E5 2026-07-16] 회수됨 구분 표기 */}
                       <td className="text-right mono">{hours(p.totalMinutes)}</td>
                       <td className="text-right mono">{won(p.amount)}</td>
                       <td className="mono text-fg-muted">{p.paidAt ?? '—'}</td>
@@ -305,10 +316,11 @@ export function PayoutsView() {
                   )}
                 </td>
                 <td>
-                  <Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge>
+                  {/* [B9 E5 2026-07-16] 회수됨(rejected+reversedAt)은 '반려' 배지 자리에 구분 표기 */}
+                  <PayoutStatusBadge p={p} />
                   {p.status === 'rejected' && (
                     <button className="block text-micro text-danger mt-0.5 hover:underline" onClick={() => setReasonModal({ mode: 'view', payout: p })}>
-                      반려 사유 보기
+                      {isReversed(p) ? '회수 사유 보기' : '반려 사유 보기'}
                     </button>
                   )}
                 </td>
@@ -328,6 +340,10 @@ export function PayoutsView() {
                           <button className="btn btn-sm" disabled={busy} onClick={() => setAdjustModal(p)}>급여수정</button>
                           <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => setReasonModal({ mode: 'input', payout: p })}>반려</button>
                         </>
+                      )}
+                      {/* [B9 E5 2026-07-16] 지급 회수(paid → rejected+reversedAt) — 사유 필수(5자+), 원장 반대 분개 */}
+                      {p.status === 'paid' && (
+                        <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => setReasonModal({ mode: 'input', payout: p, action: 'reverse' })}>지급 회수</button>
                       )}
                       {(p.status === 'paid' || p.status === 'rejected') && (
                         <span className="text-caption text-fg-subtle mono">{p.paidAt ? p.paidAt.slice(0, 10) : '—'}</span>
@@ -384,10 +400,22 @@ export function PayoutsView() {
       {reasonModal && (
         <ReasonModal
           mode={reasonModal.mode}
-          title={reasonModal.mode === 'input' ? `강사 페이 반려 — ${instructorName(reasonModal.payout.instructorId)}` : '반려 사유'}
+          title={
+            reasonModal.mode === 'view' ? (isReversed(reasonModal.payout) ? '회수 사유' : '반려 사유')
+              // [B9 E5 2026-07-16] 회수 사유는 서버 DTO MinLength 5 — 제목에 5자 이상 안내(미달 400 메시지는 기존 토스트로 인라인 표시)
+              : reasonModal.action === 'reverse'
+                ? `지급 회수 — ${instructorName(reasonModal.payout.instructorId)} (사유 5자 이상 필수)`
+                : `강사 페이 반려 — ${instructorName(reasonModal.payout.instructorId)}`
+          }
           initial={reasonModal.payout.rejectedReason ?? ''}
           onClose={() => setReasonModal(null)}
-          onSubmit={(reason) => { const p = reasonModal.payout; setReasonModal(null); rejectM.mutate({ id: p.id, reason }, { onError: onErr }); }}
+          onSubmit={(reason) => {
+            const m = reasonModal;
+            setReasonModal(null);
+            // [B9 E5 2026-07-16] action 분기 — 지급 회수 vs 반려(둘 다 중앙 훅, 인라인 useMutation 금지)
+            if (m.action === 'reverse') reverseM.mutate({ id: m.payout.id, reason }, { onError: onErr });
+            else rejectM.mutate({ id: m.payout.id, reason }, { onError: onErr });
+          }}
         />
       )}
 
