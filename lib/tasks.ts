@@ -141,6 +141,17 @@ function adminTasks(s: StoreSlice): TaskItem[] {
       href: '/admin/approvals',
     });
   }
+
+  // ── [대표 지시 ⑭ 2026-07-16] 보강 미배정 — 결강(취소·노쇼·펑크)인데 보강 날짜가 아직 안 잡힌 수업.
+  //  강사 탭과 **같은 단일 정의(lib/makeup)** 재사용 — 매니저도 배정을 챙겨야 하므로 관리자 To-do에 편입.
+  for (const m of makeupNeeds(s).filter((x) => !x.resolved)) {
+    out.push({
+      id: `makeup-${m.session.id}`, group: 'class', tone: 'danger', counts: true,
+      title: `보강 미배정 — ${iname(m.session.instructorId)}`,
+      detail: `${m.session.sessionDate} ${m.session.startTime ?? ''} · ${MAKEUP_REASON_LABEL[m.reason]} · 보강 일정 필요`,
+      href: '/calendar',
+    });
+  }
   return out;
 }
 
@@ -236,6 +247,8 @@ export function navBadges(s: StoreSlice, role: AccountRole = s.currentRole, inst
   if (!isAdmin(role)) return out; // 학생/학부모 등은 알림 없음
 
   // 관리자/매니저
+  // [대표 지시 ⑭] 보강 미배정(결강인데 보강 날짜 미정) — 강사 배지와 같은 단일 정의(lib/makeup) 전체 집계.
+  put('/calendar', makeupNeededCount(s));
   put('/counsel', s.counselForms.filter((c) => c.status !== 'dropped' && !c.nextContactAt).length); // 다음 만남 날짜 미정(이탈 제외)
   put('/payments', s.payments.filter((p) => p.status === 'pending').length); // 미수(미납)
   put('/payouts', s.instructorPayouts.filter((p) => p.status === 'pending' || p.status === 'confirmed').length); // 미정산(미지급)

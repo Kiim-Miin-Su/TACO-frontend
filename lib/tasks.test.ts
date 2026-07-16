@@ -63,3 +63,25 @@ describe('scheduleRequests — 배지·To-do 동일 모집단(R1)', () => {
     expect(navBadges(s, 'student' as never)).toEqual({});
   });
 });
+
+// [대표 지시 ⑭ 2026-07-16] 보강 미배정 — 매니저 To-do·/calendar 배지(강사와 같은 lib/makeup 단일 정의).
+describe('보강 미배정 — 매니저 배지·To-do', () => {
+  const canceled = { id: 21, courseId: 10, instructorId: 1, sessionDate: '2026-01-05', startTime: '16:00', durationMinutes: 60, status: 'canceled' as const };
+  const makeup = { id: 22, courseId: 10, instructorId: 1, sessionDate: '2026-01-08', startTime: '16:00', durationMinutes: 60, status: 'makeup' as const, makeupForSessionId: 21 };
+
+  it('결강(취소)인데 보강 미연결 → 매니저 To-do(보강 미배정)+/calendar 배지', () => {
+    const s = { ...emptySlice, classSessions: [canceled] };
+    const { items } = buildTasks(s, 'manager');
+    const item = items.find((t) => t.id === 'makeup-21');
+    expect(item?.counts).toBe(true);
+    expect(item?.title).toContain('보강 미배정');
+    expect(item?.detail).toContain('취소됨');
+    expect(navBadges(s, 'manager')['/calendar']).toBe(1);
+  });
+
+  it('보강 세션이 원본을 가리키면(makeupForSessionId) 해소 — 배지·To-do에서 제외', () => {
+    const s = { ...emptySlice, classSessions: [canceled, makeup] };
+    expect(buildTasks(s, 'manager').items.find((t) => t.id === 'makeup-21')).toBeUndefined();
+    expect(navBadges(s, 'manager')['/calendar']).toBeUndefined();
+  });
+});
