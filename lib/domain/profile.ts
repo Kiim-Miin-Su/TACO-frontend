@@ -38,9 +38,12 @@ export type ProfileChangePayload = Omit<CreateProfileChangeRequestBody, "current
 // [TBO-29B-4] 클라이언트 1차 형식 검증 — 권위는 서버 정규화(email lowercase·phone E.164)에 있고
 //  여기서는 발송 전에 명백한 형식 오류만 거른다(백엔드 §5와 동일 계열 규칙).
 export const isValidEmailFormat = (value: string) => value.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
-// [2026-07-15 SMS 추후 구현] 대표 지시 — 프론트는 xxx-xxxx-xxxx 형식만 우선 허용(느슨한 국제 형식은
-//  SMS 인증 도입 시 E.164 흐름과 함께 복원). 서버는 libphonenumber 정규화로 이중 방어.
-export const isValidPhoneFormat = (value: string) => /^\d{2,3}-\d{3,4}-\d{4}$/.test(value);
+// [2026-07-16 SENS 준비] 국내 xxx-xxxx-xxxx + 국제 E.164(+국가코드, 공백/하이픈 허용) 복원 —
+//  해외 강사/학생 번호 대비. 서버는 libphonenumber 정규화로 이중 방어(권위).
+export const isValidPhoneFormat = (value: string) => {
+  const compact = value.replace(/[\s-]/g, "");
+  return /^\d{2,3}-\d{3,4}-\d{4}$/.test(value.trim()) || /^\+[1-9]\d{7,14}$/.test(compact);
+};
 
 const normalize = (field: ProfileField, value?: string | null) => {
   const trimmed = (value ?? "").trim();
@@ -74,7 +77,7 @@ export function buildProfileChangePayload(
   if (changes.email !== undefined && changes.email === "") return { error: "이메일은 비워 둘 수 없습니다." };
   if (changes.email && !isValidEmailFormat(changes.email)) return { error: "이메일 형식이 올바르지 않습니다." };
   if (changes.phone != null && changes.phone !== "" && !isValidPhoneFormat(changes.phone)) {
-    return { error: "연락처는 010-1234-5678 형식으로 입력해 주세요. (SMS 인증은 추후 제공 예정)" };
+    return { error: "연락처는 010-1234-5678 또는 +국가코드 형식으로 입력해 주세요." };
   }
   // 서버 §4와 동일 — email·phone 동시 변경은 challenge 1건으로 검증 불가(한 번에 하나).
   if (changes.email !== undefined && changes.phone !== undefined) {
@@ -88,13 +91,14 @@ export function buildProfileChangePayload(
 }
 
 // [TBO-29B-4] 연락처 인증 필요 여부 — email 변경은 새 값으로 challenge, phone 비우기(null)는 인증 불요(§4).
-//  [2026-07-15 SMS 추후 구현] phone 변경의 SMS OTP는 provider 준비 전까지 비활성(형식 검증+관리자 승인만).
-//  복원 방법: 아래 phone 분기의 주석 해제 — 백엔드는 provider env 감지로 이미 자동 복원된다.
+//  [2026-07-16 SENS 준비] phone 분기는 **BE의 SMS 가용 플래그(profile.smsVerificationAvailable)로
+//  동적 전환** — provider env 투입/제거만으로 BE 인증 요구와 FE 스테퍼가 함께 켜지고 꺼진다(코드 수정 0).
+//  발신번호 미승인 상태에서는 env를 넣지 말 것(넣으면 인증 필수인데 발송 실패 — 변경이 막힘).
 export type ContactVerificationPlan = { channel: ProfileVerificationChannel; target: string } | null;
 
-export function contactVerificationPlanOf(payload: ProfileChangePayload): ContactVerificationPlan {
+export function contactVerificationPlanOf(payload: ProfileChangePayload, smsAvailable = false): ContactVerificationPlan {
   if (payload.email !== undefined) return { channel: "email", target: payload.email };
-  // if (payload.phone != null) return { channel: "sms", target: payload.phone }; // SMS 추후 구현 시 복원
+  if (smsAvailable && payload.phone != null) return { channel: "sms", target: payload.phone };
   return null;
 }
 

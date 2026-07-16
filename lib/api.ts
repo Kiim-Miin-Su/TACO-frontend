@@ -289,6 +289,8 @@ export type MyProfile = {
   countryCode?: string | null;
   timeZone?: string | null;
   profileVersion: number;
+  // [2026-07-16] SMS 인증 가용(BE provider env 완비) — phone 변경 스테퍼 동적 활성(env만으로 전환)
+  smsVerificationAvailable?: boolean;
 };
 export type ProfileChangeFields = {
   name?: string;

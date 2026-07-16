@@ -142,7 +142,8 @@ export default function ProfileChangeModal({
       return;
     }
     const payload = result.payload;
-    const plan = contactVerificationPlanOf(payload);
+    // [2026-07-16] SMS 스테퍼는 BE 가용 플래그로 동적 활성(SENS env 투입 시 자동 전환)
+    const plan = contactVerificationPlanOf(payload, profile.smsVerificationAvailable === true);
     if (!plan) {
       submitRequest(payload, currentPassword);
       return;
@@ -431,8 +432,13 @@ export default function ProfileChangeModal({
               </button>
             </div>
           </Field>
-          {/* [2026-07-15] SMS 인증은 추후 제공 — 형식 검증(010-1234-5678) + 관리자 승인으로 처리 */}
-          <Field label="연락처" hint="010-1234-5678 형식 · SMS 인증은 추후 제공 예정(관리자 승인으로 처리)">
+          {/* [2026-07-16] SMS 인증은 BE 가용 플래그로 동적 — env 투입 시 힌트·스테퍼 자동 전환 */}
+          <Field
+            label="연락처"
+            hint={profile.smsVerificationAvailable
+              ? "변경 시 새 번호로 문자(SMS) 인증이 필요합니다."
+              : "010-1234-5678 또는 +국가코드 형식 · SMS 인증 제공 전까지 관리자 승인으로 처리"}
+          >
             <input className="input w-full" type="tel" autoComplete="tel" maxLength={20} placeholder="010-1234-5678" value={draft.phone} onChange={(event) => set("phone", event.target.value)} />
           </Field>
           {/* [E0.5 ④] 자유 입력 폐지 — 카탈로그 토글 선택(국가 선택 시 시간대 자동 세팅) */}

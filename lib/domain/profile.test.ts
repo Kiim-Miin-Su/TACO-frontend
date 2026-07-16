@@ -64,9 +64,10 @@ describe("buildProfileChangePayload", () => {
   });
 
   it("rejects malformed phones and simultaneous email+phone changes", () => {
-    expect(buildProfileChangePayload(profile, { ...baseDraft, phone: "abc" }).error).toContain("010-1234-5678 형식");
-    // [2026-07-15 SMS 추후] 느슨한 국제 형식(+44...)도 당분간 거부 — xxx-xxxx-xxxx만 허용(대표 지시)
-    expect(buildProfileChangePayload(profile, { ...baseDraft, phone: "+44 7911 123456" }).error).toContain("010-1234-5678 형식");
+    expect(buildProfileChangePayload(profile, { ...baseDraft, phone: "abc" }).error).toContain("010-1234-5678");
+    // [2026-07-16 SENS 준비] 국제 E.164(+국가코드, 공백 허용) 복원 — 해외 강사/학생 번호
+    expect(buildProfileChangePayload(profile, { ...baseDraft, phone: "+44 7911 123456" }).payload?.phone).toBe("+44 7911 123456");
+    expect(buildProfileChangePayload(profile, { ...baseDraft, phone: "+0 123" }).error).toContain("010-1234-5678");
     expect(buildProfileChangePayload(profile, { ...baseDraft, phone: "010-9999-0000" }).payload?.phone).toBe("010-9999-0000");
     expect(
       buildProfileChangePayload(profile, { ...baseDraft, email: "new@tnacademy.test", phone: "010-9999-0000" }).error,
@@ -83,12 +84,15 @@ describe("buildProfileChangePayload", () => {
 });
 
 describe("contactVerificationPlanOf", () => {
-  it("email 변경만 challenge 필요 — phone은 SMS 추후 구현까지 인증 없이(형식+승인), 비우기/비연락처도 불요", () => {
+  it("email은 항상 challenge — phone은 BE SMS 가용 플래그로 동적(가용 시 sms plan, 아니면 승인 처리)", () => {
     expect(contactVerificationPlanOf({ email: "new@tnacademy.test", reason: "r" })).toEqual({ channel: "email", target: "new@tnacademy.test" });
-    // [2026-07-15 SMS 추후 구현] phone 변경은 OTP 없이 접수 — provider 도입 시 planOf의 sms 분기 복원
+    // [2026-07-16 SENS 준비] smsAvailable=false(기본) → 인증 없이 접수(관리자 승인 처리)
     expect(contactVerificationPlanOf({ phone: "010-9999-0000", reason: "r" })).toBeNull();
-    expect(contactVerificationPlanOf({ phone: null, reason: "r" })).toBeNull();
-    expect(contactVerificationPlanOf({ name: "박지훈", timeZone: "Asia/Seoul", reason: "r" })).toBeNull();
+    expect(contactVerificationPlanOf({ phone: "010-9999-0000", reason: "r" }, false)).toBeNull();
+    // smsAvailable=true(provider env 완비) → sms challenge 계획
+    expect(contactVerificationPlanOf({ phone: "010-9999-0000", reason: "r" }, true)).toEqual({ channel: "sms", target: "010-9999-0000" });
+    expect(contactVerificationPlanOf({ phone: null, reason: "r" }, true)).toBeNull(); // 비우기는 인증 불요
+    expect(contactVerificationPlanOf({ name: "박지훈", timeZone: "Asia/Seoul", reason: "r" }, true)).toBeNull();
   });
 });
 
