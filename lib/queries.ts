@@ -290,6 +290,11 @@ export const useUpdateEvent = () =>
   });
 export const useRemoveEvent = () => useMutation({ mutationFn: api.events.remove, onSuccess: useInvalidator([qk.events.all]) });
 export const useCreateRoadmap = () => useMutation({ mutationFn: api.roadmaps.create, onSuccess: useInvalidator([qk.roadmaps.all]) });
+// [B4 2026-07-16] 강의실 관리(매니저 이상) — 성공 시 qk.rooms 무효화로 수업탭 목록·수업 추가 모달 select가 동시 갱신.
+export const useCreateRoom = () => useMutation({ mutationFn: api.rooms.create, onSuccess: useInvalidator([qk.rooms.all()]) });
+export const useUpdateRoom = () =>
+  useMutation({ mutationFn: (v: { id: number; patch: Parameters<typeof api.rooms.update>[1] }) => api.rooms.update(v.id, v.patch), onSuccess: useInvalidator([qk.rooms.all()]) });
+export const useRemoveRoom = () => useMutation({ mutationFn: api.rooms.remove, onSuccess: useInvalidator([qk.rooms.all()]) });
 
 export const useApprovePendingAccount = () =>
   useMutation({

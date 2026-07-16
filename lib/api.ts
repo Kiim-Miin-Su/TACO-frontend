@@ -612,6 +612,12 @@ export const api = {
   },
   rooms: {
     list: () => http.get<Room[]>("/rooms").then((r) => r.data),
+    // [B4 2026-07-16] 강의실 관리(매니저 이상 — 강사 403). 정원 기본 1명(BE). 세션 배정>정원이면
+    //  스케줄 생성이 409 conflicts(type='room_capacity')로 응답한다(lib/domain/conflict-messages 라벨).
+    create: (b: { name: string; capacity?: number; color?: string }) => http.post<Room>("/rooms", b).then((r) => r.data),
+    update: (id: number, b: { name?: string; capacity?: number; color?: string; isActive?: boolean }) =>
+      http.patch<Room>(`/rooms/${id}`, b).then((r) => r.data),
+    remove: (id: number) => http.delete<Room>(`/rooms/${id}`).then((r) => r.data),
   },
   availability: {
     list: (ownerType: AvailabilityOwner, ownerId: number) =>

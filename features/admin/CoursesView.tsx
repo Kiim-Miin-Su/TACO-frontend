@@ -11,6 +11,8 @@ import { useCourses, useSubjects, useInstructors } from '@/lib/queries';
 import { won } from '@/lib/format';
 import { AdminGuard, AdminHeader } from './AdminShell';
 import { Field } from '@/components/ui';
+// [B4 2026-07-16 대표 결정 ②] 강의실 관리 — 수업 추가 모달과 같은 공용 컴포넌트 재사용(사설 사본 금지)
+import { RoomManagerPanel } from '@/features/rooms/RoomManagerPanel';
 
 export function CoursesView() {
   const { data: subjects = [] } = useSubjects();
@@ -54,6 +56,7 @@ export function CoursesView() {
           </TableWrap>
           )}
         </SectionCard>
+        <SectionCard title="강의실 관리 (매니저 이상)"><RoomManagerPanel /></SectionCard>
       </div>
     </AdminGuard>
   );

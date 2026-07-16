@@ -52,4 +52,13 @@ describe("formatScheduleConflicts", () => {
     expect(msg).toContain("강사 박지훈");
     expect(msg).toContain("불가시간 12:00-13:00");
   });
+
+  // [B4 2026-07-16] 정원 초과 — 세션 생성 409 conflicts(type='room_capacity')의 라벨·BE detail 표면화
+  it("정원 초과(room_capacity) alert에 강의실명·라벨·정원 상세를 표시한다", () => {
+    const conflicts: Conflict[] = [{ type: "room_capacity", resource: "room", resourceId: 1, detail: "정원 초과 — 정원 6명, 배정 8명" }];
+    const msg = formatScheduleConflicts(conflicts, { rows: [row], resources });
+    expect(msg).toContain("강의실 A101");
+    expect(msg).toContain("강의실 정원 초과");
+    expect(msg).toContain("정원 초과 — 정원 6명, 배정 8명");
+  });
 });

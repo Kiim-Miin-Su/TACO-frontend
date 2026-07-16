@@ -13,6 +13,8 @@ import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
 
 const isCanceledStatus = (s?: string) => s === "canceled" || s === "no_show";
 import { useAllAvailability, useEnrollments, useStudents } from "@/lib/queries";
+// [B4 2026-07-16 대표 결정 ②] 강의실 관리 — 수업탭(CoursesView)과 같은 공용 컴포넌트 재사용(사설 사본 금지)
+import { RoomManagerPanel } from "@/features/rooms/RoomManagerPanel";
 import { weekdayOf, toMin, fromMin, durationMinutesBetween, WEEKDAYS_KO as WD, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
 import { seriesRuleToKst } from "@/lib/domain/series";
 import { splitKstBand, tzLocalToKst, KST_TZ, type CountryInfo } from "@/lib/domain/tz";
@@ -164,6 +166,8 @@ export function ScheduleCreateModal({
   const course = resources.courses.find((c) => c.id === courseId);
   const [instructorId, setInstructorId] = useState<number | "">(lockInstructorId ?? defaultInstructorId ?? course?.instructorId ?? "");
   const [roomId, setRoomId] = useState<number | "">("");
+  // [B4] 강의실 관리 패널 토글(매니저 이상) — 모달 안 인라인 렌더(새 모달 중첩 금지, DESIGN §5)
+  const [showRoomManager, setShowRoomManager] = useState(false);
   const [date, setDate] = useState(defaultDate);
   const [start, setStart] = useState(defaultStart ?? "16:00");
   // 진행시간은 코스(실제 수업) 데이터에서 — 종료시각 자동 계산(편집 가능)
@@ -379,10 +383,28 @@ export function ScheduleCreateModal({
               )}
             </Field>
             <Field label="강의실">
-              <select className="input" value={roomId} onChange={(e) => setRoomId(e.target.value ? Number(e.target.value) : "")}>
-                <option value="">미지정</option>
-                {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <select className="input flex-1" value={roomId} onChange={(e) => setRoomId(e.target.value ? Number(e.target.value) : "")}>
+                    <option value="">미지정</option>
+                    {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                  {/* [B4] 강의실 관리 토글 — 매니저 이상만(강사 요청 모드 제외). 펼치면 공용 패널을
+                      모달 안 인라인으로 렌더(새 모달 중첩 금지, DESIGN §5). 생성/수정 성공 시
+                      qk.rooms invalidate → 위 select 옵션 자동 갱신. */}
+                  {!requestMode && (
+                    <button type="button" onClick={() => setShowRoomManager((v) => !v)}
+                      className={`btn btn-sm shrink-0 ${showRoomManager ? "badge-accent" : ""}`}>
+                      강의실 관리
+                    </button>
+                  )}
+                </div>
+                {!requestMode && showRoomManager && (
+                  <div className="border rounded-md bg-canvas-subtle">
+                    <RoomManagerPanel compact />
+                  </div>
+                )}
+              </div>
             </Field>
             {/* [v0.1.13] 학생 선택(단체) — 코스 활성 수강생 체크리스트. 기본 전원(코스 파생과 동일),
                 일부 해제 시 그 학생들만의 명시 코호트로 저장(개별·소그룹 수업). */}
