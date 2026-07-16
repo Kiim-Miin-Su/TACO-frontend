@@ -5,7 +5,7 @@ import { Badge, Field, SectionCard } from '@/components/ui';
 import { usePayments, useStudents, useEnrollments, useCourses, useUpdatePayment, useMarkPaymentPaid } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import type { PaymentMethod, PaymentStatus } from '@/types';
-import { won } from '@/lib/format';
+import { dateOnly, won } from '@/lib/format';
 import { statusLabel, statusTone, methodLabel, METHODS, STATUSES } from './labels';
 
 export function PaymentDetailView({ paymentId }: { paymentId: number }) {
@@ -19,6 +19,9 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
   const payment = payments.find((p) => p.id === paymentId);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ amount: '', paymentMethod: '', dueAt: '', status: '' as string });
+  // [E0.6 M] 금전 데이터 저장 신뢰성 — 실패 시 편집 유지+에러 표시, 저장 중 비활성.
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const saving = updatePayment.isPending || markPaid.isPending;
 
   if (!finance) {
     return (
@@ -51,21 +54,30 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
     });
     setEditing(true);
   };
-  const save = () => {
-    // 백엔드 UpdatePaymentInput은 status 미포함(상태 전이는 별도 엔드포인트) → 금액·수단·기한만 patch.
-    updatePayment.mutate({
-      id: payment.id,
-      patch: {
-        amount: Number(draft.amount) || payment.amount,
-        paymentMethod: (draft.paymentMethod || undefined) as PaymentMethod | undefined,
-        dueAt: draft.dueAt || undefined,
-      },
-    });
-    // 상태를 '수납완료'로 바꿨다면 전용 수납 처리(markPaid)로 원장 반영.
-    if ((draft.status as PaymentStatus) === 'paid' && payment.status !== 'paid') {
-      markPaid.mutate(payment.id);
+  // [E0.6 M 2026-07-16] 종전엔 성공/실패와 무관하게 즉시 편집을 닫아 실패가 조용히 사라졌다(금전 데이터).
+  //  → mutateAsync 순차 실행, 실패 시 편집 유지+에러 표시, 성공 시에만 닫기.
+  const save = async () => {
+    setSaveError(null);
+    try {
+      // 백엔드 UpdatePaymentInput은 status 미포함(상태 전이는 별도 엔드포인트) → 금액·수단·기한만 patch.
+      await updatePayment.mutateAsync({
+        id: payment.id,
+        patch: {
+          amount: Number(draft.amount) || payment.amount,
+          paymentMethod: (draft.paymentMethod || undefined) as PaymentMethod | undefined,
+          dueAt: draft.dueAt || undefined,
+        },
+      });
+      // 상태를 '수납완료'로 바꿨다면 전용 수납 처리(markPaid)로 원장 반영.
+      if ((draft.status as PaymentStatus) === 'paid' && payment.status !== 'paid') {
+        await markPaid.mutateAsync(payment.id);
+      }
+      setEditing(false);
+    } catch (caught) {
+      const err = caught as { response?: { data?: { message?: string | string[] } } };
+      const message = err.response?.data?.message;
+      setSaveError(Array.isArray(message) ? message.join(' ') : message ?? '저장하지 못했습니다. 다시 시도해 주세요.');
     }
-    setEditing(false);
   };
 
   return (
@@ -83,14 +95,20 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
         action={
           editing ? (
             <div className="flex gap-1.5">
-              <button className="btn btn-sm" onClick={() => setEditing(false)}>취소</button>
-              <button className="btn btn-sm btn-primary" onClick={save}>저장</button>
+              <button className="btn btn-sm" disabled={saving} onClick={() => { setSaveError(null); setEditing(false); }}>취소</button>
+              <button className="btn btn-sm btn-primary" disabled={saving} onClick={save}>{saving ? '저장 중...' : '저장'}</button>
             </div>
           ) : (
             <div className="flex gap-1.5">
               <button className="btn btn-sm" onClick={startEdit}>수정</button>
               {payment.status === 'pending' && (
-                <button className="btn btn-sm btn-primary" onClick={() => markPaid.mutate(payment.id)}>수납 처리</button>
+                <button
+                  className="btn btn-sm btn-primary"
+                  disabled={saving}
+                  onClick={() => markPaid.mutate(payment.id, {
+                    onError: () => setSaveError('수납 처리에 실패했습니다. 다시 시도해 주세요.'),
+                  })}
+                >수납 처리</button>
               )}
             </div>
           )
@@ -124,8 +142,8 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
               ['청구 금액', won(payment.amount)],
               ['수납액', won(payment.paidAmount ?? 0)],
               ['결제 수단', payment.paymentMethod ? methodLabel[payment.paymentMethod] : '—'],
-              ['납부 기한', payment.dueAt ?? '—'],
-              ['수납일', payment.paidAt ?? '—'],
+              ['납부 기한', dateOnly(payment.dueAt)],
+              ['수납일', dateOnly(payment.paidAt)],
             ] as [string, string][]).map(([k, v]) => (
               <div key={k} className="flex px-4 py-3 text-body">
                 <span className="w-32 text-fg-muted">{k}</span>
@@ -135,6 +153,7 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
           </div>
         )}
       </SectionCard>
+      {saveError && <p className="text-body text-danger" role="alert">{saveError}</p>}
       <p className="text-caption text-fg-subtle">수납 처리하면 입·출금 원장과 대시보드 입금/미수금에 반영됩니다.</p>
     </div>
   );

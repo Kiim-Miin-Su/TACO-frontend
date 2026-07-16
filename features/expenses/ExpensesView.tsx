@@ -3,7 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Badge, SectionCard, MonthCalendar, PageHeader, EmptyState, LoadingState, TableWrap } from '@/components/ui';
 import { useExpenses } from '@/lib/queries';
-import { won } from '@/lib/format';
+import { dateOnly, won } from '@/lib/format';
 import { categoryLabel, categoryTone, approvalLabel, approvalTone } from './labels';
 import { ReasonModal } from '@/components/ReasonModal';
 import { useAccountAccess } from '@/lib/useAccountAccess';
@@ -75,7 +75,8 @@ export function ExpensesView() {
                       <button className="block text-micro text-danger mt-0.5 hover:underline" onClick={() => setViewReason(e.id)}>반려 사유 보기</button>
                     )}
                   </td>
-                  <td className="text-right mono text-fg-muted">{e.spentAt}</td>
+                  {/* [E0.6 M] 날짜 표기 통일 — 공용 dateOnly(ISO가 들어와도 날짜만) */}
+                  <td className="text-right mono text-fg-muted">{dateOnly(e.spentAt)}</td>
                   <td className="text-right"><Link href={`/expenses/${e.id}`} className="btn btn-sm">상세</Link></td>
                 </tr>
               ))}

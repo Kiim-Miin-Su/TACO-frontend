@@ -75,16 +75,27 @@ function CourseForm() {
   const [price, setPrice] = useState('');
   const [hourlyRate, setHourlyRate] = useState('');
   const [color, setColor] = useState<string>(COURSE_PALETTE[0]);
+  // [E0.6 M 2026-07-16] 종전엔 필수 미입력 시 조용히 return, 서버 실패도 무통보 — 인라인 검증+실패 표시.
+  const [formError, setFormError] = useState<string | null>(null);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !subjectId || !instructorId) return;
+    setFormError(null);
+    if (!name.trim()) { setFormError('코스명을 입력해 주세요.'); return; }
+    if (!subjectId) { setFormError('과목을 선택해 주세요.'); return; }
+    if (!instructorId) { setFormError('담당 강사를 선택해 주세요.'); return; }
     addCourse.mutate(
       {
         name: name.trim(), subjectId: Number(subjectId), instructorId: Number(instructorId),
         price: Number(price) || 0, hourlyRate: Number(hourlyRate) || 0, color,
       },
-      { onSuccess: () => { setName(''); setSubjectId(''); setInstructorId(''); setPrice(''); setHourlyRate(''); setColor(COURSE_PALETTE[0]); } },
+      {
+        onSuccess: () => { setName(''); setSubjectId(''); setInstructorId(''); setPrice(''); setHourlyRate(''); setColor(COURSE_PALETTE[0]); },
+        onError: (caught) => {
+          const msg = (caught as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
+          setFormError(Array.isArray(msg) ? msg.join(' ') : msg ?? '코스를 추가하지 못했습니다. 다시 시도해 주세요.');
+        },
+      },
     );
   };
 
@@ -114,7 +125,10 @@ function CourseForm() {
           ))}
         </div>
       </Field>
-      <div className="sm:col-span-2 flex justify-end"><button type="submit" className="btn btn-primary">코스 추가</button></div>
+      <div className="sm:col-span-2 flex items-center justify-end gap-3">
+        {formError && <span className="text-caption text-danger" role="alert">{formError}</span>}
+        <button type="submit" className="btn btn-primary" disabled={addCourse.isPending}>{addCourse.isPending ? '추가 중…' : '코스 추가'}</button>
+      </div>
     </form>
   );
 }
@@ -127,16 +141,29 @@ function SubjectForm() {
   });
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  // [E0.6 M 2026-07-16] CourseForm과 동일 규약 — 인라인 검증+onError+제출 중 비활성.
+  const [formError, setFormError] = useState<string | null>(null);
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code.trim() || !name.trim()) return;
-    addSubject.mutate({ code: code.trim(), name: name.trim() }, { onSuccess: () => { setCode(''); setName(''); } });
+    setFormError(null);
+    if (!code.trim()) { setFormError('과목 코드를 입력해 주세요.'); return; }
+    if (!name.trim()) { setFormError('과목명을 입력해 주세요.'); return; }
+    addSubject.mutate({ code: code.trim(), name: name.trim() }, {
+      onSuccess: () => { setCode(''); setName(''); },
+      onError: (caught) => {
+        const msg = (caught as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
+        setFormError(Array.isArray(msg) ? msg.join(' ') : msg ?? '과목을 추가하지 못했습니다. 다시 시도해 주세요.');
+      },
+    });
   };
   return (
     <form onSubmit={submit} className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field label="코드 *"><input className="input" value={code} onChange={(e) => setCode(e.target.value)} placeholder="science" /></Field>
       <Field label="과목명 *"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="과학" /></Field>
-      <div className="sm:col-span-2 flex justify-end"><button type="submit" className="btn btn-primary">과목 추가</button></div>
+      <div className="sm:col-span-2 flex items-center justify-end gap-3">
+        {formError && <span className="text-caption text-danger" role="alert">{formError}</span>}
+        <button type="submit" className="btn btn-primary" disabled={addSubject.isPending}>{addSubject.isPending ? '추가 중…' : '과목 추가'}</button>
+      </div>
     </form>
   );
 }

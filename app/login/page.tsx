@@ -39,8 +39,20 @@ function LoginForm() {
       const landing = params.get("redirect") || (isApprover ? "/admin/approvals" : "/");
       router.replace(res.account.mustChangePassword ? "/account/security" : landing);
     } catch (e) {
-      const ax = e as { response?: { data?: { message?: string } } };
-      setErr(ax.response?.data?.message ?? "로그인에 실패했습니다.");
+      // [E0.6 L 2026-07-16] 서버 원문(영문 프레임워크 메시지·프록시 HTML 등) 노출 방지 —
+      //  BE 로그인 메시지는 한글이므로 한글이면 그대로, 아니면 상태코드별 한글 안내로 매핑.
+      const ax = e as { response?: { status?: number; data?: { message?: string | string[] } } };
+      const raw = ax.response?.data?.message;
+      const serverMsg = Array.isArray(raw) ? raw[0] : raw;
+      const status = ax.response?.status;
+      setErr(
+        serverMsg && /[가-힣]/.test(serverMsg)
+          ? serverMsg
+          : status === 401 ? "아이디 또는 비밀번호가 올바르지 않습니다."
+            : status === 429 ? "로그인 시도가 너무 잦습니다. 잠시 후 다시 시도해 주세요."
+              : status != null && status >= 500 ? "서버 오류로 로그인하지 못했습니다. 잠시 후 다시 시도해 주세요."
+                : "로그인하지 못했습니다. 네트워크 연결을 확인해 주세요.",
+      );
     } finally {
       setBusy(false);
     }

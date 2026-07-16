@@ -61,8 +61,20 @@ export function StudentForm() {
           );
         },
         onError: (e) => {
-          const msg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
-          setErr(Array.isArray(msg) ? msg[0] : msg ?? '등록 실패 — 부분 저장 없이 전체가 취소되었습니다.');
+          // [E0.6 L 2026-07-16] 서버 원문(class-validator 영문 배열 등) 노출 방지 — 한글 메시지만
+          //  그대로 쓰고, 아니면 상태코드별 한글 안내. 원자 command라 부분 저장 없음은 항상 안내.
+          const ax = e as { response?: { status?: number; data?: { message?: string | string[] } } };
+          const raw = ax.response?.data?.message;
+          const serverMsg = Array.isArray(raw) ? raw[0] : raw;
+          const status = ax.response?.status;
+          setErr(
+            serverMsg && /[가-힣]/.test(serverMsg)
+              ? serverMsg
+              : status === 400 ? '입력값 형식이 올바르지 않습니다. 학년·연락처를 확인해 주세요. (부분 저장 없음)'
+                : status === 409 ? '기존 학생·보호자 정보와 충돌합니다. 목록에서 중복 여부를 확인해 주세요.'
+                  : status != null && status >= 500 ? '서버 오류로 등록하지 못했습니다. 잠시 후 다시 시도해 주세요. (부분 저장 없음)'
+                    : '등록하지 못했습니다. 네트워크 연결을 확인해 주세요. (부분 저장 없음)',
+          );
         },
       },
     );

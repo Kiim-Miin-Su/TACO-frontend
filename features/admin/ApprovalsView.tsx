@@ -24,7 +24,7 @@ import {
   useApprovePendingAccount,
   useRejectPendingAccount,
 } from '@/lib/queries';
-import { won } from '@/lib/format';
+import { dateOnly, won } from '@/lib/format';
 import { roleLabel } from '@/lib/roles';
 import { AdminHeader } from './AdminShell';
 import { categoryLabel } from '@/features/expenses/labels';
@@ -136,6 +136,21 @@ export function ApprovalsView() {
   const [expenseReject, setExpenseReject] = useState<number | null>(null);
   const [payoutReject, setPayoutReject] = useState<number | null>(null);
   const [detailItem, setDetailItem] = useState<ApprovalDetailItem | null>(null);
+  // [E0.6 M 2026-07-16] 보고서·지출·페이 승인/반려 — 성공/실패 피드백 통일(가입 승인 msg 패턴 재사용).
+  //  종전엔 mutate가 조용히 끝나 실패(권한·409 이중 처리)가 화면에 드러나지 않았다.
+  const [sectionMsg, setSectionMsg] = useState<Partial<Record<'reports' | 'expenses' | 'payouts', string>>>({});
+  const feedback = (key: 'reports' | 'expenses' | 'payouts', okMsg: string) => ({
+    onSuccess: () => setSectionMsg((m) => ({ ...m, [key]: okMsg })),
+    onError: (error: unknown) => {
+      const status = (error as { response?: { status?: number } }).response?.status;
+      setSectionMsg((m) => ({
+        ...m,
+        [key]: status === 409 ? '이미 처리된 건입니다(목록이 갱신되었습니다).'
+          : status === 403 ? '처리 권한이 없습니다(대표 전용).'
+            : '처리에 실패했습니다. 다시 시도해 주세요.',
+      }));
+    },
+  });
   // ── 수업 요청(TBO-16 #9) — 배지(lib/tasks)와 같은 useScheduleRequests 모집단(단일 구독) ──
   const { data: scheduleRequests = [] } = useScheduleRequests();
   const approveRequest = useApproveScheduleRequest();
@@ -212,9 +227,9 @@ export function ApprovalsView() {
   };
   const approveDetailItem = (item: ApprovalDetailItem) => {
     setDetailItem(null);
-    if (item.kind === 'report') approveReport.mutate({ id: item.row.id });
-    else if (item.kind === 'expense') approveExpense.mutate(item.row.id);
-    else confirmPayout.mutate(item.row.id);
+    if (item.kind === 'report') approveReport.mutate({ id: item.row.id }, feedback('reports', '보고서를 승인했습니다 — 시수 정산 대상에 반영됩니다.'));
+    else if (item.kind === 'expense') approveExpense.mutate(item.row.id, feedback('expenses', '지출을 승인했습니다.'));
+    else confirmPayout.mutate(item.row.id, feedback('payouts', '페이 지급을 확정했습니다.'));
   };
   const rejectDetailItem = (item: ApprovalDetailItem) => {
     setDetailItem(null);
@@ -317,6 +332,7 @@ export function ApprovalsView() {
       key: 'reports', count: pendingReports.length, label: '수업 보고서',
       node: (
         <SectionCard title={`수업 보고서 승인 대기 (${pendingReports.length})`}>
+          {sectionMsg.reports && <div className="px-4 pt-3 text-caption text-accent" role="status">{sectionMsg.reports}</div>}
           <TableWrap minWidth={720}>
           <table className="table">
             <thead><tr><th>강사</th><th>학생</th><th>수업</th><th>내용</th><th className="text-right"></th></tr></thead>
@@ -328,7 +344,7 @@ export function ApprovalsView() {
                   <td className="text-fg-muted">{sessionInfo(r.sessionId)}</td>
                   <td className="text-fg-muted max-w-[280px] truncate" title={r.content}>{r.content || '—'}</td>
                   <td className="text-right whitespace-nowrap">
-                    <button className="btn btn-sm btn-primary mr-1.5" onClick={(e) => { e.stopPropagation(); approveReport.mutate({ id: r.id }); }}>승인</button>
+                    <button className="btn btn-sm btn-primary mr-1.5" disabled={approveReport.isPending} onClick={(e) => { e.stopPropagation(); approveReport.mutate({ id: r.id }, feedback('reports', '보고서를 승인했습니다 — 시수 정산 대상에 반영됩니다.')); }}>승인</button>
                     <button className="btn btn-sm btn-danger" onClick={(e) => { e.stopPropagation(); setReportReject(r.id); }}>반려</button>
                   </td>
                 </tr>
@@ -343,6 +359,7 @@ export function ApprovalsView() {
       key: 'expenses', count: pendingExpenses.length, label: '지출',
       node: (
         <SectionCard title={`지출 승인 대기 (${pendingExpenses.length})`}>
+          {sectionMsg.expenses && <div className="px-4 pt-3 text-caption text-accent" role="status">{sectionMsg.expenses}</div>}
           <TableWrap minWidth={640}>
           <table className="table">
             <thead><tr><th>항목</th><th>분류</th><th className="text-right">금액</th><th>지출일</th><th></th></tr></thead>
@@ -352,9 +369,9 @@ export function ApprovalsView() {
                   <td className="font-medium">{e.title}</td>
                   <td className="text-fg-muted">{categoryLabel[e.category]}</td>
                   <td className="text-right mono">{won(e.amount)}</td>
-                  <td className="mono text-fg-muted">{e.spentAt}</td>
+                  <td className="mono text-fg-muted">{dateOnly(e.spentAt)}</td>
                   <td className="text-right whitespace-nowrap">
-                    <button className="btn btn-sm btn-primary mr-1.5" onClick={(ev) => { ev.stopPropagation(); approveExpense.mutate(e.id); }}>승인</button>
+                    <button className="btn btn-sm btn-primary mr-1.5" disabled={approveExpense.isPending} onClick={(ev) => { ev.stopPropagation(); approveExpense.mutate(e.id, feedback('expenses', '지출을 승인했습니다.')); }}>승인</button>
                     <button className="btn btn-sm btn-danger" onClick={(ev) => { ev.stopPropagation(); setExpenseReject(e.id); }}>반려</button>
                   </td>
                 </tr>
@@ -369,6 +386,7 @@ export function ApprovalsView() {
       key: 'payouts', count: pendingPayouts.length, label: '강사 페이',
       node: (
         <SectionCard title={`강사 페이 승인 대기 (${pendingPayouts.length})`}>
+          {sectionMsg.payouts && <div className="px-4 pt-3 text-caption text-accent" role="status">{sectionMsg.payouts}</div>}
           <TableWrap minWidth={560}>
           <table className="table">
             <thead><tr><th>강사</th><th>기간</th><th className="text-right">금액</th><th></th></tr></thead>
@@ -379,7 +397,7 @@ export function ApprovalsView() {
                   <td className="mono text-fg-muted">{p.periodStart} ~ {p.periodEnd}</td>
                   <td className="text-right mono">{won(p.amount)} <span className="text-fg-subtle">({p.sessionCount ?? 0}회)</span></td>
                   <td className="text-right whitespace-nowrap">
-                    <button className="btn btn-sm btn-primary mr-1.5" onClick={(e) => { e.stopPropagation(); confirmPayout.mutate(p.id); }}>승인</button>
+                    <button className="btn btn-sm btn-primary mr-1.5" disabled={confirmPayout.isPending} onClick={(e) => { e.stopPropagation(); confirmPayout.mutate(p.id, feedback('payouts', '페이 지급을 확정했습니다.')); }}>승인</button>
                     <button className="btn btn-sm btn-danger" onClick={(e) => { e.stopPropagation(); setPayoutReject(p.id); }}>반려</button>
                   </td>
                 </tr>
@@ -391,8 +409,13 @@ export function ApprovalsView() {
       ),
     }] : []),
   ];
-  // 수업 요청 섹션은 반려/강제승인 모달 상태를 포함하므로 0건이어도 모달이 열려 있으면 유지
-  const activeSections = sections.filter((s) => s.count > 0 || (s.key === 'requests' && (requestReject != null || forceApprove != null || requestMsg != null)));
+  // 수업 요청 섹션은 반려/강제승인 모달 상태를 포함하므로 0건이어도 모달이 열려 있으면 유지.
+  // [E0.6 M] 보고서·지출·페이도 마지막 건 처리 직후 피드백 메시지가 보이도록 msg 있는 동안 유지.
+  const activeSections = sections.filter((s) =>
+    s.count > 0
+    || (s.key === 'requests' && (requestReject != null || forceApprove != null || requestMsg != null))
+    || sectionMsg[s.key as 'reports' | 'expenses' | 'payouts'] != null,
+  );
   const idleSections = sections.filter((s) => !activeSections.includes(s));
 
   return (
@@ -430,7 +453,7 @@ export function ApprovalsView() {
           mode="input"
           title="수업 보고서 반려 — 사유 필수"
           onClose={() => setReportReject(null)}
-          onSubmit={(reason) => { rejectReport.mutate({ id: reportReject, reason }); setReportReject(null); }}
+          onSubmit={(reason) => { rejectReport.mutate({ id: reportReject, reason }, feedback('reports', '보고서를 반려했습니다.')); setReportReject(null); }}
         />
       )}
       {expenseReject != null && (
@@ -438,7 +461,7 @@ export function ApprovalsView() {
           mode="input"
           title="지출 반려"
           onClose={() => setExpenseReject(null)}
-          onSubmit={(reason) => { rejectExpense.mutate({ id: expenseReject, reason }); setExpenseReject(null); }}
+          onSubmit={(reason) => { rejectExpense.mutate({ id: expenseReject, reason }, feedback('expenses', '지출을 반려했습니다.')); setExpenseReject(null); }}
         />
       )}
       {payoutReject != null && (
@@ -446,7 +469,7 @@ export function ApprovalsView() {
           mode="input"
           title="강사 페이 반려 — 사유 필수"
           onClose={() => setPayoutReject(null)}
-          onSubmit={(reason) => { rejectPayout.mutate({ id: payoutReject, reason }); setPayoutReject(null); }}
+          onSubmit={(reason) => { rejectPayout.mutate({ id: payoutReject, reason }, feedback('payouts', '페이를 반려했습니다.')); setPayoutReject(null); }}
         />
       )}
     </div>

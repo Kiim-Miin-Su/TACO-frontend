@@ -33,16 +33,27 @@ export function PaymentFormView() {
     (e) => e.studentId === Number(studentId) && e.courseId === Number(courseId),
   );
 
+  // [E0.6 M 2026-07-16] 조용한 실패·연타 중복 생성 차단 — 인라인 검증 메시지+onError+제출 비활성.
+  const [formError, setFormError] = useState<string | null>(null);
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentId || !amount) return;
+    setFormError(null);
+    if (!studentId) return setFormError('학생을 선택해 주세요.');
+    if (!amount || Number(amount) <= 0) return setFormError('청구 금액을 입력해 주세요.');
     createPayment.mutate({
       studentId: Number(studentId),
       enrollmentId: enrollment?.id,
       amount: Number(amount),
       paymentMethod: (method || undefined) as PaymentMethod | undefined,
       dueAt: dueAt || undefined,
-    }, { onSuccess: () => router.push('/payments') });
+    }, {
+      onSuccess: () => router.push('/payments'),
+      onError: (caught) => {
+        const err = caught as { response?: { data?: { message?: string | string[] } } };
+        const message = err.response?.data?.message;
+        setFormError(Array.isArray(message) ? message.join(' ') : message ?? '청구를 생성하지 못했습니다. 다시 시도해 주세요.');
+      },
+    });
   };
 
   if (!finance) {
@@ -90,7 +101,10 @@ export function PaymentFormView() {
             <span className="text-caption text-fg-subtle">
               {studentId && courseId ? (enrollment ? '수강 등록 연결됨' : '연결된 수강 등록 없음(청구만 생성)') : ''}
             </span>
-            <button type="submit" className="btn btn-primary">청구 생성</button>
+            {formError && <p className="text-body text-danger mr-auto" role="alert">{formError}</p>}
+            <button type="submit" className="btn btn-primary" disabled={createPayment.isPending}>
+              {createPayment.isPending ? '생성 중...' : '청구 생성'}
+            </button>
           </div>
         </form>
       </SectionCard>

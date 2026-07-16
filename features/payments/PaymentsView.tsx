@@ -6,7 +6,7 @@ import { usePayments, useStudents } from '@/lib/queries';
 import { usePersistedState } from '@/lib/usePersistedState';
 import { enumPreferenceCodec, preferenceKeys } from '@/lib/storage/preferences';
 import { useAccountAccess } from '@/lib/useAccountAccess';
-import { won } from '@/lib/format';
+import { dateOnly, won } from '@/lib/format';
 import { statusLabel, statusTone, methodLabel } from './labels';
 
 export function PaymentsView() {
@@ -22,7 +22,8 @@ export function PaymentsView() {
 
   const nameOf = (id: number) => students.find((s) => s.id === id)?.name ?? '—';
   // 캘린더 표시 기준: 수납 완료=수납일, 미수=등록일(청구 생성일).
-  const dateOf = (p: (typeof payments)[number]) => p.paidAt ?? p.createdAt ?? p.dueAt;
+  // [E0.6 M] ISO 타임스탬프가 오면 날짜 비교가 영원히 불일치 — dateOnly로 정규화 후 셀 매칭.
+  const dateOf = (p: (typeof payments)[number]) => dateOnly(p.paidAt ?? p.createdAt ?? p.dueAt);
 
   const totalPaid = payments.filter((p) => p.status === 'paid').reduce((a, p) => a + p.amount, 0);
   const totalDue = payments.filter((p) => p.status === 'pending').reduce((a, p) => a + p.amount, 0);
@@ -79,8 +80,9 @@ export function PaymentsView() {
                   <td className="text-right mono">{won(p.amount)}</td>
                   <td className="text-fg-muted">{p.paymentMethod ? methodLabel[p.paymentMethod] : '—'}</td>
                   <td><Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge></td>
-                  <td className="text-right mono text-fg-muted">{p.createdAt ?? '—'}</td>
-                  <td className="text-right mono text-fg-muted">{p.paidAt ?? '—'}</td>
+                  {/* [E0.6 M] 날짜 표기 통일 — raw ISO(시각·타임존 포함) 노출 대신 공용 dateOnly */}
+                  <td className="text-right mono text-fg-muted">{dateOnly(p.createdAt)}</td>
+                  <td className="text-right mono text-fg-muted">{dateOnly(p.paidAt)}</td>
                   <td className="text-right"><Link href={`/payments/${p.id}`} className="btn btn-sm">상세</Link></td>
                 </tr>
               ))}

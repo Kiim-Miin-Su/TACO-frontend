@@ -9,3 +9,7 @@ export const shortDate = (iso: string) => {
   const [, m, d] = iso.slice(0, 10).split('-');
   return m && d ? `${m}/${d}` : iso;
 };
+
+// [E0.6 M 2026-07-16] 날짜 표기 통일 — timestamptz ISO(시각 포함)를 'YYYY-MM-DD'로.
+//  Payments/Expenses가 raw ISO를 그대로 노출하던 문제의 공용 해소(빈 값은 em dash).
+export const dateOnly = (iso?: string | null) => (iso ? iso.slice(0, 10) : '—');

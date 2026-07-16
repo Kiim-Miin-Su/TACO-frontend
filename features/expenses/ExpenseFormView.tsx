@@ -21,16 +21,22 @@ export function ExpenseFormView() {
   const [memo, setMemo] = useState('');
   const [receipt, setReceipt] = useState('');
 
+  // [E0.6 L] FileReader 실패 처리 — 읽기 오류를 조용히 삼키지 않는다.
   const onFile = (f?: File) => {
     if (!f) return;
     const reader = new FileReader();
     reader.onload = () => setReceipt(String(reader.result));
+    reader.onerror = () => setFormError('영수증 이미지를 읽지 못했습니다. 다른 파일로 시도해 주세요.');
     reader.readAsDataURL(f); // 데모: data URL (실제 백엔드는 업로드 후 URL 저장)
   };
 
+  // [E0.6 M 2026-07-16] 조용한 실패·연타 중복 차단 — 인라인 검증+onError+제출 비활성.
+  const [formError, setFormError] = useState<string | null>(null);
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !amount) return;
+    setFormError(null);
+    if (!title.trim()) return setFormError('항목명을 입력해 주세요.');
+    if (!amount || Number(amount) <= 0) return setFormError('금액을 입력해 주세요.');
     createExpense.mutate({
       category,
       title: title.trim(),
@@ -39,7 +45,14 @@ export function ExpenseFormView() {
       vendor: vendor.trim() || undefined,
       memo: memo.trim() || undefined,
       receiptUrl: receipt || undefined,
-    }, { onSuccess: () => router.push('/expenses') });
+    }, {
+      onSuccess: () => router.push('/expenses'),
+      onError: (caught) => {
+        const err = caught as { response?: { data?: { message?: string | string[] } } };
+        const message = err.response?.data?.message;
+        setFormError(Array.isArray(message) ? message.join(' ') : message ?? '지출을 등록하지 못했습니다. 다시 시도해 주세요.');
+      },
+    });
   };
 
   return (
@@ -61,15 +74,19 @@ export function ExpenseFormView() {
           <Field label="거래처"><input className="input" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="오피스디포" /></Field>
           <Field label="메모"><input className="input" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="비고" /></Field>
           <div className="sm:col-span-2">
-            <span className="block text-caption font-medium text-fg-muted mb-1">영수증 사진</span>
-            <input type="file" accept="image/*" className="text-body" onChange={(e) => onFile(e.target.files?.[0])} />
+            {/* [E0.6 L] label-input 연결(접근성) */}
+            <label htmlFor="expense-receipt" className="block text-caption font-medium text-fg-muted mb-1">영수증 사진</label>
+            <input id="expense-receipt" type="file" accept="image/*" className="text-body" onChange={(e) => onFile(e.target.files?.[0])} />
             {receipt && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={receipt} alt="영수증 미리보기" className="mt-2 max-h-40 rounded border" />
             )}
           </div>
-          <div className="sm:col-span-2 flex justify-end pt-1">
-            <button type="submit" className="btn btn-primary">지출 요청</button>
+          <div className="sm:col-span-2 flex items-center justify-end gap-3 pt-1">
+            {formError && <p className="text-body text-danger mr-auto" role="alert">{formError}</p>}
+            <button type="submit" className="btn btn-primary" disabled={createExpense.isPending}>
+              {createExpense.isPending ? '요청 중...' : '지출 요청'}
+            </button>
           </div>
         </form>
       </SectionCard>
