@@ -37,7 +37,8 @@ import type { AccountRole } from '@/types';
 import { ProfileChangeRequestsSection } from './ProfileChangeRequestsSection';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 
-const ROLE_OPTS: AccountRole[] = ['instructor', 'manager', 'admin', 'super_admin'];
+// [대표 지시 2026-07-16] super_admin 단일 계정 불변식 — 승인 role 옵션에서 제외(BE도 400로 차단).
+const ROLE_OPTS: AccountRole[] = ['instructor', 'manager', 'admin'];
 
 // 가입 승인 대기(백엔드 계정) — 이메일 인증 완료 후 대표가 승인하면 로그인 가능.
 function MemberApprovals() {
