@@ -559,6 +559,14 @@ export const useConfirmSignupEmailChallenge = () =>
 //  (응답은 계정 존재와 무관하게 동일 문구 — 열거 방지 규약 그대로, 캐시 무효화 없음).
 export const useRequestPasswordReset = () =>
   useMutation({ mutationFn: (v: { webId: string; email: string }) => api.auth.recoverPassword(v.webId, v.email) });
+// [TBO-31 C5 2026-07-20] 비로그인 복구 OTP판 — challenge는 폼-로컬 상태(서버 GET 없음)라 무효화 없음.
+export const useCreateRecoveryEmailChallenge = () => useMutation({ mutationFn: api.auth.recoveryEmailChallenge });
+export const useConfirmRecoveryEmailChallenge = () =>
+  useMutation({ mutationFn: (v: { id: number; email: string; code: string }) => api.auth.confirmRecoveryEmailChallenge(v.id, v.email, v.code) });
+export const useCompleteRecoverId = () =>
+  useMutation({ mutationFn: (v: { challengeId: number; email: string }) => api.auth.recoverIdComplete(v.challengeId, v.email) });
+export const useResetPasswordOtp = () =>
+  useMutation({ mutationFn: (v: { challengeId: number; webId: string; email: string; newPassword: string }) => api.auth.resetPasswordOtp(v.challengeId, v.webId, v.email, v.newPassword) });
 // 아이디 가용성 라이브 체크(가입 폼·공개) — 429/400은 조용히 무시(retry 없음), 권위는 submit 시 서버.
 export const useWebIdAvailable = (webId: string | null) =>
   useQuery({

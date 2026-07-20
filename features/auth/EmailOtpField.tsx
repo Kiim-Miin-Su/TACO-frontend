@@ -8,12 +8,19 @@
 //  · 인증 완료 시 challengeId를 부모에 전달, 이메일을 수정하면 발송/인증을 즉시 무효화한다
 //    (BE consume이 challenge 이메일과 가입 이메일 일치를 강제 — 불일치 제출을 FE에서 선행 차단).
 //  · 재전송 = 발송 재호출(BE에 별도 resend 없음 — 쿨다운 60초 후 기존 pending을 대체).
+//  · [TBO-31 C5 2026-07-20] purpose='recovery'로 비로그인 복구(아이디·비밀번호 찾기)에서도 재사용 —
+//    엔드포인트(훅)와 완료 문구만 목적별로 갈라진다(BE가 purpose 교차 사용을 차단).
 import { useState } from "react";
 import { AuthField } from "@/components/auth/AuthShell";
 import type { SignupEmailChallenge } from "@/lib/api";
 import { isValidEmailFormat } from "@/lib/domain/profile";
 import { formatClock, useCountdownSeconds } from "@/lib/hooks/useCountdownSeconds";
-import { useConfirmSignupEmailChallenge, useCreateSignupEmailChallenge } from "@/lib/queries";
+import {
+  useConfirmRecoveryEmailChallenge,
+  useConfirmSignupEmailChallenge,
+  useCreateRecoveryEmailChallenge,
+  useCreateSignupEmailChallenge,
+} from "@/lib/queries";
 import { isValidOtpCode } from "@/lib/validation";
 
 const apiErrorMessage = (caught: unknown, fallback: string): string => {
@@ -31,17 +38,28 @@ export function EmailOtpField({
   verifiedChallengeId,
   onVerifiedChange,
   disabled = false,
+  purpose = "signup",
+  verifiedLabel = "이메일 인증 완료 — 이 이메일로 계정이 생성됩니다.",
 }: {
   email: string;
   onEmailChange: (email: string) => void;
-  /** 인증 완료된 challenge id — 부모(가입 폼)가 소유·submit 게이트/signup body에 사용. */
+  /** 인증 완료된 challenge id — 부모(가입/복구 폼)가 소유·submit 게이트/요청 body에 사용. */
   verifiedChallengeId: number | null;
   /** 인증 완료(id) 또는 무효화(null — 이메일 수정 시) 통지. */
   onVerifiedChange: (challengeId: number | null) => void;
   disabled?: boolean;
+  /** [TBO-31 C5] 발급 목적 — signup(기본)|recovery. BE가 목적 교차 사용을 차단한다. */
+  purpose?: "signup" | "recovery";
+  /** 인증 완료 시 표시 문구 — 목적별 맥락(가입 vs 복구)에 맞게 부모가 지정. */
+  verifiedLabel?: string;
 }) {
-  const createChallenge = useCreateSignupEmailChallenge();
-  const confirmChallenge = useConfirmSignupEmailChallenge();
+  // 두 훅 모두 생성(React 훅 규칙 — 조건부 호출 금지) 후 purpose로 선택.
+  const createSignup = useCreateSignupEmailChallenge();
+  const confirmSignup = useConfirmSignupEmailChallenge();
+  const createRecovery = useCreateRecoveryEmailChallenge();
+  const confirmRecovery = useConfirmRecoveryEmailChallenge();
+  const createChallenge = purpose === "recovery" ? createRecovery : createSignup;
+  const confirmChallenge = purpose === "recovery" ? confirmRecovery : confirmSignup;
   const [challenge, setChallenge] = useState<SignupEmailChallenge | null>(null);
   // challenge가 발급된(=인증이 유효한) 이메일 — 입력이 여기서 벗어나면 발송/인증을 무효화한다.
   const [challengeEmail, setChallengeEmail] = useState<string | null>(null);
@@ -179,7 +197,7 @@ export function EmailOtpField({
         </p>
       )}
       {verified ? (
-        <p className="text-caption text-success" role="status">이메일 인증 완료 — 이 이메일로 계정이 생성됩니다.</p>
+        <p className="text-caption text-success" role="status">{verifiedLabel}</p>
       ) : locked ? (
         <p className="text-caption text-danger" role="alert">
           인증 시도 횟수를 초과했습니다. 쿨다운이 지나면 재전송으로 새 코드를 받아 주세요.

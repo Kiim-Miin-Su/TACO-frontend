@@ -447,6 +447,17 @@ export const api = {
       http.post<{ ok: boolean; message: string; devResetUrl?: string }>("/auth/recover-password", { webId, email }).then((r) => r.data),
     resetPassword: (token: string, newPassword: string) =>
       http.post<{ ok: boolean }>("/auth/reset-password", { token, newPassword }).then((r) => r.data),
+    // [TBO-31 C5 2026-07-20] 비로그인 복구 OTP판 — 발송/확인은 가입 OTP와 동일 응답 규약(purpose만 상이).
+    recoveryEmailChallenge: (email: string) =>
+      http.post<SignupEmailChallenge>("/auth/recovery-email-challenge", { email }).then((r) => r.data),
+    confirmRecoveryEmailChallenge: (id: number, email: string, code: string) =>
+      http.post<{ id: number; status: "verified" }>(`/auth/recovery-email-challenge/${id}/confirm`, { email, code }).then((r) => r.data),
+    // 아이디 찾기 완료 — verified challenge 일회 소비 후 webId 목록을 화면에 표시(메일 왕복 제거).
+    recoverIdComplete: (challengeId: number, email: string) =>
+      http.post<{ webIds: string[] }>("/auth/recover-id/complete", { challengeId, email }).then((r) => r.data),
+    // 비밀번호 재설정(OTP판) — 성공 시 기존 세션 전부 무효(auth_version+1).
+    resetPasswordOtp: (challengeId: number, webId: string, email: string, newPassword: string) =>
+      http.post<{ ok: boolean }>("/auth/reset-password-otp", { challengeId, webId, email, newPassword }).then((r) => r.data),
     // 대표(super_admin) 전용 — 승인 대기 목록·승인·반려
     // [TBO-28B] 승인=원자 tx(상태+승인메타+강사프로필+audit, 동시 결정 409) · 반려=사유 필수(400)
     pending: () => http.get<PendingAccount[]>("/auth/pending").then((r) => r.data),
