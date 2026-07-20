@@ -309,12 +309,26 @@ export type ChangeCredentialsBody = {
   countryCode?: string; timeZone?: string; university?: string; major?: string; birthYear?: number;
   verificationChallengeId?: number;
 };
-// [E0.5 ④b] 가입 폼 확장 — 전화·대학·전공·출생연도(승인 판단 근거, 승인 tx에서 강사 프로필 승계).
+// [E0.5 ④b] 가입 폼 확장 — 전화·대학·전공(승인 판단 근거, 승인 tx에서 강사 프로필 승계).
+// [TBO-31 C2 2026-07-16] birthYear 입력 폐지 → rrn(주민등록번호 — 서버가 birthYear 파생·암호화 저장,
+//  형식은 lib/validation.isValidRrn 단일 소스)·emailChallengeId(가입 전 이메일 OTP verified challenge —
+//  가입 tx에서 일회 소비, 계정은 emailVerified=true로 생성) 필수.
 export type SignupBody = {
   webId: string; name: string; email: string; password: string; role?: string;
-  phone?: string; university?: string; major?: string; birthYear?: number;
+  rrn: string; emailChallengeId: number;
+  phone?: string; university?: string; major?: string;
 };
-export type SignupResult = { ok: boolean; message: string; account: { id: number; webId: string; name: string; role: string; status: string }; devVerifyLink?: string };
+// [TBO-31 C2] devVerifyLink 제거 — OTP 가입은 emailVerified=true 생성이라 인증 링크 단계가 소멸.
+export type SignupResult = { ok: boolean; message: string; account: { id: number; webId: string; name: string; role: string; status: string } };
+// [TBO-31 C2] 가입 전 이메일 OTP challenge(공개) — devOtpCode는 비production+SMTP 부재에서만
+//  응답에 실린다(기존 devVerifyLink 관례의 OTP판 — 개발 안내 표기용).
+export type SignupEmailChallenge = {
+  id: number;
+  maskedTarget: string;
+  expiresAt: string;
+  resendAvailableAt: string;
+  devOtpCode?: string;
+};
 export type PendingAccount = {
   id: number; webId: string; name: string; email: string; role: string; status: string; emailVerified: boolean; createdAt: string;
   // [E0.5 ④b] 지원자 제공 정보 — 승인센터 상세 표시(승인 판단 근거).
@@ -333,6 +347,8 @@ export type MyProfile = {
   profileVersion: number;
   // [2026-07-16] SMS 인증 가용(BE provider env 완비) — phone 변경 스테퍼 동적 활성(env만으로 전환)
   smsVerificationAvailable?: boolean;
+  // [TBO-31 C2/C3 2026-07-16] 이메일 인증 상태 — 마이 페이지 배지(미인증=주의 톤). 구서버 호환 optional.
+  emailVerified?: boolean;
 };
 export type ProfileChangeFields = {
   name?: string;
@@ -404,8 +420,18 @@ export const api = {
   auth: {
     // 로그인 — webId+비밀번호(해시 검증) → 토큰 발급
     login: (body: LoginBody) => http.post<LoginResult>("/auth/login", body).then((r) => r.data),
-    // 가입 신청(대표 승인 대기) → 인증 메일 발송
+    // 가입 신청(대표 승인 대기) — [TBO-31 C2] 이메일 OTP challenge 소비, emailVerified=true 생성.
     signup: (body: SignupBody) => http.post<SignupResult>("/auth/signup", body).then((r) => r.data),
+    // [TBO-31 C2 2026-07-16] 가입 전 이메일 OTP — 발송(5회/분 스로틀·가입 여부와 무관하게 동일 응답).
+    //  재전송 별도 엔드포인트 없음: 쿨다운(60초) 후 같은 호출이 기존 pending을 대체(새 코드).
+    signupEmailChallenge: (email: string) =>
+      http.post<SignupEmailChallenge>("/auth/signup-email-challenge", { email }).then((r) => r.data),
+    // [TBO-31 C2] OTP 확인(10회/분) — 오답 400(한글 메시지·5회 잠금·만료), 성공 시 verified.
+    confirmSignupEmailChallenge: (id: number, email: string, code: string) =>
+      http.post<{ id: number; status: "verified" }>(`/auth/signup-email-challenge/${id}/confirm`, { email, code }).then((r) => r.data),
+    // [TBO-31 C2] 아이디 가용성 공개 체크 — {available}만(이름·역할 미노출), 3자 미만 400·10회/분.
+    webIdAvailable: (webId: string) =>
+      http.get<{ available: boolean }>("/auth/web-id-available", { params: { webId } }).then((r) => r.data),
     // 이메일 인증(메일 링크 token)
     verifyEmail: (token: string) =>
       http.get<{ ok: boolean; message: string }>("/auth/verify-email", { params: { token } }).then((r) => r.data),

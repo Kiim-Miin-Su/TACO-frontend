@@ -16,15 +16,19 @@ import {
   type ProfileChangeDraft,
   type ProfileChangePayload,
 } from "@/lib/domain/profile";
+// [TBO-31 C2/C3 2026-07-16] 카운트다운은 lib/hooks 공용 훅(가입 폼 EmailOtpField와 단일 소스)으로 추출.
+import { formatClock, useCountdownSeconds } from "@/lib/hooks/useCountdownSeconds";
+import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import {
   useConfirmProfileVerification,
   useCountries,
   useCreateProfileChangeRequest,
   useCreateProfileVerification,
   useResendProfileVerification,
+  useWebIdExists,
 } from "@/lib/queries";
 import { roleLabel } from "@/lib/roles";
-import { isValidOtpCode } from "@/lib/validation"; // [B6 C2] 검증 규칙 단일 소스
+import { WEB_ID_MIN, isValidOtpCode } from "@/lib/validation"; // [B6 C2] 검증 규칙 단일 소스
 import { ProfileDetailsFields } from "./ProfileDetailsFields";
 
 const apiErrorMessage = (caught: unknown, fallback: string): string => {
@@ -36,32 +40,6 @@ const apiErrorMessage = (caught: unknown, fallback: string): string => {
 // 서버가 "초과"(시도/재전송 한도)로 응답하면 이 챌린지는 회복 불가 — 처음부터 다시.
 const isLockedMessage = (message: string) => message.includes("초과");
 
-/** 1초 간격 카운트다운(초) — 대상 시각이 지나면 0에서 정지. 만료·재전송 cooldown 표시 공용. */
-function useCountdownSeconds(targetIso: string | null): number {
-  const [remaining, setRemaining] = useState(0);
-  useEffect(() => {
-    if (!targetIso) {
-      setRemaining(0);
-      return;
-    }
-    const compute = () => Math.max(0, Math.ceil((Date.parse(targetIso) - Date.now()) / 1000));
-    setRemaining(compute());
-    const timer = window.setInterval(() => {
-      const next = compute();
-      setRemaining(next);
-      if (next <= 0) window.clearInterval(timer);
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [targetIso]);
-  return remaining;
-}
-
-const formatClock = (totalSeconds: number): string => {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
-};
-
 type VerifyContext = {
   challenge: ProfileVerification;
   // [E0.5 ③] payload 없음 = 이메일 필드 옆 버튼으로 진입한 사전 인증 — verified 후 form으로
@@ -71,6 +49,9 @@ type VerifyContext = {
   plan: NonNullable<ContactVerificationPlan>;
   attemptsLeft: number;
   locked: boolean;
+  // [TBO-31 C2/C3 2026-07-16] D4 상시 OTP — 비연락처 변경의 본인(등록 이메일) 인증 경유 표시
+  //  (연락처 변경 경로와 UX 동일, 안내 문구만 구분).
+  self?: boolean;
 };
 
 export default function ProfileChangeModal({
@@ -148,7 +129,39 @@ export default function ProfileChangeModal({
     // [2026-07-16] SMS 스테퍼는 BE 가용 플래그로 동적 활성(SENS env 투입 시 자동 전환)
     const plan = contactVerificationPlanOf(payload, profile.smsVerificationAvailable === true);
     if (!plan) {
-      submitRequest(payload, currentPassword);
+      // [TBO-31 C2/C3 2026-07-16] 전화 설정 변경(SMS provider 부재)은 예외 — BE가 challenge 소비
+      //  대상을 새 전화번호(sms)로 기대하므로 본인 이메일 OTP를 보내면 대상 불일치 400이 된다.
+      //  provider env 투입 시 위 plan이 sms 스테퍼로 자동 전환된다(기존 규약 유지).
+      if (payload.phone != null) {
+        submitRequest(payload, currentPassword);
+        return;
+      }
+      // [TBO-31 C2/C3] D4 상시 OTP — 비연락처 변경도 본인 등록 이메일로 challenge 자동 발송 →
+      //  verify 단계 경유 → verified 후 요청 등록(BE 400에 기대지 않고 FE가 선행).
+      const ownEmail = (profile.email ?? "").trim().toLowerCase();
+      if (!ownEmail) {
+        setError("등록된 본인 이메일이 없어 프로필 변경 인증을 진행할 수 없습니다.");
+        return;
+      }
+      createVerification.mutate(
+        { currentPassword, channel: "email", target: ownEmail },
+        {
+          onSuccess: (challenge) => {
+            setVerify({
+              challenge,
+              payload,
+              currentPassword,
+              plan: { channel: "email", target: ownEmail },
+              attemptsLeft: challenge.attemptsLeft ?? 5,
+              locked: false,
+              self: true,
+            });
+            setCode("");
+            setNotice(null);
+          },
+          onError: (caught) => setError(apiErrorMessage(caught, "인증 코드를 발송하지 못했습니다.")),
+        },
+      );
       return;
     }
     // [E0.5 ③] 모달 내 버튼으로 이미 인증을 끝낸 이메일이면 재인증 없이 바로 등록(챌린지 소비).
@@ -282,6 +295,14 @@ export default function ProfileChangeModal({
   //  ROLE_CAPABILITIES[role]을 직접 인덱싱해 도메인 밖 문자열이면 false가 아니라 런타임 오류가
   //  된다(캐스팅도 비건전). 안전한 raw 비교를 의도적으로 유지한다.
   const instantApply = profile.role === "super_admin";
+  // [TBO-31 C2/C3 2026-07-16] 대표 아이디 변경 라이브 중복 체크 — STAFF 전용 /users/exists를 500ms
+  //  디바운스로 조회(dead API 첫 소비자). 판정 불가(스로틀 등)는 조용히 생략 — 권위는 서버 재검사.
+  const webIdDraft = draft.webId.trim();
+  const webIdChanged = webIdDraft.toLowerCase() !== profile.webId.trim().toLowerCase();
+  const debouncedWebId = useDebouncedValue(webIdDraft, 500);
+  const webIdCheckActive = instantApply && webIdChanged && debouncedWebId === webIdDraft && debouncedWebId.length >= WEB_ID_MIN;
+  const webIdExistsQuery = useWebIdExists(webIdCheckActive ? debouncedWebId : null);
+  const webIdDuplicate = webIdCheckActive && webIdExistsQuery.data ? webIdExistsQuery.data.exists : null;
   // [E0.5 ③] 이메일 인증 버튼 상태 — 새 이메일이 입력됐고 아직 인증 전일 때만 발송 가능.
   const emailTarget = draft.email.trim().toLowerCase();
   const emailChanged = emailTarget !== (profile.email ?? "").trim().toLowerCase();
@@ -295,7 +316,7 @@ export default function ProfileChangeModal({
 
   return (
     <ModalShell
-      title={verify ? `연락처 인증 (${channelLabel})` : instantApply ? "프로필 변경" : "프로필 변경 요청"}
+      title={verify ? (verify.self ? "본인 이메일 인증" : `연락처 인증 (${channelLabel})`) : instantApply ? "프로필 변경" : "프로필 변경 요청"}
       size="md"
       onClose={onClose}
       footer={
@@ -336,8 +357,10 @@ export default function ProfileChangeModal({
       {verify ? (
         <form id="profile-verify-form" className="space-y-3" onSubmit={submitVerify}>
           <p className="text-body text-fg-muted break-all">
+            {/* [TBO-31 C2/C3 2026-07-16] 본인 인증(비연락처 변경)과 연락처 인증의 안내 문구 구분 */}
+            {verify.self ? "본인 확인을 위해 등록된 이메일 " : ""}
             <span className="mono font-medium text-fg">{verify.challenge.maskedTarget}</span>
-            (으)로 인증 코드를 보냈습니다. {channelLabel}로 받은 코드를 입력해 주세요.
+            (으)로 인증 코드를 보냈습니다. {verify.self ? "받은 코드를 입력해 주세요." : `${channelLabel}로 받은 코드를 입력해 주세요.`}
           </p>
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-0 flex-1">
@@ -398,13 +421,22 @@ export default function ProfileChangeModal({
               />
             </Field>
           </div>
-          {/* [E0] 아이디 즉시 변경 폐지 — 승인제(대표는 즉시 적용). 적용되면 기존 로그인이 모두 풀린다. */}
-          <Field
-            label="아이디"
-            hint={instantApply ? "변경 즉시 적용 — 적용 후 다시 로그인해야 합니다." : "변경은 대표 승인 후 적용 — 적용되면 다시 로그인해야 합니다."}
-          >
-            <input className="input w-full mono" autoComplete="username" minLength={3} maxLength={50} value={draft.webId} onChange={(event) => set("webId", event.target.value)} />
-          </Field>
+          {/* [E0] 아이디 즉시 변경 폐지 — 승인제(대표는 즉시 적용). 적용되면 기존 로그인이 모두 풀린다.
+              [TBO-31 C2/C3 2026-07-16] 매니저·강사·admin은 아이디 변경 불가(BE 400 정합) —
+              필드 자체를 대표(super_admin)만 렌더 + 중복 라이브 체크 인라인. */}
+          {instantApply && (
+            <Field
+              label="아이디"
+              error={webIdDuplicate === true ? "이미 사용 중인 아이디입니다." : undefined}
+              hint={
+                webIdDuplicate === false
+                  ? "사용 가능한 아이디입니다. 변경 즉시 적용 — 적용 후 다시 로그인해야 합니다."
+                  : "변경 즉시 적용 — 적용 후 다시 로그인해야 합니다."
+              }
+            >
+              <input className="input w-full mono" autoComplete="username" minLength={3} maxLength={50} value={draft.webId} onChange={(event) => set("webId", event.target.value)} />
+            </Field>
+          )}
           {/* [2026-07-16 ③] 프로필 필드 = ProfileDetailsFields 공용(첫 로그인 통합 설정과 단일 소스).
               이메일 인증 버튼([E0.5 ③] 필드 옆 발송)·SMS 동적 힌트도 공용 경로로 주입한다. */}
           <ProfileDetailsFields

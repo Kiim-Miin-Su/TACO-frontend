@@ -33,6 +33,27 @@ export const isValidBirthYear = (value: string | number) => {
   const year = Number(String(value).trim());
   return Number.isInteger(year) && year >= BIRTH_YEAR_MIN && year <= BIRTH_YEAR_MAX;
 };
+// [TBO-31 C2 2026-07-16] 주민등록번호(RRN) — BE common/rrn-crypto.util.ts RRN_REGEX와 동일 규칙.
+/** 앞 6자리(생년월일) + 성별자리 1~8(내국인 1-4·외국인 5-8) + 6자리, 하이픈 선택. */
+export const RRN_RE = /^\d{6}-?[1-8]\d{6}$/;
+const rrnDigits = (value: string) => value.trim().replace(/-/g, "");
+/**
+ * 형식 검증 — 정규식 + 앞 6자리의 MM(01-12)·DD(01-31) 타당성만 본다(BE validateRrnFormat 동일).
+ * **체크섬 검증은 하지 않는다**: 2020-10 이후 발급분은 뒷자리가 임의번호라 검증식이 폐지됐다
+ * (구 검증식을 적용하면 합법 신규 번호를 거부하는 오류가 된다).
+ */
+export const isValidRrn = (value: string): boolean => {
+  if (!RRN_RE.test(value.trim())) return false;
+  const digits = rrnDigits(value);
+  const mm = Number(digits.slice(2, 4));
+  const dd = Number(digits.slice(4, 6));
+  return mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31;
+};
+/** 표시용 마스킹 — 생년월일 6자리 + 성별 자리만 남긴다: '950101-1******'(BE maskRrn 동일). */
+export const maskRrn = (value: string): string => {
+  const digits = rrnDigits(value);
+  return `${digits.slice(0, 6)}-${digits[6]}******`;
+};
 export const passwordByteLength = (value: string) => new TextEncoder().encode(value).length;
 /** 통과 시 null, 실패 시 사용자 표시용 한글 메시지(모든 폼이 같은 문구를 쓰도록 여기서 생성). */
 export const passwordLengthError = (value: string): string | null => {

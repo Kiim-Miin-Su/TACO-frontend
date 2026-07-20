@@ -4,7 +4,11 @@ import type { ScheduleQuery } from "@/lib/api";
 import type { AvailabilityOwner } from "@/types";
 
 export const qk = {
-  auth: { pending: ["auth", "pending"] as const },
+  auth: {
+    pending: ["auth", "pending"] as const,
+    // [TBO-31 C2 2026-07-16] 아이디 가용성 공개 체크(가입 폼 디바운스 라이브 체크)
+    webIdAvailable: (webId: string) => ["auth", "web-id-available", webId] as const,
+  },
   schedule: {
     all: ["schedule"] as const,
     list: (q: ScheduleQuery, scope = "global") => ["schedule", "list", scope, q] as const,
@@ -55,7 +59,12 @@ export const qk = {
     list: () => ["parents", "list"] as const,
     relations: () => ["parents", "relations"] as const,
   },
-  users: { all: ["users"] as const, list: () => ["users", "list"] as const },
+  users: {
+    all: ["users"] as const,
+    list: () => ["users", "list"] as const,
+    // [TBO-31 C2/C3 2026-07-16] 대표 아이디 변경 중복 라이브 체크(STAFF 전용 /users/exists)
+    exists: (webId: string) => ["users", "exists", webId] as const,
+  },
   profile: {
     all: ["profile"] as const,
     me: (scope = "global") => ["profile", "me", scope] as const,

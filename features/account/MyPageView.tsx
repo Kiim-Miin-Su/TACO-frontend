@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Badge, EmptyState, LoadingState, PageHeader, SectionCard, TableWrap } from "@/components/ui";
+import { Badge, ConfirmModal, EmptyState, LoadingState, PageHeader, SectionCard, TableWrap } from "@/components/ui";
 import {
   formatProfileDate,
   PROFILE_STATUS_LABEL,
@@ -10,19 +10,49 @@ import {
   profileRequestedSummary,
 } from "@/lib/domain/profile";
 import { roleLabel } from "@/lib/roles";
-import { useMyProfile, useMyProfileChangeRequests } from "@/lib/queries";
+// [TBO-31 C2/C3 2026-07-16] 비밀번호 재설정 메일 — 중앙 훅(useRequestPasswordReset, §18-2).
+import { useMyProfile, useMyProfileChangeRequests, useRequestPasswordReset } from "@/lib/queries";
 // [TBO-29B-4 V3] 변경 요청 모달은 인증 stepper 포함 별도 컴포넌트로 분리(단일 책임).
 import ProfileChangeModal from "./ProfileChangeModal";
 
 const valueOrDash = (value?: string | null) => value?.trim() || "—";
 
+const apiErrorMessage = (caught: unknown, fallback: string): string => {
+  const apiError = caught as { response?: { data?: { message?: string | string[] } } };
+  const message = apiError.response?.data?.message;
+  return Array.isArray(message) ? message.join(" ") : message ?? fallback;
+};
+
 export default function MyPageView() {
   const profileQuery = useMyProfile();
   const requestsQuery = useMyProfileChangeRequests();
+  const requestReset = useRequestPasswordReset(); // [TBO-31 C2/C3 2026-07-16] 재설정 메일 받기
   const [editing, setEditing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [resetDevUrl, setResetDevUrl] = useState<string | null>(null);
   const profile = profileQuery.data;
   const requests = [...(requestsQuery.data ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  // [TBO-31 C2/C3] 비밀번호 재설정 메일 — 본인 webId+등록 이메일로 공개 복구 호출(ConfirmModal 경유).
+  function sendResetMail() {
+    if (!profile?.email) return;
+    setResetConfirm(false);
+    setMessage(null);
+    setError(null);
+    setResetDevUrl(null);
+    requestReset.mutate(
+      { webId: profile.webId, email: profile.email },
+      {
+        onSuccess: (res) => {
+          setMessage(res.message);
+          if (res.devResetUrl) setResetDevUrl(res.devResetUrl);
+        },
+        onError: (caught) => setError(apiErrorMessage(caught, "재설정 메일 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.")),
+      },
+    );
+  }
 
   return (
     <div className="p-4 sm:p-6 max-w-[920px] mx-auto space-y-5">
@@ -49,7 +79,25 @@ export default function MyPageView() {
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 px-4 py-4 text-body">
             <div><dt className="text-caption text-fg-subtle">이름</dt><dd className="mt-0.5 font-medium break-words">{profile.name}</dd></div>
             <div><dt className="text-caption text-fg-subtle">연락처</dt><dd className="mt-0.5 break-words">{valueOrDash(profile.phone)}</dd></div>
-            <div><dt className="text-caption text-fg-subtle">이메일</dt><dd className="mt-0.5 text-fg-muted break-all">{valueOrDash(profile.email)}</dd></div>
+            <div>
+              <dt className="text-caption text-fg-subtle">이메일</dt>
+              <dd className="mt-0.5 text-fg-muted break-all">
+                {/* [TBO-31 C2/C3 2026-07-16] 이메일 인증 상태 배지 — 미인증=주의 톤+계정 보안 안내.
+                    RRN은 마이 페이지 어디에도 표시하지 않는다(마스킹조차 — D5). */}
+                <span className="inline-flex flex-wrap items-center gap-1.5">
+                  {valueOrDash(profile.email)}
+                  {profile.emailVerified === true
+                    ? <Badge tone="success">인증됨</Badge>
+                    : <Badge tone="attention">미인증</Badge>}
+                </span>
+                {profile.emailVerified !== true && (
+                  <p className="mt-1 text-caption text-fg-muted">
+                    이메일이 아직 인증되지 않았습니다. 계정 보안(알림·비밀번호 찾기)을 위해{" "}
+                    <Link href="/account/security" className="text-accent hover:underline">계정 보안</Link>에서 본인 확인을 완료해 주세요.
+                  </p>
+                )}
+              </dd>
+            </div>
             <div><dt className="text-caption text-fg-subtle">Web ID</dt><dd className="mt-0.5 text-fg-muted break-all">{profile.webId}</dd></div>
             <div><dt className="text-caption text-fg-subtle">역할</dt><dd className="mt-0.5 text-fg-muted">{roleLabel[profile.role as keyof typeof roleLabel] ?? profile.role}</dd></div>
             <div><dt className="text-caption text-fg-subtle">계정 상태</dt><dd className="mt-0.5 text-fg-muted">{profile.status}</dd></div>
@@ -57,7 +105,29 @@ export default function MyPageView() {
             <div><dt className="text-caption text-fg-subtle">시간대</dt><dd className="mt-0.5 mono break-all">{valueOrDash(profile.timeZone)}</dd></div>
           </dl>
         )}
+        {/* [TBO-31 C2/C3 2026-07-16] 보안 진입 강화 — 비밀번호 변경 직접 버튼 + 재설정 메일 받기
+            (비밀번호를 잊었을 때 현재 비밀번호 없이 복구 진입 — D5).
+            대학·전공 표시는 생략: /users/me/profile 응답(ProfileResponseDto)에 해당 필드가 없다. */}
+        {profile && (
+          <div className="border-t px-4 py-3 flex flex-wrap items-center gap-2">
+            <Link className="btn btn-sm" href="/account/security">비밀번호 변경</Link>
+            <button
+              className="btn btn-sm"
+              onClick={() => { setMessage(null); setError(null); setResetConfirm(true); }}
+              disabled={!profile.email?.trim() || requestReset.isPending}
+            >
+              {requestReset.isPending ? "메일 요청 중..." : "비밀번호 재설정 메일 받기"}
+            </button>
+            {!profile.email?.trim() && (
+              <span className="text-caption text-fg-subtle">재설정 메일은 등록된 이메일이 있어야 받을 수 있습니다.</span>
+            )}
+          </div>
+        )}
         {message && <div className="border-t px-4 py-2.5 text-caption text-success" role="status">{message}</div>}
+        {resetDevUrl && (
+          <div className="border-t px-4 py-2.5 text-caption text-accent break-all">개발 모드 재설정 링크: {resetDevUrl}</div>
+        )}
+        {error && <div className="border-t px-4 py-2.5 text-caption text-danger" role="alert">{error}</div>}
       </SectionCard>
 
       <SectionCard title={`변경 요청 이력 (${requests.length})`}>
@@ -89,6 +159,17 @@ export default function MyPageView() {
           </TableWrap>
         )}
       </SectionCard>
+
+      {/* [TBO-31 C2/C3 2026-07-16] 재설정 메일 확인 — ConfirmModal(§18-1) → 성공 안내(열거 방지 동일 문구) */}
+      {resetConfirm && profile?.email && (
+        <ConfirmModal
+          title="비밀번호 재설정 메일"
+          message={`${profile.email}(으)로 비밀번호 재설정 링크를 보낼까요? 링크에서 현재 비밀번호 없이 새 비밀번호를 설정할 수 있습니다.`}
+          confirmLabel="메일 받기"
+          onClose={() => setResetConfirm(false)}
+          onConfirm={sendResetMail}
+        />
+      )}
 
       {editing && profile && (
         <ProfileChangeModal

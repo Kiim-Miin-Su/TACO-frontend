@@ -15,6 +15,7 @@ import {
 } from "@/lib/query-cache";
 import { canAccessFinance } from "@/lib/roles";
 import { useAccountAccess } from "@/lib/useAccountAccess";
+import { WEB_ID_MIN } from "@/lib/validation"; // [TBO-31 C2 2026-07-16] 아이디 라이브 체크 최소 길이
 import type { Instructor, SessionReport } from "@/types";
 import { useState } from "react";
 
@@ -546,6 +547,36 @@ export const useAdjustPayout = () =>
 // [E0.5 ①] 대표(super_admin)는 서버가 같은 tx에서 즉시 적용(approved 응답) — 프로필 쿼리도 무효화.
 export const useCreateProfileChangeRequest = () =>
   useMutation({ mutationFn: api.profileChangeRequests.create, onSuccess: useInvalidator([qk.profileChangeRequests.all, qk.profile.all]) });
+
+// ── [TBO-31 C2/C3 2026-07-16] 가입·계정 보안 강화 훅 ──
+// 가입 신청(공개) — 성공 시 로그인 전이라 무효화 대상 캐시 없음(완료 화면 전환은 호출부).
+export const useSignup = () => useMutation({ mutationFn: api.auth.signup });
+// 가입 전 이메일 OTP(공개) — challenge는 폼-로컬 상태(서버 GET 없음)라 무효화 없음.
+export const useCreateSignupEmailChallenge = () => useMutation({ mutationFn: api.auth.signupEmailChallenge });
+export const useConfirmSignupEmailChallenge = () =>
+  useMutation({ mutationFn: (v: { id: number; email: string; code: string }) => api.auth.confirmSignupEmailChallenge(v.id, v.email, v.code) });
+// 마이 페이지 '비밀번호 재설정 메일 받기' — 본인 webId+email로 공개 복구 엔드포인트 호출
+//  (응답은 계정 존재와 무관하게 동일 문구 — 열거 방지 규약 그대로, 캐시 무효화 없음).
+export const useRequestPasswordReset = () =>
+  useMutation({ mutationFn: (v: { webId: string; email: string }) => api.auth.recoverPassword(v.webId, v.email) });
+// 아이디 가용성 라이브 체크(가입 폼·공개) — 429/400은 조용히 무시(retry 없음), 권위는 submit 시 서버.
+export const useWebIdAvailable = (webId: string | null) =>
+  useQuery({
+    queryKey: qk.auth.webIdAvailable(webId ?? ""),
+    queryFn: () => api.auth.webIdAvailable(webId as string),
+    enabled: webId != null && webId.trim().length >= WEB_ID_MIN,
+    retry: false,
+    staleTime: 30_000,
+  });
+// 대표 아이디 변경 라이브 체크(STAFF 전용 /users/exists — TBO-31에서 dead API에 첫 소비자).
+export const useWebIdExists = (webId: string | null) =>
+  useQuery({
+    queryKey: qk.users.exists(webId ?? ""),
+    queryFn: () => api.users.exists(webId as string),
+    enabled: webId != null && webId.trim().length >= WEB_ID_MIN,
+    retry: false,
+    staleTime: 30_000,
+  });
 
 // [TBO-29B-4] 연락처 인증 challenge — 서버에 조회(GET)가 없는 모달-로컬 상태라 무효화 대상 쿼리 없음.
 export const useCreateProfileVerification = () => useMutation({ mutationFn: api.profileVerifications.create });

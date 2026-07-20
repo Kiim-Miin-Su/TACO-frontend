@@ -10,6 +10,8 @@ import {
   isValidKrPhone,
   isValidOtpCode,
   isValidPhoneAny,
+  isValidRrn,
+  maskRrn,
   passwordByteLength,
   passwordLengthError,
 } from "./validation";
@@ -45,6 +47,44 @@ describe("출생연도", () => {
     expect(isValidBirthYear("1939")).toBe(false);
     expect(isValidBirthYear("2021")).toBe(false);
     expect(isValidBirthYear("19x8")).toBe(false);
+  });
+});
+
+// [TBO-31 C2 2026-07-16] 주민등록번호 — BE rrn-crypto.util(RRN_REGEX·validateRrnFormat)과 동일 규칙 고정.
+describe("주민등록번호(RRN)", () => {
+  it("형식 통과 — 하이픈 유무 모두, 내국인(1-4)·외국인(5-8) 성별자리", () => {
+    expect(isValidRrn("950101-1234567")).toBe(true);
+    expect(isValidRrn("9501011234567")).toBe(true);
+    expect(isValidRrn(" 950101-1234567 ")).toBe(true); // trim
+    expect(isValidRrn("001231-4234567")).toBe(true); // 2000년대(3,4)
+    expect(isValidRrn("950101-8234567")).toBe(true); // 외국인(5-8)
+  });
+  it("성별자리 0·9 거부(1~8만)", () => {
+    expect(isValidRrn("950101-0234567")).toBe(false);
+    expect(isValidRrn("950101-9234567")).toBe(false);
+  });
+  it("자릿수 오류·숫자 외 문자 거부", () => {
+    expect(isValidRrn("95010-11234567")).toBe(false);
+    expect(isValidRrn("950101-123456")).toBe(false);
+    expect(isValidRrn("950101-12345678")).toBe(false);
+    expect(isValidRrn("95O101-1234567")).toBe(false);
+  });
+  it("MM 01-12·DD 01-31 경계 — 00·13월, 00·32일 거부(경계값 통과)", () => {
+    expect(isValidRrn("950001-1234567")).toBe(false); // MM 00
+    expect(isValidRrn("951301-1234567")).toBe(false); // MM 13
+    expect(isValidRrn("950100-1234567")).toBe(false); // DD 00
+    expect(isValidRrn("950132-1234567")).toBe(false); // DD 32
+    expect(isValidRrn("950131-1234567")).toBe(true); // DD 31 경계
+    expect(isValidRrn("951201-1234567")).toBe(true); // MM 12 경계
+  });
+  it("체크섬 검증은 하지 않는다 — 2020-10 이후 임의번호 발급분 수용(검증식 폐지)", () => {
+    // 구 검증식 기준 체크섬이 틀린 번호도 형식이 맞으면 통과해야 한다.
+    expect(isValidRrn("950101-1000000")).toBe(true);
+    expect(isValidRrn("950101-1999999")).toBe(true);
+  });
+  it("maskRrn — 생년월일+성별자리만 노출(950101-1******), 하이픈 없어도 동일", () => {
+    expect(maskRrn("950101-1234567")).toBe("950101-1******");
+    expect(maskRrn("9501011234567")).toBe("950101-1******");
   });
 });
 
