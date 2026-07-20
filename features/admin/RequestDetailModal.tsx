@@ -10,7 +10,7 @@
 //  [청크2] 수정 = PATCH /schedule-requests/:id (pending·관리자) — useUpdateScheduleRequest, 변경 필드만 전송(audit diff 최소화).
 // [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
 import { useMemo, useState } from 'react';
-import { EmptyState, ModalShell } from '@/components/ui';
+import { ModalShell } from '@/components/ui';
 import { ChangeHistory } from '@/features/calendar/ChangeHistory';
 import { useAllAvailability, useSchedule, useRooms, useStudents, useScheduleRequests, useUpdateScheduleRequest } from '@/lib/queries';
 import {

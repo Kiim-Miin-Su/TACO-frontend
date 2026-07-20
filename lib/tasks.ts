@@ -17,7 +17,7 @@ import type {
 import type { Tone } from '@/components/ui';
 import { isAdmin } from '@/lib/roles';
 import { pendingReportSessions, pendingReportSummary, sessionEndMs, type ReportSlice } from '@/lib/reports';
-import { makeupNeeds, makeupNeededCount, MAKEUP_REASON_LABEL } from '@/lib/makeup';
+import { makeupNeeds, MAKEUP_REASON_LABEL } from '@/lib/makeup';
 // [핫픽스 2026-07-20 ②] 승인센터 모집단 단일 소스 — 대시보드·배지·승인센터가 같은 술어를 공유.
 import { approvalCenterCounts, expenseApprovalRows, payoutApprovalRows, profileChangeApprovalRows, reportApprovalRows, scheduleRequestApprovalRows } from '@/lib/approvals';
 import type { PendingAccount, ProfileChangeRequest } from '@/lib/api';

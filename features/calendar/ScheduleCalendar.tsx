@@ -1,14 +1,13 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
-import type { ScheduleRow, Room, Conflict, ScheduleResources, ScheduleResource, AvailabilityBlock, Attendance } from "@/types";
+import type { ScheduleRow, Conflict, ScheduleResource, AvailabilityBlock, Attendance } from "@/types";
 // [B6 C4] api 값 import 제거 — 이 화면의 쓰기는 전부 중앙 mutation 훅 경유(타입만 사용).
 import type { SchedulePatchBody, ScheduleCreateBody, ScheduleSeriesCreateBody, AvailabilityUpsertBody, CreateScheduleRequestBody } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/queryKeys";
 import { invalidateScheduleLifecycle } from "@/lib/query-cache";
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 D — 파일별 중복 toMin/fromMin/pad/WD 제거)
-import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, sessionEndMin, crossMidnightEnd, durationMinutesBetween, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
+import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, sessionEndMin, crossMidnightEnd, durationMinutesBetween } from "@/lib/domain/schedule";
 import { useAcademyEvents } from "@/lib/queries"; // [TBO-29D ⑤] 학원 공통 일정(전 직원 공통 표시)
 import { ScheduleCreateModal } from "./ScheduleCreateModal";
 import { MonthGrid } from "./MonthGrid"; // [B6 C4/EP9] 월간 그리드 파일 분리(표시 전용)
@@ -45,7 +44,7 @@ import {
   useRemoveAvailability,
 } from "@/lib/queries";
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
-import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, kstPatchTimes, type CountryInfo, type TzShiftedRow, splitKstBand } from "@/lib/domain/tz";
+import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, kstPatchTimes, type CountryInfo, type TzShiftedRow } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
 import { CalendarViewTabs } from "./CalendarViewTabs";
 import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
@@ -66,11 +65,10 @@ import { useAccountAccess } from "@/lib/useAccountAccess";
 import { ResourcePanel } from "./ResourcePanel";
 import { ResourceDetailCard } from "./ResourceDetailCard";
 import { ParticipantsCard } from "./ParticipantsCard";
-import { SessionEditFields, ColorPicker, TimeSelect } from "./SessionEditFields";
-import { CalendarSplitPane, type SplitPaneDef } from "./CalendarSplitPane";
+import { CalendarSplitPane } from "./CalendarSplitPane";
 import { CalendarFilterBar, type Period } from "./CalendarFilterBar";
 import { CalendarPaneFilters } from "./CalendarPaneFilters";
-import { ConfirmModal, Field, HelpPopover, PageHeader } from "@/components/ui";
+import { ConfirmModal, HelpPopover, PageHeader } from "@/components/ui";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 // [B6 C1 2026-07-16] 인라인 사설 모달 6종 → ModalShell 계열로 이관·파일 분리(E1 + EP9 선행 절단).
 //  window.confirm/alert 잔재도 ConfirmModal·인라인 배너로 전면 치환(신규 네이티브 다이얼로그 금지).
@@ -100,7 +98,6 @@ const START_H = 0,
 const HEADER_H = 52; // 요일/강의실 헤더 높이
 const GUTTER_W = 64; // 시간 거터 너비
 const GRID_MIN = START_H * 60;
-const GRID_H = (END_H - START_H) * HOUR_H;
 // WD/toMin/fromMin/pad는 lib/domain/schedule, PALETTE/STATUS_LABEL은 lib/domain/lantiv에서 import(단일 소스).
 // 시수 미측정·충돌 제외·회색 표시 대상(결강/취소)
 const CANCELED_GRAY = "#8c959f";
@@ -845,7 +842,7 @@ export function ScheduleCalendar() {
     }
     if (!selBlocks.length) return [];
     return selBlocks
-      .filter((b) => selected?.type !== "room" || c.roomId == null || c.roomId === selected.id)
+      .filter(() => selected?.type !== "room" || c.roomId == null || c.roomId === selected.id)
       .map((b) => toBand(b, true)).filter(nonNull);
   };
 
