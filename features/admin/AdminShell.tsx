@@ -24,6 +24,7 @@ const TABS: [string, string][] = [
   ['/admin/courses', '코스·과목'],
   ['/admin/events', '이벤트'],
   ['/admin/approvals', '승인'],
+  ['/admin/users', '유저 관리'], // [핫픽스 확장 07-20] 전 계정(활성·대기·반려) 관리 — 대표 지시
 ];
 
 export function AdminHeader() {

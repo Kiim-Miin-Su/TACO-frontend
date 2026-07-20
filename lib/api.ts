@@ -440,6 +440,8 @@ export const api = {
       http.get<{ sub: number; name: string; roles: string[]; mustChangePassword?: boolean }>("/auth/me").then((r) => r.data),
     // [TBO-28B] 로그아웃 — auth_events 보안 기록(베스트에포트 호출, 토큰 폐기는 클라이언트).
     logout: () => http.post<{ ok: boolean }>("/auth/logout", {}).then((r) => r.data),
+    // [유저 관리 2026-07-20] 재인증 게이트 — 민감 화면 진입 전 비밀번호 재확인(5회/분 스로틀).
+    reauth: (currentPassword: string) => http.post<{ ok: true }>("/auth/reauth", { currentPassword }).then((r) => r.data),
     // [TBO-29C C5] 비로그인 복구 — 응답은 계정 존재와 무관하게 동일(dev 환경만 devWebId/devResetUrl 노출)
     recoverId: (email: string) =>
       http.post<{ ok: boolean; message: string; devWebId?: string }>("/auth/recover-id", { email }).then((r) => r.data),
@@ -595,6 +597,12 @@ export const api = {
     exists: (webId: string) =>
       http.get<WebIdCheckResult>("/users/exists", { params: { webId } }).then((r) => r.data),
     list: () => http.get<UserProfileSummary[]>("/users").then((r) => r.data),
+    // [유저 관리 2026-07-20] 상세 단건(관리자 — super_admin 응답에만 rrnMasked)·대표 직접 수정·직접 등록.
+    detail: (id: number) => http.get<UserProfileSummary & { rrnMasked?: string | null; university?: string | null; major?: string | null; birthYear?: number | null }>(`/users/${id}`).then((r) => r.data),
+    adminUpdate: (id: number, patch: { name?: string; phone?: string; email?: string; role?: string }) =>
+      http.patch<UserProfileSummary>(`/users/${id}`, patch).then((r) => r.data),
+    createStaff: (input: { webId: string; name: string; password: string; role?: string; email?: string; phone?: string; university?: string; major?: string; birthYear?: number }) =>
+      http.post<UserProfileSummary>("/users/instructors", input).then((r) => r.data),
   },
   // [E0.5 ④] 참조 데이터 카탈로그 — 국가·시간대 토글 옵션(자유 입력 폐지)의 단일 소스(DB 권위).
   catalog: {

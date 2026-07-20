@@ -170,6 +170,23 @@ export const useUsers = () => {
   const { can } = useAccountAccess();
   return useQuery({ queryKey: qk.users.list(), queryFn: () => api.users.list(), enabled: can("admin.area"), staleTime: CATALOG_STALE });
 };
+// [유저 관리 2026-07-20] 상세 단건(B7 규약 — DetailStates 소비)·대표 직접 수정·직접 등록·재인증.
+export const useUser = (id: number | null) => {
+  const { can } = useAccountAccess();
+  return useQuery({ queryKey: qk.users.detail(id ?? 0), queryFn: () => api.users.detail(id as number), enabled: id != null && can("admin.area") });
+};
+export const useAdminUpdateUser = () => {
+  const invalidate = useInvalidator([qk.users.all]);
+  return useMutation({
+    mutationFn: (v: { id: number; patch: { name?: string; phone?: string; email?: string; role?: string } }) => api.users.adminUpdate(v.id, v.patch),
+    onSuccess: invalidate,
+  });
+};
+export const useCreateStaffUser = () => {
+  const invalidate = useInvalidator([qk.users.all]);
+  return useMutation({ mutationFn: api.users.createStaff, onSuccess: invalidate });
+};
+export const useReauth = () => useMutation({ mutationFn: api.auth.reauth });
 export const useMyProfile = () => {
   const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.profile.me(scope), queryFn: () => api.account.profile() });
@@ -349,7 +366,7 @@ export const useResendPendingVerification = () =>
   useMutation({ mutationFn: (id: number) => api.auth.resendPendingVerification(id) });
 // [핫픽스 2026-07-20] 가입 신청 삭제 — 식별자 해제·RRN 파기(BE). 목록 즉시 갱신.
 export const useDeletePendingAccount = () => {
-  const invalidate = useInvalidator([qk.auth.pending]);
+  const invalidate = useInvalidator([qk.auth.pending, qk.users.all]); // [07-20] 유저 관리 탭도 즉시 갱신
   return useMutation({
     mutationFn: (v: { id: number; reason: string }) => api.auth.deletePendingAccount(v.id, v.reason),
     onSuccess: invalidate,
