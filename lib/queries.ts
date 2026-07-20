@@ -270,11 +270,16 @@ export function useAppData() {
   const roadmapCourses = useRoadmapCourses().data ?? [];
   const instructors = useInstructors().data ?? [];
   const scheduleRequests = useScheduleRequests().data ?? []; // TBO-16 — 배지·승인센터 동일 모집단
+  // [핫픽스 2026-07-20 ②] 가입 승인·프로필 변경도 배지/할일 모집단에 — 권한 게이트는 각 훅이 수행
+  //  (비대상 역할은 disabled → 빈 배열). 반려 사유 알림용 내 요청(mine)도 함께 구독.
+  const pendingAccounts = usePendingAccounts().data ?? [];
+  const profileChangeRequests = useProfileChangeRequests().data ?? [];
+  const myProfileChangeRequests = useMyProfileChangeRequests().data ?? [];
   return {
     students, parents, parentStudents, subjects, courses, enrollments, classSessions,
     attendance, sessionReports, payments, transactions, expenses, instructorPayouts,
     counselForms, counselRounds, academyEvents, roadmaps, roadmapCourses, instructors,
-    scheduleRequests,
+    scheduleRequests, pendingAccounts, profileChangeRequests, myProfileChangeRequests,
   };
 }
 
@@ -295,6 +300,10 @@ export function useTaskData() {
     counselForms: useCounselForms().data ?? [],
     payments: usePayments().data ?? [],
     scheduleRequests: useScheduleRequests().data ?? [],
+    // [핫픽스 2026-07-20 ②] 배지·알림에 가입 승인/프로필 변경 포함(권한 게이트는 훅이 수행)
+    pendingAccounts: usePendingAccounts().data ?? [],
+    profileChangeRequests: useProfileChangeRequests().data ?? [],
+    myProfileChangeRequests: useMyProfileChangeRequests().data ?? [],
   };
 }
 
@@ -333,6 +342,17 @@ export const useApprovePendingAccount = () => {
     // [B6 C2/EP5 P6] 계정 승인이 캘린더에서 바꾸는 것은 강사 리소스 목록뿐 — schedule 전체(all)가 아니라
     //  resources(scope)만 무효화(세션·출결 데이터는 무관).
     onSuccess: useInvalidator([qk.auth.pending, qk.users.all, qk.schedule.resources(scope)]),
+  });
+};
+// [핫픽스 2026-07-20 ①] 레거시 pending 계정 인증 메일 재발송(대표) — 목록 갱신 불요(토큰만 갱신).
+export const useResendPendingVerification = () =>
+  useMutation({ mutationFn: (id: number) => api.auth.resendPendingVerification(id) });
+// [핫픽스 2026-07-20] 가입 신청 삭제 — 식별자 해제·RRN 파기(BE). 목록 즉시 갱신.
+export const useDeletePendingAccount = () => {
+  const invalidate = useInvalidator([qk.auth.pending]);
+  return useMutation({
+    mutationFn: (v: { id: number; reason: string }) => api.auth.deletePendingAccount(v.id, v.reason),
+    onSuccess: invalidate,
   });
 };
 export const useRejectPendingAccount = () =>

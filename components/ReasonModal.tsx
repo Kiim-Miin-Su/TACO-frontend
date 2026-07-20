@@ -6,13 +6,16 @@ import { ModalShell } from "@/components/ui";
 //  - mode="input": 사유를 적어 반려(제출 시 onSubmit(reason)).
 //  - mode="view" : 적힌 사유를 읽기 전용으로 표시(강사가 확인).
 export function ReasonModal({
-  mode, title, initial = "", onClose, onSubmit,
+  mode, title, initial = "", onClose, onSubmit, submitLabel = "반려", placeholder,
 }: {
   mode: "input" | "view";
   title: string;
   initial?: string;
   onClose: () => void;
   onSubmit?: (reason: string) => void;
+  /** [핫픽스 07-20] 제출 버튼 라벨 — 삭제 등 반려 외 용도 재사용(기본 '반려'). */
+  submitLabel?: string;
+  placeholder?: string;
 }) {
   const [reason, setReason] = useState(initial);
   return (
@@ -24,7 +27,7 @@ export function ReasonModal({
         <>
           <button className="btn btn-sm" onClick={onClose}>{mode === "view" ? "닫기" : "취소"}</button>
           {mode === "input" && (
-            <button className="btn btn-sm btn-danger" disabled={!reason.trim()} onClick={() => onSubmit?.(reason.trim())}>반려</button>
+            <button className="btn btn-sm btn-danger" disabled={!reason.trim()} onClick={() => onSubmit?.(reason.trim())}>{submitLabel}</button>
           )}
         </>
       )}
@@ -33,8 +36,8 @@ export function ReasonModal({
         <textarea
           className="input min-h-[96px] w-full resize-y py-2"
           data-modal-autofocus="true"
-          placeholder="반려 사유를 입력하세요 (강사에게 표시됩니다)"
-          aria-label="반려 사유"
+          placeholder={placeholder ?? "반려 사유를 입력하세요 (강사에게 표시됩니다)"}
+          aria-label="사유"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         />

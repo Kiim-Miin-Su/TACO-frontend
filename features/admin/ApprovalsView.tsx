@@ -22,6 +22,8 @@ import {
   useProfileChangeRequests,
   useUsers,
   usePendingAccounts,
+  useResendPendingVerification,
+  useDeletePendingAccount,
   useApprovePendingAccount,
   useRejectPendingAccount,
 } from '@/lib/queries';
@@ -29,6 +31,7 @@ import { dateOnly, won } from '@/lib/format';
 import { roleLabel } from '@/lib/roles';
 import { AdminHeader } from './AdminShell';
 import { categoryLabel } from '@/features/expenses/labels';
+import { expenseApprovalRows } from '@/lib/approvals'; // [핫픽스 07-20 ②] 승인센터·배지·대시보드 공용 술어
 import { type ScheduleRequestEx } from '@/lib/api';
 import { AVAILABILITY_KIND_LABEL, RECURRENCE_SCOPE_LABEL, WEEKDAY_LABEL } from '@/lib/domain/approvals';
 import { ReasonModal } from '@/components/ReasonModal';
@@ -46,19 +49,35 @@ function MemberApprovals() {
   const { data: rows = [], isError } = usePendingAccounts();
   const approveAccount = useApprovePendingAccount();
   const rejectAccount = useRejectPendingAccount();
+  const resendVerification = useResendPendingVerification(); // [핫픽스 07-20 ①] 레거시 미인증 구제
+  const deleteAccount = useDeletePendingAccount(); // [핫픽스 07-20] 오가입 정리(식별자 해제·재가입 허용)
   const [roleSel, setRoleSel] = useState<Record<number, string>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const [memberReject, setMemberReject] = useState<number | null>(null); // [TBO-28B] 반려 사유 필수 모달
+  const [memberDelete, setMemberDelete] = useState<number | null>(null); // [핫픽스 07-20] 삭제 사유 필수 모달
+
+  // [핫픽스 07-20] 실패 시 서버 메시지를 그대로 보여준다 — 종전 '처리 실패' 일반화가
+  //  "왜 반려가 안 되지?"(대표 보고)의 원인 중 하나(원인 판별 불가).
+  const serverMessage = (error: unknown, fallback: string): string => {
+    const ax = error as { response?: { status?: number; data?: { message?: string | string[] } } };
+    if (ax.response?.status === 409) return '이미 처리된 계정입니다(목록을 새로고침했습니다).';
+    const m = ax.response?.data?.message;
+    return (Array.isArray(m) ? m.join(' ') : m) ?? fallback;
+  };
 
   function decide(id: number, action: 'approve' | 'reject', reason?: string) {
     const mutation = action === 'approve' ? approveAccount : rejectAccount;
     const variables = action === 'approve' ? { id, role: roleSel[id] } : { id, reason: reason ?? '' };
     mutation.mutate(variables as never, {
       onSuccess: () => setMsg(action === 'approve' ? '승인했습니다.' : '반려했습니다.'),
-      onError: (error) => {
-        const status = (error as { response?: { status?: number } }).response?.status;
-        setMsg(status === 409 ? '이미 처리된 계정입니다(목록을 새로고침했습니다).' : '처리 실패');
-      },
+      onError: (error) => setMsg(serverMessage(error, '처리하지 못했습니다. 잠시 후 다시 시도해 주세요.')),
+    });
+  }
+
+  function resend(id: number) {
+    resendVerification.mutate(id, {
+      onSuccess: (res) => setMsg(res.devVerifyLink ? `인증 메일을 다시 보냈습니다. (개발 링크: ${res.devVerifyLink})` : '인증 메일을 다시 보냈습니다. 지원자가 메일의 링크를 누르면 승인할 수 있습니다.'),
+      onError: (error) => setMsg(serverMessage(error, '인증 메일을 보내지 못했습니다.')),
     });
   }
 
@@ -89,8 +108,16 @@ function MemberApprovals() {
                   </select>
                 </td>
                 <td className="text-right whitespace-nowrap">
-                  <button className="btn btn-sm btn-primary mr-1.5" disabled={!r.emailVerified} onClick={() => decide(r.id, 'approve')} title={r.emailVerified ? '' : '이메일 인증 후 승인 가능'}>승인</button>
-                  <button className="btn btn-sm btn-danger" onClick={() => setMemberReject(r.id)}>반려</button>
+                  {/* [핫픽스 07-20 ①] 미인증 = 인증 메일 재발송으로 구제(레거시 가입자 — 메일 미수신) */}
+                  {!r.emailVerified && (
+                    <button className="btn btn-sm mr-1.5" disabled={resendVerification.isPending} onClick={() => resend(r.id)}>
+                      인증 메일 재발송
+                    </button>
+                  )}
+                  <button className="btn btn-sm btn-primary mr-1.5" disabled={!r.emailVerified} onClick={() => decide(r.id, 'approve')} title={r.emailVerified ? '' : '이메일 인증 후 승인 가능 — 재발송으로 인증을 유도하세요'}>승인</button>
+                  <button className="btn btn-sm btn-danger mr-1.5" onClick={() => setMemberReject(r.id)}>반려</button>
+                  {/* [핫픽스 07-20] 삭제 — 식별자 해제(같은 아이디·이메일 재가입 허용)+개인정보 파기 */}
+                  <button className="btn btn-sm" onClick={() => setMemberDelete(r.id)}>삭제</button>
                 </td>
               </tr>
             ))}
@@ -104,6 +131,22 @@ function MemberApprovals() {
           title="가입 반려 — 사유 필수"
           onClose={() => setMemberReject(null)}
           onSubmit={(reason) => { decide(memberReject, 'reject', reason); setMemberReject(null); }}
+        />
+      )}
+      {memberDelete != null && (
+        <ReasonModal
+          mode="input"
+          title="가입 신청 삭제 — 사유 필수 (같은 아이디·이메일로 재가입 가능해집니다)"
+          submitLabel="삭제"
+          placeholder="삭제 사유를 입력하세요 (감사 이력에 남습니다)"
+          onClose={() => setMemberDelete(null)}
+          onSubmit={(reason) => {
+            deleteAccount.mutate({ id: memberDelete, reason }, {
+              onSuccess: () => setMsg('가입 신청을 삭제했습니다. 같은 아이디·이메일로 다시 가입할 수 있습니다.'),
+              onError: (error) => setMsg(serverMessage(error, '삭제하지 못했습니다.')),
+            });
+            setMemberDelete(null);
+          }}
         />
       )}
     </SectionCard>
@@ -184,7 +227,7 @@ export function ApprovalsView() {
       },
     });
   };
-  const pendingExpenses = expenses.filter((e) => e.status === 'requested');
+  const pendingExpenses = expenseApprovalRows(expenses); // [핫픽스 07-20 ②] 단일 소스(lib/approvals) — 배지·대시보드와 같은 함수
   const pendingPayouts = instructorPayouts.filter((p) => p.status === 'pending');
   // 작성완료(submitted)·미승인 리포트 — 승인 시 시수 적격으로 편입
   const pendingReports = sessionReports.filter((r) => (r.status === 'submitted' || r.approvalStatus === 'submitted') && r.approvalStatus !== 'approved');

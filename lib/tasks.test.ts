@@ -18,6 +18,8 @@ const emptySlice = {
   students: [], courses: [], classSessions: [], sessionReports: [], expenses: [],
   instructorPayouts: [], counselForms: [], enrollments: [], payments: [], attendance: [],
   scheduleRequests: [] as ScheduleRequest[],
+  // [핫픽스 07-20 ②] 승인센터 통일로 추가된 모집단 — 테스트는 빈 배열(요청 항목만 분리 검증)
+  pendingAccounts: [], profileChangeRequests: [], myProfileChangeRequests: [],
 };
 
 describe('scheduleRequests — 배지·To-do 동일 모집단(R1)', () => {

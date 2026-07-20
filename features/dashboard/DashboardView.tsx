@@ -56,6 +56,8 @@ const TASK_GROUPS = [
   { key: 'payment', title: '결제 · 수납', href: '/payments', btn: '결제 관리', empty: '재결제 임박·미수 건이 없습니다.' },
   { key: 'pay', title: '강사 페이', href: '/payouts', btn: '강사 페이', empty: '승인·지급 대기 정산이 없습니다.' },
   { key: 'expense', title: '지출 승인', href: '/admin/approvals', btn: '승인 센터', empty: '승인 대기 지출이 없습니다.' },
+  // [핫픽스 2026-07-20 ②] 가입·계정 승인 — 승인센터에는 있는데 대시보드에 안 뜨던 결함 해소(단일 소스 lib/approvals)
+  { key: 'account', title: '가입 · 계정 승인', href: '/admin/approvals', btn: '승인 센터', empty: '가입·프로필 변경 승인 대기가 없습니다.' },
   { key: 'counsel', title: '상담 배정', href: '/counsel', btn: '상담', empty: '배정 대기(날짜 미정) 상담이 없습니다.' },
   // [UX QA 2026-07-06 H2] 수업 요청(TBO-16 #9) — 배지·승인센터와 같은 모집단
   { key: 'schedule', title: '수업 요청', href: '/admin/approvals', btn: '승인 센터', empty: '승인 대기 수업 요청이 없습니다.' },
