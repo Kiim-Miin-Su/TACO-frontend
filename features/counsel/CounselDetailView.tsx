@@ -2,12 +2,13 @@
 // [B7 E3 2026-07-16] 주 엔티티 단건화(useCounselForm(id) + DetailStates) — full-list find 제거(EP6/EP11)
 import { useState } from 'react';
 import Link from 'next/link';
-import { Badge, DetailStates, SectionCard, PageHeader, EmptyState, Field } from '@/components/ui';
+import { useRouter } from 'next/navigation';
+import { Badge, ConfirmModal, DetailStates, SectionCard, PageHeader, EmptyState, Field } from '@/components/ui';
 // 읽기(폼=단건 useCounselForm·회차·과목·코스)/쓰기(수정·상태변경·회차추가)는 TanStack Query 훅 경유(zustand store 대체).
 //  useUpdateCounsel의 qk.counsel.all 무효화가 counsel.form(id) 키도 루트 포함으로 자동 갱신(추가 배선 불요 — 확인 완료).
 import {
   useCounselForm, useCounselRounds, useSubjects, useCourses,
-  useUpdateCounsel, useCreateCounselRound,
+  useUpdateCounsel, useCreateCounselRound, useRemoveCounsel,
 } from '@/lib/queries';
 import type {
   CounselStatus,
@@ -23,14 +24,18 @@ import {
 } from './labels';
 
 export function CounselDetailView({ counselId }: { counselId: number }) {
+  const router = useRouter();
   const formQuery = useCounselForm(counselId);
   const { data: rounds = [] } = useCounselRounds();
   const { data: subjects = [] } = useSubjects();
   const { data: courses = [] } = useCourses();
   const updateCounsel = useUpdateCounsel();
   const createRound = useCreateCounselRound();
+  const removeCounsel = useRemoveCounsel();
 
   const [round, setRound] = useState({ summary: '', detail: '', result: '', nextAction: '' });
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   return (
     <div className="p-6 max-w-page mx-auto">
@@ -70,8 +75,14 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
                   <PageHeader
                     title={`${form.applicantName} 상담카드`}
                     sub={`${sourceLabel[form.source]} · 접수 ${form.createdAt}`}
-                    actions={<Badge tone={statusTone[form.status]}>{statusLabel[form.status]}</Badge>}
+                    actions={(
+                      <div className="flex items-center gap-2">
+                        <Badge tone={statusTone[form.status]}>{statusLabel[form.status]}</Badge>
+                        <button type="button" className="btn btn-sm text-danger" onClick={() => setDeleteOpen(true)}>삭제</button>
+                      </div>
+                    )}
                   />
+                  {deleteError && <p className="mt-2 text-caption text-danger" role="alert">{deleteError}</p>}
                 </div>
               </div>
 
@@ -174,6 +185,26 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
                   </div>
                 </div>
               </SectionCard>
+              {deleteOpen && (
+                <ConfirmModal
+                  title="상담카드 삭제"
+                  message={`“${form.applicantName}” 상담카드와 연결 회차를 삭제할까요? 삭제 이력은 감사 로그에 남습니다.`}
+                  confirmLabel="삭제"
+                  danger
+                  onClose={() => setDeleteOpen(false)}
+                  onConfirm={() => {
+                    setDeleteError(null);
+                    removeCounsel.mutate(form.id, {
+                      onSuccess: () => router.push('/counsel'),
+                      onError: (caught) => {
+                        const message = (caught as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
+                        setDeleteError(Array.isArray(message) ? message.join(' ') : message ?? '상담카드를 삭제하지 못했습니다.');
+                        setDeleteOpen(false);
+                      },
+                    });
+                  }}
+                />
+              )}
             </div>
           );
         }}

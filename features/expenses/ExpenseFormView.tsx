@@ -6,11 +6,13 @@ import { Field, SectionCard } from '@/components/ui';
 import { useCreateExpense } from '@/lib/queries';
 import type { ExpenseCategory } from '@/types';
 import { CATEGORIES, categoryLabel } from './labels';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
 export function ExpenseFormView() {
   const router = useRouter();
+  const finance = useAccountAccess().can('finance.access');
   const createExpense = useCreateExpense();
 
   const [category, setCategory] = useState<ExpenseCategory>('supplies');
@@ -54,6 +56,15 @@ export function ExpenseFormView() {
       },
     });
   };
+
+  if (!finance) {
+    return (
+      <div className="p-6 max-w-[720px] mx-auto">
+        <Link href="/expenses" className="text-caption text-fg-muted hover:underline">← 지출 목록</Link>
+        <div className="mt-3 p-4 rounded-lg border text-body text-fg-muted border-line-muted">지출 등록은 대표(CEO) 전용입니다.</div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-[720px] mx-auto space-y-5">

@@ -4,21 +4,29 @@
 'use client';
 // [B6 C3 2026-07-16] 행 전체 클릭 = 코스 상세(ClickableTableRow href) — 코스명 Link는 유지(중첩 제외).
 import Link from 'next/link';
-import { useState } from 'react';
-import { ClickableTableRow, SectionCard, EmptyState, LoadingState, TableWrap } from '@/components/ui';
-import { useCourses, useSubjects, useInstructors, useCreateCourse, useCreateSubject } from '@/lib/queries';
+import { useMemo, useState } from 'react';
+import { ClickableTableRow, ConfirmModal, SectionCard, EmptyState, LoadingState, TableWrap } from '@/components/ui';
+import { useCourses, useSubjects, useInstructors, useCreateCourse, useCreateSubject, useRemoveCourse, useRemoveSubject } from '@/lib/queries';
 import { won } from '@/lib/format';
 import { AdminGuard, AdminHeader } from './AdminShell';
 import { Field } from '@/components/ui';
 // [B4 2026-07-16 대표 결정 ②] 강의실 관리 — 수업 추가 모달과 같은 공용 컴포넌트 재사용(사설 사본 금지)
 import { RoomManagerPanel } from '@/features/rooms/RoomManagerPanel';
+import { CourseEditModal, SubjectEditModal } from './CatalogEditModals';
+import type { Course, Subject } from '@/types';
 
 export function CoursesView() {
   const { data: subjects = [] } = useSubjects();
   const { data: courses = [], isPending: loading } = useCourses(); // [E0.6 H2]
   const { data: instructors = [] } = useInstructors();
-  const subjectName = (id: number) => subjects.find((x) => x.id === id)?.name ?? '—';
-  const instructorName = (id: number) => instructors.find((x) => x.id === id)?.name ?? '—';
+  const removeCourse = useRemoveCourse();
+  const removeSubject = useRemoveSubject();
+  const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+  const [removing, setRemoving] = useState<{ kind: 'course' | 'subject'; id: number; name: string } | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const subjectNames = useMemo(() => new Map(subjects.map((row) => [row.id, row.name])), [subjects]);
+  const instructorNames = useMemo(() => new Map(instructors.map((row) => [row.id, row.name])), [instructors]);
 
   return (
     <AdminGuard>
@@ -29,6 +37,7 @@ export function CoursesView() {
           <SectionCard title="과목 추가"><SubjectForm /></SectionCard>
         </div>
         <SectionCard title={`코스 목록 (${courses.length})`}>
+          {actionError && <p className="px-4 pt-3 text-caption text-danger" role="alert">{actionError}</p>}
           {loading ? (
             <LoadingState />
           ) : courses.length === 0 ? (
@@ -36,7 +45,7 @@ export function CoursesView() {
           ) : (
           <TableWrap>
           <table className="table">
-            <thead><tr><th>코스</th><th>과목</th><th>강사</th><th className="text-right">정가</th></tr></thead>
+            <thead><tr><th>코스</th><th>과목</th><th>강사</th><th className="text-right">정가</th><th className="text-right">관리</th></tr></thead>
             <tbody>
               {courses.map((c) => (
                 <ClickableTableRow key={c.id} href={`/admin/courses/${c.id}`} label={`${c.name} 코스 상세`}>
@@ -45,9 +54,13 @@ export function CoursesView() {
                     {/* [TBO-20 20-C] 코스명 클릭 → 코스 상세(수강생·세션·로드맵) */}
                     <Link href={`/admin/courses/${c.id}`} className="text-accent hover:underline">{c.name}</Link>
                   </td>
-                  <td className="text-fg-muted">{subjectName(c.subjectId)}</td>
-                  <td className="text-fg-muted">{instructorName(c.instructorId)}</td>
+                  <td className="text-fg-muted">{subjectNames.get(c.subjectId) ?? '—'}</td>
+                  <td className="text-fg-muted">{instructorNames.get(c.instructorId) ?? '—'}</td>
                   <td className="text-right mono">{won(c.price)}</td>
+                  <td className="text-right whitespace-nowrap">
+                    <button className="btn btn-sm mr-1.5" onClick={() => setEditingCourse(c)}>수정</button>
+                    <button className="btn btn-sm text-danger" onClick={() => setRemoving({ kind: 'course', id: c.id, name: c.name })}>삭제</button>
+                  </td>
                 </ClickableTableRow>
               ))}
             </tbody>
@@ -55,7 +68,51 @@ export function CoursesView() {
           </TableWrap>
           )}
         </SectionCard>
+        <SectionCard title={`과목 목록 (${subjects.length})`}>
+          {subjects.length === 0 ? <EmptyState message="등록된 과목이 없습니다." /> : (
+            <TableWrap>
+              <table className="table">
+                <thead><tr><th>코드</th><th>과목명</th><th className="text-right">관리</th></tr></thead>
+                <tbody>
+                  {subjects.map((subject) => (
+                    <tr key={subject.id}>
+                      <td className="mono text-fg-muted">{subject.code}</td>
+                      <td className="font-medium">{subject.name}</td>
+                      <td className="text-right whitespace-nowrap">
+                        <button className="btn btn-sm mr-1.5" onClick={() => setEditingSubject(subject)}>수정</button>
+                        <button className="btn btn-sm text-danger" onClick={() => setRemoving({ kind: 'subject', id: subject.id, name: subject.name })}>삭제</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+          )}
+        </SectionCard>
         <SectionCard title="강의실 관리 (매니저 이상)"><RoomManagerPanel /></SectionCard>
+        {editingCourse && <CourseEditModal course={editingCourse} subjects={subjects} instructors={instructors} onClose={() => setEditingCourse(null)} />}
+        {editingSubject && <SubjectEditModal subject={editingSubject} onClose={() => setEditingSubject(null)} />}
+        {removing && (
+          <ConfirmModal
+            title={`${removing.kind === 'course' ? '코스' : '과목'} 삭제`}
+            message={`“${removing.name}”을(를) 삭제할까요? 수강·수업·상담 등에서 참조 중이면 서버가 삭제를 거부합니다.`}
+            confirmLabel="삭제"
+            danger
+            onClose={() => setRemoving(null)}
+            onConfirm={() => {
+              setActionError(null);
+              const mutation = removing.kind === 'course' ? removeCourse : removeSubject;
+              mutation.mutate(removing.id, {
+                onSuccess: () => setRemoving(null),
+                onError: (caught) => {
+                  const message = (caught as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
+                  setActionError(Array.isArray(message) ? message.join(' ') : message ?? '삭제하지 못했습니다.');
+                  setRemoving(null);
+                },
+              });
+            }}
+          />
+        )}
       </div>
     </AdminGuard>
   );

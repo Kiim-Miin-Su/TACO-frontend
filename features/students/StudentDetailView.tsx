@@ -4,7 +4,7 @@
 //  참조 무결성: 주 엔티티=단건 Query(useStudent), 관련 섹션=단일 소스 Query(useEnrollments/...)에서 학생 FK로 조립 — 세션/데이터 복제 없음.
 //   · 로딩/404/403/오류는 DetailStates가 구분 렌더 — 유령 참조 차단(자체 가드 제거).
 //   · 읽기 전용(편집은 각 도메인 화면 — 결제·상담·출결부). 여기선 종합 열람만.
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Badge, DetailStates, EmptyState, PageHeader, SectionCard, StatCard, TableWrap, type Tone } from '@/components/ui';
 import {
@@ -18,12 +18,16 @@ import { CountryBadge } from '@/features/calendar/CountryInput';
 import { statusLabel as payLabel, statusTone as payTone } from '@/features/payments/labels';
 import { statusLabel as counselLabel, statusTone as counselTone } from '@/features/counsel/labels';
 import type { EnrollmentStatus } from '@/types';
+import { StudentProfileEditModal } from './StudentProfileEditModal';
 
 const enrollTone: Record<EnrollmentStatus, Tone> = { active: 'success', paused: 'attention', completed: 'done', canceled: 'danger' };
 const enrollLabel: Record<EnrollmentStatus, string> = { active: '수강중', paused: '일시정지', completed: '수료', canceled: '취소' };
 
 export function StudentDetailView({ studentId }: { studentId: number }) {
-  const finance = useAccountAccess().can('finance.access');
+  const access = useAccountAccess();
+  const finance = access.can('finance.access');
+  const canEdit = access.can('admin.area');
+  const [editing, setEditing] = useState(false);
   const studentQuery = useStudent(studentId);
   const { data: enrollments = [] } = useEnrollments();
   const { data: courses = [] } = useCourses();
@@ -67,12 +71,14 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                 sub={[student.grade != null ? `${student.grade}학년` : null, student.schoolName, student.phone, student.webId ? `ID ${student.webId}` : '미가입']
                   .filter(Boolean).join(' · ')}
                 actions={
-                  <span className="flex items-center gap-2">
+                  <span className="flex items-center gap-2 flex-wrap">
                     <Badge tone={(STUDENT_STATUS_TONE[student.status] as Tone)}>{STUDENT_STATUS_LABEL[student.status]}</Badge>
                     <CountryBadge code={student.country} />
+                    {canEdit && <button className="btn btn-sm" onClick={() => setEditing(true)}>정보 수정</button>}
                   </span>
                 }
               />
+              {editing && <StudentProfileEditModal student={student} onClose={() => setEditing(false)} />}
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -157,7 +163,7 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
               </SectionCard>
             )}
 
-            <p className="text-caption text-fg-subtle">읽기 전용 종합 뷰 — 편집은 각 도메인 화면(학생 목록·결제·상담·출석부)에서. 데이터는 단일 소스로 즉시 반영됩니다.</p>
+            <p className="text-caption text-fg-subtle">학생 기본정보는 관리자만 이 화면에서 수정합니다. 결제·상담·출결은 각 도메인 화면의 권위 데이터를 사용합니다.</p>
           </div>
         )}
       </DetailStates>

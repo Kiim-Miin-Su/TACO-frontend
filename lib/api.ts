@@ -544,10 +544,14 @@ export const api = {
     list: () => http.get<Course[]>("/courses").then((r) => r.data),
     get: (id: number) => http.get<Course>(`/courses/${id}`).then((r) => r.data), // [B7 E3] 상세 단건
     create: (input: CreateCourseInput) => http.post<Course>("/courses", input).then((r) => r.data),
+    update: (id: number, patch: Partial<CreateCourseInput>) => http.patch<Course>(`/courses/${id}`, patch).then((r) => r.data),
+    remove: (id: number) => http.delete<Course>(`/courses/${id}`).then((r) => r.data),
   },
   subjects: {
     list: () => http.get<Subject[]>("/subjects").then((r) => r.data),
     create: (input: CreateSubjectInput) => http.post<Subject>("/subjects", input).then((r) => r.data),
+    update: (id: number, patch: Partial<CreateSubjectInput>) => http.patch<Subject>(`/subjects/${id}`, patch).then((r) => r.data),
+    remove: (id: number) => http.delete<Subject>(`/subjects/${id}`).then((r) => r.data),
   },
   counsel: {
     forms: () => http.get<CounselForm[]>("/counsel").then((r) => r.data),
@@ -556,6 +560,7 @@ export const api = {
       http.get<CounselRound[]>("/counsel/rounds", { params: counselFormId ? { counselFormId } : undefined }).then((r) => r.data),
     create: (input: CreateCounselInput) => http.post<CounselForm>("/counsel", input).then((r) => r.data),
     update: (id: number, patch: UpdateCounselInput) => http.patch<CounselForm>(`/counsel/${id}`, patch).then((r) => r.data),
+    remove: (id: number) => http.delete<CounselForm>(`/counsel/${id}`).then((r) => r.data),
     createRound: (formId: number, input: CreateCounselRoundInput) =>
       http.post<CounselRound>(`/counsel/${formId}/rounds`, input).then((r) => r.data),
   },

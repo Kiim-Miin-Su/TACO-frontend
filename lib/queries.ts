@@ -337,6 +337,12 @@ function useInvalidator(keys: QueryKey[]) {
 // 카탈로그
 export const useCreateCourse = () => useMutation({ mutationFn: api.courses.create, onSuccess: useInvalidator([qk.courses.all]) });
 export const useCreateSubject = () => useMutation({ mutationFn: api.subjects.create, onSuccess: useInvalidator([qk.subjects.all]) });
+export const useUpdateCourse = () =>
+  useMutation({ mutationFn: (v: { id: number; patch: Parameters<typeof api.courses.update>[1] }) => api.courses.update(v.id, v.patch), onSuccess: useInvalidator([qk.courses.all]) });
+export const useRemoveCourse = () => useMutation({ mutationFn: api.courses.remove, onSuccess: useInvalidator([qk.courses.all]) });
+export const useUpdateSubject = () =>
+  useMutation({ mutationFn: (v: { id: number; patch: Parameters<typeof api.subjects.update>[1] }) => api.subjects.update(v.id, v.patch), onSuccess: useInvalidator([qk.subjects.all]) });
+export const useRemoveSubject = () => useMutation({ mutationFn: api.subjects.remove, onSuccess: useInvalidator([qk.subjects.all]) });
 export const useCreateEvent = () => useMutation({ mutationFn: api.events.create, onSuccess: useInvalidator([qk.events.all]) });
 // [TBO-29D 요구 ⑥] 매니저 이상 — 이벤트 수정/삭제(admin 이벤트 화면 + 캘린더 공통 일정 최신화).
 export const useUpdateEvent = () =>
@@ -425,6 +431,8 @@ export const useRemoveReportTemplate = () => useMutation({ mutationFn: api.repor
 export const useCreateCounsel = () => useMutation({ mutationFn: api.counsel.create, onSuccess: useInvalidator([qk.counsel.all]) });
 export const useUpdateCounsel = () =>
   useMutation({ mutationFn: (v: { id: number; patch: Parameters<typeof api.counsel.update>[1] }) => api.counsel.update(v.id, v.patch), onSuccess: useInvalidator([qk.counsel.all]) });
+export const useRemoveCounsel = () =>
+  useMutation({ mutationFn: api.counsel.remove, onSuccess: useInvalidator([qk.counsel.all]) });
 export const useCreateCounselRound = () =>
   useMutation({ mutationFn: (v: { formId: number; input: Parameters<typeof api.counsel.createRound>[1] }) => api.counsel.createRound(v.formId, v.input), onSuccess: useInvalidator([qk.counsel.all]) });
 
