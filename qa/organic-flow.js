@@ -17,7 +17,7 @@ const INST = {
   phone: '010-9999-0000',
   university: 'QA대학교',
   major: 'QA전공',
-  birthYear: '1995',
+  rrn: '950101-1234567', // [TBO-31] 출생연도 → 주민등록번호(형식 검증만 — 체크섬 폐지)
 };
 const COURSE = `qa코스_${epoch}`;
 const STUDENT = `qa학생_${epoch}`;
@@ -41,30 +41,38 @@ async function main() {
   const admin = await newPage(browser);
   const inst = await newPage(browser);
 
-  // ── 1. [가입] 신규 강사 가입 + 개발 모드 인증 링크로 이메일 인증 ──
-  await step(guest.page, '01-signup', '가입 — 신규 강사 가입 신청 + 이메일 인증(devVerifyLink)', async () => {
+  // ── 1. [가입] 신규 강사 가입 — [TBO-31] 가입 전 이메일 OTP(devOtpCode) + 비밀번호 확인 + 주민등록번호 ──
+  await step(guest.page, '01-signup', '가입 — 이메일 OTP 인증(가입 전) + 중복 체크 + 가입 신청', async () => {
     const p = guest.page;
     await p.goto(`${FE}/signup`, { waitUntil: 'domcontentloaded' });
     await p.getByPlaceholder('jiwon_kim').fill(INST.webId);
+    // 아이디 중복 라이브 체크(디바운스) — '사용 가능' 인라인 확인
+    await p.getByText('사용 가능한 아이디입니다.').waitFor({ timeout: 8000 });
     await p.getByPlaceholder('김지원').fill(INST.name);
+    // 이메일 OTP: 입력 → 발송 → devOtpCode(개발 모드 표기) → 코드 확인 → 인증 완료
     await p.getByPlaceholder('you@tnacademy.com').fill(INST.email);
-    await p.locator('input[type=password]').fill(INST.password);
+    await p.getByRole('button', { name: '인증 코드 발송' }).click();
+    const devCodeLine = p.getByText('개발 모드(SMTP 미설정) — 인증 코드:');
+    await devCodeLine.waitFor({ timeout: 10000 });
+    const devCode = (await devCodeLine.locator('span.mono').innerText()).trim();
+    await p.getByPlaceholder('6자리 숫자').fill(devCode);
+    await p.getByRole('button', { name: '코드 확인' }).click();
+    await p.getByText('이메일 인증 완료 — 이 이메일로 계정이 생성됩니다.').waitFor({ timeout: 8000 });
+    // 비밀번호 + 확인란(불일치면 submit 게이트가 막는다)
+    const pwInputs = p.locator('input[type=password]');
+    await pwInputs.nth(0).fill(INST.password);
+    await pwInputs.nth(1).fill(INST.password);
     await p.getByPlaceholder('010-1234-5678').fill(INST.phone);
     await p.getByPlaceholder('서울대학교').fill(INST.university);
     await p.getByPlaceholder('수학교육과').fill(INST.major);
-    await p.getByPlaceholder('1998').fill(INST.birthYear);
+    await p.getByPlaceholder('000000-0000000').fill(INST.rrn);
     // 신청 역할 select 기본값 = 강사(instructor) — 그대로 둔다.
-    await p.getByRole('button', { name: '가입 신청', exact: true }).click();
+    const submit = p.getByRole('button', { name: '가입 신청', exact: true });
+    if (await submit.isDisabled()) throw new Error('submit 게이트 오류 — 인증·중복·비밀번호 조건 충족인데 비활성');
+    await submit.click();
     await p.getByText('가입 신청 완료').waitFor({ timeout: 15000 });
-    // 완료 화면의 개발 모드 인증 링크(done.devVerifyLink — 화면에 렌더됨) 클릭 → 이메일 인증까지.
-    const link = p.locator('a[href^="/verify-email"]');
-    await link.waitFor({ timeout: 5000 });
-    await link.click();
-    await p.waitForURL(/\/verify-email/, { timeout: 10000 });
-    const ok = p.locator('div.text-success');
-    const err = p.locator('div.text-danger');
-    await ok.or(err).first().waitFor({ timeout: 15000 });
-    if (await err.count()) throw new Error(`이메일 인증 실패: ${(await err.first().innerText()).trim()}`);
+    // [TBO-31] 이메일 인증은 가입 전에 끝났다 — 완료 화면에 인증 링크가 없어야 정상.
+    if (await p.locator('a[href^="/verify-email"]').count()) throw new Error('구 devVerifyLink 잔재 — OTP 가입 전환 위반');
   });
 
   // ── 2. [승인] admin 로그인 → 승인센터 가입 대기에서 방금 계정 승인(강사 역할) ──
