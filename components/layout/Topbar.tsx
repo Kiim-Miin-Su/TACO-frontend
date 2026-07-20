@@ -26,15 +26,13 @@ export default function Topbar() {
 
   const logout = async () => {
     // [TBO-28B] 보안 이벤트 기록(auth_events) — best-effort(실패해도 로그아웃 진행).
-    //  [28F QA 수정] clearToken을 먼저/동기로 실행하면 요청 인터셉터가 토큰을 읽기 전에 지워져
-    //  POST /auth/logout이 401로 미기록됐다 → 기록을 await한 뒤 토큰을 폐기한다.
+    //  backend logout을 먼저 호출해 refresh/access cookie 폐기와 auth_events 기록을 완료한다.
     try { await api.auth.logout(); } catch { /* 백엔드 미기동 등 — 로그아웃은 계속 */ }
     await queryClient.cancelQueries();
     // [E0 storage 감사 2026-07-15] UI 취향 preference(사이드바·캘린더 뷰·최근 국가 등)는 계정 무관
     //  전역 키라 같은 브라우저의 다음 계정에게 잔존한다 — 로그아웃 시 일괄 정리(계정 간 누출 차단).
     resetPreferences();
-    // /logout route handler가 응답에서 cookie를 만료시킨다. 현재 React tree에서 토큰을 먼저 지우면
-    // active observer가 hard navigation 전에 무토큰 보호 API를 재호출할 수 있다.
+    // /logout route handler도 access cookie를 방어적으로 만료시킨 뒤 hard navigation한다.
     window.location.replace('/logout');
   };
 

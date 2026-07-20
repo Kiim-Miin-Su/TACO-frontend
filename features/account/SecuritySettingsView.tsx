@@ -14,13 +14,11 @@ import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Field } from "@/components/ui";
 import { api, type ProfileVerification } from "@/lib/api";
-import { clearToken, currentClaims } from "@/lib/auth";
 import { resetPreferences } from "@/lib/storage/preferences";
 import { useTacoStore } from "@/lib/store";
 // [B6 C2] 쓰기 3종(인증 발송/확인·자격증명 변경)을 중앙 mutation 훅으로 — 수동 api.* 잔재 제거(E1).
 import { useChangeCredentials, useConfirmProfileVerification, useCountries, useCreateProfileVerification } from "@/lib/queries";
 import { roleLabel } from "@/lib/roles";
-import type { AccountRole } from "@/types";
 import { isValidEmailFormat } from "@/lib/domain/profile";
 // [B6 C2] 검증 규칙 단일 소스(lib/validation) — OTP·전화·출생연도·비밀번호 byte 기준.
 import { BIRTH_YEAR_MAX, BIRTH_YEAR_MIN, isValidBirthYear, isValidKrPhone, isValidOtpCode, passwordLengthError } from "@/lib/validation";
@@ -36,16 +34,16 @@ export default function SecuritySettingsView() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const setCurrentAccount = useTacoStore((s) => s.setCurrentAccount);
-  const claims = currentClaims();
-  const forced = claims?.mustChangePassword === true;
-  const myRole = (claims?.roles?.[0] ?? null) as AccountRole | null;
+  const account = useTacoStore((s) => s.currentAccount);
+  const forced = account?.mustChangePassword === true;
+  const myRole = account?.role ?? null;
   const [currentPassword, setCurrentPassword] = useState("");
   const [newWebId, setNewWebId] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   // [E0.5 ⑥ + 2026-07-16 확장] 첫 로그인 강제 변경 — users 수정 가능 컬럼 전부를 한 번에.
   const [profileDraft, setProfileDraft] = useState<ProfileDetailsValues>({
-    name: claims?.name ?? "",
+    name: account?.name ?? "",
     email: "",
     phone: "",
     countryCode: "KR",
@@ -74,7 +72,6 @@ export default function SecuritySettingsView() {
   const emailVerifiedForCurrentTarget = otpVerified && otpTarget === emailNormalized;
 
   function logout() {
-    clearToken();
     setCurrentAccount(null);
     queryClient.clear();
     resetPreferences(); // [E0 storage 감사] 계정 간 취향 preference 누출 차단
@@ -187,7 +184,7 @@ export default function SecuritySettingsView() {
           : {}),
         ...(otp ? { verificationChallengeId: otp.id } : {}),
       });
-      clearToken();
+      try { await api.auth.logout(); } catch { /* authVersion 변경 뒤에도 브라우저 cookie 정리는 best-effort */ }
       setCurrentAccount(null);
       queryClient.clear();
       resetPreferences(); // [E0 storage 감사] 자격증명 변경 후 재로그인 전 정리

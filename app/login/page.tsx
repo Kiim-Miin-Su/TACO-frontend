@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { setToken } from "@/lib/auth";
 import { useTacoStore } from "@/lib/store";
 import { AuthShell, AuthField } from "@/components/auth/AuthShell";
 import type { AccountRole } from "@/types";
@@ -27,10 +26,9 @@ function LoginForm() {
     setErr(null);
     try {
       const res = await api.auth.login({ webId: webId.trim(), password });
-      setToken(res.accessToken);
       const accountRole = res.account.role as AccountRole;
       setCurrentRole(accountRole);
-      setCurrentAccount({ id: res.account.id, name: res.account.name, role: accountRole });
+      setCurrentAccount({ id: res.account.id, name: res.account.name, role: accountRole, mustChangePassword: res.account.mustChangePassword });
       queryClient.clear(); // 로그인 계정/권한 변경 — 이전 역할의 서버 캐시 폐기
       // [2026-07-15 대표 지시 ①] 관리자 계열(승인 권한 보유)은 로그인 직후 승인센터로 —
       //  시범운영에서 대기 결재(가입·수업 변경·프로필)를 놓치지 않게 기본 랜딩을 승인 큐로 둔다.

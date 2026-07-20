@@ -9,7 +9,9 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-백엔드 API는 `next.config.ts`의 rewrites로 `/api/*` → `http://localhost:3001`로 프록시됩니다. 다른 주소면 `.env.local`에 `NEXT_PUBLIC_API_URL` 지정.
+백엔드 API는 `next.config.ts`의 same-origin rewrite로 `/api/*` → `http://localhost:3001`에 전달됩니다.
+다른 주소는 `.env.local`의 server-only `API_URL`로 지정합니다. 브라우저는 backend origin이나 access JWT를
+읽지 않으며 backend-set HttpOnly cookie와 `/auth/me`를 사용합니다.
 
 ## 디자인 시스템
 
@@ -35,8 +37,8 @@ components/
 features/            # 도메인 단위 (확장 지점)
 │  dashboard · schedule · counsel · students · sessions
 │  payments · payouts · expenses · admin · system(BackendPanel)
-lib/                 # api(axios) · store(zustand) · mock/seed · mock/integrity
-│  payroll(시수×시급) · roles(RBAC) · format(결정적) · auth(jwt-decode)
+lib/                 # api(axios same-origin) · store(zustand) · mock/seed · mock/integrity
+│  payroll(시수×시급) · roles(RBAC) · format(결정적)
 types/               # @kms545487/contracts 재노출(단일 소스)
 ```
 

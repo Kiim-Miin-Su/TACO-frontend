@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { currentClaims, getToken } from "@/lib/auth";
 import { resolveBackofficeRole } from "@/lib/access-control";
 import { useTacoStore } from "@/lib/store";
 
@@ -19,19 +18,11 @@ export function useAuthoritativeAccess(pathname: string, publicRoute: boolean): 
   const setCurrentRole = useTacoStore((state) => state.setCurrentRole);
   const setCurrentAccount = useTacoStore((state) => state.setCurrentAccount);
   const [mode, setMode] = useState<AccessMode>("loading");
-  const verifiedToken = useRef<string | null>(null);
   const verifiedClaims = useRef<VerifiedClaims | null>(null);
 
   useEffect(() => {
     if (publicRoute) {
       setMode("loading");
-      return;
-    }
-
-    const token = getToken();
-    if (!token || !currentClaims()) {
-      setMode("loading");
-      router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
       return;
     }
 
@@ -44,13 +35,13 @@ export function useAuthoritativeAccess(pathname: string, publicRoute: boolean): 
         return;
       }
       setCurrentRole(role);
-      setCurrentAccount({ id: claims.sub, name: claims.name, role });
+      setCurrentAccount({ id: claims.sub, name: claims.name, role, mustChangePassword: claims.mustChangePassword === true });
       const locked = claims.mustChangePassword === true;
       setMode(locked ? "locked" : "open");
       if (locked && pathname !== "/account/security") router.replace("/account/security");
     };
 
-    if (verifiedToken.current === token && verifiedClaims.current) {
+    if (verifiedClaims.current) {
       apply(verifiedClaims.current);
       return;
     }
@@ -59,7 +50,6 @@ export function useAuthoritativeAccess(pathname: string, publicRoute: boolean): 
     api.auth.me()
       .then((claims) => {
         if (!alive) return;
-        verifiedToken.current = token;
         verifiedClaims.current = claims;
         apply(claims);
       })

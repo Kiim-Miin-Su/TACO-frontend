@@ -1,10 +1,9 @@
 // 백엔드(NestJS) REST 클라이언트 — Axios.
-// baseURL = `${NEXT_PUBLIC_API_URL}/api`. 로컬은 미설정 시 next.config rewrites가 localhost로 프록시,
-// 배포(Vercel)는 NEXT_PUBLIC_API_URL을 백엔드 도메인으로 지정하면 직접 호출(백엔드 CORS 허용).
+// 브라우저는 항상 same-origin `/api`만 호출한다. next.config rewrite가 server-side로 backend에 전달해
+// HttpOnly session cookie가 frontend origin에 귀속되고 cross-origin token 노출을 없앤다.
 import axios, { type AxiosRequestConfig } from "axios";
 import { logger } from "./log";
 import { safeLogValue, safeUrlForLog } from "./log-redaction";
-import { getToken, clearToken, setToken } from "./auth";
 import { isPublicRoute } from "./auth-routes";
 import { resetPreferences } from "./storage/preferences";
 import type {
@@ -200,31 +199,26 @@ export type LedgerTx = {
   amount: number; occurredAt: string; payoutId?: number;
 };
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 export type ApiReadOptions = Pick<AxiosRequestConfig, "signal">;
 
 export const http = axios.create({
-  baseURL: `${BASE}/api`,
+  baseURL: "/api",
   headers: { "Content-Type": "application/json" },
   timeout: 10000,
-  // [대표 지시 ④ 2026-07-16] refresh token은 httpOnly 쿠키로만 운반 — 교차 출처(BE 직접 호출)에서도
-  //  쿠키가 동봉되도록 credentials 활성(BE CORS는 origin 반사+credentials:true).
+  // access/refresh token은 HttpOnly cookie로만 운반한다. same-origin BFF 요청에도 credentials를 명시해
+  // 브라우저 정책과 테스트 adapter에서 cookie 동봉 의도를 고정한다.
   withCredentials: true,
 });
 
-// [대표 지시 ④] access token 만료(401) 시 조용한 갱신 — 단일 비행(single-flight) refresh 후 원 요청
-//  1회 재시도. 갱신 실패(=refresh도 만료/폐기)면 기존 만료 리다이렉트 경로로 넘어간다.
-//  ⚠ 재귀 방지: refresh 호출은 인터셉터 없는 bare axios로.
-let refreshInFlight: Promise<string | null> | null = null;
-function refreshAccessToken(): Promise<string | null> {
+// [TBO-34 C1] access cookie 만료(401) 시 HttpOnly refresh cookie를 회전해 새 access cookie를 받는다.
+// raw token은 JavaScript 응답/상태에 존재하지 않는다. 단일 비행 후 원 요청을 cookie로 1회 재시도한다.
+let refreshInFlight: Promise<boolean> | null = null;
+function refreshAccessToken(): Promise<boolean> {
   if (!refreshInFlight) {
     refreshInFlight = axios
-      .post<{ accessToken: string }>(`${BASE}/api/auth/refresh`, {}, { withCredentials: true, timeout: 10000 })
-      .then((r) => {
-        setToken(r.data.accessToken);
-        return r.data.accessToken;
-      })
-      .catch(() => null)
+      .post("/api/auth/refresh", {}, { withCredentials: true, timeout: 10000 })
+      .then(() => true)
+      .catch(() => false)
       .finally(() => { refreshInFlight = null; });
   }
   return refreshInFlight;
@@ -241,9 +235,6 @@ type MetaConfig = { meta?: { seq: number; start: number } };
 
 http.interceptors.request.use((cfg) => {
   (cfg as unknown as MetaConfig).meta = { seq: ++reqSeq, start: Date.now() };
-  // 로그인 토큰이 있으면 모든 요청에 Bearer로 첨부 → 백엔드 RBAC 가드 대비(권한 체크 일관).
-  const token = getToken();
-  if (token) cfg.headers.Authorization = `Bearer ${token}`;
   apiLog.debug(`→ ${cfg.method?.toUpperCase()} ${safeUrlForLog(cfg.url)}`, safeLogValue(cfg.params ?? cfg.data ?? ""));
   return cfg;
 });
@@ -273,7 +264,6 @@ http.interceptors.response.use(
       const renewed = await refreshAccessToken();
       if (renewed) {
         cfg._retried = true;
-        cfg.headers = { ...(cfg.headers as object), Authorization: `Bearer ${renewed}` } as never;
         return http.request(cfg);
       }
     }
@@ -287,7 +277,6 @@ http.interceptors.response.use(
       !expiredRedirectStarted
     ) {
       expiredRedirectStarted = true;
-      clearToken();
       resetPreferences(); // [E0 storage 감사] 세션 만료 경로도 취향 preference 정리(계정 간 누출 차단)
       window.location.assign("/login?expired=1");
     }
@@ -296,7 +285,7 @@ http.interceptors.response.use(
 );
 
 export type LoginBody = { webId: string; password?: string };
-export type LoginResult = { accessToken: string; account: { id: number; name: string; role: string; mustChangePassword: boolean } };
+export type LoginResult = { account: { id: number; name: string; role: string; mustChangePassword: boolean } };
 // [E0.5 ⑥] name/email/phone은 첫 로그인 강제 변경(must_change_password)에서만 서버가 허용 —
 //  평시 프로필 변경은 마이 페이지 인증/승인 경로(29B-4)를 지난다.
 // [E0] newWebId도 강제 변경 흐름 전용(평시 아이디 변경 = 승인제). 평시 비밀번호 변경은
@@ -413,12 +402,11 @@ export type UserProfileSummary = Omit<MyProfile, "profileVersion"> & {
   updatedAt?: string;
 };
 
-// [통신 감사 2026-07-03] Authorization은 요청 인터셉터(getToken)가 전 요청에 단일 부착 —
-//  이전의 수동 authHeader(token)는 인터셉터가 덮어써 사실상 무시되던 이중 소스라 제거(통일).
+// [TBO-34 C1] 인증은 backend-set HttpOnly cookie 단일 소스. Bearer 조립/토큰 decode를 금지한다.
 export const api = {
   health: () => http.get<{ status: string; service: string; ts: string }>("/health").then((r) => r.data),
   auth: {
-    // 로그인 — webId+비밀번호(해시 검증) → 토큰 발급
+    // 로그인 — webId+비밀번호 검증 → HttpOnly access/refresh cookie + 안전한 account projection
     login: (body: LoginBody) => http.post<LoginResult>("/auth/login", body).then((r) => r.data),
     // 가입 신청(대표 승인 대기) — [TBO-31 C2] 이메일 OTP challenge 소비, emailVerified=true 생성.
     signup: (body: SignupBody) => http.post<SignupResult>("/auth/signup", body).then((r) => r.data),
