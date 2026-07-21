@@ -7,7 +7,7 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import { Badge, DetailStates, EmptyState, PageHeader, SectionCard, StatCard, TableWrap, type Tone } from '@/components/ui';
 import {
-  useCourse, useSubjects, useInstructors, useEnrollments, useStudents,
+  useCourse, useSubjects, useInstructorAdminList, useEnrollments, useStudents,
   useSchedule, useRoadmaps, useRoadmapCourses,
 } from '@/lib/queries';
 import { won, shortDate } from '@/lib/format';
@@ -23,7 +23,7 @@ export function CourseDetailView({ courseId }: { courseId: number }) {
   const courseQuery = useCourse(courseId);
   // 과목·강사 이름 조인: 코스 단건 응답은 raw Course(이름 필드 없음) → 카탈로그 훅 유지.
   const { data: subjects = [] } = useSubjects();
-  const { data: instructors = [] } = useInstructors();
+  const { data: instructors = [] } = useInstructorAdminList();
   const { data: enrollments = [] } = useEnrollments();
   const { data: students = [] } = useStudents();
   const { data: sessions = [] } = useSchedule();
@@ -55,7 +55,7 @@ export function CourseDetailView({ courseId }: { courseId: number }) {
                 <Link href="/admin/courses" className="text-caption text-fg-muted hover:underline">← 코스 카탈로그</Link>
                 <PageHeader
                   title={course.name}
-                  sub={[subjects.find((s) => s.id === course.subjectId)?.name, `강사 ${instructors.find((i) => i.id === course.instructorId)?.name ?? '—'}`, `정가 ${won(course.price)}`, `시급 ${won(course.hourlyRate)}`].filter(Boolean).join(' · ')}
+                  sub={[subjects.find((s) => s.id === course.subjectId)?.name, `강사 ${instructors.find((i) => i.id === course.instructorId)?.name ?? '—'}`, `정가 ${won(course.price)}`, `시급 ${won(course.hourlyRate)} (${course.hourlyRateOverride == null ? '강사 기본' : '수업 override'})`, course.isKinder ? 'Kinder' : null].filter(Boolean).join(' · ')}
                   actions={course.color && <span className="inline-block w-4 h-4 rounded-full" style={{ background: course.color }} />}
                 />
               </div>

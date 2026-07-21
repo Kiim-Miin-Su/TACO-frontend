@@ -6,7 +6,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ClickableTableRow, ConfirmModal, SectionCard, EmptyState, LoadingState, TableWrap } from '@/components/ui';
-import { useCourses, useSubjects, useInstructors, useCreateCourse, useCreateSubject, useRemoveCourse, useRemoveSubject } from '@/lib/queries';
+import { useCourses, useSubjects, useInstructorAdminList, useCreateCourse, useCreateSubject, useRemoveCourse, useRemoveSubject } from '@/lib/queries';
 import { won } from '@/lib/format';
 import { AdminGuard, AdminHeader } from './AdminShell';
 import { Field } from '@/components/ui';
@@ -14,11 +14,12 @@ import { Field } from '@/components/ui';
 import { RoomManagerPanel } from '@/features/rooms/RoomManagerPanel';
 import { CourseEditModal, SubjectEditModal } from './CatalogEditModals';
 import type { Course, Subject } from '@/types';
+import { CoursePayFields, type CoursePayForm } from './courses/CoursePayFields';
 
 export function CoursesView() {
   const { data: subjects = [] } = useSubjects();
   const { data: courses = [], isPending: loading } = useCourses(); // [E0.6 H2]
-  const { data: instructors = [] } = useInstructors();
+  const { data: instructors = [] } = useInstructorAdminList();
   const removeCourse = useRemoveCourse();
   const removeSubject = useRemoveSubject();
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
@@ -45,7 +46,7 @@ export function CoursesView() {
           ) : (
           <TableWrap>
           <table className="table">
-            <thead><tr><th>코스</th><th>과목</th><th>강사</th><th className="text-right">정가</th><th className="text-right">관리</th></tr></thead>
+            <thead><tr><th>코스</th><th>과목</th><th>강사</th><th>수업 시급</th><th>Kinder</th><th className="text-right">정가</th><th className="text-right">관리</th></tr></thead>
             <tbody>
               {courses.map((c) => (
                 <ClickableTableRow key={c.id} href={`/admin/courses/${c.id}`} label={`${c.name} 코스 상세`}>
@@ -56,6 +57,8 @@ export function CoursesView() {
                   </td>
                   <td className="text-fg-muted">{subjectNames.get(c.subjectId) ?? '—'}</td>
                   <td className="text-fg-muted">{instructorNames.get(c.instructorId) ?? '—'}</td>
+                  <td className="mono">{won(c.hourlyRate)} <span className="text-micro text-fg-subtle">{c.hourlyRateOverride == null ? '기본' : 'override'}</span></td>
+                  <td>{c.isKinder ? '예' : '아니오'}</td>
                   <td className="text-right mono">{won(c.price)}</td>
                   <td className="text-right whitespace-nowrap">
                     <button className="btn btn-sm mr-1.5" onClick={() => setEditingCourse(c)}>수정</button>
@@ -122,13 +125,13 @@ const COURSE_PALETTE = ['#0969da', '#1a7f37', '#8250df', '#bf3989', '#9a6700', '
 
 function CourseForm() {
   const { data: subjects = [] } = useSubjects();
-  const { data: instructors = [] } = useInstructors();
+  const { data: instructors = [] } = useInstructorAdminList();
   const addCourse = useCreateCourse();
   const [name, setName] = useState('');
   const [subjectId, setSubjectId] = useState('');
   const [instructorId, setInstructorId] = useState('');
   const [price, setPrice] = useState('');
-  const [hourlyRate, setHourlyRate] = useState('');
+  const [pay, setPay] = useState<CoursePayForm>({ hourlyRateOverride: '', isKinder: false });
   const [color, setColor] = useState<string>(COURSE_PALETTE[0]);
   // [E0.6 M 2026-07-16] 종전엔 필수 미입력 시 조용히 return, 서버 실패도 무통보 — 인라인 검증+실패 표시.
   const [formError, setFormError] = useState<string | null>(null);
@@ -142,10 +145,13 @@ function CourseForm() {
     addCourse.mutate(
       {
         name: name.trim(), subjectId: Number(subjectId), instructorId: Number(instructorId),
-        price: Number(price) || 0, hourlyRate: Number(hourlyRate) || 0, color,
+        price: Number(price) || 0,
+        hourlyRateOverride: pay.hourlyRateOverride ? Number(pay.hourlyRateOverride) : null,
+        isKinder: pay.isKinder,
+        color,
       },
       {
-        onSuccess: () => { setName(''); setSubjectId(''); setInstructorId(''); setPrice(''); setHourlyRate(''); setColor(COURSE_PALETTE[0]); },
+        onSuccess: () => { setName(''); setSubjectId(''); setInstructorId(''); setPrice(''); setPay({ hourlyRateOverride: '', isKinder: false }); setColor(COURSE_PALETTE[0]); },
         onError: (caught) => {
           const msg = (caught as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
           setFormError(Array.isArray(msg) ? msg.join(' ') : msg ?? '코스를 추가하지 못했습니다. 다시 시도해 주세요.');
@@ -158,7 +164,7 @@ function CourseForm() {
     <form onSubmit={submit} className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field label="코스명 *"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="SAT Reading 정규" /></Field>
       <Field label="정가(원)"><input className="input" type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="480000" /></Field>
-      <Field label="강사 시급(원/시간)"><input className="input" type="number" min={0} value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} placeholder="50000" /></Field>
+      <CoursePayFields value={pay} instructor={instructors.find((row) => row.id === Number(instructorId))} onChange={setPay} />
       <Field label="과목 *">
         <select className="input" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
           <option value="">선택</option>

@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { Field, ModalShell } from '@/components/ui';
 import { useUpdateCourse, useUpdateSubject } from '@/lib/queries';
 import type { Course, Subject } from '@/types';
+import { CoursePayFields, type CoursePayForm } from './courses/CoursePayFields';
 
-type InstructorOption = { id: number; name: string };
+type InstructorOption = { id: number; name: string; defaultHourlyRate: number; canTeachKinder: boolean };
 
 const messageOf = (caught: unknown, fallback: string): string => {
   const message = (caught as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
@@ -26,12 +27,16 @@ export function CourseEditModal({
     subjectId: String(course.subjectId),
     instructorId: String(course.instructorId),
     price: String(course.price),
-    hourlyRate: String(course.hourlyRate),
     color: course.color ?? '',
+  });
+  const [pay, setPay] = useState<CoursePayForm>({
+    hourlyRateOverride: course.hourlyRateOverride == null ? '' : String(course.hourlyRateOverride),
+    isKinder: course.isKinder,
   });
   const [error, setError] = useState<string | null>(null);
   const invalid = !form.name.trim() || !form.subjectId || !form.instructorId
-    || Number(form.price) < 0 || Number(form.hourlyRate) < 0;
+    || Number(form.price) < 0 || Number(pay.hourlyRateOverride || 0) < 0
+    || (pay.isKinder && !instructors.find((row) => row.id === Number(form.instructorId))?.canTeachKinder);
 
   const save = () => {
     if (invalid || update.isPending) return;
@@ -43,7 +48,8 @@ export function CourseEditModal({
         subjectId: Number(form.subjectId),
         instructorId: Number(form.instructorId),
         price: Number(form.price) || 0,
-        hourlyRate: Number(form.hourlyRate) || 0,
+        hourlyRateOverride: pay.hourlyRateOverride ? Number(pay.hourlyRateOverride) : null,
+        isKinder: pay.isKinder,
         color: form.color.trim() || undefined,
       },
     }, {
@@ -74,7 +80,7 @@ export function CourseEditModal({
           </select>
         </Field>
         <Field label="정가(원)"><input className="input" type="number" min={0} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></Field>
-        <Field label="강사 시급(원/시간)"><input className="input" type="number" min={0} value={form.hourlyRate} onChange={(e) => setForm({ ...form, hourlyRate: e.target.value })} /></Field>
+        <CoursePayFields value={pay} instructor={instructors.find((row) => row.id === Number(form.instructorId))} onChange={setPay} />
         <Field label="색상"><input className="input" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} placeholder="#0969da" /></Field>
         {error && <p className="sm:col-span-2 text-caption text-danger" role="alert">{error}</p>}
       </div>

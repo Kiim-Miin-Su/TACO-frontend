@@ -9,6 +9,7 @@ import { qk } from "@/lib/queryKeys";
 import {
   invalidateCalendarCommand,
   invalidateInstructorAggregate,
+  invalidateCourseAggregate,
   invalidateStudentAggregate,
   invalidateScheduleRequests,
   refreshScheduleRequestLifecycle,
@@ -377,11 +378,20 @@ function useInvalidator(keys: QueryKey[]) {
 }
 
 // 카탈로그
-export const useCreateCourse = () => useMutation({ mutationFn: api.courses.create, onSuccess: useInvalidator([qk.courses.all]) });
+export const useCreateCourse = () => {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: api.courses.create, onSuccess: () => invalidateCourseAggregate(queryClient) });
+};
 export const useCreateSubject = () => useMutation({ mutationFn: api.subjects.create, onSuccess: useInvalidator([qk.subjects.all]) });
 export const useUpdateCourse = () =>
-  useMutation({ mutationFn: (v: { id: number; patch: Parameters<typeof api.courses.update>[1] }) => api.courses.update(v.id, v.patch), onSuccess: useInvalidator([qk.courses.all]) });
-export const useRemoveCourse = () => useMutation({ mutationFn: api.courses.remove, onSuccess: useInvalidator([qk.courses.all]) });
+  {
+    const queryClient = useQueryClient();
+    return useMutation({ mutationFn: (v: { id: number; patch: Parameters<typeof api.courses.update>[1] }) => api.courses.update(v.id, v.patch), onSuccess: () => invalidateCourseAggregate(queryClient) });
+  };
+export const useRemoveCourse = () => {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: api.courses.remove, onSuccess: () => invalidateCourseAggregate(queryClient) });
+};
 export const useUpdateSubject = () =>
   useMutation({ mutationFn: (v: { id: number; patch: Parameters<typeof api.subjects.update>[1] }) => api.subjects.update(v.id, v.patch), onSuccess: useInvalidator([qk.subjects.all]) });
 export const useRemoveSubject = () => useMutation({ mutationFn: api.subjects.remove, onSuccess: useInvalidator([qk.subjects.all]) });

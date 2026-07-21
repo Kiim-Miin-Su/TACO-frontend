@@ -72,6 +72,16 @@ export async function invalidateInstructorAggregate(queryClient: QueryClient): P
   );
 }
 
+export const COURSE_AGGREGATE_SCOPES = [qk.courses.all, qk.schedule.all, qk.payouts.all] as const;
+
+export async function invalidateCourseAggregate(queryClient: QueryClient): Promise<void> {
+  await Promise.all(
+    COURSE_AGGREGATE_SCOPES.map((key) =>
+      queryClient.invalidateQueries({ queryKey: key as unknown as readonly unknown[], refetchType: "active" }),
+    ),
+  );
+}
+
 /** @deprecated [C4] invalidateCalendarCommand로 통일 — 부분 무효화 편차 방지를 위해 위임만 남긴다. */
 export async function invalidateScheduleLifecycle(queryClient: QueryClient): Promise<void> {
   await invalidateCalendarCommand(queryClient);
