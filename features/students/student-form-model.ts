@@ -98,7 +98,7 @@ export function validateStudentForm(profile: StudentProfileFormValue, interests:
   if (!profile.gender) errors.gender = '성별을 선택해 주세요.';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(profile.birthDate)) errors.birthDate = '생년월일을 선택해 주세요.';
   if (!profile.grade || Number(profile.grade) < 1 || Number(profile.grade) > 12) errors.grade = '학년은 1~12 사이여야 합니다.';
-  if (!profile.country.trim()) errors.country = '거주 국가를 선택해 주세요.';
+  if (!/^[A-Z]{2}$/.test(profile.country)) errors.country = '거주 국가는 ISO 2자리 국가 코드여야 합니다.';
   if (!profile.address.trim()) errors.address = '현 거주지를 입력해 주세요.';
   if (!profile.schoolName.trim()) errors.schoolName = '재학 학교를 입력해 주세요.';
   if (!profile.phone.trim()) errors.phone = '학생 연락처를 입력해 주세요.';

@@ -7,6 +7,7 @@ import type { StudentStatus } from '@/types';
 import type { StudentFormErrors, StudentProfileFormValue } from './student-form-model';
 
 const STATUSES = Object.keys(STUDENT_STATUS_LABEL) as StudentStatus[];
+const STUDENT_COUNTRIES = COUNTRIES.filter((country) => /^[A-Z]{2}$/.test(country.code));
 
 type StudentProfileFieldsProps = {
   value: StudentProfileFormValue;
@@ -33,7 +34,7 @@ export function StudentProfileFields({ value, onChange, errors = {}, showStatus 
       <Field label="학년 *"><input className="input" type="number" min={1} max={12} value={value.grade} onChange={input('grade')} aria-invalid={!!errors.grade} />{errors.grade && <FieldError>{errors.grade}</FieldError>}</Field>
       <Field label="거주 국가 *">
         <select className="input" value={value.country} onChange={(event) => onChange({ country: event.target.value })} aria-invalid={!!errors.country}>
-          {COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.flag} {country.name}</option>)}
+          {STUDENT_COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.flag} {country.name}</option>)}
         </select>
         {errors.country && <FieldError>{errors.country}</FieldError>}
       </Field>

@@ -34,6 +34,7 @@ describe('student aggregate form SSOT', () => {
     const errors = validateStudentForm({ ...profile, country: 'US', kakaoId: '' }, [interests[0]], guardians);
     expect(errors).toMatchObject({ kakaoId: expect.any(String), interests: expect.any(String), guardians: expect.any(String) });
     expect(validateStudentForm(profile, [interests[0], { ...interests[0], clientId: 'duplicate' }]).interests).toContain('중복');
+    expect(validateStudentForm({ ...profile, country: 'US-W', kakaoId: 'west' }, interests).country).toContain('2자리');
   });
 
   it('주보호자 미선택 시 첫 행만 대표로 정규화하고 stable client id는 payload에 저장하지 않는다', () => {
