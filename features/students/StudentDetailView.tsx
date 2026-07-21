@@ -12,7 +12,7 @@ import {
   useAttendance, useReports, usePayments, useCounselForms,
 } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
-import { STUDENT_STATUS_LABEL, STUDENT_STATUS_TONE } from '@/lib/domain/students';
+import { studentGradeLabel, STUDENT_STATUS_LABEL, STUDENT_STATUS_TONE } from '@/lib/domain/students';
 import { won, shortDate, dateOnly } from '@/lib/format';
 import { CountryBadge } from '@/features/calendar/CountryInput';
 import { statusLabel as payLabel, statusTone as payTone } from '@/features/payments/labels';
@@ -64,7 +64,7 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
               <Link href="/students" className="text-caption text-fg-muted hover:underline">← 학생 목록</Link>
               <PageHeader
                 title={`${student.name}${student.englishName ? ` (${student.englishName})` : ''}`}
-                sub={[student.grade != null ? `${student.grade}학년` : null, student.schoolName, student.phone, student.webId ? `ID ${student.webId}` : '미가입']
+                sub={[studentGradeLabel(student.grade), student.schoolName, student.phone, student.webId ? `ID ${student.webId}` : '미가입']
                   .filter(Boolean).join(' · ')}
                 actions={
                   <span className="flex items-center gap-2 flex-wrap">
@@ -81,7 +81,7 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
               <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-body">
                 <ProfileItem label="성별" value={genderLabel(student.gender)} />
                 <ProfileItem label="생년월일" value={dateOnly(student.birthDate)} />
-                <ProfileItem label="학년" value={student.grade == null ? '—' : `${student.grade}학년`} />
+                <ProfileItem label="학년" value={studentGradeLabel(student.grade)} />
                 <ProfileItem label="현 거주지" value={[student.address, student.addressDetail].filter(Boolean).join(' ') || '—'} />
                 <ProfileItem label="재학 학교" value={student.schoolName ?? '—'} />
                 <ProfileItem label="연락처" value={student.phone ?? '—'} />

@@ -6,7 +6,7 @@
 import type { ScheduleResource, ScheduleRow } from "@/types";
 import { useStudents, useInstructors } from "@/lib/queries";
 import { CountryBadge } from "./CountryInput";
-import { STUDENT_STATUS_LABEL } from "@/lib/domain/students";
+import { studentGradeLabel, STUDENT_STATUS_LABEL } from "@/lib/domain/students";
 
 export function ParticipantsCard({
   row, picked, onPick,
@@ -54,7 +54,7 @@ export function ParticipantsCard({
             st ? (
               <span className="inline-flex items-center gap-1">
                 <CountryBadge code={st.country} />
-                {st.grade != null && <span>{st.grade}학년</span>}
+                {st.grade != null && <span>{studentGradeLabel(st.grade)}</span>}
                 <span style={{ color: st.status !== "enrolled" ? "var(--color-attention)" : undefined }}>
                   {STUDENT_STATUS_LABEL[st.status] ?? st.status}
                 </span>

@@ -9,7 +9,8 @@ import type { ScheduleResource, Student } from "@/types";
 import { useStudents, useEnrollments, useCourses, useUpdateStudent } from "@/lib/queries";
 import { COUNTRIES } from "@/lib/domain/tz";
 import { CountryBadge } from "./CountryInput";
-import { STUDENT_STATUS_LABEL as STATUS_LABEL, activeCourseNamesOf } from "@/lib/domain/students"; // 라벨·수강 코스 단일 소스
+import { STUDENT_STATUS_LABEL as STATUS_LABEL, activeCourseNamesOf, isKinderAge, studentGradeLabel } from "@/lib/domain/students"; // 라벨·수강 코스 단일 소스
+import { StudentGradeField } from "@/features/students/StudentGradeField";
 
 
 export function ResourceDetailCard({
@@ -48,7 +49,7 @@ export function ResourceDetailCard({
     selected.type === "student" ? students.find((s) => Number(s.id) === Number(selected.id)) : undefined;
 
   // 편집 폼(학생) — 선택 변경 시 서버 값으로 리셋
-  const [f, setF] = useState({ country: "KR", residenceType: "domestic", status: "new_inquiry", grade: "", phone: "" });
+  const [f, setF] = useState({ country: "KR", residenceType: "domestic", status: "new_inquiry", birthDate: "", grade: "", phone: "" });
   const [editing, setEditing] = useState(false);
   useEffect(() => {
     setEditing(false);
@@ -57,10 +58,11 @@ export function ResourceDetailCard({
         country: (student.country ?? "KR").toUpperCase(),
         residenceType: student.residenceType ?? "domestic",
         status: student.status,
+        birthDate: student.birthDate ?? "",
         grade: student.grade != null ? String(student.grade) : "",
         phone: student.phone ?? "",
       });
-  }, [student?.id, student?.country, student?.residenceType, student?.status, student?.grade, student?.phone]);
+  }, [student?.id, student?.country, student?.residenceType, student?.status, student?.birthDate, student?.grade, student?.phone]);
 
   if (selected.type === "instructor" || selected.type === "room") {
     return (
@@ -80,6 +82,8 @@ export function ResourceDetailCard({
   const myCourses = activeCourseNamesOf(Number(student.id), enrollments, courses);
 
   const save = () => {
+    if (!f.birthDate) { onMsg('생년월일을 입력해 주세요'); return; }
+    if (f.grade === '0' && !isKinderAge(f.birthDate)) { onMsg('Kinder는 생년월일 기준 만 3~7세만 선택할 수 있습니다'); return; }
     updateStudent.mutate(
       {
         id: Number(student.id),
@@ -87,6 +91,7 @@ export function ResourceDetailCard({
           country: f.country.split("-")[0], // US-W 표시 변형 → 저장은 US
           residenceType: f.residenceType as Student["residenceType"],
           status: f.status as Student["status"],
+          birthDate: f.birthDate,
           grade: f.grade ? Number(f.grade) : undefined,
           phone: f.phone || undefined,
         },
@@ -123,8 +128,10 @@ export function ResourceDetailCard({
           <dd><CountryBadge code={student.country} showName /> {student.residenceType === "overseas" && <span className="badge text-[10px]">해외 거주</span>}</dd>
           <dt className="text-fg-muted">상태</dt>
           <dd>{STATUS_LABEL[student.status] ?? student.status}</dd>
+          <dt className="text-fg-muted">생년월일</dt>
+          <dd>{student.birthDate ?? "—"}</dd>
           <dt className="text-fg-muted">학년</dt>
-          <dd>{student.grade ?? "—"}</dd>
+          <dd>{studentGradeLabel(student.grade)}</dd>
           <dt className="text-fg-muted">수강</dt>
           <dd>{myCourses.length ? myCourses.join(", ") : "—"}</dd>
         </dl>
@@ -150,9 +157,10 @@ export function ResourceDetailCard({
                 {Object.entries(STATUS_LABEL).map(([v, l]) => (<option key={v} value={v}>{l}</option>))}
               </select>
             </label>
+            <StudentGradeField compact value={f.grade} onChange={(grade) => setF({ ...f, grade })} />
             <label className="block">
-              <span className="text-micro text-fg-muted">학년</span>
-              <input className="input h-7 w-full text-caption" type="number" min={1} max={12} value={f.grade} onChange={(e) => setF({ ...f, grade: e.target.value })} />
+              <span className="text-micro text-fg-muted">생년월일</span>
+              <input className="input h-7 w-full text-caption" type="date" value={f.birthDate} onChange={(e) => setF({ ...f, birthDate: e.target.value })} />
             </label>
             <label className="block">
               <span className="text-micro text-fg-muted">연락처</span>

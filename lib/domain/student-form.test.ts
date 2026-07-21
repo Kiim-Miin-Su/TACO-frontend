@@ -8,6 +8,7 @@ import {
   type InterestFormValue,
   type StudentProfileFormValue,
 } from '@/features/students/student-form-model';
+import { dateInTimeZone, studentAgeOn, studentGradeLabel } from '@/lib/domain/students';
 
 const profile: StudentProfileFormValue = {
   name: '고은성', englishName: '', gender: 'male', birthDate: '2012-07-16', grade: '8', country: 'KR',
@@ -46,5 +47,17 @@ describe('student aggregate form SSOT', () => {
       { name: '보호자1', relation: '모', isPayer: true, isPrimary: true },
       { name: '보호자2', relation: '부', isPayer: false, isPrimary: false },
     ]);
+  });
+
+  it('Kinder=0을 허용하고 생년월일 기준 만 3~7세 밖 선택을 차단한다', () => {
+    const [year, month, day] = dateInTimeZone().split('-').map(Number);
+    const birthday = (age: number) => `${year - age}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    expect(validateStudentForm({ ...profile, grade: '0', birthDate: birthday(3) }, interests).grade).toBeUndefined();
+    expect(validateStudentForm({ ...profile, grade: '0', birthDate: birthday(7) }, interests).grade).toBeUndefined();
+    expect(validateStudentForm({ ...profile, grade: '0', birthDate: birthday(2) }, interests).grade).toContain('3~7세');
+    expect(validateStudentForm({ ...profile, grade: '0', birthDate: birthday(8) }, interests).grade).toContain('3~7세');
+    expect(studentAgeOn('2020-07-22', '2026-07-21')).toBe(5);
+    expect(studentGradeLabel(0)).toBe('Kinder');
+    expect(studentGradeLabel(12)).toBe('G12');
   });
 });

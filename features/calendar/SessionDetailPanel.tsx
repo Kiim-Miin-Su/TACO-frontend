@@ -14,7 +14,7 @@ import { SessionEditFields } from "./SessionEditFields";
 // [피드백 2026-07-03] 스케줄 선택 시 참여 학생·강사 정보 동시 표시 — 캐시 공유 훅(중복 fetch 0)
 import { useStudents, useInstructors } from "@/lib/queries";
 import { CountryBadge } from "./CountryInput";
-import { STUDENT_STATUS_LABEL } from "@/lib/domain/students";
+import { studentGradeLabel, STUDENT_STATUS_LABEL } from "@/lib/domain/students";
 import { ChangeHistory } from "./ChangeHistory"; // [R-6] 변경 이력(audit) — 관리자
 
 export function SessionDetailPanel({
@@ -121,7 +121,7 @@ export function SessionDetailPanel({
                       {st && (
                         <span className="text-micro text-fg-subtle inline-flex items-center gap-1">
                           <CountryBadge code={st.country} />
-                          {st.grade != null && <span>{st.grade}학년</span>}
+                          {st.grade != null && <span>{studentGradeLabel(st.grade)}</span>}
                           <span style={{ color: st.status !== "enrolled" ? "var(--color-attention)" : undefined }}>
                             {STUDENT_STATUS_LABEL[st.status] ?? st.status}
                           </span>

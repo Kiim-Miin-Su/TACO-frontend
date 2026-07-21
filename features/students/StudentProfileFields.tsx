@@ -5,6 +5,7 @@ import { COUNTRIES } from '@/lib/domain/tz';
 import { STUDENT_STATUS_LABEL } from '@/lib/domain/students';
 import type { StudentStatus } from '@/types';
 import type { StudentFormErrors, StudentProfileFormValue } from './student-form-model';
+import { StudentGradeField } from './StudentGradeField';
 
 const STATUSES = Object.keys(STUDENT_STATUS_LABEL) as StudentStatus[];
 const STUDENT_COUNTRIES = COUNTRIES.filter((country) => /^[A-Z]{2}$/.test(country.code));
@@ -31,7 +32,7 @@ export function StudentProfileFields({ value, onChange, errors = {}, showStatus 
         {errors.gender && <FieldError>{errors.gender}</FieldError>}
       </Field>
       <Field label="생년월일 *"><input className="input" type="date" value={value.birthDate} onChange={input('birthDate')} aria-invalid={!!errors.birthDate} />{errors.birthDate && <FieldError>{errors.birthDate}</FieldError>}</Field>
-      <Field label="학년 *"><input className="input" type="number" min={1} max={12} value={value.grade} onChange={input('grade')} aria-invalid={!!errors.grade} />{errors.grade && <FieldError>{errors.grade}</FieldError>}</Field>
+      <StudentGradeField value={value.grade} onChange={(grade) => onChange({ grade })} error={errors.grade} />
       <Field label="거주 국가 *">
         <select className="input" value={value.country} onChange={(event) => onChange({ country: event.target.value })} aria-invalid={!!errors.country}>
           {STUDENT_COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.flag} {country.name}</option>)}

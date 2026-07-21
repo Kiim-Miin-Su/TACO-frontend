@@ -6,7 +6,7 @@ import Link from "next/link";
 // [B6 C3 2026-07-16] 행 전체 클릭 = 학생 상세(ClickableTableRow href) — 퇴원 버튼은 중첩 제외로 안전.
 import { Badge, ClickableTableRow, ConfirmModal, EmptyState, LoadingState, PageHeader, SectionCard, StatusDot, TableWrap, type Tone } from "@/components/ui";
 import { useStudents, useEnrollments, useCourses, useParentStudents, useParents, useRemoveStudent } from "@/lib/queries";
-import { isActiveStudent, activeCourseNamesOf, STUDENT_STATUS_LABEL as label, STUDENT_STATUS_TONE } from "@/lib/domain/students";
+import { isActiveStudent, activeCourseNamesOf, studentGradeLabel, STUDENT_STATUS_LABEL as label, STUDENT_STATUS_TONE } from "@/lib/domain/students";
 import { CountryBadge } from "@/features/calendar/CountryInput";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import type { Student } from "@/types";
@@ -114,7 +114,7 @@ export function StudentsView() {
                       <Link href={`/students/${s.id}`} className="font-medium text-accent hover:underline">{s.name}</Link>
                       <div className="text-caption text-fg-subtle">{s.englishName ?? ""}</div>
                     </td>
-                    <td className="mono">{s.grade ?? "—"}</td>
+                    <td className="mono">{studentGradeLabel(s.grade)}</td>
                     {/* 국가(피드백 2026-07-02): 해외 학생 시차 시간표의 기준 — 미지정은 KR(국내) 간주 */}
                     <td><CountryBadge code={s.country} /></td>
                     <td className="text-fg-muted max-w-[220px] truncate" title={cs.join(", ")}>{cs.length ? cs.join(", ") : "—"}</td>

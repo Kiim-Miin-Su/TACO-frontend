@@ -6,6 +6,7 @@ import type {
   StudentInterestInput,
   StudentStatus,
 } from '@/types';
+import { isKinderAge } from '@/lib/domain/students';
 
 export type StudentProfileFormValue = {
   name: string;
@@ -97,7 +98,11 @@ export function validateStudentForm(profile: StudentProfileFormValue, interests:
   if (!profile.name.trim()) errors.name = '학생 이름을 입력해 주세요.';
   if (!profile.gender) errors.gender = '성별을 선택해 주세요.';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(profile.birthDate)) errors.birthDate = '생년월일을 선택해 주세요.';
-  if (!profile.grade || Number(profile.grade) < 1 || Number(profile.grade) > 12) errors.grade = '학년은 1~12 사이여야 합니다.';
+  const grade = Number(profile.grade);
+  if (profile.grade === '' || !Number.isInteger(grade) || grade < 0 || grade > 12) errors.grade = 'Kinder 또는 G1~G12를 선택해 주세요.';
+  else if (grade === 0 && /^\d{4}-\d{2}-\d{2}$/.test(profile.birthDate) && !isKinderAge(profile.birthDate)) {
+    errors.grade = 'Kinder는 생년월일 기준 만 3~7세만 선택할 수 있습니다.';
+  }
   if (!/^[A-Z]{2}$/.test(profile.country)) errors.country = '거주 국가는 ISO 2자리 국가 코드여야 합니다.';
   if (!profile.address.trim()) errors.address = '현 거주지를 입력해 주세요.';
   if (!profile.schoolName.trim()) errors.schoolName = '재학 학교를 입력해 주세요.';

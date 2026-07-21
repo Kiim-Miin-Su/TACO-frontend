@@ -23,6 +23,40 @@ export const STUDENT_STATUS_TONE: Record<string, 'accent' | 'success' | 'attenti
   enrolled: 'success', on_leave: 'attention', withdrawn: 'danger', registration_lost: 'done', new_inquiry: 'accent',
 };
 
+export const STUDENT_GRADE_OPTIONS = [
+  { value: '0', label: 'Kinder (3~7세)' },
+  ...Array.from({ length: 12 }, (_, index) => ({ value: String(index + 1), label: `G${index + 1}` })),
+] as const;
+
+export const studentGradeLabel = (grade: number | null | undefined): string => {
+  if (grade == null) return '—';
+  return grade === 0 ? 'Kinder' : `G${grade}`;
+};
+
+export function studentAgeOn(birthDate: string, onDate: string): number | null {
+  const birth = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate);
+  const current = /^(\d{4})-(\d{2})-(\d{2})$/.exec(onDate);
+  if (!birth || !current) return null;
+  let age = Number(current[1]) - Number(birth[1]);
+  const beforeBirthday = Number(current[2]) < Number(birth[2])
+    || (Number(current[2]) === Number(birth[2]) && Number(current[3]) < Number(birth[3]));
+  if (beforeBirthday) age -= 1;
+  return age;
+}
+
+export function isKinderAge(birthDate: string, today = dateInTimeZone()): boolean {
+  const age = studentAgeOn(birthDate, today);
+  return age != null && age >= 3 && age <= 7;
+}
+
+export function dateInTimeZone(now = new Date(), timeZone = 'Asia/Seoul'): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now);
+  const value = (type: 'year' | 'month' | 'day') => parts.find((part) => part.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
 /** 학생의 활성 수강 코스명 — 통일 감사 2026-07-03: StudentsView·캘린더 유저 카드 중복 제거(단일 소스). */
 export function activeCourseNamesOf(
   studentId: number,
