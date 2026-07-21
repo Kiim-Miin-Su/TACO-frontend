@@ -37,6 +37,24 @@ export async function invalidateCalendarCommand(queryClient: QueryClient): Promi
   );
 }
 
+// [TBO-35 35A] 학생 aggregate 쓰기는 학생/수강/보호자 화면뿐 아니라 캘린더의 별도
+// /schedule/resources 읽기모델도 바꾼다. 네 scope를 한 helper로 묶어 등록·직접생성·수정·삭제 중
+// 어느 경로에서도 신규 학생/상태/국가가 5분 stale cache에 남지 않게 한다.
+export const STUDENT_AGGREGATE_SCOPES = [
+  qk.students.all,
+  qk.enrollments.all,
+  qk.parents.all,
+  qk.schedule.all,
+] as const;
+
+export async function invalidateStudentAggregate(queryClient: QueryClient): Promise<void> {
+  await Promise.all(
+    STUDENT_AGGREGATE_SCOPES.map((key) =>
+      queryClient.invalidateQueries({ queryKey: key as unknown as readonly unknown[], refetchType: "active" }),
+    ),
+  );
+}
+
 /** @deprecated [C4] invalidateCalendarCommand로 통일 — 부분 무효화 편차 방지를 위해 위임만 남긴다. */
 export async function invalidateScheduleLifecycle(queryClient: QueryClient): Promise<void> {
   await invalidateCalendarCommand(queryClient);

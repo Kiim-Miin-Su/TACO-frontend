@@ -4,7 +4,12 @@
 //  좁혀버리는(출결·정산 stale — C4가 고친 결함 재발) 회귀를 모두 잡는다.
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import { CALENDAR_COMMAND_SCOPES, refreshScheduleRequestLifecycle } from "./query-cache";
+import {
+  CALENDAR_COMMAND_SCOPES,
+  STUDENT_AGGREGATE_SCOPES,
+  invalidateStudentAggregate,
+  refreshScheduleRequestLifecycle,
+} from "./query-cache";
 
 const spyInvalidate = () => {
   const queryClient = new QueryClient();
@@ -38,5 +43,23 @@ describe("refreshScheduleRequestLifecycle (EP5 P2)", () => {
     const { queryClient, spy } = spyInvalidate();
     await refreshScheduleRequestLifecycle(queryClient);
     expect(spy).toHaveBeenCalledTimes(CALENDAR_COMMAND_SCOPES.length);
+  });
+});
+
+describe("invalidateStudentAggregate (TBO-35 35A)", () => {
+  it("학생 쓰기 후 명단·수강·보호자와 calendar resources의 schedule root를 함께 갱신한다", async () => {
+    const { queryClient, spy } = spyInvalidate();
+
+    await invalidateStudentAggregate(queryClient);
+
+    const roots = calledRoots(spy);
+    expect(spy).toHaveBeenCalledTimes(STUDENT_AGGREGATE_SCOPES.length);
+    expect(roots).toContain(JSON.stringify(["students"]));
+    expect(roots).toContain(JSON.stringify(["enrollments"]));
+    expect(roots).toContain(JSON.stringify(["parents"]));
+    expect(roots).toContain(JSON.stringify(["schedule"]));
+    for (const [options] of spy.mock.calls) {
+      expect(options).toMatchObject({ refetchType: "active" });
+    }
   });
 });

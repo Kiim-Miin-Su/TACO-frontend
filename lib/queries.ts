@@ -8,6 +8,7 @@ import { api, type SessionReport as ApiReport } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import {
   invalidateCalendarCommand,
+  invalidateStudentAggregate,
   invalidateScheduleRequests,
   refreshScheduleRequestLifecycle,
   scheduleRequestListKey,
@@ -385,20 +386,18 @@ export const useRejectPendingAccount = () =>
   });
 
 // 명단(학생·수강)
-export const useCreateStudent = () => useMutation({ mutationFn: api.students.create, onSuccess: useInvalidator([qk.students.all]) });
-// [TBO-29D D2] 원자 등록 — 학생·수강·보호자·관계가 한 tx로 생기므로 관련 캐시를 한 번에 무효화.
-export const useRegisterStudent = () =>
-  useMutation({
-    mutationFn: api.students.register,
-    onSuccess: useInvalidator([qk.students.all, qk.enrollments.all, qk.parents.all]),
-  });
-export const useUpdateStudent = () =>
-  useMutation({
-    mutationFn: (v: { id: number; patch: Parameters<typeof api.students.update>[1] }) => api.students.update(v.id, v.patch),
-    // 국가 변경은 캘린더 시차 뷰·스케줄 코호트 표시에 영향 — schedule도 함께 무효화.
-    onSuccess: useInvalidator([qk.students.all, qk.schedule.all]),
-  });
-export const useRemoveStudent = () => useMutation({ mutationFn: api.students.remove, onSuccess: useInvalidator([qk.students.all, qk.enrollments.all]) });
+// [TBO-35 35A] 학생 aggregate가 바뀌면 캘린더 resource 읽기모델까지 같은 helper로 갱신한다.
+function useStudentAggregateMutationInvalidator() {
+  const qc = useQueryClient();
+  return () => invalidateStudentAggregate(qc);
+}
+export const useCreateStudent = () => useMutation({ mutationFn: api.students.create, onSuccess: useStudentAggregateMutationInvalidator() });
+export const useRegisterStudent = () => useMutation({ mutationFn: api.students.register, onSuccess: useStudentAggregateMutationInvalidator() });
+export const useUpdateStudent = () => useMutation({
+  mutationFn: (v: { id: number; patch: Parameters<typeof api.students.update>[1] }) => api.students.update(v.id, v.patch),
+  onSuccess: useStudentAggregateMutationInvalidator(),
+});
+export const useRemoveStudent = () => useMutation({ mutationFn: api.students.remove, onSuccess: useStudentAggregateMutationInvalidator() });
 export const useCreateEnrollment = () => useMutation({ mutationFn: api.enrollments.create, onSuccess: useInvalidator([qk.enrollments.all, qk.students.all]) });
 
 // 결제
