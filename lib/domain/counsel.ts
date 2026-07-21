@@ -4,3 +4,7 @@ import type { CounselForm } from '@/types';
 export function counselReservationsOnDate(forms: readonly CounselForm[], date: string): CounselForm[] {
   return forms.filter((form) => form.nextContactAt === date);
 }
+
+export function recentCounselForms(forms: readonly CounselForm[]): CounselForm[] {
+  return [...forms].sort((left, right) => right.id - left.id);
+}

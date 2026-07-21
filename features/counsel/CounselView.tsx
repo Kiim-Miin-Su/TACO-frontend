@@ -7,6 +7,7 @@ import { Badge, ClickableTableRow, SectionCard, PageHeader, EmptyState, LoadingS
 // 서버 상태(상담 폼·회차)는 TanStack Query 훅에서 구독한다(zustand store 대체).
 import { useCounselForms, useCounselRounds } from '@/lib/queries';
 import { CounselCalendar } from './CounselCalendar';
+import { recentCounselForms } from '@/lib/domain/counsel';
 import { statusLabel, statusTone, sourceLabel } from './labels';
 
 type Tab = 'list' | 'calendar';
@@ -20,15 +21,16 @@ export function CounselView() {
   const [tab, setTab] = useState<Tab>('list');
   const [q, setQ] = useState('');
   const needle = q.trim().toLowerCase();
+  const recentForms = recentCounselForms(forms);
   const filtered = needle
-    ? forms.filter((f) => `${f.applicantName} ${f.applicantPhone ?? ''}`.toLowerCase().includes(needle))
-    : forms;
+    ? recentForms.filter((f) => `${f.applicantName} ${f.applicantPhone ?? ''}`.toLowerCase().includes(needle))
+    : recentForms;
 
   return (
     <div className="p-6 max-w-page mx-auto space-y-6">
       <PageHeader
         title="상담"
-        sub="상담카드 목록 · 예약 캘린더 · 신청"
+        sub="최근 접수순 상담카드 · 예약 캘린더 · 신청"
         actions={<Link href="/counsel/new" className="btn btn-primary">+ 상담 신청</Link>}
       />
 
