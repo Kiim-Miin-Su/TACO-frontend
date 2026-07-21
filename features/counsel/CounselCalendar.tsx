@@ -5,6 +5,7 @@ import { SectionCard, toneBg, toneFg } from '@/components/ui';
 // 서버 상태(상담 폼·회차)는 TanStack Query 훅에서 구독한다(zustand store 대체).
 import { useCounselForms, useCounselRounds } from '@/lib/queries';
 import { statusLabel, statusTone } from './labels';
+import { counselReservationsOnDate } from '@/lib/domain/counsel';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -48,7 +49,7 @@ export function CounselCalendar() {
         {cells.map((day, idx) => {
           const dateStr = day ? `${monthStr}-${pad(day)}` : '';
           const history = day ? rounds.filter((r) => r.completedAt === dateStr) : [];
-          const reservations = day ? forms.filter((f) => f.nextContactAt === dateStr) : [];
+          const reservations = day ? counselReservationsOnDate(forms, dateStr) : [];
           return (
             <div key={idx} className="min-h-[92px] border-b border-r p-1.5 border-line-muted">
               {day && <div className="text-caption text-fg-subtle mb-1 px-1">{day}</div>}

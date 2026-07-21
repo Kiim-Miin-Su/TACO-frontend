@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Field } from '@/components/ui';
 // 읽기(subjects·courses)/쓰기(상담 생성·수정)는 TanStack Query 훅 경유(zustand store 대체).
 import { useSubjects, useCourses, useCreateCounsel } from '@/lib/queries';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 import type {
   CounselSource,
   DesiredStartTime,
@@ -39,6 +40,7 @@ const sourceOf = (a: Author): CounselSource => (a === 'staff' ? 'manual' : 'inte
 
 export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) {
   const createCounsel = useCreateCounsel();
+  const { account } = useAccountAccess();
   const { data: subjects = [] } = useSubjects();
   const { data: courses = [] } = useCourses();
   const [f, setF] = useState<FormState>(empty);
@@ -51,7 +53,8 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
       applicantName: f.applicantName.trim(),
       applicantPhone: f.applicantPhone.trim() || undefined,
       source: sourceOf(f.author),
-      assignedStaffId: f.author === 'staff' ? 1 : undefined,
+      submitterType: f.author,
+      assignedStaffId: f.author === 'staff' ? account?.id : undefined,
       interestSubjectId: f.interestSubjectId ? Number(f.interestSubjectId) : undefined,
       interestCourseId: f.interestCourseId ? Number(f.interestCourseId) : undefined,
       desiredStartTime: (f.desiredStartTime || undefined) as DesiredStartTime | undefined,
@@ -59,10 +62,9 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
       studentIntention: (f.studentIntention || undefined) as StudentIntention | undefined,
       weakness: f.weakness.trim() || undefined,
       academyExpectation: f.academyExpectation.trim() || undefined,
+      nextContactAt: f.dateUndecided ? undefined : f.nextContactAt || undefined,
     }, {
       onSuccess: () => {
-        // 다음 상담일(nextContactAt)은 백엔드에서 상담 회차(round)로 관리 → 상담 신청 단계 update 대상 아님.
-        //  (백엔드 UpdateCounselInput 미지원 필드) 날짜 UI는 유지하되, 상세 화면에서 회차 기록 시 반영.
         setF({ ...empty, author: f.author });
         onSubmitted?.(); // [IA 3분할] 폼 페이지에서 제출 후 목록으로 이동
       },
@@ -129,7 +131,7 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
       </Section>
 
       <Section title="예약 · 기대">
-        <Field label="다음 상담일" hint="신청 후 상담카드 상세에서 예약일·회차로 관리됩니다">
+        <Field label="다음 상담일" hint="저장 즉시 상담 예약 캘린더에 표시됩니다">
           <div className="flex items-center gap-2">
             <input type="date" className="input flex-1" value={f.nextContactAt} disabled={f.dateUndecided}
               onChange={(e) => set({ nextContactAt: e.target.value })} />

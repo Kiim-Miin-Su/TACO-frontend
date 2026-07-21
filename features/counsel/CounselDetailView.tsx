@@ -16,6 +16,7 @@ import type {
   LearningAtmosphere,
   StudentIntention,
   CounselResult,
+  CounselSubmitterType,
   UpdateCounselInput,
 } from '@/types';
 import {
@@ -33,7 +34,7 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
   const createRound = useCreateCounselRound();
   const removeCounsel = useRemoveCounsel();
 
-  const [round, setRound] = useState({ summary: '', detail: '', result: '', nextAction: '' });
+  const [round, setRound] = useState({ summary: '', detail: '', result: '', nextAction: '', nextContactAt: '' });
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -41,30 +42,20 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
     <div className="p-6 max-w-page mx-auto">
       <DetailStates query={formQuery} notFoundMessage="상담카드를 찾을 수 없습니다." backHref="/counsel">
         {(form) => {
-          // 백엔드 UpdateCounselInput은 일부 필드(status·담당·관심과목/코스·기대·약점)만 허용 → 허용 키만 전송.
-          //  (applicantName/phone·다음상담일·희망시기 등은 백엔드 patch 미지원: 폼 UI는 유지하되 전송되지 않음)
-          const patch = (p: Partial<typeof form>) => {
-            const allowed: (keyof UpdateCounselInput)[] = [
-              'status', 'assignedStaffId', 'interestSubjectId', 'interestCourseId', 'academyExpectation', 'weakness',
-            ];
-            const body: UpdateCounselInput = {};
-            for (const k of allowed) {
-              if (k in p && p[k] !== undefined) (body as Record<string, unknown>)[k] = p[k as keyof typeof p];
-            }
-            if (Object.keys(body).length) updateCounsel.mutate({ id: form.id, patch: body });
-          };
+          const patch = (body: UpdateCounselInput) => updateCounsel.mutate({ id: form.id, patch: body });
           const formRounds = rounds.filter((r) => r.counselFormId === form.id).sort((a, b) => a.roundNo - b.roundNo);
 
           const addRound = () => {
             if (!round.summary.trim() && !round.detail.trim()) return;
             createRound.mutate({ formId: form.id, input: {
-              counselorId: form.assignedStaffId,
+              counselorId: form.assignedStaffId ?? undefined,
               summary: round.summary.trim() || undefined,
               detail: round.detail.trim() || undefined,
               result: (round.result || undefined) as CounselResult | undefined,
               nextAction: round.nextAction.trim() || undefined,
+              nextContactAt: round.nextContactAt || undefined,
             } });
-            setRound({ summary: '', detail: '', result: '', nextAction: '' });
+            setRound({ summary: '', detail: '', result: '', nextAction: '', nextContactAt: '' });
           };
 
           return (
@@ -96,28 +87,35 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
                   </select>
                 }
               >
-                {/* [TBO-17] 저장 지원 필드 명시 — 백엔드 UpdateCounselInput 미지원 항목은 표시용(DB 이관 후 확장 예정) */}
-                <div className="px-4 pt-3 text-caption text-fg-subtle">ⓘ 현재 저장: 상태·담당·관심 과목/코스·약점·학원 기대. 이름·연락처·예약일·희망시기·분위기·의향은 표시용(DB 이관 후 저장 지원).</div>
+                <div className="px-4 pt-3 text-caption text-fg-subtle">모든 입력은 저장되며, 다음 상담 예약일은 상담 예약 캘린더와 같은 DB 값을 사용합니다.</div>
                 <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <Field label="신청자 이름"><input className="input" value={form.applicantName} onChange={(e) => patch({ applicantName: e.target.value })} /></Field>
-                  <Field label="연락처"><input className="input" value={form.applicantPhone ?? ''} onChange={(e) => patch({ applicantPhone: e.target.value })} /></Field>
+                  <Field label="연락처"><input className="input" value={form.applicantPhone ?? ''} onChange={(e) => patch({ applicantPhone: e.target.value || null })} /></Field>
+                  <Field label="작성 주체">
+                    <select className="input" value={form.submitterType} onChange={(e) => patch({ submitterType: e.target.value as CounselSubmitterType })}>
+                      <option value="parent">학부모</option>
+                      <option value="student">학생</option>
+                      <option value="staff">직원</option>
+                      <option value="unknown">기존 데이터 · 미상</option>
+                    </select>
+                  </Field>
                   <Field label="다음 상담 예약일">
-                    <input type="date" className="input" value={form.nextContactAt ?? ''} onChange={(e) => patch({ nextContactAt: e.target.value || undefined })} />
+                    <input type="date" className="input" value={form.nextContactAt ?? ''} onChange={(e) => patch({ nextContactAt: e.target.value || null })} />
                   </Field>
                   <Field label="관심 과목">
-                    <select className="input" value={form.interestSubjectId ?? ''} onChange={(e) => patch({ interestSubjectId: e.target.value ? Number(e.target.value) : undefined })}>
+                    <select className="input" value={form.interestSubjectId ?? ''} onChange={(e) => patch({ interestSubjectId: e.target.value ? Number(e.target.value) : null })}>
                       <option value="">선택 안 함</option>
                       {subjects.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
                     </select>
                   </Field>
                   <Field label="관심 코스">
-                    <select className="input" value={form.interestCourseId ?? ''} onChange={(e) => patch({ interestCourseId: e.target.value ? Number(e.target.value) : undefined })}>
+                    <select className="input" value={form.interestCourseId ?? ''} onChange={(e) => patch({ interestCourseId: e.target.value ? Number(e.target.value) : null })}>
                       <option value="">선택 안 함</option>
                       {courses.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
                     </select>
                   </Field>
                   <Field label="희망 시작 시기">
-                    <select className="input" value={form.desiredStartTime ?? ''} onChange={(e) => patch({ desiredStartTime: (e.target.value || undefined) as DesiredStartTime | undefined })}>
+                    <select className="input" value={form.desiredStartTime ?? ''} onChange={(e) => patch({ desiredStartTime: (e.target.value || null) as DesiredStartTime | null })}>
                       <option value="">선택 안 함</option>
                       <option value="immediately">즉시</option>
                       <option value="within_1_month">1개월 내</option>
@@ -126,7 +124,7 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
                     </select>
                   </Field>
                   <Field label="학습 분위기">
-                    <select className="input" value={form.learningAtmosphere ?? ''} onChange={(e) => patch({ learningAtmosphere: (e.target.value || undefined) as LearningAtmosphere | undefined })}>
+                    <select className="input" value={form.learningAtmosphere ?? ''} onChange={(e) => patch({ learningAtmosphere: (e.target.value || null) as LearningAtmosphere | null })}>
                       <option value="">선택 안 함</option>
                       <option value="self_directed">자기주도</option>
                       <option value="normal">보통</option>
@@ -134,17 +132,17 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
                     </select>
                   </Field>
                   <Field label="학생 의향">
-                    <select className="input" value={form.studentIntention ?? ''} onChange={(e) => patch({ studentIntention: (e.target.value || undefined) as StudentIntention | undefined })}>
+                    <select className="input" value={form.studentIntention ?? ''} onChange={(e) => patch({ studentIntention: (e.target.value || null) as StudentIntention | null })}>
                       <option value="">선택 안 함</option>
                       <option value="student_wants">학생 희망</option>
                       <option value="parent_only">학부모 주도</option>
                       <option value="unknown">미상</option>
                     </select>
                   </Field>
-                  <Field label="약점"><input className="input" value={form.weakness ?? ''} onChange={(e) => patch({ weakness: e.target.value || undefined })} /></Field>
+                  <Field label="약점"><input className="input" value={form.weakness ?? ''} onChange={(e) => patch({ weakness: e.target.value || null })} /></Field>
                   <div className="sm:col-span-2 lg:col-span-3">
                     <Field label="학원에 바라는 점">
-                      <textarea className="input h-16 py-2" value={form.academyExpectation ?? ''} onChange={(e) => patch({ academyExpectation: e.target.value || undefined })} />
+                      <textarea className="input h-16 py-2" value={form.academyExpectation ?? ''} onChange={(e) => patch({ academyExpectation: e.target.value || null })} />
                     </Field>
                   </div>
                 </div>
@@ -181,6 +179,7 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
                   <textarea className="input h-16 py-2" placeholder="상세 내용" value={round.detail} onChange={(e) => setRound({ ...round, detail: e.target.value })} />
                   <div className="flex gap-3">
                     <input className="input flex-1" placeholder="다음 액션" value={round.nextAction} onChange={(e) => setRound({ ...round, nextAction: e.target.value })} />
+                    <input type="date" className="input" aria-label="다음 상담일" value={round.nextContactAt} onChange={(e) => setRound({ ...round, nextContactAt: e.target.value })} />
                     <button className="btn btn-primary" onClick={addRound}>회차 기록</button>
                   </div>
                 </div>
