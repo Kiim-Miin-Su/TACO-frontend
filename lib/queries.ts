@@ -415,10 +415,9 @@ export const useRemoveRoom = () => useMutation({ mutationFn: api.rooms.remove, o
 export const useApprovePendingAccount = () => {
   const { scope } = useAccountAccess();
   return useMutation({
-    mutationFn: (value: { id: number; role?: string }) => api.auth.approve(value.id, value.role),
-    // [B6 C2/EP5 P6] 계정 승인이 캘린더에서 바꾸는 것은 강사 리소스 목록뿐 — schedule 전체(all)가 아니라
-    //  resources(scope)만 무효화(세션·출결 데이터는 무관).
-    onSuccess: useInvalidator([qk.auth.pending, qk.users.all, qk.schedule.resources(scope)]),
+    mutationFn: (value: { id: number; reason?: string }) => api.auth.approve(value.id, value.reason),
+    // 승인 역할에 따라 강사 aggregate/캘린더 리소스도 생길 수 있으므로 관련 root를 함께 무효화한다.
+    onSuccess: useInvalidator([qk.auth.pending, qk.users.all, qk.instructors.all, qk.schedule.resources(scope)]),
   });
 };
 // [핫픽스 2026-07-20 ①] 레거시 pending 계정 인증 메일 재발송(대표) — 목록 갱신 불요(토큰만 갱신).
@@ -435,7 +434,7 @@ export const useDeletePendingAccount = () => {
 export const useRejectPendingAccount = () =>
   useMutation({
     mutationFn: (value: { id: number; reason: string }) => api.auth.reject(value.id, value.reason),
-    onSuccess: useInvalidator([qk.auth.pending, qk.users.all]),
+    onSuccess: useInvalidator([qk.auth.pending, qk.users.all, qk.instructors.all]),
   });
 
 // 명단(학생·수강)

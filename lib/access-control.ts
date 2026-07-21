@@ -18,8 +18,8 @@ const ROLE_CAPABILITIES: Record<AccountRole, ReadonlySet<AppCapability>> = {
     "admin.area", "approval.manage", "signup.decide", "finance.access",
     "calendar.manage", "calendar.request-own",
   ]),
-  admin: new Set(["admin.area", "approval.manage", "calendar.manage", "calendar.request-own"]),
-  manager: new Set(["admin.area", "approval.manage", "calendar.manage", "calendar.request-own"]),
+  admin: new Set(["admin.area", "approval.manage", "signup.decide", "calendar.manage", "calendar.request-own"]),
+  manager: new Set(["admin.area", "approval.manage", "signup.decide", "calendar.manage", "calendar.request-own"]),
   instructor: new Set(["calendar.request-own", "instructor.self"]),
   // 학생과 학부모는 도메인 역할 호환값일 뿐 백오피스 로그인 역할이 아니다.
   student: new Set(),

@@ -7,11 +7,12 @@ describe("access-control", () => {
     expect(resolveBackofficeRole(["student", "parent"])).toBeNull();
   });
 
-  it("keeps finance and signup decisions CEO-only", () => {
+  it("keeps finance CEO-only and allows admin roles to enter scoped signup decisions", () => {
     expect(hasCapability("super_admin", "finance.access")).toBe(true);
     expect(hasCapability("super_admin", "signup.decide")).toBe(true);
     expect(hasCapability("admin", "finance.access")).toBe(false);
-    expect(hasCapability("manager", "signup.decide")).toBe(false);
+    expect(hasCapability("admin", "signup.decide")).toBe(true);
+    expect(hasCapability("manager", "signup.decide")).toBe(true);
   });
 
   it("allows managers to manage calendars while instructors remain self-scoped", () => {

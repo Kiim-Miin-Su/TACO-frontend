@@ -41,17 +41,13 @@ import type { AccountRole } from '@/types';
 import { ProfileChangeRequestsSection } from './ProfileChangeRequestsSection';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 
-// [대표 지시 2026-07-16] super_admin 단일 계정 불변식 — 승인 role 옵션에서 제외(BE도 400로 차단).
-const ROLE_OPTS: AccountRole[] = ['instructor', 'manager', 'admin'];
-
-// 가입 승인 대기(백엔드 계정) — 이메일 인증 완료 후 대표가 승인하면 로그인 가능.
-function MemberApprovals() {
+// 가입 승인 대기 — 서버가 actor 역할에 맞는 행만 반환하며 요청 역할은 승인 시 변경하지 않는다.
+function MemberApprovals({ canManagePendingAccount }: { canManagePendingAccount: boolean }) {
   const { data: rows = [], isError } = usePendingAccounts();
   const approveAccount = useApprovePendingAccount();
   const rejectAccount = useRejectPendingAccount();
   const resendVerification = useResendPendingVerification(); // [핫픽스 07-20 ①] 레거시 미인증 구제
   const deleteAccount = useDeletePendingAccount(); // [핫픽스 07-20] 오가입 정리(식별자 해제·재가입 허용)
-  const [roleSel, setRoleSel] = useState<Record<number, string>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const [memberReject, setMemberReject] = useState<number | null>(null); // [TBO-28B] 반려 사유 필수 모달
   const [memberDelete, setMemberDelete] = useState<number | null>(null); // [핫픽스 07-20] 삭제 사유 필수 모달
@@ -67,7 +63,7 @@ function MemberApprovals() {
 
   function decide(id: number, action: 'approve' | 'reject', reason?: string) {
     const mutation = action === 'approve' ? approveAccount : rejectAccount;
-    const variables = action === 'approve' ? { id, role: roleSel[id] } : { id, reason: reason ?? '' };
+    const variables = action === 'approve' ? { id } : { id, reason: reason ?? '' };
     mutation.mutate(variables as never, {
       onSuccess: () => setMsg(action === 'approve' ? '승인했습니다.' : '반려했습니다.'),
       onError: (error) => setMsg(serverMessage(error, '처리하지 못했습니다. 잠시 후 다시 시도해 주세요.')),
@@ -90,7 +86,7 @@ function MemberApprovals() {
         <TableWrap minWidth={980}>
         <table className="table">
           {/* [E0.5 ④b] 지원자 제공 정보(전화·대학/전공·출생연도) — 승인 판단 근거 표시 */}
-          <thead><tr><th>아이디</th><th>이름</th><th>이메일</th><th>연락처</th><th>대학 (전공)</th><th>출생연도</th><th>이메일 인증</th><th>역할 지정</th><th className="text-right"></th></tr></thead>
+          <thead><tr><th>아이디</th><th>이름</th><th>이메일</th><th>연락처</th><th>대학 (전공)</th><th>출생연도</th><th>이메일 인증</th><th>신청 역할</th><th className="text-right"></th></tr></thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
@@ -101,15 +97,10 @@ function MemberApprovals() {
                 <td className="text-fg-muted">{r.university ? `${r.university}${r.major ? ` (${r.major})` : ""}` : "—"}</td>
                 <td className="mono text-fg-muted">{r.birthYear ?? "—"}</td>
                 <td>{r.emailVerified ? <span className="text-success">완료</span> : <span className="text-fg-subtle">미완료</span>}</td>
-                <td>
-                  <select className="input h-8 w-28" value={roleSel[r.id] ?? r.role}
-                    onChange={(e) => setRoleSel((s) => ({ ...s, [r.id]: e.target.value }))}>
-                    {ROLE_OPTS.map((ro) => <option key={ro} value={ro}>{roleLabel[ro]}</option>)}
-                  </select>
-                </td>
+                <td>{roleLabel[r.role as AccountRole] ?? r.role}</td>
                 <td className="text-right whitespace-nowrap">
                   {/* [핫픽스 07-20 ①] 미인증 = 인증 메일 재발송으로 구제(레거시 가입자 — 메일 미수신) */}
-                  {!r.emailVerified && (
+                  {canManagePendingAccount && !r.emailVerified && (
                     <button className="btn btn-sm mr-1.5" disabled={resendVerification.isPending} onClick={() => resend(r.id)}>
                       인증 메일 재발송
                     </button>
@@ -117,7 +108,7 @@ function MemberApprovals() {
                   <button className="btn btn-sm btn-primary mr-1.5" disabled={!r.emailVerified} onClick={() => decide(r.id, 'approve')} title={r.emailVerified ? '' : '이메일 인증 후 승인 가능 — 재발송으로 인증을 유도하세요'}>승인</button>
                   <button className="btn btn-sm btn-danger mr-1.5" onClick={() => setMemberReject(r.id)}>반려</button>
                   {/* [핫픽스 07-20] 삭제 — 식별자 해제(같은 아이디·이메일 재가입 허용)+개인정보 파기 */}
-                  <button className="btn btn-sm" onClick={() => setMemberDelete(r.id)}>삭제</button>
+                  {canManagePendingAccount && <button className="btn btn-sm" onClick={() => setMemberDelete(r.id)}>삭제</button>}
                 </td>
               </tr>
             ))}
@@ -153,7 +144,7 @@ function MemberApprovals() {
   );
 }
 
-// 승인 센터 = 관리자(매니저 이상). 단 가입 승인은 대표(super_admin) 전용.
+// 승인 센터 = 관리자(매니저 이상). 가입 승인 범위는 서버가 요청 역할별로 강제한다.
 export function ApprovalsView() {
   const { role: verifiedRole, can } = useAccountAccess();
   const roleForAccess: AccountRole = verifiedRole ?? 'instructor';
@@ -173,7 +164,8 @@ export function ApprovalsView() {
   const rejectExpense = useRejectExpense();
   const confirmPayout = useConfirmPayout();
   const rejectPayout = useRejectPayout();
-  const isSuper = can('signup.decide');
+  const canDecideSignup = can('signup.decide');
+  const isSuper = verifiedRole === 'super_admin';
   const instructorName = (id?: number) => id != null ? instructors.find((i) => i.id === id)?.name ?? '—' : '—';
 
   const [reportReject, setReportReject] = useState<number | null>(null);
@@ -493,8 +485,7 @@ export function ApprovalsView() {
     <div className="p-6 max-w-page mx-auto space-y-6">
       <AdminHeader />
 
-      {/* 가입 승인 = 대표 전용(BE SuperAdminGuard). 매니저는 보고서·수업요청만 처리. */}
-      {isSuper && <MemberApprovals />}
+      {canDecideSignup && <MemberApprovals canManagePendingAccount={isSuper} />}
 
       {activeSections.map((s) => <div key={s.key}>{s.node}</div>)}
 
@@ -505,7 +496,7 @@ export function ApprovalsView() {
         </div>
       )}
 
-      <p className="text-caption text-fg-subtle">프로필·수업·가용시간 변경 요청과 보고서는 매니저 이상이 처리하고, 지출·강사 페이·가입 승인은 대표만 처리합니다.</p>
+      <p className="text-caption text-fg-subtle">프로필·수업·가용시간 변경 요청과 보고서는 매니저 이상이 처리합니다. 가입 신청은 매니저(강사), 관리자(강사·매니저), 대표(대표 외)가 처리하며 지출·강사 페이는 대표만 처리합니다.</p>
 
       {detailItem && (
         <ApprovalItemDetailModal

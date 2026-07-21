@@ -456,7 +456,7 @@ export const api = {
     // 비밀번호 재설정(OTP판) — 성공 시 기존 세션 전부 무효(auth_version+1).
     resetPasswordOtp: (challengeId: number, webId: string, email: string, newPassword: string) =>
       http.post<{ ok: boolean }>("/auth/reset-password-otp", { challengeId, webId, email, newPassword }).then((r) => r.data),
-    // 대표(super_admin) 전용 — 승인 대기 목록·승인·반려
+    // 매니저 이상 — 서버가 요청 역할별 승인·반려 범위를 필터링/강제한다.
     // [TBO-28B] 승인=원자 tx(상태+승인메타+강사프로필+audit, 동시 결정 409) · 반려=사유 필수(400)
     pending: () => http.get<PendingAccount[]>("/auth/pending").then((r) => r.data),
     // [핫픽스 2026-07-20 ①] 레거시 pending 계정(구 링크 가입 — SMTP 부재기 메일 미발송) 인증 메일 재발송.
@@ -465,8 +465,8 @@ export const api = {
       http.delete<{ ok: boolean }>(`/auth/pending/${id}`, { data: { reason } }).then((r) => r.data),
     resendPendingVerification: (id: number) =>
       http.post<{ ok: boolean; message: string; devVerifyLink?: string }>(`/auth/pending/${id}/resend-verification`, {}).then((r) => r.data),
-    approve: (id: number, role?: string, reason?: string) =>
-      http.post<PendingAccount>(`/auth/approve/${id}`, { role, ...(reason ? { reason } : {}) }).then((r) => r.data),
+    approve: (id: number, reason?: string) =>
+      http.post<PendingAccount>(`/auth/approve/${id}`, reason ? { reason } : {}).then((r) => r.data),
     reject: (id: number, reason: string) =>
       http.post<PendingAccount>(`/auth/reject/${id}`, { reason }).then((r) => r.data),
   },
