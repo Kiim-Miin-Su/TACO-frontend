@@ -49,9 +49,9 @@ export const qk = {
   enrollments: { all: ["enrollments"] as const, list: (studentId?: number) => ["enrollments", "list", studentId ?? null] as const },
   counsel: {
     all: ["counsel"] as const,
-    forms: () => ["counsel", "forms"] as const,
-    form: (id: number) => ["counsel", "form", id] as const, // [B7 E3] 상세 단건
-    rounds: (counselFormId?: number) => ["counsel", "rounds", counselFormId ?? null] as const,
+    forms: (scope = "global") => ["counsel", "forms", scope] as const,
+    form: (id: number, scope = "global") => ["counsel", "form", scope, id] as const, // [B7 E3] 상세 단건
+    rounds: (counselFormId?: number, scope = "global") => ["counsel", "rounds", scope, counselFormId ?? null] as const,
   },
   transactions: { all: ["transactions"] as const, list: () => ["transactions", "list"] as const },
   viewPresets: { all: ["viewPresets"] as const, list: () => ["viewPresets", "list"] as const },

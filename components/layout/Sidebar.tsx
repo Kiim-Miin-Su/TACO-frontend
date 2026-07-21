@@ -21,7 +21,7 @@ import {
   IconCalendar,
 } from "../ui/icons";
 
-type Item = { label: string; icon: React.FC<any>; href: string; adminOnly?: boolean; financeOnly?: boolean; instructorVisible?: boolean };
+type Item = { label: string; icon: React.FC<any>; href: string; adminOnly?: boolean; counselOnly?: boolean; financeOnly?: boolean; instructorVisible?: boolean };
 
 const groups: { title: string; items: Item[] }[] = [
   {
@@ -29,7 +29,7 @@ const groups: { title: string; items: Item[] }[] = [
     items: [
       { label: "대시보드", icon: IconHome, href: "/" },
       { label: "캘린더", icon: IconCalendar, href: "/calendar" },
-      { label: "상담", icon: IconChat, href: "/counsel" },
+      { label: "상담", icon: IconChat, href: "/counsel", counselOnly: true },
       { label: "학생 · 부모", icon: IconUsers, href: "/students" },
       { label: "수업 (강사)", icon: IconBook, href: "/sessions" },
     ],
@@ -116,6 +116,7 @@ export default function Sidebar() {
             ...g,
             items: g.items.filter((it: Item) =>
               (!it.adminOnly || access.can("admin.area")) &&
+              (!it.counselOnly || access.can("counsel.manage")) &&
               (!it.financeOnly || access.can("finance.access") || (it.instructorVisible && access.can("instructor.self"))),
             ),
           }))

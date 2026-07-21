@@ -19,6 +19,8 @@ describe("access-control", () => {
     expect(hasCapability("manager", "calendar.manage")).toBe(true);
     expect(hasCapability("instructor", "calendar.manage")).toBe(false);
     expect(hasCapability("instructor", "calendar.request-own")).toBe(true);
+    expect(hasCapability("manager", "counsel.manage")).toBe(true);
+    expect(hasCapability("instructor", "counsel.manage")).toBe(false);
   });
 
   it("fails closed before an authoritative account exists", () => {

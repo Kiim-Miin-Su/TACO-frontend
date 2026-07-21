@@ -120,8 +120,14 @@ export const useScheduleRequests = () => {
   const { scope } = useAccountAccess();
   return useQuery({ queryKey: scheduleRequestListKey(scope), queryFn: ({ signal }) => api.scheduleRequests.list(undefined, { signal }) });
 };
-export const useCounselForms = () => useQuery({ queryKey: qk.counsel.forms(), queryFn: () => api.counsel.forms() });
-export const useCounselRounds = () => useQuery({ queryKey: qk.counsel.rounds(), queryFn: () => api.counsel.rounds() });
+export const useCounselForms = () => {
+  const { scope, can } = useAccountAccess();
+  return useQuery({ queryKey: qk.counsel.forms(scope), queryFn: () => api.counsel.forms(), enabled: can("counsel.manage") });
+};
+export const useCounselRounds = () => {
+  const { scope, can } = useAccountAccess();
+  return useQuery({ queryKey: qk.counsel.rounds(undefined, scope), queryFn: () => api.counsel.rounds(), enabled: can("counsel.manage") });
+};
 export const useAcademyEvents = () => useQuery({ queryKey: qk.events.list(), queryFn: () => api.events.list() });
 // [TBO-19 Sprint4] 강사 계약(매니저 전용 — 계약 대비 실제 시수). 백엔드 GET이 ADMIN 게이트라 비관리자는 비활성.
 export const useInstructorContracts = () => {
@@ -268,8 +274,10 @@ export const useScheduleSession = (id: number | null) => {
   const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.schedule.detail(id ?? 0, scope), queryFn: () => api.schedule.get(id as number), enabled: id != null, retry: detailRetry });
 };
-export const useCounselForm = (id: number | null) =>
-  useQuery({ queryKey: qk.counsel.form(id ?? 0), queryFn: () => api.counsel.get(id as number), enabled: id != null, retry: detailRetry });
+export const useCounselForm = (id: number | null) => {
+  const { scope, can } = useAccountAccess();
+  return useQuery({ queryKey: qk.counsel.form(id ?? 0, scope), queryFn: () => api.counsel.get(id as number), enabled: can("counsel.manage") && id != null, retry: detailRetry });
+};
 export const usePayment = (id: number | null) => {
   const { can } = useAccountAccess();
   return useQuery({ queryKey: qk.payments.detail(id ?? 0), queryFn: () => api.payments.get(id as number), enabled: can("finance.access") && id != null, retry: detailRetry });
