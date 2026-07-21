@@ -185,6 +185,7 @@ export type SessionDraft = {
   kind?: SessionKindFilter; // [v0.1.14] 종류(일반/진단고사/상담)
   price?: number; // [v0.1.14] 세션 단건 가격(상담 등)
   mode?: SessionModeFilter; // [v0.1.16] 수업방식(대면/비대면)
+  isPublic?: boolean;
   scope: RecurrenceScope; // 반복 적용 범위 — 이 수업만 / 이 이후 / 시리즈 전체
 };
 
@@ -203,7 +204,7 @@ export function sessionEditPatch(
 ): {
   sessionDate: string; startTime: string; endTime: string; instructorId?: number; roomId?: number;
   status: ScheduleRow['status']; topic?: string; memo?: string; color?: string; scope?: RecurrenceScope;
-  kind?: SessionKindFilter; price?: number; mode?: SessionModeFilter;
+  kind?: SessionKindFilter; price?: number; mode?: SessionModeFilter; isPublic?: boolean;
 } {
   if (d.startTime === d.endTime) throw new Error('종료 시각이 시작과 같을 수 없습니다'); // [R-9] end<start=익일 종료 허용
   return {
@@ -219,6 +220,7 @@ export function sessionEditPatch(
     kind: d.kind,
     price: d.price,
     mode: d.mode,
+    isPublic: d.isPublic,
     ...(isSeries ? { scope: d.scope } : {}),
   };
 }
@@ -242,11 +244,11 @@ export type PasteTarget = {
  *  - durationMinutes 유지, 시작시각 = 커서(클릭) 시각.
  */
 export function cloneSessionBody(
-  src: Pick<ScheduleRow, 'courseId' | 'instructorId' | 'roomId' | 'durationMinutes' | 'topic' | 'memo' | 'color'>,
+  src: Pick<ScheduleRow, 'courseId' | 'instructorId' | 'roomId' | 'durationMinutes' | 'topic' | 'memo' | 'color' | 'isPublic'>,
   t: PasteTarget,
 ): {
   courseId: number; instructorId: number; roomId?: number; sessionDate: string;
-  startTime: string; endTime: string; topic?: string; memo?: string; color?: string; status: 'scheduled';
+  startTime: string; endTime: string; topic?: string; memo?: string; color?: string; isPublic?: boolean; status: 'scheduled';
 } {
   const instructorId = t.resType === 'instructor' && t.resId != null ? t.resId : Number(src.instructorId);
   const roomId =
@@ -263,6 +265,7 @@ export function cloneSessionBody(
     topic: src.topic,
     memo: src.memo,
     color: src.color,
+    isPublic: src.isPublic,
     status: 'scheduled',
   };
 }

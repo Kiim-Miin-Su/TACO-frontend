@@ -293,7 +293,9 @@ export const useInstructors = () => {
   return useQuery({
     queryKey: qk.schedule.resources(scope),
     queryFn: ({ signal }) => api.schedule.resources({ signal }),
-    select: (res): Instructor[] => res.instructors.map((i) => ({
+    select: (res): Instructor[] => res.instructors
+      .filter((i) => (i as typeof i & { scheduleOwnerRole?: string }).scheduleOwnerRole !== "super_admin")
+      .map((i) => ({
       id: i.id,
       name: i.name,
       subjectName: i.sub,

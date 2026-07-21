@@ -119,6 +119,7 @@ export type ScheduleCreateBody = {
   seriesId?: number; status?: string; force?: boolean;
   kind?: SessionKind; price?: number; // [v0.1.14] 종류(진단고사/상담)·세션 단건 가격
   mode?: "in_person" | "online";
+  isPublic?: boolean;
 };
 // [TBO-29C C2] 반복 생성 bulk command — 단건 loop/클라이언트 seriesId(Date.now()) 폐기.
 //  서버가 series ID를 발급하고 날짜/요일/기간/시간/cohort/FK를 전체 정규화·원자 커밋.
@@ -127,7 +128,7 @@ export type ScheduleSeriesCreateBody = {
   repeat: { kind: "weekly" | "custom"; weekdays: number[]; startsOn: string; endsOn: string };
   startTime: string; endTime?: string; durationMinutes?: number; timeZone?: string;
   topic?: string; memo?: string; color?: string; status?: string;
-  kind?: SessionKind; price?: number; mode?: "in_person" | "online"; force?: boolean;
+  kind?: SessionKind; price?: number; mode?: "in_person" | "online"; isPublic?: boolean; force?: boolean;
 };
 export type ScheduleSeriesInfo = {
   id: number; repeatKind: "weekly" | "custom"; weekdays: number[]; startsOn: string; endsOn: string;
@@ -146,6 +147,7 @@ export type SchedulePatchBody = {
   instructorAttendance?: InstructorAttendanceStatus; // [TBO-19] 강사 출결(매니저 CRUD) — BE PATCH 수용, manager+ 게이트
   clearInstructorAttendance?: boolean; // [TBO-19 Sprint2] 강사 출결 미표시로 초기화(clear)
   mode?: "in_person" | "online";
+  isPublic?: boolean;
   // 반복 편집 범위(this=이 일정만 · this_and_following=이후 전부 · all=시리즈 전체). seriesId가 있을 때만 의미.
   scope?: "this" | "this_and_following" | "all"; force?: boolean;
   expectedSeriesVersion?: number; // [TBO-29C C3] series edit CAS — 불일치 시 409 SERIES_VERSION_STALE

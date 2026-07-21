@@ -182,6 +182,7 @@ export function ScheduleCreateModal({
   const [kind, setKind] = useState<"class" | "level_test" | "counsel">("class");
   const [price, setPrice] = useState("");
   const [sessionMode, setSessionMode] = useState<"in_person" | "online">("in_person");
+  const [isPublic, setIsPublic] = useState(false);
   // 색상 라벨: 생성 시 기본값은 개설 때 고른 코스 색(미지정 시 비움 → 백엔드가 코스/과목 색 폴백)
   const [color, setColor] = useState<string | undefined>(myCourses[0]?.color);
   const [status, setStatus] = useState<string>("scheduled");
@@ -326,7 +327,8 @@ export function ScheduleCreateModal({
     const mk = (dLocal: string): ScheduleCreateBody => {
       const ks = toKst(dLocal, start), ke = toKst(dLocal, end);
       return { courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: ks.date, startTime: ks.time, endTime: ke.time, durationMinutes: durationMinutesBetween(start, end), memo: memo || undefined, color, status, studentIds,
-        kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined, mode: sessionMode }; // [C2D] 강사 요청도 mode 보존
+        kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined, mode: sessionMode,
+        ...(!requestMode ? { isPublic } : {}) }; // 공개 여부는 관리자 확정 일정에만 적용
     };
     const days = occurrences();
     if (days.length <= 1) { onCreate(mk(days[0] ?? date)); return; }
@@ -338,7 +340,7 @@ export function ScheduleCreateModal({
       repeat: { kind: repeat === "weekly" ? "weekly" : "custom", weekdays: rule.weekdays, startsOn: rule.startsOn, endsOn: rule.endsOn },
       startTime: rule.startTime, endTime: rule.endTime,
       memo: memo || undefined, color, status,
-      kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined, mode: sessionMode,
+      kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined, mode: sessionMode, isPublic,
     }, days.map(mk));
   }
 
@@ -482,6 +484,14 @@ export function ScheduleCreateModal({
                 </select>
               </Field>
               <Field label="색상"><ColorPicker value={color} onChange={setColor} /></Field>
+              {!requestMode && (
+                <Field label="공통 스케줄">
+                  <label className="h-9 flex items-center gap-2">
+                    <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
+                    <span className="text-caption">모든 직원에게 공개</span>
+                  </label>
+                </Field>
+              )}
             </div>
             <Field label="메모"><textarea className="input min-h-[52px] py-1.5" rows={2} placeholder="선택 — 메모" value={memo} onChange={(e) => setMemo(e.target.value)} /></Field>
             <RepeatField repeat={repeat} setRepeat={setRepeat} customWds={customWds} toggleWd={toggleWd}

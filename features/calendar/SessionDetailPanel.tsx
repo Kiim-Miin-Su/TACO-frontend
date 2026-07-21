@@ -60,6 +60,7 @@ export function SessionDetailPanel({
           {row.courseName} →
         </Link>
         {row.seriesId != null && <span className="badge badge-accent">반복</span>}
+        {row.isPublic && <span className="badge badge-success">공개</span>}
       </div>
       <div className="card-pad space-y-2.5">
         {editing && row ? (

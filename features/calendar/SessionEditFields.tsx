@@ -81,6 +81,7 @@ export function SessionEditFields({
     kind: (row.kind ?? "class") as SessionDraft["kind"], // [v0.1.14]
     price: row.price,
     mode: (row.mode ?? "in_person") as SessionDraft["mode"],
+    isPublic: row.isPublic === true,
     scope: "this",
   });
   const set = <K extends keyof SessionDraft>(k: K, v: SessionDraft[K]) => setD((x) => ({ ...x, [k]: v }));
@@ -140,6 +141,12 @@ export function SessionEditFields({
         <select className={input} value={d.mode ?? "in_person"} onChange={(e) => set("mode", e.target.value as SessionDraft["mode"])}>
           {MODE_FILTERS.map((m) => <option key={m} value={m}>{MODE_FILTER_LABEL[m]}</option>)}
         </select>
+      </Field>
+      <Field label="공통 스케줄">
+        <label className="h-9 flex items-center gap-2">
+          <input type="checkbox" checked={d.isPublic === true} onChange={(e) => set("isPublic", e.target.checked)} />
+          <span className="text-caption">모든 직원에게 공개</span>
+        </label>
       </Field>
       <Field label="주제">
         <input className={input} placeholder="비우면 기존 주제 유지" value={d.topic} onChange={(e) => set("topic", e.target.value)} />
