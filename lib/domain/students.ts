@@ -5,10 +5,10 @@
 //  - 본 파일 = "무엇이 활성 학생인가 / 퇴원은 어떤 상태 전이인가" 라는 비즈니스 규칙.
 //  - backend StudentsService/DB가 상태와 삭제의 권위이며 이 파일은 표시·필터 규칙만 담당한다.
 // ──────────────────────────────────────────────────────────────
-import type { Student, StudentStatus, Enrollment } from '@/types';
+import type { Student, StudentStatus } from '@/types';
 
 // 운영 목록·일정에서 제외되는 "비활성" 상태.
-// 퇴원(소프트삭제)은 student/enrollment 를 지우지 않고 이 상태로 전이한다.
+// 퇴원·등록이탈은 조회 가능한 업무 상태이며 soft delete와 별개다.
 // 백엔드 매핑: `WHERE status NOT IN (...)`  (목록 조회 기본 스코프)
 export const INACTIVE_STUDENT_STATUSES: readonly StudentStatus[] = ['withdrawn', 'registration_lost'];
 
@@ -36,23 +36,3 @@ export function activeCourseNamesOf(
 
 /** 활성 학생만 반환 (퇴원/비활성 제외) — 모든 운영 화면의 기본 스코프 */
 export const activeStudents = (list: Student[]): Student[] => list.filter(isActiveStudent);
-
-export type DropStudentResult = { students: Student[]; enrollments: Enrollment[] };
-
-// 퇴원(소프트삭제) 트랜잭션.
-//  - 학생: status → 'canceled' (레코드 보존)
-//  - 수강등록: status → 'canceled' (스케줄/Join에서 자연 제외, 이력 보존)
-//  - 보존 대상(건드리지 않음): 출석·수업보고서(학점)·상담·결제·부모연결
-// 백엔드 매핑: PATCH /students/:id { status:'canceled' } 단일 트랜잭션으로 동일 처리.
-export function dropStudent(
-  students: Student[],
-  enrollments: Enrollment[],
-  id: number,
-): DropStudentResult {
-  return {
-    students: students.map((s) => (s.id === id ? { ...s, status: 'withdrawn' } : s)),
-    enrollments: enrollments.map((e) =>
-      e.studentId === id ? { ...e, status: 'canceled' } : e,
-    ),
-  };
-}

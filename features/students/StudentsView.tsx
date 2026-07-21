@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 // 목록 데이터(students·enrollments·courses·parentStudents·parents)는 TanStack Query로 읽고,
-// 퇴원(소프트삭제)은 useRemoveStudent 훅(백엔드 DELETE /students/:id)으로 처리한다.
+// 삭제는 useRemoveStudent 훅(백엔드 DELETE /students/:id soft delete)으로 처리하며 퇴원 상태와 분리한다.
 // [DESIGN §8·§5.5] 첫 화면 = 목록(조회 우선). 등록 폼은 접이식 패널(기본 접힘) — 헤더 버튼 토글.
 // [B6 C3 2026-07-16] 행 전체 클릭 = 학생 상세(ClickableTableRow href) — 퇴원 버튼은 중첩 제외로 안전.
 import { Badge, ClickableTableRow, ConfirmModal, EmptyState, LoadingState, PageHeader, SectionCard, StatusDot, TableWrap, type Tone } from "@/components/ui";
@@ -26,7 +26,7 @@ export function StudentsView() {
   const [q, setQ] = useState("");
   const [showDropped, setShowDropped] = useState(false);
   const [showForm, setShowForm] = useState(false); // 등록 패널 — 기본 접힘
-  const [dropTarget, setDropTarget] = useState<Student | null>(null); // 퇴원 확인 모달
+  const [deleteTarget, setDeleteTarget] = useState<Student | null>(null);
   const kw = q.trim().toLowerCase();
 
   // 기본 스코프 = 활성 학생만(퇴원 제외). 토글 시 퇴원 포함.
@@ -77,7 +77,7 @@ export function StudentsView() {
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-1.5 text-caption text-fg-muted select-none">
               <input type="checkbox" checked={showDropped} onChange={(e) => setShowDropped(e.target.checked)} />
-              퇴원 포함
+              퇴원·등록이탈 포함
             </label>
             <input className="input w-56 h-7" placeholder="이름·영문·ID·연락처 검색" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
@@ -125,12 +125,9 @@ export function StudentsView() {
                       </Badge>
                     </td>
                     <td className="text-right">
-                      {!isActiveStudent(s) ? (
-                        <span className="text-caption text-fg-subtle">퇴원됨</span>
-                      ) : admin ? (
-                        // [DESIGN §5.5] 파괴적 액션 확인은 ConfirmModal(danger) · 관리자 전용(BE DELETE=ADMIN)
-                        <button className="btn btn-sm btn-danger" onClick={() => setDropTarget(s)}>
-                          퇴원 처리
+                      {admin ? (
+                        <button className="btn btn-sm btn-danger" onClick={() => setDeleteTarget(s)}>
+                          학생 삭제
                         </button>
                       ) : (
                         <span className="text-caption text-fg-subtle">—</span>
@@ -145,14 +142,14 @@ export function StudentsView() {
         )}
       </SectionCard>
 
-      {dropTarget && (
+      {deleteTarget && (
         <ConfirmModal
-          title={`${dropTarget.name} 학생 퇴원 처리`}
-          message="상담·수업보고서·결제 등 이력은 보존되며, 활성 목록과 일정에서만 제외됩니다."
-          confirmLabel="퇴원 처리"
+          title={`${deleteTarget.name} 학생 삭제`}
+          message="등록 상태는 바꾸지 않고 학생을 soft delete합니다. 상담·감사 이력은 보존되며 목록과 일정에서 제외됩니다."
+          confirmLabel="학생 삭제"
           danger
-          onClose={() => setDropTarget(null)}
-          onConfirm={() => { removeStudent.mutate(dropTarget.id); setDropTarget(null); }}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={() => { removeStudent.mutate(deleteTarget.id); setDeleteTarget(null); }}
         />
       )}
     </div>

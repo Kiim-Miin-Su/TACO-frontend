@@ -32,7 +32,11 @@ export const qk = {
     previewMine: (scope: string, from: string, to: string) => ["payouts", "previewMine", scope, from, to] as const,
   },
   reports: { all: ["reports"] as const, list: (sessionId?: number, scope = "global") => ["reports", "list", scope, sessionId ?? null] as const },
-  students: { all: ["students"] as const, list: () => ["students", "list"] as const, detail: (id: number) => ["students", "detail", id] as const }, // [B7 E3]
+  students: {
+    all: ["students"] as const,
+    list: () => ["students", "list"] as const,
+    aggregate: (id: number) => ["students", "aggregate", id] as const,
+  }, // [B7 E3]
   payments: { all: ["payments"] as const, list: () => ["payments", "list"] as const, detail: (id: number) => ["payments", "detail", id] as const }, // [B7 E3]
   expenses: { all: ["expenses"] as const, list: () => ["expenses", "list"] as const, detail: (id: number) => ["expenses", "detail", id] as const }, // [B7 E3]
   courses: { all: ["courses"] as const, list: () => ["courses", "list"] as const, detail: (id: number) => ["courses", "detail", id] as const }, // [B7 E3]

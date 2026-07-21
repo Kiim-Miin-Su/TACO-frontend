@@ -226,8 +226,8 @@ const detailRetry = (failureCount: number, error: unknown) => {
   if (status === 404 || status === 403) return false;
   return failureCount < 2;
 };
-export const useStudent = (id: number | null) =>
-  useQuery({ queryKey: qk.students.detail(id ?? 0), queryFn: () => api.students.get(id as number), enabled: id != null, retry: detailRetry });
+export const useStudentAggregate = (id: number | null) =>
+  useQuery({ queryKey: qk.students.aggregate(id ?? 0), queryFn: () => api.students.aggregate(id as number), enabled: id != null, retry: detailRetry });
 export const useScheduleSession = (id: number | null) => {
   const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.schedule.detail(id ?? 0, scope), queryFn: () => api.schedule.get(id as number), enabled: id != null, retry: detailRetry });
@@ -391,13 +391,26 @@ function useStudentAggregateMutationInvalidator() {
   const qc = useQueryClient();
   return () => invalidateStudentAggregate(qc);
 }
-export const useCreateStudent = () => useMutation({ mutationFn: api.students.create, onSuccess: useStudentAggregateMutationInvalidator() });
 export const useRegisterStudent = () => useMutation({ mutationFn: api.students.register, onSuccess: useStudentAggregateMutationInvalidator() });
 export const useUpdateStudent = () => useMutation({
   mutationFn: (v: { id: number; patch: Parameters<typeof api.students.update>[1] }) => api.students.update(v.id, v.patch),
   onSuccess: useStudentAggregateMutationInvalidator(),
 });
+export const useUpdateStudentAggregate = () => useMutation({
+  mutationFn: (v: { id: number; patch: Parameters<typeof api.students.updateAggregate>[1] }) => api.students.updateAggregate(v.id, v.patch),
+  onSuccess: useStudentAggregateMutationInvalidator(),
+});
 export const useRemoveStudent = () => useMutation({ mutationFn: api.students.remove, onSuccess: useStudentAggregateMutationInvalidator() });
+export const useCreateParent = () => useMutation({ mutationFn: api.parents.create, onSuccess: useStudentAggregateMutationInvalidator() });
+export const useUpdateParent = () => useMutation({
+  mutationFn: (v: { id: number; patch: Parameters<typeof api.parents.update>[1] }) => api.parents.update(v.id, v.patch),
+  onSuccess: useStudentAggregateMutationInvalidator(),
+});
+export const useUpdateParentRelation = () => useMutation({
+  mutationFn: (v: { id: number; patch: Parameters<typeof api.parents.updateRelation>[1] }) => api.parents.updateRelation(v.id, v.patch),
+  onSuccess: useStudentAggregateMutationInvalidator(),
+});
+export const useRemoveGuardian = () => useMutation({ mutationFn: api.parents.removeGuardian, onSuccess: useStudentAggregateMutationInvalidator() });
 export const useCreateEnrollment = () => useMutation({ mutationFn: api.enrollments.create, onSuccess: useInvalidator([qk.enrollments.all, qk.students.all]) });
 
 // 결제

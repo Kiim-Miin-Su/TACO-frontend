@@ -37,7 +37,10 @@ import type {
   CreateCounselInput,
   UpdateCounselInput,
   CreateCounselRoundInput,
-  CreateStudentInput,
+  CreateStudentAggregateInput,
+  UpdateStudentAggregateInput,
+  StudentAggregate,
+  CreateParentInput,
   CreateEnrollmentInput,
   WebIdCheckResult,
   Room,
@@ -474,22 +477,20 @@ export const api = {
   },
   students: {
     list: () => http.get<Student[]>("/students").then((r) => r.data),
-    get: (id: number) => http.get<Student>(`/students/${id}`).then((r) => r.data),
-    create: (body: CreateStudentInput) => http.post<Student>("/students", body).then((r) => r.data),
-    // [TBO-29D D2] 원자 등록 — 학생+보호자(선택)+수강(선택)+audit 단일 tx(부분 저장 불가).
-    register: (body: {
-      student: CreateStudentInput;
-      guardian?: { name: string; phone?: string; relation?: string; isPayer?: boolean; isPrimary?: boolean };
-      courseId?: number;
-    }) =>
+    aggregate: (id: number) => http.get<StudentAggregate>(`/students/${id}/aggregate`).then((r) => r.data),
+    // [TBO-35 35C] 호환 URL도 동일 aggregate command를 소비한다.
+    register: (body: CreateStudentAggregateInput) =>
       http.post<{
         student: Student;
         guardian: { parent: Parent; relation: ParentStudent; linkedExisting: boolean } | null;
+        guardians: Array<{ parent: Parent; relation: ParentStudent; linkedExisting: boolean }>;
         enrollment: Enrollment | null;
       }>("/students/registrations", body).then((r) => r.data),
     // [피드백 2026-07-03] 캘린더 우측 패널 학생 정보 수정(출국/입국·상태 변경) — PATCH 부분 갱신.
     update: (id: number, patch: Partial<Pick<Student, "name" | "englishName" | "gender" | "birthDate" | "grade" | "phone" | "country" | "residenceType" | "address" | "addressDetail" | "kakaoId" | "counselTopic" | "schoolName" | "status" | "memo">>) =>
       http.patch<Student>(`/students/${id}`, patch).then((r) => r.data),
+    updateAggregate: (id: number, patch: UpdateStudentAggregateInput) =>
+      http.patch<StudentAggregate>(`/students/${id}/aggregate`, patch).then((r) => r.data),
     remove: (id: number) => http.delete<Student>(`/students/${id}`).then((r) => r.data),
   },
   enrollments: {
@@ -584,6 +585,14 @@ export const api = {
   parents: {
     list: () => http.get<Parent[]>("/parents").then((r) => r.data),
     relations: () => http.get<ParentStudent[]>("/parents/relations").then((r) => r.data),
+    create: (input: CreateParentInput) =>
+      http.post<{ parent: Parent; relation: ParentStudent }>("/parents", input).then((r) => r.data),
+    update: (id: number, input: { name?: string; phone?: string; kakaoAvailable?: boolean }) =>
+      http.patch<Parent>(`/parents/${id}`, input).then((r) => r.data),
+    updateRelation: (id: number, input: { relation?: string; isPayer?: boolean; isPrimary?: boolean }) =>
+      http.patch<ParentStudent>(`/parents/relations/${id}`, input).then((r) => r.data),
+    removeGuardian: (id: number) =>
+      http.delete<{ relationId: number; parentId: number; parentDeleted: boolean }>(`/parents/relations/${id}/guardian`).then((r) => r.data),
   },
   users: {
     // web id 존재 확인 (등록 폼 "확인하기")
