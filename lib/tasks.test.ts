@@ -14,7 +14,7 @@ const req = (over: Partial<ScheduleRequest>): ScheduleRequest => ({
 // 최소 슬라이스 — 다른 도메인은 빈 배열(요청 항목만 분리 검증)
 const emptySlice = {
   currentRole: 'manager' as const,
-  instructors: [{ id: 1, name: '박지훈' }],
+  instructors: [{ id: 1, name: '박지훈', defaultHourlyRate: 0, canTeachKinder: false }],
   students: [], courses: [], classSessions: [], sessionReports: [], expenses: [],
   instructorPayouts: [], counselForms: [], enrollments: [], payments: [], attendance: [],
   scheduleRequests: [] as ScheduleRequest[],

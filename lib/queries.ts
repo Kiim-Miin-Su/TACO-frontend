@@ -257,7 +257,13 @@ export const useInstructors = () => {
   return useQuery({
     queryKey: qk.schedule.resources(scope),
     queryFn: ({ signal }) => api.schedule.resources({ signal }),
-    select: (res): Instructor[] => res.instructors.map((i) => ({ id: i.id, name: i.name, subjectName: i.sub })),
+    select: (res): Instructor[] => res.instructors.map((i) => ({
+      id: i.id,
+      name: i.name,
+      subjectName: i.sub,
+      defaultHourlyRate: 0,
+      canTeachKinder: false,
+    })),
     staleTime: CATALOG_STALE,
   });
 };
