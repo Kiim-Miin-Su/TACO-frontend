@@ -60,6 +60,7 @@ import type {
   InstructorAggregate,
   CreateInstructorInput,
   UpdateInstructorInput,
+  PayReadiness,
 } from "@kms545487/contracts";
 
 export type ScheduleQuery = { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number };
@@ -732,6 +733,10 @@ export const api = {
       http.get<MeasureResult>("/payouts/preview", { params: { instructorId, from, to } }).then((r) => r.data),
     previewMine: (from: string, to: string) =>
       http.get<MeasureResult>("/payouts/me/preview", { params: { from, to } }).then((r) => r.data),
+    readiness: (params: { instructorId?: number; from?: string; to?: string } = {}) =>
+      http.get<PayReadiness>("/payouts/readiness", { params }).then((r) => r.data),
+    readinessMine: (params: { from?: string; to?: string } = {}) =>
+      http.get<PayReadiness>("/payouts/me/readiness", { params }).then((r) => r.data),
     // 정산서 생성(pending) + 세션 연결(이중 계상 방지)
     generate: (instructorId: number, from: string, to: string) =>
       http.post<PayoutRow>("/payouts/generate", { instructorId, from, to }).then((r) => r.data),

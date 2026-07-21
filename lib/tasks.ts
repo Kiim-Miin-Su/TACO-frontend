@@ -13,10 +13,12 @@ import type {
   Payment,
   SessionReport,
   Student,
+  PayReadiness,
+  PayReadinessIssue,
 } from '@/types';
 import type { Tone } from '@/components/ui';
 import { isAdmin } from '@/lib/roles';
-import { pendingReportSessions, pendingReportSummary, sessionEndMs, type ReportSlice } from '@/lib/reports';
+import type { ReportSlice } from '@/lib/reports';
 import { makeupNeeds, MAKEUP_REASON_LABEL } from '@/lib/makeup';
 // [핫픽스 2026-07-20 ②] 승인센터 모집단 단일 소스 — 대시보드·배지·승인센터가 같은 술어를 공유.
 import { approvalCenterCounts, expenseApprovalRows, payoutApprovalRows, profileChangeApprovalRows, reportApprovalRows, scheduleRequestApprovalRows } from '@/lib/approvals';
@@ -58,7 +60,39 @@ type StoreSlice = ReportSlice & {
   pendingAccounts: PendingAccount[];
   profileChangeRequests: ProfileChangeRequest[];
   myProfileChangeRequests: ProfileChangeRequest[];
+  payReadiness?: PayReadiness;
 };
+
+const REPORT_READINESS_TYPES = new Set<PayReadinessIssue['type']>([
+  'report_missing', 'report_draft', 'report_pending_approval', 'report_rejected',
+]);
+
+// 미해결 준비 항목은 단순 열람으로 숨기지 않는다. 조건이 해소되어 서버 issue가 사라질 때만 배지가 내려간다.
+const readinessActivityMs = (rows: readonly PayReadinessIssue[]): number =>
+  rows.length ? Number.POSITIVE_INFINITY : 0;
+
+function readinessTask(s: StoreSlice, row: PayReadinessIssue, forInstructor: boolean): TaskItem {
+  const student = row.studentId == null ? null : s.students.find((item) => item.id === row.studentId);
+  const instructor = s.instructors.find((item) => item.id === row.instructorId);
+  const context = `${row.sessionDate} ${row.startTime ?? ''} · ${student?.name ?? row.topic ?? `수업 ${row.sessionId}`}`;
+  const base = { id: `pay-readiness-${row.id}`, counts: true } as const;
+  switch (row.type) {
+    case 'report_missing':
+      return { ...base, group: 'report', tone: 'danger', title: `리포트 미작성 — ${student?.name ?? '학생'}`, detail: `${context} · 작성 및 승인 후 시수 반영`, href: '/reports/write' };
+    case 'report_draft':
+      return { ...base, group: 'report', tone: 'attention', title: `리포트 임시저장 — ${student?.name ?? '학생'}`, detail: `${context} · 제출 필요`, href: '/reports/write' };
+    case 'report_pending_approval':
+      return { ...base, group: 'report', tone: 'accent', title: `리포트 승인 대기 — ${student?.name ?? '학생'}`, detail: `${context} · 승인 후 시수 반영`, href: forInstructor ? '/reports/write' : '/admin/approvals' };
+    case 'report_rejected':
+      return { ...base, group: 'report', tone: 'danger', title: `리포트 반려 — ${student?.name ?? '학생'}`, detail: `${context} · 사유: ${row.rejectedReason ?? '사유 미기재'} · 수정 후 재제출`, href: '/reports/write' };
+    case 'rate_missing':
+      return { ...base, group: 'pay', tone: 'danger', title: `강사 페이 단가 미설정 — ${instructor?.name ?? `강사 ${row.instructorId}`}`, detail: context, href: forInstructor ? '/payouts' : `/admin/instructors/${row.instructorId}` };
+    case 'session_roster_missing':
+      return { ...base, group: 'class', tone: 'danger', title: `수업 대상 학생 미지정 — ${row.topic ?? '수업'}`, detail: context, href: '/calendar' };
+    default:
+      return { ...base, group: 'class', tone: 'danger', title: `수업 진행 상태 확인 — ${row.topic ?? '수업'}`, detail: `${context} · 진행 완료 상태가 필요합니다`, href: '/calendar' };
+  }
+}
 
 // [핫픽스 2026-07-20 ③] 프로필 변경 요청의 변경 내용 한 줄 요약(알림 detail용).
 const profileChangeSummary = (r: ProfileChangeRequest): string =>
@@ -182,15 +216,8 @@ function adminTasks(s: StoreSlice): TaskItem[] {
     });
   }
 
-  // ── 수업 보고서 승인 대기(작성완료·미승인) — 승인은 관리자(승인센터) 책임이므로 /admin/approvals로 ──
-  for (const r of s.sessionReports.filter((x) => (x.status === 'submitted' || x.approvalStatus === 'submitted') && x.approvalStatus !== 'approved')) {
-    out.push({
-      id: `report-approve-${r.id}`, group: 'report', tone: 'accent', counts: true,
-      title: `수업 보고서 승인 대기 — ${sname(r.studentId)}`,
-      detail: `${iname(r.instructorId)} · 승인 시 시수 집계`,
-      href: '/admin/approvals',
-    });
-  }
+  // 정산 준비 상태는 백엔드가 코호트 학생별로 판정한다. 프론트에서 보고서 완전성을 재계산하지 않는다.
+  out.push(...(s.payReadiness?.issues ?? []).map((row) => readinessTask(s, row, false)));
 
   // ── [대표 지시 ⑭ 2026-07-16] 보강 미배정 — 결강(취소·노쇼·펑크)인데 보강 날짜가 아직 안 잡힌 수업.
   //  강사 탭과 **같은 단일 정의(lib/makeup)** 재사용 — 매니저도 배정을 챙겨야 하므로 관리자 To-do에 편입.
@@ -210,15 +237,9 @@ function instructorTasks(s: StoreSlice, instructorId: number): TaskItem[] {
   const today = todayISO();
   const out: TaskItem[] = [];
 
-  // 진행됐는데 리포트 미작성 → 시수/페이가 잡히려면 작성 필요. (단일 소스: lib/reports)
-  for (const ses of pendingReportSessions(s, instructorId)) {
-    out.push({
-      id: `report-${ses.id}`, group: 'report', tone: 'danger', counts: true,
-      title: `리포트 미작성 — ${ses.topic ?? '수업'}`,
-      detail: `${ses.sessionDate} ${ses.startTime ?? ''} · 작성해야 시수가 측정됩니다`,
-      href: '/reports/write',
-    });
-  }
+  out.push(...(s.payReadiness?.issues ?? [])
+    .filter((row) => row.instructorId === instructorId)
+    .map((row) => readinessTask(s, row, true)));
 
   // 취소·미진행(펑크) → 보강 필요(월 시수 부족). 캘린더에서 보강 일정을 잡아야 함. (단일 소스: lib/makeup)
   for (const m of makeupNeeds(s, instructorId).filter((x) => !x.resolved)) {
@@ -231,17 +252,6 @@ function instructorTasks(s: StoreSlice, instructorId: number): TaskItem[] {
     });
   }
 
-  // [핫픽스 2026-07-20 ③] 보고서 반려 — 사유와 함께 알림(작성 화면에서 사유 표시·재제출).
-  for (const report of s.sessionReports.filter((r) => (r as { approvalStatus?: string }).approvalStatus === 'rejected')) {
-    const ses = s.classSessions.find((x) => x.id === report.sessionId);
-    if (ses && ses.instructorId !== instructorId) continue; // 내 수업 보고서만
-    out.push({
-      id: `report-rejected-${report.id}`, group: 'report', tone: 'danger', counts: true,
-      title: `보고서 반려 — ${ses?.topic ?? '수업'}`,
-      detail: `${ses?.sessionDate ?? ''} · 사유: ${(report as { rejectedReason?: string }).rejectedReason ?? '사유 미기재'} · 수정 후 재제출`,
-      href: '/reports/write',
-    });
-  }
 
   // [핫픽스 2026-07-20 ③] 내 정산 반려/지급 회수 — 사유와 함께 알림(강사 페이 화면에서 확인).
   for (const p of s.instructorPayouts.filter((x) => x.status === 'rejected')) {
@@ -333,26 +343,25 @@ export function navBadges(
   };
 
   // 강사: 본인 수업보고서 미작성(보고서 건수) + 취소·미진행 보강 필요(캘린더 탭)
-  // ⚠ 배지와 /reports 탭 리스트는 pendingReportSummary(같은 모집단)를 공유해야 한다(불일치 재발 방지).
+  // ⚠ 배지와 To-do는 백엔드 pay-readiness의 같은 학생별 모집단을 공유한다.
   if (role === 'instructor') {
     if (instructorId == null) return out;
     // /reports 배지는 아래에서 미작성+반려를 합산해 한 번만 계산한다([핫픽스 07-20 ③]).
     // 보강 필요 + 반려된 내 수업 요청(재요청 필요) — 캘린더 탭
     const myMakeup = makeupNeeds(s, instructorId).filter((m) => !m.resolved);
     const myRejected = s.scheduleRequests.filter((r) => r.status === 'rejected');
-    put('/calendar', myMakeup.length + myRejected.length,
-      Math.max(latestActivityMs(myMakeup.map((m) => m.session)), latestActivityMs(myRejected)));
+    const readinessIssues = (s.payReadiness?.issues ?? []).filter((row) => row.instructorId === instructorId);
+    const executionIssues = readinessIssues.filter((row) => row.type === 'session_execution_missing' || row.type === 'session_roster_missing');
+    put('/calendar', myMakeup.length + myRejected.length + executionIssues.length,
+      Math.max(latestActivityMs(myMakeup.map((m) => m.session)), latestActivityMs(myRejected), readinessActivityMs(executionIssues)));
     // [핫픽스 2026-07-20 ③] 반려 사유 배지 — 내 정산 반려/회수(/payouts), 보고서 반려는 위 /reports
     //  모집단과 별개 상태(approvalStatus rejected — status는 submitted 유지)라 여기서 합산.
-    const myRejectedReports = s.sessionReports.filter((r) => {
-      if ((r as { approvalStatus?: string }).approvalStatus !== 'rejected') return false;
-      const ses = s.classSessions.find((x) => x.id === r.sessionId);
-      return !ses || ses.instructorId === instructorId;
-    });
-    put('/reports', pendingReportSummary(s, instructorId).itemCount + myRejectedReports.length,
-      Math.max(latestActivityMs(pendingReportSessions(s, instructorId).map((ses) => ({ updatedAt: new Date(sessionEndMs(ses)).toISOString() }))), latestActivityMs(myRejectedReports)));
+    const reportIssues = readinessIssues.filter((row) => REPORT_READINESS_TYPES.has(row.type));
+    put('/reports', reportIssues.length, readinessActivityMs(reportIssues));
     const myRejectedPayouts = s.instructorPayouts.filter((p) => p.status === 'rejected');
-    put('/payouts', myRejectedPayouts.length, latestActivityMs(myRejectedPayouts));
+    const rateIssues = readinessIssues.filter((row) => row.type === 'rate_missing');
+    put('/payouts', myRejectedPayouts.length + rateIssues.length,
+      Math.max(latestActivityMs(myRejectedPayouts), readinessActivityMs(rateIssues)));
     return out;
   }
   if (!isAdmin(role)) return out; // 학생/학부모 등은 알림 없음
@@ -360,17 +369,21 @@ export function navBadges(
   // 관리자/매니저
   // [대표 지시 ⑭] 보강 미배정(결강인데 보강 날짜 미정) — 강사 배지와 같은 단일 정의(lib/makeup) 전체 집계.
   const adminMakeup = makeupNeeds(s).filter((m) => !m.resolved);
-  put('/calendar', adminMakeup.length, latestActivityMs(adminMakeup.map((m) => m.session)));
+  const adminExecutionIssues = (s.payReadiness?.issues ?? []).filter((row) =>
+    row.type === 'session_execution_missing' || row.type === 'session_roster_missing');
+  put('/calendar', adminMakeup.length + adminExecutionIssues.length,
+    Math.max(latestActivityMs(adminMakeup.map((m) => m.session)), readinessActivityMs(adminExecutionIssues)));
   const counselRows = s.counselForms.filter((c) => c.status !== 'dropped' && !c.nextContactAt);
   put('/counsel', counselRows.length, latestActivityMs(counselRows)); // 다음 만남 날짜 미정(이탈 제외)
   const paymentRows = s.payments.filter((p) => p.status === 'pending');
   put('/payments', paymentRows.length, latestActivityMs(paymentRows)); // 미수(미납)
   const payoutRows = s.instructorPayouts.filter((p) => p.status === 'pending' || p.status === 'confirmed');
-  put('/payouts', payoutRows.length, latestActivityMs(payoutRows)); // 미정산(미지급)
+  const rateIssues = (s.payReadiness?.issues ?? []).filter((row) => row.type === 'rate_missing');
+  put('/payouts', payoutRows.length + rateIssues.length, Math.max(latestActivityMs(payoutRows), readinessActivityMs(rateIssues)));
   const expenseRows = s.expenses.filter((e) => e.status === 'requested');
   put('/expenses', expenseRows.length, latestActivityMs(expenseRows)); // 승인 대기
-  put('/reports', pendingReportSummary(s).itemCount,
-    latestActivityMs(pendingReportSessions(s).map((ses) => ({ updatedAt: new Date(sessionEndMs(ses)).toISOString() })))); // 미작성 보고서 건수(전체) — 탭 리스트와 동일 모집단
+  const reportIssues = (s.payReadiness?.issues ?? []).filter((row) => REPORT_READINESS_TYPES.has(row.type));
+  put('/reports', reportIssues.length, readinessActivityMs(reportIssues));
 
   // [핫픽스 2026-07-20 ②] 관리자(승인 센터) — lib/approvals 단일 소스로 통일: 보고서+지출+정산+
   //  수업 요청+**가입 승인+프로필 변경**(종전엔 뒤 2종이 빠져 승인센터에는 보이는데 배지·대시보드에

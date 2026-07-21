@@ -30,6 +30,7 @@ export const qk = {
     mine: (scope = "global") => ["payouts", "mine", scope] as const,
     preview: (instructorId: number, from: string, to: string) => ["payouts", "preview", instructorId, from, to] as const,
     previewMine: (scope: string, from: string, to: string) => ["payouts", "previewMine", scope, from, to] as const,
+    readiness: (scope = "global") => ["payouts", "readiness", scope] as const,
   },
   reports: { all: ["reports"] as const, list: (sessionId?: number, scope = "global") => ["reports", "list", scope, sessionId ?? null] as const },
   students: {

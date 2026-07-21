@@ -66,6 +66,29 @@ describe('scheduleRequests — 배지·To-do 동일 모집단(R1)', () => {
   });
 });
 
+describe('pay-readiness — 학생별 리포트 SSOT', () => {
+  const readiness = {
+    periodStart: '2026-07-01',
+    periodEnd: '2026-07-31',
+    instructorId: 1,
+    eligibleSessionIds: [],
+    issueCount: 2,
+    issues: [
+      { id: 'report_missing:91:1', type: 'report_missing' as const, sessionId: 91, instructorId: 1, studentId: 1, sessionDate: '2026-07-10', startTime: '10:00', topic: 'Writing' },
+      { id: 'report_missing:91:4', type: 'report_missing' as const, sessionId: 91, instructorId: 1, studentId: 4, sessionDate: '2026-07-10', startTime: '10:00', topic: 'Writing' },
+    ],
+  };
+
+  it('같은 수업의 학생 2명 누락을 To-do와 /reports 배지에서 각각 2건으로 유지한다', () => {
+    const s = { ...emptySlice, currentRole: 'instructor' as const, payReadiness: readiness };
+    const result = buildTasks(s, 'instructor', 1);
+    expect(result.items.filter((item) => item.group === 'report')).toHaveLength(2);
+    expect(result.count).toBe(2);
+    expect(navBadges(s, 'instructor', 1)['/reports']).toBe(2);
+    expect(navBadges(s, 'instructor', 1, { reports: '2099-01-01T00:00:00.000Z' })['/reports']).toBe(2);
+  });
+});
+
 // [대표 지시 ⑭ 2026-07-16] 보강 미배정 — 매니저 To-do·/calendar 배지(강사와 같은 lib/makeup 단일 정의).
 describe('보강 미배정 — 매니저 배지·To-do', () => {
   const canceled = { id: 21, courseId: 10, instructorId: 1, sessionDate: '2026-01-05', startTime: '16:00', durationMinutes: 60, status: 'canceled' as const };

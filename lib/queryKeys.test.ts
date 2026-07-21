@@ -19,4 +19,9 @@ describe("queryKeys", () => {
     expect(qk.profileChangeRequests.detail(11, "3:super_admin")).toEqual(["profileChangeRequests", "detail", "3:super_admin", 11]);
     expect(qk.profileChangeRequests.all).toEqual(["profileChangeRequests"]);
   });
+
+  it("isolates pay-readiness by verified account scope", () => {
+    expect(qk.payouts.readiness("1:instructor")).toEqual(["payouts", "readiness", "1:instructor"]);
+    expect(qk.payouts.readiness("4:manager")).not.toEqual(qk.payouts.readiness("1:instructor"));
+  });
 });

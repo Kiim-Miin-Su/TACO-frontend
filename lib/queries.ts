@@ -114,6 +114,15 @@ export const useMyPayoutPreview = (from: string, to: string) => {
     enabled: can("instructor.self") && !!from && !!to,
   });
 };
+export const usePayReadiness = () => {
+  const { role, scope, can } = useAccountAccess();
+  const isInstructor = role === "instructor";
+  return useQuery({
+    queryKey: qk.payouts.readiness(scope),
+    queryFn: () => isInstructor ? api.payouts.readinessMine() : api.payouts.readiness(),
+    enabled: isInstructor ? can("instructor.self") : can("admin.area"),
+  });
+};
 // [TBO-16 #9] 수업 요청 — 승인센터·배지(tasks)·캘린더가 **같은 queryKey를 구독**(단일 이벤트 객체).
 //  서버가 역할별 스코프 적용(강사=본인 요청만) — 클라 필터 불요.
 export const useScheduleRequests = () => {
@@ -345,11 +354,12 @@ export function useAppData() {
   const pendingAccounts = usePendingAccounts().data ?? [];
   const profileChangeRequests = useProfileChangeRequests().data ?? [];
   const myProfileChangeRequests = useMyProfileChangeRequests().data ?? [];
+  const payReadiness = usePayReadiness().data;
   return {
     students, parents, parentStudents, subjects, courses, enrollments, classSessions,
     attendance, sessionReports, payments, transactions, expenses, instructorPayouts,
     counselForms, counselRounds, academyEvents, roadmaps, roadmapCourses, instructors,
-    scheduleRequests, pendingAccounts, profileChangeRequests, myProfileChangeRequests,
+    scheduleRequests, pendingAccounts, profileChangeRequests, myProfileChangeRequests, payReadiness,
   };
 }
 
@@ -358,6 +368,7 @@ export function useTaskData() {
   const { role } = useAccountAccess();
   const financePayouts = usePayouts().data ?? [];
   const myPayouts = useMyPayouts().data ?? [];
+  const payReadiness = usePayReadiness().data;
   return {
     instructors: useInstructors().data ?? [],
     students: useStudents().data ?? [],
@@ -374,6 +385,7 @@ export function useTaskData() {
     pendingAccounts: usePendingAccounts().data ?? [],
     profileChangeRequests: useProfileChangeRequests().data ?? [],
     myProfileChangeRequests: useMyProfileChangeRequests().data ?? [],
+    payReadiness,
   };
 }
 
@@ -637,11 +649,11 @@ export const useWithdrawScheduleRequest = () => {
 export const useUpsertAttendance = () => useMutation({ mutationFn: api.attendance.upsert, onSuccess: useInvalidator([qk.attendance.all]) });
 
 // 리포트(작성·제출·승인/반려) — 승인은 시수/정산 적격 변동
-export const useCreateReport = () => useMutation({ mutationFn: api.reports.create, onSuccess: useInvalidator([qk.reports.all]) });
+export const useCreateReport = () => useMutation({ mutationFn: api.reports.create, onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });
 // [E0.6 H1] 기존 보고서 임시 저장(본문/숙제 수정) — 승인 전까지.
 export const useUpdateReport = () =>
-  useMutation({ mutationFn: (v: { id: number; content?: string; homework?: string }) => api.reports.update(v.id, v), onSuccess: useInvalidator([qk.reports.all]) });
-export const useSubmitReport = () => useMutation({ mutationFn: api.reports.submit, onSuccess: useInvalidator([qk.reports.all]) });
+  useMutation({ mutationFn: (v: { id: number; content?: string; homework?: string }) => api.reports.update(v.id, v), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });
+export const useSubmitReport = () => useMutation({ mutationFn: api.reports.submit, onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });
 export const useApproveReport = () =>
   useMutation({ mutationFn: (v: { id: number; approvedBy?: number }) => api.reports.approve(v.id, v.approvedBy), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });
 export const useRejectReport = () =>
