@@ -8,6 +8,7 @@ import { api, type SessionReport as ApiReport } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import {
   invalidateCalendarCommand,
+  invalidateInstructorAggregate,
   invalidateStudentAggregate,
   invalidateScheduleRequests,
   refreshScheduleRequestLifecycle,
@@ -171,6 +172,24 @@ export const useUsers = () => {
   const { can } = useAccountAccess();
   return useQuery({ queryKey: qk.users.list(), queryFn: () => api.users.list(), enabled: can("admin.area"), staleTime: CATALOG_STALE });
 };
+export const useInstructorAdminList = () => {
+  const { can } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.instructors.list(),
+    queryFn: () => api.instructors.list(),
+    enabled: can("admin.area"),
+    staleTime: CATALOG_STALE,
+  });
+};
+export const useInstructorAdminDetail = (id: number | null) => {
+  const { can } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.instructors.detail(id ?? 0),
+    queryFn: () => api.instructors.get(id as number),
+    enabled: id != null && can("admin.area"),
+    retry: detailRetry,
+  });
+};
 // [유저 관리 2026-07-20] 상세 단건(B7 규약 — DetailStates 소비)·대표 직접 수정·직접 등록·재인증.
 export const useUser = (id: number | null) => {
   const { can } = useAccountAccess();
@@ -186,6 +205,22 @@ export const useAdminUpdateUser = () => {
 export const useCreateStaffUser = () => {
   const invalidate = useInvalidator([qk.users.all]);
   return useMutation({ mutationFn: api.users.createStaff, onSuccess: invalidate });
+};
+export const useCreateInstructor = () => {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: api.instructors.create, onSuccess: () => invalidateInstructorAggregate(queryClient) });
+};
+export const useUpdateInstructor = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (value: { id: number; patch: Parameters<typeof api.instructors.update>[1] }) =>
+      api.instructors.update(value.id, value.patch),
+    onSuccess: () => invalidateInstructorAggregate(queryClient),
+  });
+};
+export const useRemoveInstructor = () => {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: api.instructors.remove, onSuccess: () => invalidateInstructorAggregate(queryClient) });
 };
 export const useReauth = () => useMutation({ mutationFn: api.auth.reauth });
 export const useMyProfile = () => {

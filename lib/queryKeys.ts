@@ -37,6 +37,11 @@ export const qk = {
     list: () => ["students", "list"] as const,
     aggregate: (id: number) => ["students", "aggregate", id] as const,
   }, // [B7 E3]
+  instructors: {
+    all: ["instructors"] as const,
+    list: () => ["instructors", "list"] as const,
+    detail: (id: number) => ["instructors", "detail", id] as const,
+  },
   payments: { all: ["payments"] as const, list: () => ["payments", "list"] as const, detail: (id: number) => ["payments", "detail", id] as const }, // [B7 E3]
   expenses: { all: ["expenses"] as const, list: () => ["expenses", "list"] as const, detail: (id: number) => ["expenses", "detail", id] as const }, // [B7 E3]
   courses: { all: ["courses"] as const, list: () => ["courses", "list"] as const, detail: (id: number) => ["courses", "detail", id] as const }, // [B7 E3]

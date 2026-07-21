@@ -57,6 +57,9 @@ import type {
   InstructorAttendanceStatus,
   ReportApprovalStatus,
   ReportStatus,
+  InstructorAggregate,
+  CreateInstructorInput,
+  UpdateInstructorInput,
 } from "@kms545487/contracts";
 
 export type ScheduleQuery = { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number };
@@ -605,6 +608,15 @@ export const api = {
       http.patch<UserProfileSummary>(`/users/${id}`, patch).then((r) => r.data),
     createStaff: (input: { webId: string; name: string; password: string; role?: string; email?: string; phone?: string; university?: string; major?: string; birthYear?: number }) =>
       http.post<UserProfileSummary>("/users/instructors", input).then((r) => r.data),
+  },
+  instructors: {
+    list: () => http.get<InstructorAggregate[]>("/instructors").then((r) => r.data),
+    get: (id: number) => http.get<InstructorAggregate>(`/instructors/${id}`).then((r) => r.data),
+    create: (input: CreateInstructorInput) =>
+      http.post<InstructorAggregate>("/instructors", input).then((r) => r.data),
+    update: (id: number, patch: UpdateInstructorInput) =>
+      http.patch<InstructorAggregate>(`/instructors/${id}`, patch).then((r) => r.data),
+    remove: (id: number) => http.delete<{ id: number; deleted: true }>(`/instructors/${id}`).then((r) => r.data),
   },
   // [E0.5 ④] 참조 데이터 카탈로그 — 국가·시간대 토글 옵션(자유 입력 폐지)의 단일 소스(DB 권위).
   catalog: {

@@ -55,6 +55,23 @@ export async function invalidateStudentAggregate(queryClient: QueryClient): Prom
   );
 }
 
+// 강사 aggregate 변경은 관리자 목록뿐 아니라 수업 기본 페이, 캘린더 자원, 정산 계산에 전파된다.
+export const INSTRUCTOR_AGGREGATE_SCOPES = [
+  qk.instructors.all,
+  qk.users.all,
+  qk.courses.all,
+  qk.schedule.all,
+  qk.payouts.all,
+] as const;
+
+export async function invalidateInstructorAggregate(queryClient: QueryClient): Promise<void> {
+  await Promise.all(
+    INSTRUCTOR_AGGREGATE_SCOPES.map((key) =>
+      queryClient.invalidateQueries({ queryKey: key as unknown as readonly unknown[], refetchType: "active" }),
+    ),
+  );
+}
+
 /** @deprecated [C4] invalidateCalendarCommand로 통일 — 부분 무효화 편차 방지를 위해 위임만 남긴다. */
 export async function invalidateScheduleLifecycle(queryClient: QueryClient): Promise<void> {
   await invalidateCalendarCommand(queryClient);

@@ -6,7 +6,9 @@ import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import {
   CALENDAR_COMMAND_SCOPES,
+  INSTRUCTOR_AGGREGATE_SCOPES,
   STUDENT_AGGREGATE_SCOPES,
+  invalidateInstructorAggregate,
   invalidateStudentAggregate,
   refreshScheduleRequestLifecycle,
 } from "./query-cache";
@@ -61,5 +63,18 @@ describe("invalidateStudentAggregate (TBO-35 35A)", () => {
     for (const [options] of spy.mock.calls) {
       expect(options).toMatchObject({ refetchType: "active" });
     }
+  });
+});
+
+describe("invalidateInstructorAggregate (TBO-36 36B)", () => {
+  it("강사 변경 후 관리자 목록·유저·수업·calendar resources·정산을 함께 갱신한다", async () => {
+    const { queryClient, spy } = spyInvalidate();
+    await invalidateInstructorAggregate(queryClient);
+    const roots = calledRoots(spy);
+    expect(spy).toHaveBeenCalledTimes(INSTRUCTOR_AGGREGATE_SCOPES.length);
+    for (const root of [["instructors"], ["users"], ["courses"], ["schedule"], ["payouts"]]) {
+      expect(roots).toContain(JSON.stringify(root));
+    }
+    for (const [options] of spy.mock.calls) expect(options).toMatchObject({ refetchType: "active" });
   });
 });
