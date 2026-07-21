@@ -4,7 +4,7 @@ import { counselReservationsOnDate, recentCounselForms } from './counsel';
 
 const form = (id: number, nextContactAt?: string | null): CounselForm => ({
   id,
-  applicantName: `상담 ${id}`,
+  studentId: id,
   source: 'manual',
   submitterType: 'unknown',
   status: 'requested',

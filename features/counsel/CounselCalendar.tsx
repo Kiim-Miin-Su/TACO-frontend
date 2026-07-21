@@ -6,6 +6,7 @@ import { SectionCard, toneBg, toneFg } from '@/components/ui';
 import { useCounselForms, useCounselRounds } from '@/lib/queries';
 import { statusLabel, statusTone } from './labels';
 import { counselReservationsOnDate } from '@/lib/domain/counsel';
+import { useCounselStudentLookup } from './useCounselStudentLookup';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -13,13 +14,17 @@ const pad = (n: number) => String(n).padStart(2, '0');
 export function CounselCalendar() {
   const { data: forms = [] } = useCounselForms();
   const { data: rounds = [] } = useCounselRounds();
+  const { studentById } = useCounselStudentLookup();
   // [수정 2026-07-07] 하드코딩 2026-05 → 오늘 기준 동적 월(시드 상대 날짜와 정합).
   const [ym, setYm] = useState(() => { const n = new Date(); return { y: n.getFullYear(), m: n.getMonth() }; });
 
   const startWeekday = new Date(ym.y, ym.m, 1).getDay();
   const daysInMonth = new Date(ym.y, ym.m + 1, 0).getDate();
   const monthStr = `${ym.y}-${pad(ym.m + 1)}`;
-  const nameOf = (formId: number) => forms.find((f) => f.id === formId)?.applicantName ?? '상담';
+  const nameOf = (formId: number) => {
+    const form = forms.find((row) => row.id === formId);
+    return form ? studentById.get(form.studentId)?.name ?? `학생 #${form.studentId}` : '상담';
+  };
 
   const move = (delta: number) => {
     const dt = new Date(ym.y, ym.m + delta, 1);
@@ -61,7 +66,7 @@ export function CounselCalendar() {
                       className="block rounded px-1.5 py-1 text-micro font-medium truncate"
                       style={{ backgroundColor: toneBg[tone], color: toneFg[tone] }}
                       title={`상담 예약 · ${statusLabel[f.status]}`}>
-                      📅 {f.applicantName} 예약 ({statusLabel[f.status]})
+                      📅 {studentById.get(f.studentId)?.name ?? `학생 #${f.studentId}`} 예약 ({statusLabel[f.status]})
                     </Link>
                   );
                 })}

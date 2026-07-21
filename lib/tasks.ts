@@ -183,9 +183,10 @@ function adminTasks(s: StoreSlice): TaskItem[] {
     const dateUndecided = !c.nextContactAt; // 정확한 상담 날짜 미정
     const unassigned = c.assignedStaffId == null; // 담당 미배정
     if (!dateUndecided && !unassigned) continue;
+    const student = s.students.find((row) => row.id === c.studentId);
     out.push({
       id: `counsel-${c.id}`, group: 'counsel', tone: 'accent', counts: true,
-      title: `상담 배정 대기 — ${c.applicantName}`,
+      title: `상담 배정 대기 — ${student?.name ?? `학생 #${c.studentId}`}`,
       detail: `날짜 미정 · 담당/일정 배정 필요`,
       href: '/counsel',
     });

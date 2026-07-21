@@ -9,12 +9,14 @@ import { useCounselForms, useCounselRounds } from '@/lib/queries';
 import { CounselCalendar } from './CounselCalendar';
 import { recentCounselForms } from '@/lib/domain/counsel';
 import { statusLabel, statusTone, sourceLabel } from './labels';
+import { useCounselStudentLookup } from './useCounselStudentLookup';
 
 type Tab = 'list' | 'calendar';
 
 export function CounselView() {
   // [B6 C3 2026-07-16] isPending 구독 — 로드 중 "접수된 상담카드가 없습니다" 깜빡임 방지(E0.6 H2 규칙).
   const { data: forms = [], isPending: loading } = useCounselForms();
+  const { studentById, isPending: studentsLoading } = useCounselStudentLookup();
   const { data: rounds = [] } = useCounselRounds();
   const roundCount = (formId: number) => rounds.filter((r) => r.counselFormId === formId).length;
 
@@ -23,7 +25,10 @@ export function CounselView() {
   const needle = q.trim().toLowerCase();
   const recentForms = recentCounselForms(forms);
   const filtered = needle
-    ? recentForms.filter((f) => `${f.applicantName} ${f.applicantPhone ?? ''}`.toLowerCase().includes(needle))
+    ? recentForms.filter((form) => {
+      const student = studentById.get(form.studentId);
+      return `${student?.name ?? ''} ${student?.phone ?? ''} ${student?.kakaoId ?? ''}`.toLowerCase().includes(needle);
+    })
     : recentForms;
 
   return (
@@ -63,7 +68,7 @@ export function CounselView() {
             />
           }
         >
-          {loading ? (
+          {loading || studentsLoading ? (
             <LoadingState />
           ) : filtered.length === 0 ? (
             <EmptyState message={needle ? '검색 결과가 없습니다.' : '접수된 상담카드가 없습니다. 우측 상단 “+ 상담 신청”으로 시작하세요.'} />
@@ -82,15 +87,18 @@ export function CounselView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((f) => (
+                  {filtered.map((f) => {
+                    const student = studentById.get(f.studentId);
+                    const studentName = student?.name ?? `학생 #${f.studentId}`;
+                    return (
                     <ClickableTableRow
                       key={f.id}
                       href={`/counsel/${f.id}`}
-                      label={`${f.applicantName} 상담 상세 보기`}
+                      label={`${studentName} 상담 상세 보기`}
                     >
                       <td>
-                        <Link href={`/counsel/${f.id}`} className="font-medium text-accent hover:underline">{f.applicantName}</Link>
-                        <div className="text-caption text-fg-subtle">{f.applicantPhone ?? ''}</div>
+                        <Link href={`/counsel/${f.id}`} className="font-medium text-accent hover:underline">{studentName}</Link>
+                        <div className="text-caption text-fg-subtle">{student?.phone ?? ''}</div>
                       </td>
                       <td className="text-fg-muted">{sourceLabel[f.source]}</td>
                       <td><Badge tone={statusTone[f.status]}>{statusLabel[f.status]}</Badge></td>
@@ -101,7 +109,8 @@ export function CounselView() {
                         <Link href={`/counsel/${f.id}`} className="btn btn-sm">상세 보기</Link>
                       </td>
                     </ClickableTableRow>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </TableWrap>

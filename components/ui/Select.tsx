@@ -2,7 +2,7 @@
 // [재사용 2026-07-07] 공용 셀렉트 — `<select className="input">` + 옵션 반복 패턴을 한 컴포넌트로.
 //  상담 폼/상세의 하드코딩 <option> 블록을 대체(각 select ~5줄 → 1줄). 값 문자열만 다루고
 //  onChange는 (value)만 넘긴다(e.target.value 반복 제거). enum은 enumOptions(labels)로 옵션 생성.
-//  예) <Select value={f.desiredStartTime} onChange={(v)=>set({desiredStartTime:v})}
+//  예) <Select value={status} onChange={setStatus} />
 //        options={enumOptions(startLabel)} empty="선택 안 함" />
 import type { SelectOption } from '@/lib/enumOptions';
 

@@ -136,9 +136,8 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                   <div className="divide-y border-line-muted">
                     {myCounsel.map((c) => (
                       <div key={c.id} className="p-3 flex items-center gap-x-3 flex-wrap">
-                        <Link href={`/counsel/${c.id}`} className="text-accent hover:underline font-medium">{c.applicantName}</Link>
+                        <Link href={`/counsel/${c.id}`} className="text-accent hover:underline font-medium">{student.name}</Link>
                         <Badge tone={counselTone[c.status]}>{counselLabel[c.status]}</Badge>
-                        {c.interestCourseId && <span className="text-caption text-fg-muted">{courseName(c.interestCourseId)}</span>}
                       </div>
                     ))}
                   </div>

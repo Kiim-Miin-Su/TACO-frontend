@@ -9,6 +9,7 @@ import {
   useUpdateStudentFamilyRelation,
 } from '@/lib/queries';
 import type { StudentFamilyRelation } from '@/types';
+import { StudentSearchSelect } from './StudentSearchSelect';
 
 export function StudentFamilyRelationsSection({
   studentId,
@@ -25,16 +26,16 @@ export function StudentFamilyRelationsSection({
   const remove = useRemoveStudentFamilyRelation();
   const [adding, setAdding] = useState(false);
   const [relatedStudentId, setRelatedStudentId] = useState('');
-  const [search, setSearch] = useState('');
   const [relationType, setRelationType] = useState<'sibling' | 'other'>('sibling');
   const [relationLabel, setRelationLabel] = useState('');
   const [editing, setEditing] = useState<StudentFamilyRelation | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<StudentFamilyRelation | null>(null);
   const [error, setError] = useState('');
   const studentById = useMemo(() => new Map(students.map((student) => [student.id, student])), [students]);
-  const linkedIds = new Set(relations.flatMap((relation) => [relation.studentIdA, relation.studentIdB]));
-  const candidates = students.filter((student) => student.id !== studentId && !linkedIds.has(student.id)
-    && (!search.trim() || `${student.name} ${student.schoolName ?? ''} ${student.phone ?? ''}`.toLowerCase().includes(search.trim().toLowerCase())));
+  const excludedIds = useMemo(
+    () => new Set([studentId, ...relations.flatMap((relation) => [relation.studentIdA, relation.studentIdB])]),
+    [relations, studentId],
+  );
 
   const relatedName = (relation: StudentFamilyRelation) => {
     const relatedId = relation.studentIdA === studentId ? relation.studentIdB : relation.studentIdA;
@@ -60,7 +61,6 @@ export function StudentFamilyRelationsSection({
   return (
     <>
       <SectionCard title={`가족 등록 (${relations.length})`} action={canEdit && !adding ? <button className="btn btn-sm" onClick={() => {
-        setSearch('');
         setRelatedStudentId('');
         setRelationType('sibling');
         setRelationLabel('');
@@ -85,8 +85,7 @@ export function StudentFamilyRelationsSection({
       </SectionCard>
       {adding && <ModalShell title="등록 학생 검색 · 가족 연결" size="md" onClose={() => setAdding(false)} footer={<><button className="btn" onClick={() => setAdding(false)}>취소</button><button className="btn btn-primary" disabled={create.isPending || !relatedStudentId} onClick={submitCreate}>{create.isPending ? '연결 중…' : '가족 연결'}</button></>}>
         <div className="space-y-4">
-          <Field label="학생 검색"><input className="input" autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder="이름·학교·연락처" /></Field>
-          <Field label="검색 결과"><select className="input" size={Math.min(6, Math.max(2, candidates.length))} value={relatedStudentId} onChange={(event) => setRelatedStudentId(event.target.value)}>{!candidates.length && <option value="">검색 결과 없음</option>}{candidates.map((student) => <option key={student.id} value={student.id}>{student.name} · {student.schoolName ?? '학교 미입력'} · {student.phone ?? '연락처 없음'}</option>)}</select></Field>
+          <StudentSearchSelect students={students} value={relatedStudentId ? Number(relatedStudentId) : null} onChange={(id) => setRelatedStudentId(id == null ? '' : String(id))} excludeIds={excludedIds} autoFocus />
           <Field label="가족 관계"><select className="input" value={relationType} onChange={(event) => setRelationType(event.target.value as 'sibling' | 'other')}><option value="sibling">형제·자매</option><option value="other">기타</option></select></Field>
           {relationType === 'other' && <Field label="기타 관계명"><input className="input" value={relationLabel} onChange={(event) => setRelationLabel(event.target.value)} /></Field>}
           {error && <p className="text-caption text-danger" role="alert">{error}</p>}

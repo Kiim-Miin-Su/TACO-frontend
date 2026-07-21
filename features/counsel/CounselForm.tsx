@@ -2,25 +2,23 @@
 import { useState } from 'react';
 import { Field } from '@/components/ui';
 // 읽기(subjects·courses)/쓰기(상담 생성·수정)는 TanStack Query 훅 경유(zustand store 대체).
-import { useSubjects, useStudents, useCreateCounsel } from '@/lib/queries';
+import { useStudents, useCreateCounsel } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import type { CounselSource } from '@/types';
+import { StudentSearchSelect } from '@/features/students/StudentSearchSelect';
 
 type Author = 'parent' | 'student' | 'staff';
 
 type FormState = {
   author: Author;
-  studentId: string;
-  applicantName: string;
-  applicantPhone: string;
-  interestSubjectId: string;
+  studentId: number | null;
   referenceNotes: string;
   dateUndecided: boolean; // 다음 상담일 미정 여부
   nextContactAt: string;  // 다음 상담일(미정 아니면)
 };
 
 const empty: FormState = {
-  author: 'parent', studentId: '', applicantName: '', applicantPhone: '', interestSubjectId: '',
+  author: 'parent', studentId: null,
   referenceNotes: '',
   dateUndecided: true, nextContactAt: '',
 };
@@ -31,22 +29,21 @@ const sourceOf = (a: Author): CounselSource => (a === 'staff' ? 'manual' : 'inte
 export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) {
   const createCounsel = useCreateCounsel();
   const { account } = useAccountAccess();
-  const { data: subjects = [] } = useSubjects();
   const { data: students = [] } = useStudents();
   const [f, setF] = useState<FormState>(empty);
   const set = (p: Partial<FormState>) => setF((prev) => ({ ...prev, ...p }));
+  const selectedStudent = f.studentId == null
+    ? undefined
+    : students.find((student) => student.id === f.studentId);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!f.applicantName.trim()) return;
+    if (f.studentId == null) return;
     createCounsel.mutate({
-      applicantName: f.applicantName.trim(),
-      applicantPhone: f.applicantPhone.trim() || undefined,
-      studentId: f.studentId ? Number(f.studentId) : undefined,
+      studentId: f.studentId,
       source: sourceOf(f.author),
       submitterType: f.author,
       assignedStaffId: f.author === 'staff' ? account?.id : undefined,
-      interestSubjectId: f.interestSubjectId ? Number(f.interestSubjectId) : undefined,
       referenceNotes: f.referenceNotes.trim() || undefined,
       nextContactAt: f.dateUndecided ? undefined : f.nextContactAt || undefined,
     }, {
@@ -68,23 +65,8 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
             <option value="staff">상담실장</option>
           </select>
         </Field>
-        <Field label="등록 학생 연결">
-          <select className="input" value={f.studentId} onChange={(event) => {
-            set({ studentId: event.target.value });
-          }}><option value="">신규 문의 · 아직 학생 없음</option>{students.map((student) => <option key={student.id} value={student.id}>{student.name} · {student.schoolName ?? '학교 미입력'}</option>)}</select>
-        </Field>
-        <Field label="접수자 이름 *"><input className="input" value={f.applicantName} onChange={(e) => set({ applicantName: e.target.value })} placeholder="학생 또는 보호자 이름" /></Field>
-        <Field label="접수자 연락처"><input className="input" value={f.applicantPhone} onChange={(e) => set({ applicantPhone: e.target.value })} placeholder="010-0000-0000" /></Field>
-        {f.studentId && <><Field label="학생 이름 (원부)"><input className="input" readOnly value={students.find((student) => student.id === Number(f.studentId))?.name ?? ''} /></Field><Field label="학생 본인 연락처 (원부)"><input className="input" readOnly value={students.find((student) => student.id === Number(f.studentId))?.phone ?? ''} /></Field><Field label="Kakao ID (원부)"><input className="input" readOnly value={students.find((student) => student.id === Number(f.studentId))?.kakaoId ?? ''} /></Field></>}
-      </Section>
-
-      <Section title="관심 · 희망">
-        <Field label="관심 과목">
-          <select className="input" value={f.interestSubjectId} onChange={(e) => set({ interestSubjectId: e.target.value })}>
-            <option value="">선택 안 함</option>
-            {subjects.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
-          </select>
-        </Field>
+        <div className="sm:col-span-2 lg:col-span-3"><StudentSearchSelect students={students} value={f.studentId} onChange={(studentId) => set({ studentId })} required /></div>
+        {selectedStudent && <><Field label="학생 이름 (원부)"><input className="input" readOnly value={selectedStudent.name} /></Field><Field label="학생 본인 연락처 (원부)"><input className="input" readOnly value={selectedStudent.phone ?? ''} /></Field><Field label="Kakao ID (원부)"><input className="input" readOnly value={selectedStudent.kakaoId ?? ''} /></Field></>}
       </Section>
 
       <Section title="예약 · 참고">
@@ -106,7 +88,7 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
       </Section>
 
       <div className="flex justify-end pt-2 border-t border-line-muted">
-        <button type="submit" className="btn btn-primary" disabled={createCounsel.isPending || !f.applicantName.trim()}>
+        <button type="submit" className="btn btn-primary" disabled={createCounsel.isPending || f.studentId == null}>
           {createCounsel.isPending ? '접수 중…' : '상담 신청'}
         </button>
       </div>
