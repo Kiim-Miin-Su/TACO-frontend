@@ -55,7 +55,7 @@ export function ParticipantsCard({
               <span className="inline-flex items-center gap-1">
                 <CountryBadge code={st.country} />
                 {st.grade != null && <span>{st.grade}학년</span>}
-                <span style={{ color: st.status !== "active" ? "var(--color-attention)" : undefined }}>
+                <span style={{ color: st.status !== "enrolled" ? "var(--color-attention)" : undefined }}>
                   {STUDENT_STATUS_LABEL[st.status] ?? st.status}
                 </span>
               </span>

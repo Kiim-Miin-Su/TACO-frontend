@@ -48,7 +48,7 @@ export function ResourceDetailCard({
     selected.type === "student" ? students.find((s) => Number(s.id) === Number(selected.id)) : undefined;
 
   // 편집 폼(학생) — 선택 변경 시 서버 값으로 리셋
-  const [f, setF] = useState({ country: "KR", residenceType: "domestic", status: "active", grade: "", phone: "" });
+  const [f, setF] = useState({ country: "KR", residenceType: "domestic", status: "new_inquiry", grade: "", phone: "" });
   const [editing, setEditing] = useState(false);
   useEffect(() => {
     setEditing(false);
