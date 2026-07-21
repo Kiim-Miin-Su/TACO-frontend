@@ -7,6 +7,7 @@ import type { AvailabilityUpsertBody } from "@/lib/api";
 import { Field, ModalShell } from "@/components/ui";
 import { WEEKDAYS_KO as WD } from "@/lib/domain/schedule";
 import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
+import { ScheduleTimeRangeFields } from "../inputs/ScheduleTimeRangeFields";
 
 export function BlockEditModal({
   block, onClose, onSave, onDelete,
@@ -54,10 +55,7 @@ export function BlockEditModal({
           {WD.map((w, d) => <option key={d} value={d}>{w}</option>)}
         </select>
       </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="시작"><input type="time" step={900} className="input" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
-        <Field label="종료"><input type="time" step={900} className="input" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
-      </div>
+      <ScheduleTimeRangeFields start={start} end={end} onStartChange={setStart} onEndChange={setEnd} />
       <div className="grid grid-cols-2 gap-3">
         <Field label="기간 시작 (선택)"><input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
         <Field label="기간 종료 (선택)"><input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} /></Field>

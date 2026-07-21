@@ -9,28 +9,11 @@
 import { useState } from "react";
 import type { Room, ScheduleRow, RecurrenceScope } from "@/types";
 import type { SchedulePatchBody } from "@/lib/api";
-import { fromMin, toMin, pad2, WEEKDAYS_KO as WD } from "@/lib/domain/schedule";
+import { fromMin, toMin, WEEKDAYS_KO as WD } from "@/lib/domain/schedule";
 import { PALETTE, STATUS_LABEL, sessionEditPatch, KIND_FILTERS, KIND_FILTER_LABEL, MODE_FILTERS, MODE_FILTER_LABEL, type SessionDraft } from "@/lib/domain/lantiv";
 import { Field } from "@/components/ui";
-
-// ── 시간 선택기(24시간 · 시/분 드롭다운) — 브라우저 type=time의 AM/PM(로케일 의존) 불편 해소.
-//  실제 앱처럼 시(00~23)·분(5분 단위)을 직접 고른다. 값·onChange는 "HH:mm" 문자열(기존 계약 유지).
-const MINUTE_STEP = 5;
-export function TimeSelect({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
-  const [h, m] = (value || "00:00").split(":").map(Number);
-  const mSel = Math.round((m || 0) / MINUTE_STEP) * MINUTE_STEP; // 5분 격자에 스냅(표시)
-  const base = `input ${className ?? ""}`.trim();
-  return (
-    <div className="flex items-center gap-1">
-      <select className={`${base} px-1`} value={h} onChange={(e) => onChange(`${pad2(Number(e.target.value))}:${pad2(mSel)}`)} aria-label="시">
-        {Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{pad2(i)}시</option>)}
-      </select>
-      <select className={`${base} px-1`} value={mSel} onChange={(e) => onChange(`${pad2(h)}:${pad2(Number(e.target.value))}`)} aria-label="분">
-        {Array.from({ length: 60 / MINUTE_STEP }, (_, i) => i * MINUTE_STEP).map((mm) => <option key={mm} value={mm}>{pad2(mm)}분</option>)}
-      </select>
-    </div>
-  );
-}
+import { ScheduleDateField } from "./inputs/ScheduleDateField";
+import { ScheduleTimeRangeFields } from "./inputs/ScheduleTimeRangeFields";
 
 export function ColorPicker({ value, onChange }: { value?: string; onChange: (c: string) => void }) {
   return (
@@ -93,17 +76,14 @@ export function SessionEditFields({
 
   return (
     <div className="space-y-3">
-      <Field label="날짜">
-        <input type="date" className={input} value={d.sessionDate} onChange={(e) => set("sessionDate", e.target.value)} />
-      </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="시작">
-          <TimeSelect value={d.startTime} onChange={(v) => set("startTime", v)} className={compact ? "h-8 text-caption" : ""} />
-        </Field>
-        <Field label="종료">
-          <TimeSelect value={d.endTime} onChange={(v) => set("endTime", v)} className={compact ? "h-8 text-caption" : ""} />
-        </Field>
-      </div>
+      <ScheduleDateField value={d.sessionDate} onChange={(value) => set("sessionDate", value)} className={input} />
+      <ScheduleTimeRangeFields
+        start={d.startTime}
+        end={d.endTime}
+        onStartChange={(value) => set("startTime", value)}
+        onEndChange={(value) => set("endTime", value)}
+        compact={compact}
+      />
       <div className="grid grid-cols-2 gap-3">
         <Field label="강사">
           <select className={input} value={d.instructorId} onChange={(e) => set("instructorId", Number(e.target.value))}>

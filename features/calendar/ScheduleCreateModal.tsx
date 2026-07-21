@@ -8,7 +8,7 @@ import type { AvailabilityUpsertBody, ScheduleCreateBody, ScheduleSeriesCreateBo
 import type { Room, ScheduleResource, ScheduleResources } from "@/types";
 // [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
 import { Field, ModalShell } from "@/components/ui";
-import { ColorPicker, TimeSelect } from "./SessionEditFields";
+import { ColorPicker } from "./SessionEditFields";
 import { STATUS_LABEL } from "@/lib/domain/lantiv";
 import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
 
@@ -16,22 +16,20 @@ const isCanceledStatus = (s?: string) => s === "canceled" || s === "no_show";
 import { useAllAvailability, useEnrollments, useStudents } from "@/lib/queries";
 // [B4 2026-07-16 대표 결정 ②] 강의실 관리 — 수업탭(CoursesView)과 같은 공용 컴포넌트 재사용(사설 사본 금지)
 import { RoomManagerPanel } from "@/features/rooms/RoomManagerPanel";
-import { weekdayOf, toMin, fromMin, durationMinutesBetween, WEEKDAYS_KO as WD, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
+import { weekdayOf, toMin, fromMin, durationMinutesBetween, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
 import { seriesRuleToKst } from "@/lib/domain/series";
 import { splitKstBand, tzLocalToKst, KST_TZ, type CountryInfo } from "@/lib/domain/tz";
-
-const DUR_PRESETS = [30, 60, 90, 120, 150, 180] as const;
-const durLabel = (m: number) => (m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간${m % 60 ? "30분" : ""}`);
+import { ScheduleDateField } from "./inputs/ScheduleDateField";
+import { ScheduleEntryTypeSelector } from "./inputs/ScheduleEntryTypeSelector";
+import { availabilityKindOf, type ScheduleEntryType } from "@/lib/domain/schedule-entry-kind";
+import { ScheduleRepeatFields, type ScheduleRepeat } from "./inputs/ScheduleRepeatFields";
+import { ScheduleTimeRangeFields } from "./inputs/ScheduleTimeRangeFields";
 
 const addDaysISO = (iso: string, n: number) => {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 };
-
-function DateField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return <Field label="날짜"><input type="date" className="input" value={value} onChange={(e) => onChange(e.target.value)} /></Field>;
-}
 
 // [이슈1] 검색 가능한 다중 선택 리스트 — 인원이 많아도 검색으로 좁혀 선택(체크박스 나열 대체).
 function SearchableCheckList({ items, selected, onToggle, placeholder }: {
@@ -61,65 +59,6 @@ function SearchableCheckList({ items, selected, onToggle, placeholder }: {
         })}
       </div>
     </div>
-  );
-}
-
-// 시작·종료 시각 + [이슈2] 토글형 빠른 진행시간(시작 기준 종료 자동) — 수업/가용/불가 공통.
-function TimeRangeField({ start, end, onStart, onEnd, endHint }: {
-  start: string; end: string; onStart: (v: string) => void; onEnd: (v: string) => void; endHint?: string;
-}) {
-  const dur = (toMin(end) - toMin(start) + 1440) % 1440; // [R-9] end<start=익일 종료 — 래핑해 프리셋 하이라이트 유지
-  return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="시작"><TimeSelect value={start} onChange={onStart} /></Field>
-        <Field label={`종료${endHint ? ` (${endHint})` : ""}`}><TimeSelect value={end} onChange={onEnd} /></Field>
-      </div>
-      <div className="flex flex-wrap gap-1">
-        <span className="text-micro text-fg-subtle self-center mr-0.5">빠른 선택</span>
-        {DUR_PRESETS.map((m) => (
-          /* [R-9] 심야 시작 + 프리셋이 자정을 넘으면 %1440 래핑 — 수업은 익일 종료로 저장, 블록은 start<end 검증이 막음 */
-          <button key={m} type="button" onClick={() => onEnd(fromMin((toMin(start) + m) % 1440))}
-            className={`btn btn-sm ${dur === m ? "badge-accent" : ""}`}>{durLabel(m)}</button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// 반복(none/weekly/custom) + 커스텀 요일 + 종료일 — 수업/가용/불가 공통. noneLabel만 탭별 상이.
-function RepeatField({ repeat, setRepeat, customWds, toggleWd, untilDate, setUntilDate, date, occurrencesCount, noneLabel }: {
-  repeat: "none" | "weekly" | "custom"; setRepeat: (v: "none" | "weekly" | "custom") => void;
-  customWds: number[]; toggleWd: (d: number) => void;
-  untilDate: string; setUntilDate: (v: string) => void; date: string; occurrencesCount: number; noneLabel: string;
-}) {
-  return (
-    <>
-      <Field label="반복">
-        <div className="flex rounded-md overflow-hidden border">
-          {([["none", noneLabel], ["weekly", "매주"], ["custom", "커스텀"]] as const).map(([v, lbl]) => (
-            <button key={v} type="button" onClick={() => setRepeat(v)}
-              className={`btn btn-sm flex-1 rounded-none border-0 ${repeat === v ? "badge-accent" : ""}`}>{lbl}</button>
-          ))}
-        </div>
-      </Field>
-      {repeat === "custom" && (
-        <Field label="요일">
-          <div className="flex gap-1">
-            {WD.map((w, d) => (
-              <button key={d} type="button" onClick={() => toggleWd(d)}
-                className={`w-8 h-8 rounded text-caption border ${customWds.includes(d) ? "badge-accent" : ""}`}
-               >{w}</button>
-            ))}
-          </div>
-        </Field>
-      )}
-      {repeat !== "none" && (
-        <Field label={`종료일 (${occurrencesCount}회)`}>
-          <input type="date" className="input" value={untilDate} min={date} onChange={(e) => setUntilDate(e.target.value)} />
-        </Field>
-      )}
-    </>
   );
 }
 
@@ -160,7 +99,7 @@ export function ScheduleCreateModal({
   const tzActive = !!ownerTz && ownerTz.tz !== KST_TZ;
   const toKst = (dLocal: string, t: string) => (tzActive ? tzLocalToKst(dLocal, t, ownerTz!.tz) : { date: dLocal, time: t });
   // 유형: 수업 / 가용 / 불가 — 셋 다 같은 날짜·시간·반복(그날만=일회성 / 매주 / 커스텀) UX.
-  const [type, setType] = useState<"session" | "available" | "unavailable" | "online_only">("session");
+  const [type, setType] = useState<ScheduleEntryType>("session");
 
   // ── 수업 탭 ──
   const myCourses = lockInstructorId != null ? resources.courses.filter((c) => c.instructorId === lockInstructorId) : resources.courses;
@@ -187,7 +126,7 @@ export function ScheduleCreateModal({
   const [color, setColor] = useState<string | undefined>(myCourses[0]?.color);
   const [status, setStatus] = useState<string>("scheduled");
   // ── 반복(그날만/매주/커스텀) + 종료일 ──
-  const [repeat, setRepeat] = useState<"none" | "weekly" | "custom">("none");
+  const [repeat, setRepeat] = useState<ScheduleRepeat>("none");
   const [untilDate, setUntilDate] = useState(addDaysISO(defaultDate, 28));
   const [customWds, setCustomWds] = useState<number[]>([weekdayOf(defaultDate)]);
   const toggleWd = (d: number) => setCustomWds((ws) => (ws.includes(d) ? ws.filter((x) => x !== d) : [...ws, d].sort()));
@@ -279,7 +218,8 @@ export function ScheduleCreateModal({
   //  - 일회성: 그 날짜 한 주만(effectiveFrom=effectiveTo=date).
   //  - 매주/커스텀: 선택 요일마다 date부터 종료일(untilDate)까지 반복.
   async function submitBlocks() {
-    const kind = type === "unavailable" ? "unavailable" : type === "online_only" ? "online_only" : "available";
+    if (type === "session") return;
+    const kind = availabilityKindOf(type);
     // [이슈1] 비KST 입력: 현지 (date,시각)을 KST로 변환 후 요일·시각 확정. 반복은 KST 시각·요일 기준.
     // [버그수정 2026-07-06] 현지→KST 변환이 자정을 넘으면 두 블록으로 분할(splitKstBand) —
     //  이전엔 end<start로 저장돼 KST 뷰(축·렌더 모두 KST)에서 밴드가 사라졌다.
@@ -361,17 +301,13 @@ export function ScheduleCreateModal({
             </button>
           ) : (
             <button className="btn btn-primary" disabled={!blockValid} onClick={submitBlocks}>
-              {AVAILABILITY_KIND_LABEL[type === "unavailable" ? "unavailable" : type === "online_only" ? "online_only" : "available"]} 추가
+              {AVAILABILITY_KIND_LABEL[availabilityKindOf(type)]} 추가
             </button>
           )}
         </>
       )}
     >
-        <div className="flex rounded-md overflow-hidden border">
-          {([["session", "수업"], ["available", "가용"], ["unavailable", "불가"], ["online_only", "온라인만"]] as const).map(([v, lbl]) => (
-            <button key={v} className={`btn btn-sm flex-1 rounded-none border-0 ${type === v ? "badge-accent" : ""}`} onClick={() => { setType(v); setBlockError(null); }}>{lbl}</button>
-          ))}
-        </div>
+        <ScheduleEntryTypeSelector value={type} onChange={(value) => { setType(value); setBlockError(null); }} />
         {requestMode && type === "session" && (
           /* [UX H1] 강사에게 실제 동작(승인 요청)을 사전 고지 — 버튼 라벨과 일치 */
           <div className="rounded-md px-2.5 py-1.5 text-caption" style={{ background: "color-mix(in srgb, var(--color-accent) 10%, transparent)", color: "var(--color-accent)" }}>
@@ -448,8 +384,8 @@ export function ScheduleCreateModal({
                 </div>
               )}
             </Field>
-            <DateField value={date} onChange={setDate} />
-            <TimeRangeField start={start} end={end} onStart={changeStart} onEnd={setEnd} endHint={`진행 ${courseDur}분`} />
+            <ScheduleDateField value={date} onChange={setDate} />
+            <ScheduleTimeRangeFields start={start} end={end} onStartChange={changeStart} onEndChange={setEnd} endHint={`진행 ${courseDur}분`} />
             {crossesMidnight && (
               /* [R-9] 자정 크로스 안내 — 익일 종료로 저장(단일 세션·sessionDate=시작일) */
               <p className="text-caption text-accent">🌙 종료가 시작보다 이르므로 <b>다음날 {end} 종료</b>(자정 크로스)로 저장됩니다.</p>
@@ -494,8 +430,8 @@ export function ScheduleCreateModal({
               )}
             </div>
             <Field label="메모"><textarea className="input min-h-[52px] py-1.5" rows={2} placeholder="선택 — 메모" value={memo} onChange={(e) => setMemo(e.target.value)} /></Field>
-            <RepeatField repeat={repeat} setRepeat={setRepeat} customWds={customWds} toggleWd={toggleWd}
-              untilDate={untilDate} setUntilDate={setUntilDate} date={date} occurrencesCount={occurrences().length} noneLabel="그날만" />
+            <ScheduleRepeatFields repeat={repeat} onRepeatChange={setRepeat} customWeekdays={customWds} onToggleWeekday={toggleWd}
+              untilDate={untilDate} onUntilDateChange={setUntilDate} startDate={date} occurrencesCount={occurrences().length} noneLabel="그날만" />
           </>
         ) : (
           <>
@@ -516,10 +452,10 @@ export function ScheduleCreateModal({
                 </select>
               </Field>
             </div>
-            <DateField value={date} onChange={setDate} />
-            <TimeRangeField start={start} end={end} onStart={changeStart} onEnd={setEnd} />
-            <RepeatField repeat={repeat} setRepeat={setRepeat} customWds={customWds} toggleWd={toggleWd}
-              untilDate={untilDate} setUntilDate={setUntilDate} date={date} occurrencesCount={occurrences().length} noneLabel="일회성" />
+            <ScheduleDateField value={date} onChange={setDate} />
+            <ScheduleTimeRangeFields start={start} end={end} onStartChange={changeStart} onEndChange={setEnd} />
+            <ScheduleRepeatFields repeat={repeat} onRepeatChange={setRepeat} customWeekdays={customWds} onToggleWeekday={toggleWd}
+              untilDate={untilDate} onUntilDateChange={setUntilDate} startDate={date} occurrencesCount={occurrences().length} noneLabel="일회성" />
             <p className="text-caption text-fg-muted">{repeat === "none" ? "일회성 — 이 날짜에 한 번만 적용." : "매주 반복 — 이 날짜부터 종료일까지."}</p>
           </>
         )}
