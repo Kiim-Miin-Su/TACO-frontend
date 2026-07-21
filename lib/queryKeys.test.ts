@@ -24,4 +24,9 @@ describe("queryKeys", () => {
     expect(qk.payouts.readiness("1:instructor")).toEqual(["payouts", "readiness", "1:instructor"]);
     expect(qk.payouts.readiness("4:manager")).not.toEqual(qk.payouts.readiness("1:instructor"));
   });
+
+  it("isolates counsel aggregate by verified account scope", () => {
+    expect(qk.counsel.aggregate(7, "3:super_admin")).toEqual(["counsel", "aggregate", "3:super_admin", 7]);
+    expect(qk.counsel.aggregate(7, "4:manager")).not.toEqual(qk.counsel.aggregate(7, "3:super_admin"));
+  });
 });

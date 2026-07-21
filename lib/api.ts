@@ -40,6 +40,14 @@ import type {
   CreateStudentAggregateInput,
   UpdateStudentAggregateInput,
   StudentAggregate,
+  StudentFamilyRelation,
+  StudentAcademicHistory,
+  CreateStudentFamilyRelationInput,
+  UpdateStudentFamilyRelationInput,
+  CreateStudentAcademicHistoryInput,
+  UpdateStudentAcademicHistoryInput,
+  CounselAggregate,
+  UpdateCounselRoundInput,
   CreateParentInput,
   CreateEnrollmentInput,
   WebIdCheckResult,
@@ -497,6 +505,18 @@ export const api = {
       http.patch<Student>(`/students/${id}`, patch).then((r) => r.data),
     updateAggregate: (id: number, patch: UpdateStudentAggregateInput) =>
       http.patch<StudentAggregate>(`/students/${id}/aggregate`, patch).then((r) => r.data),
+    createFamilyRelation: (studentId: number, input: CreateStudentFamilyRelationInput) =>
+      http.post<StudentFamilyRelation>(`/students/${studentId}/family-relations`, input).then((r) => r.data),
+    updateFamilyRelation: (studentId: number, relationId: number, input: UpdateStudentFamilyRelationInput) =>
+      http.patch<StudentFamilyRelation>(`/students/${studentId}/family-relations/${relationId}`, input).then((r) => r.data),
+    removeFamilyRelation: (studentId: number, relationId: number) =>
+      http.delete<{ id: number; deleted: true }>(`/students/${studentId}/family-relations/${relationId}`).then((r) => r.data),
+    createAcademicHistory: (studentId: number, input: Omit<CreateStudentAcademicHistoryInput, "studentId">) =>
+      http.post<StudentAcademicHistory>(`/students/${studentId}/academic-histories`, input).then((r) => r.data),
+    updateAcademicHistory: (studentId: number, historyId: number, input: UpdateStudentAcademicHistoryInput) =>
+      http.patch<StudentAcademicHistory>(`/students/${studentId}/academic-histories/${historyId}`, input).then((r) => r.data),
+    removeAcademicHistory: (studentId: number, historyId: number) =>
+      http.delete<{ id: number; deleted: true }>(`/students/${studentId}/academic-histories/${historyId}`).then((r) => r.data),
     remove: (id: number) => http.delete<Student>(`/students/${id}`).then((r) => r.data),
   },
   enrollments: {
@@ -551,6 +571,7 @@ export const api = {
   counsel: {
     forms: () => http.get<CounselForm[]>("/counsel").then((r) => r.data),
     get: (id: number) => http.get<CounselForm>(`/counsel/${id}`).then((r) => r.data), // [B7 E3] 상세 단건(BE 신설)
+    aggregate: (id: number) => http.get<CounselAggregate>(`/counsel/${id}/aggregate`).then((r) => r.data),
     rounds: (counselFormId?: number) =>
       http.get<CounselRound[]>("/counsel/rounds", { params: counselFormId ? { counselFormId } : undefined }).then((r) => r.data),
     create: (input: CreateCounselInput) => http.post<CounselForm>("/counsel", input).then((r) => r.data),
@@ -558,6 +579,10 @@ export const api = {
     remove: (id: number) => http.delete<CounselForm>(`/counsel/${id}`).then((r) => r.data),
     createRound: (formId: number, input: CreateCounselRoundInput) =>
       http.post<CounselRound>(`/counsel/${formId}/rounds`, input).then((r) => r.data),
+    updateRound: (formId: number, roundId: number, input: UpdateCounselRoundInput) =>
+      http.patch<CounselRound>(`/counsel/${formId}/rounds/${roundId}`, input).then((r) => r.data),
+    removeRound: (formId: number, roundId: number) =>
+      http.delete<{ id: number; deleted: true }>(`/counsel/${formId}/rounds/${roundId}`).then((r) => r.data),
   },
   transactions: {
     list: () => http.get<Transaction[]>("/transactions").then((r) => r.data),

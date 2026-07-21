@@ -99,7 +99,7 @@ export function validateStudentForm(profile: StudentProfileFormValue, interests:
   if (!profile.gender) errors.gender = '성별을 선택해 주세요.';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(profile.birthDate)) errors.birthDate = '생년월일을 선택해 주세요.';
   const grade = Number(profile.grade);
-  if (profile.grade === '' || !Number.isInteger(grade) || grade < 0 || grade > 12) errors.grade = 'Kinder 또는 G1~G12를 선택해 주세요.';
+  if (profile.grade === '' || !Number.isInteger(grade) || grade < 0 || grade > 13) errors.grade = 'Kinder 또는 G1~G13을 선택해 주세요.';
   else if (grade === 0 && /^\d{4}-\d{2}-\d{2}$/.test(profile.birthDate) && !isKinderAge(profile.birthDate)) {
     errors.grade = 'Kinder는 생년월일 기준 만 3~7세만 선택할 수 있습니다.';
   }

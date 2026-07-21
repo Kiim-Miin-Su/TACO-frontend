@@ -59,5 +59,8 @@ describe('student aggregate form SSOT', () => {
     expect(studentAgeOn('2020-07-22', '2026-07-21')).toBe(5);
     expect(studentGradeLabel(0)).toBe('Kinder');
     expect(studentGradeLabel(12)).toBe('G12');
+    expect(studentGradeLabel(13)).toBe('G13');
+    expect(validateStudentForm({ ...profile, grade: '13' }, interests).grade).toBeUndefined();
+    expect(validateStudentForm({ ...profile, grade: '14' }, interests).grade).toContain('G13');
   });
 });

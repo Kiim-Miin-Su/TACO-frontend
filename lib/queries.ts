@@ -287,6 +287,15 @@ export const useCounselForm = (id: number | null) => {
   const { scope, can } = useAccountAccess();
   return useQuery({ queryKey: qk.counsel.form(id ?? 0, scope), queryFn: () => api.counsel.get(id as number), enabled: can("counsel.manage") && id != null, retry: detailRetry });
 };
+export const useCounselAggregate = (id: number | null) => {
+  const { scope, can } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.counsel.aggregate(id ?? 0, scope),
+    queryFn: () => api.counsel.aggregate(id as number),
+    enabled: can("counsel.manage") && id != null,
+    retry: detailRetry,
+  });
+};
 export const usePayment = (id: number | null) => {
   const { can } = useAccountAccess();
   return useQuery({ queryKey: qk.payments.detail(id ?? 0), queryFn: () => api.payments.get(id as number), enabled: can("finance.access") && id != null, retry: detailRetry });
@@ -473,6 +482,34 @@ export const useUpdateStudentAggregate = () => useMutation({
   onSuccess: useStudentAggregateMutationInvalidator(),
 });
 export const useRemoveStudent = () => useMutation({ mutationFn: api.students.remove, onSuccess: useStudentAggregateMutationInvalidator() });
+export const useCreateStudentFamilyRelation = () => useMutation({
+  mutationFn: (value: { studentId: number; input: Parameters<typeof api.students.createFamilyRelation>[1] }) =>
+    api.students.createFamilyRelation(value.studentId, value.input),
+  onSuccess: useStudentAggregateMutationInvalidator(),
+});
+export const useUpdateStudentFamilyRelation = () => useMutation({
+  mutationFn: (value: { studentId: number; relationId: number; input: Parameters<typeof api.students.updateFamilyRelation>[2] }) =>
+    api.students.updateFamilyRelation(value.studentId, value.relationId, value.input),
+  onSuccess: useStudentAggregateMutationInvalidator(),
+});
+export const useRemoveStudentFamilyRelation = () => useMutation({
+  mutationFn: (value: { studentId: number; relationId: number }) => api.students.removeFamilyRelation(value.studentId, value.relationId),
+  onSuccess: useStudentAggregateMutationInvalidator(),
+});
+export const useCreateStudentAcademicHistory = () => useMutation({
+  mutationFn: (value: { studentId: number; input: Parameters<typeof api.students.createAcademicHistory>[1] }) =>
+    api.students.createAcademicHistory(value.studentId, value.input),
+  onSuccess: useStudentAggregateMutationInvalidator(),
+});
+export const useUpdateStudentAcademicHistory = () => useMutation({
+  mutationFn: (value: { studentId: number; historyId: number; input: Parameters<typeof api.students.updateAcademicHistory>[2] }) =>
+    api.students.updateAcademicHistory(value.studentId, value.historyId, value.input),
+  onSuccess: useStudentAggregateMutationInvalidator(),
+});
+export const useRemoveStudentAcademicHistory = () => useMutation({
+  mutationFn: (value: { studentId: number; historyId: number }) => api.students.removeAcademicHistory(value.studentId, value.historyId),
+  onSuccess: useStudentAggregateMutationInvalidator(),
+});
 export const useCreateParent = () => useMutation({ mutationFn: api.parents.create, onSuccess: useStudentAggregateMutationInvalidator() });
 export const useUpdateParent = () => useMutation({
   mutationFn: (v: { id: number; patch: Parameters<typeof api.parents.update>[1] }) => api.parents.update(v.id, v.patch),
@@ -519,6 +556,10 @@ export const useRemoveCounsel = () =>
   useMutation({ mutationFn: api.counsel.remove, onSuccess: useInvalidator([qk.counsel.all]) });
 export const useCreateCounselRound = () =>
   useMutation({ mutationFn: (v: { formId: number; input: Parameters<typeof api.counsel.createRound>[1] }) => api.counsel.createRound(v.formId, v.input), onSuccess: useInvalidator([qk.counsel.all]) });
+export const useUpdateCounselRound = () =>
+  useMutation({ mutationFn: (v: { formId: number; roundId: number; input: Parameters<typeof api.counsel.updateRound>[2] }) => api.counsel.updateRound(v.formId, v.roundId, v.input), onSuccess: useInvalidator([qk.counsel.all]) });
+export const useRemoveCounselRound = () =>
+  useMutation({ mutationFn: (v: { formId: number; roundId: number }) => api.counsel.removeRound(v.formId, v.roundId), onSuccess: useInvalidator([qk.counsel.all]) });
 
 // [B6 C4/EP9] 가용/불가 블록 쓰기 — ScheduleCalendar 수동 api.availability.* 잔재의 중앙 훅화.
 //  무효화는 availability.all만(EP5 — 블록은 세션·출결·리포트·정산 데이터와 무관, 종전

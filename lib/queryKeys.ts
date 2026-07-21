@@ -52,6 +52,7 @@ export const qk = {
     all: ["counsel"] as const,
     forms: (scope = "global") => ["counsel", "forms", scope] as const,
     form: (id: number, scope = "global") => ["counsel", "form", scope, id] as const, // [B7 E3] 상세 단건
+    aggregate: (id: number, scope = "global") => ["counsel", "aggregate", scope, id] as const,
     rounds: (counselFormId?: number, scope = "global") => ["counsel", "rounds", scope, counselFormId ?? null] as const,
   },
   transactions: { all: ["transactions"] as const, list: () => ["transactions", "list"] as const },

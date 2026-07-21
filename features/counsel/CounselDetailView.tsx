@@ -4,12 +4,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Badge, ConfirmModal, DetailStates, SectionCard, PageHeader, Field } from '@/components/ui';
 import {
-  useCounselForm,
-  useCounselRounds,
+  useCounselAggregate,
   useSubjects,
-  useCourses,
   useUpdateCounsel,
   useCreateCounselRound,
+  useUpdateCounselRound,
+  useRemoveCounselRound,
   useRemoveCounsel,
 } from '@/lib/queries';
 import type {
@@ -18,28 +18,31 @@ import type {
   CounselResult,
   CounselRound,
   UpdateCounselInput,
+  StudentAggregate,
 } from '@/types';
 import { CounselPageFields } from './CounselPageFields';
 import { snapshotFromForm } from './snapshot';
 import { resultLabel, resultTone, RESULTS, sourceLabel, statusLabel, statusTone } from './labels';
+import { StudentProfileEditModal } from '@/features/students/StudentProfileEditModal';
+import { StudentGuardiansSection } from '@/features/students/StudentGuardiansSection';
+import { StudentFamilyRelationsSection } from '@/features/students/StudentFamilyRelationsSection';
+import { StudentAcademicHistoriesSection } from '@/features/students/StudentAcademicHistoriesSection';
 
 type Option = { id: number; name: string };
 
 export function CounselDetailView({ counselId }: { counselId: number }) {
-  const formQuery = useCounselForm(counselId);
-  const { data: rounds = [] } = useCounselRounds();
+  const aggregateQuery = useCounselAggregate(counselId);
   const { data: subjects = [] } = useSubjects();
-  const { data: courses = [] } = useCourses();
 
   return (
     <div className="p-6 max-w-page mx-auto">
-      <DetailStates query={formQuery} notFoundMessage="상담카드를 찾을 수 없습니다." backHref="/counsel">
-        {(form) => (
+      <DetailStates query={aggregateQuery} notFoundMessage="상담카드를 찾을 수 없습니다." backHref="/counsel">
+        {(aggregate) => (
           <CounselDetailContent
-            form={form}
-            rounds={rounds.filter((round) => round.counselFormId === form.id).sort((a, b) => a.roundNo - b.roundNo)}
+            form={aggregate.form}
+            rounds={[...aggregate.rounds].sort((a, b) => a.roundNo - b.roundNo)}
+            studentAggregate={aggregate.student ?? null}
             subjects={subjects}
-            courses={courses}
           />
         )}
       </DetailStates>
@@ -50,13 +53,13 @@ export function CounselDetailView({ counselId }: { counselId: number }) {
 function CounselDetailContent({
   form,
   rounds,
+  studentAggregate,
   subjects,
-  courses,
 }: {
   form: CounselForm;
   rounds: CounselRound[];
+  studentAggregate: StudentAggregate | null;
   subjects: Option[];
-  courses: Option[];
 }) {
   const router = useRouter();
   const updateCounsel = useUpdateCounsel();
@@ -64,6 +67,7 @@ function CounselDetailContent({
   const removeCounsel = useRemoveCounsel();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [editingStudent, setEditingStudent] = useState(false);
   const latestSnapshot = rounds[rounds.length - 1]?.formSnapshot ?? snapshotFromForm(form);
 
   return (
@@ -88,14 +92,27 @@ function CounselDetailContent({
       <EditableInitialPage
         form={form}
         subjects={subjects}
-        courses={courses}
         pending={updateCounsel.isPending}
         error={updateCounsel.isError ? '최초 상담 폼을 저장하지 못했습니다.' : null}
         onSave={(patch) => updateCounsel.mutate({ id: form.id, patch })}
       />
 
+      {studentAggregate && <>
+        <SectionCard title="연결 학생 원부" action={<span className="flex gap-2"><Link href={`/students/${studentAggregate.student.id}`} className="btn btn-sm">학생 상세</Link><button className="btn btn-sm" onClick={() => setEditingStudent(true)}>학생 정보 수정</button></span>}>
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-body">
+            <Field label="학생 이름"><div>{studentAggregate.student.name}</div></Field>
+            <Field label="본인 연락처"><div>{studentAggregate.student.phone ?? '—'}</div></Field>
+            <Field label="Kakao ID"><div>{studentAggregate.student.kakaoId ?? '—'}</div></Field>
+          </div>
+        </SectionCard>
+        {editingStudent && <StudentProfileEditModal aggregate={studentAggregate} onClose={() => setEditingStudent(false)} />}
+        <StudentGuardiansSection studentId={studentAggregate.student.id} guardians={studentAggregate.guardians} canEdit />
+        <StudentFamilyRelationsSection studentId={studentAggregate.student.id} relations={studentAggregate.familyRelations ?? []} canEdit />
+        <StudentAcademicHistoriesSection studentId={studentAggregate.student.id} histories={studentAggregate.academicHistories ?? []} canEdit />
+      </>}
+
       {rounds.map((round) => (
-        <HistoryPage key={round.id} round={round} subjects={subjects} courses={courses} />
+        <HistoryPage key={round.id} round={round} subjects={subjects} />
       ))}
 
       <NewRoundPage
@@ -103,7 +120,6 @@ function CounselDetailContent({
         form={form}
         initial={latestSnapshot}
         subjects={subjects}
-        courses={courses}
         pending={createRound.isPending}
         error={createRound.isError ? '상담 차수를 저장하지 못했습니다.' : null}
         onCreate={(input) => createRound.mutate({ formId: form.id, input })}
@@ -135,14 +151,12 @@ function CounselDetailContent({
 function EditableInitialPage({
   form,
   subjects,
-  courses,
   pending,
   error,
   onSave,
 }: {
   form: CounselForm;
   subjects: Option[];
-  courses: Option[];
   pending: boolean;
   error: string | null;
   onSave: (patch: UpdateCounselInput) => void;
@@ -153,6 +167,8 @@ function EditableInitialPage({
   const save = () => onSave({
     applicantName: draft.applicantName,
     applicantPhone: draft.applicantPhone ?? null,
+    parentId: draft.parentId ?? null,
+    studentId: draft.studentId ?? null,
     assignedStaffId: draft.assignedStaffId ?? null,
     status: draft.status,
     source: draft.source,
@@ -164,13 +180,14 @@ function EditableInitialPage({
     learningAtmosphere: draft.learningAtmosphere ?? null,
     studentIntention: draft.studentIntention ?? null,
     weakness: draft.weakness ?? null,
+    referenceNotes: draft.referenceNotes ?? null,
     nextContactAt: draft.nextContactAt ?? null,
   });
 
   return (
     <SectionCard title="최초 상담 폼 · 수정 가능" action={<span className="text-caption text-fg-subtle">변경 시 audit before/after 기록</span>}>
       <div className="p-4 space-y-4">
-        <CounselPageFields value={draft} onChange={setDraft} subjects={subjects} courses={courses} />
+        <CounselPageFields value={draft} onChange={setDraft} subjects={subjects} />
         {error && <p className="text-caption text-danger" role="alert">{error}</p>}
         <div className="flex justify-end">
           <button type="button" className="btn btn-primary" disabled={pending || !draft.applicantName.trim()} onClick={save}>
@@ -182,22 +199,47 @@ function EditableInitialPage({
   );
 }
 
-function HistoryPage({ round, subjects, courses }: { round: CounselRound; subjects: Option[]; courses: Option[] }) {
+function HistoryPage({ round, subjects }: { round: CounselRound; subjects: Option[] }) {
+  const update = useUpdateCounselRound();
+  const remove = useRemoveCounselRound();
+  const [editing, setEditing] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [snapshot, setSnapshot] = useState<CounselFormSnapshot>({ ...round.formSnapshot });
+  const [notes, setNotes] = useState({
+    summary: round.summary ?? '', detail: round.detail ?? '', result: round.result ?? '', nextAction: round.nextAction ?? '',
+  });
+  const [error, setError] = useState('');
+
+  const beginEdit = () => {
+    setSnapshot({ ...round.formSnapshot });
+    setNotes({ summary: round.summary ?? '', detail: round.detail ?? '', result: round.result ?? '', nextAction: round.nextAction ?? '' });
+    setError(''); setEditing(true);
+  };
+
   return (
-    <SectionCard
+    <>
+      <SectionCard
       title={`${round.roundNo + 1}차 상담 · 저장된 변화 이력`}
-      action={round.result ? <Badge tone={resultTone[round.result]}>{resultLabel[round.result]}</Badge> : undefined}
+      action={<span className="flex items-center gap-2">{round.result && <Badge tone={resultTone[round.result]}>{resultLabel[round.result]}</Badge>}<button className="btn btn-sm" onClick={beginEdit}>수정</button><button className="btn btn-sm btn-danger" onClick={() => setDeleteOpen(true)}>삭제</button></span>}
     >
       <div className="p-4 space-y-4">
-        <CounselPageFields value={round.formSnapshot} subjects={subjects} courses={courses} readOnly />
+        <CounselPageFields value={editing ? snapshot : round.formSnapshot} onChange={editing ? setSnapshot : undefined} subjects={subjects} readOnly={!editing} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-line-muted pt-4">
-          <Field label="상담 요약"><div className="text-body whitespace-pre-wrap">{round.summary || '—'}</div></Field>
-          <Field label="다음 액션"><div className="text-body whitespace-pre-wrap">{round.nextAction || '—'}</div></Field>
-          <div className="sm:col-span-2"><Field label="상담 상세"><div className="text-body whitespace-pre-wrap">{round.detail || '—'}</div></Field></div>
+          <Field label="상담 요약">{editing ? <input className="input" value={notes.summary} onChange={(event) => setNotes({ ...notes, summary: event.target.value })} /> : <div className="text-body whitespace-pre-wrap">{round.summary || '—'}</div>}</Field>
+          <Field label="상담 결과">{editing ? <select className="input" value={notes.result} onChange={(event) => setNotes({ ...notes, result: event.target.value as CounselResult | '' })}><option value="">선택 안 함</option>{RESULTS.map((result) => <option key={result} value={result}>{resultLabel[result]}</option>)}</select> : <div className="text-body">{round.result ? resultLabel[round.result] : '—'}</div>}</Field>
+          <Field label="다음 액션">{editing ? <input className="input" value={notes.nextAction} onChange={(event) => setNotes({ ...notes, nextAction: event.target.value })} /> : <div className="text-body whitespace-pre-wrap">{round.nextAction || '—'}</div>}</Field>
+          <div className="sm:col-span-2"><Field label="상담 상세">{editing ? <textarea className="input h-24 py-2" value={notes.detail} onChange={(event) => setNotes({ ...notes, detail: event.target.value })} /> : <div className="text-body whitespace-pre-wrap">{round.detail || '—'}</div>}</Field></div>
           <div className="text-caption text-fg-subtle">기록일 {round.completedAt ?? round.scheduledAt ?? '—'}</div>
         </div>
+        {error && <p className="text-caption text-danger" role="alert">{error}</p>}
+        {editing && <div className="flex justify-end gap-2"><button className="btn btn-sm" onClick={() => setEditing(false)}>취소</button><button className="btn btn-sm btn-primary" disabled={update.isPending} onClick={() => update.mutate({
+          formId: round.counselFormId, roundId: round.id,
+          input: { summary: notes.summary || null, detail: notes.detail || null, result: (notes.result || null) as CounselResult | null, nextAction: notes.nextAction || null, nextContactAt: snapshot.nextContactAt ?? null, formSnapshot: snapshot },
+        }, { onSuccess: () => setEditing(false), onError: () => setError('상담 회차를 수정하지 못했습니다.') })}>{update.isPending ? '저장 중…' : '회차 저장'}</button></div>}
       </div>
-    </SectionCard>
+      </SectionCard>
+      {deleteOpen && <ConfirmModal title={`${round.roundNo + 1}차 상담 삭제`} message="이 회차를 삭제할까요? 행과 감사 이력은 보존되며 현재 다음 상담일은 남은 최신 회차에서 다시 계산됩니다." confirmLabel="삭제" danger onClose={() => setDeleteOpen(false)} onConfirm={() => remove.mutate({ formId: round.counselFormId, roundId: round.id }, { onSuccess: () => setDeleteOpen(false), onError: () => { setError('상담 회차를 삭제하지 못했습니다.'); setDeleteOpen(false); } })} />}
+    </>
   );
 }
 
@@ -205,7 +247,6 @@ function NewRoundPage({
   form,
   initial,
   subjects,
-  courses,
   pending,
   error,
   onCreate,
@@ -213,7 +254,6 @@ function NewRoundPage({
   form: CounselForm;
   initial: CounselFormSnapshot;
   subjects: Option[];
-  courses: Option[];
   pending: boolean;
   error: string | null;
   onCreate: (input: {
@@ -231,7 +271,7 @@ function NewRoundPage({
   return (
     <SectionCard title="다음 상담 차수 추가" action={<span className="text-caption text-fg-subtle">직전 차수 값을 복사해 변경점만 작성</span>}>
       <div className="p-4 space-y-4">
-        <CounselPageFields value={snapshot} onChange={setSnapshot} subjects={subjects} courses={courses} />
+        <CounselPageFields value={snapshot} onChange={setSnapshot} subjects={subjects} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-line-muted pt-4">
           <Field label="상담 요약"><input className="input" value={notes.summary} onChange={(e) => setNotes({ ...notes, summary: e.target.value })} /></Field>
           <Field label="상담 결과">

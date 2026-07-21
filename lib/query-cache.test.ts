@@ -51,7 +51,7 @@ describe("refreshScheduleRequestLifecycle (EP5 P2)", () => {
 });
 
 describe("invalidateStudentAggregate (TBO-35 35A)", () => {
-  it("학생 쓰기 후 명단·수강·보호자와 calendar resources의 schedule root를 함께 갱신한다", async () => {
+  it("학생 쓰기 후 명단·수강·보호자·상담 aggregate와 calendar resources를 함께 갱신한다", async () => {
     const { queryClient, spy } = spyInvalidate();
 
     await invalidateStudentAggregate(queryClient);
@@ -61,6 +61,7 @@ describe("invalidateStudentAggregate (TBO-35 35A)", () => {
     expect(roots).toContain(JSON.stringify(["students"]));
     expect(roots).toContain(JSON.stringify(["enrollments"]));
     expect(roots).toContain(JSON.stringify(["parents"]));
+    expect(roots).toContain(JSON.stringify(["counsel"]));
     expect(roots).toContain(JSON.stringify(["schedule"]));
     for (const [options] of spy.mock.calls) {
       expect(options).toMatchObject({ refetchType: "active" });

@@ -25,7 +25,7 @@ export const STUDENT_STATUS_TONE: Record<string, 'accent' | 'success' | 'attenti
 
 export const STUDENT_GRADE_OPTIONS = [
   { value: '0', label: 'Kinder (3~7세)' },
-  ...Array.from({ length: 12 }, (_, index) => ({ value: String(index + 1), label: `G${index + 1}` })),
+  ...Array.from({ length: 13 }, (_, index) => ({ value: String(index + 1), label: `G${index + 1}` })),
 ] as const;
 
 export const studentGradeLabel = (grade: number | null | undefined): string => {

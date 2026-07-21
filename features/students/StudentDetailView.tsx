@@ -20,6 +20,8 @@ import { statusLabel as counselLabel, statusTone as counselTone } from '@/featur
 import type { EnrollmentStatus } from '@/types';
 import { StudentProfileEditModal } from './StudentProfileEditModal';
 import { StudentGuardiansSection } from './StudentGuardiansSection';
+import { StudentFamilyRelationsSection } from './StudentFamilyRelationsSection';
+import { StudentAcademicHistoriesSection } from './StudentAcademicHistoriesSection';
 
 const enrollTone: Record<EnrollmentStatus, Tone> = { active: 'success', paused: 'attention', completed: 'done', canceled: 'danger' };
 const enrollLabel: Record<EnrollmentStatus, string> = { active: '수강중', paused: '일시정지', completed: '수료', canceled: '취소' };
@@ -143,6 +145,9 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                 )}
               </SectionCard>
             </div>
+
+            {aggregate.familyRelations && <StudentFamilyRelationsSection studentId={studentId} relations={aggregate.familyRelations} canEdit={canEdit} />}
+            {aggregate.academicHistories && <StudentAcademicHistoriesSection studentId={studentId} histories={aggregate.academicHistories} canEdit={canEdit} />}
 
             {finance && (
               <SectionCard title={`결제 내역 (${myPayments.length})`} action={<Link href="/payments" className="btn btn-sm">결제 전체 →</Link>}>

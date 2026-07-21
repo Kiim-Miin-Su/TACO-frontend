@@ -44,6 +44,7 @@ export const STUDENT_AGGREGATE_SCOPES = [
   qk.students.all,
   qk.enrollments.all,
   qk.parents.all,
+  qk.counsel.all,
   qk.schedule.all,
 ] as const;
 

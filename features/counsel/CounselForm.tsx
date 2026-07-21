@@ -2,36 +2,26 @@
 import { useState } from 'react';
 import { Field } from '@/components/ui';
 // 읽기(subjects·courses)/쓰기(상담 생성·수정)는 TanStack Query 훅 경유(zustand store 대체).
-import { useSubjects, useCourses, useCreateCounsel } from '@/lib/queries';
+import { useSubjects, useStudents, useCreateCounsel } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
-import type {
-  CounselSource,
-  DesiredStartTime,
-  LearningAtmosphere,
-  StudentIntention,
-} from '@/types';
+import type { CounselSource } from '@/types';
 
 type Author = 'parent' | 'student' | 'staff';
 
 type FormState = {
   author: Author;
+  studentId: string;
   applicantName: string;
   applicantPhone: string;
   interestSubjectId: string;
-  interestCourseId: string;
-  desiredStartTime: string;
-  learningAtmosphere: string;
-  studentIntention: string;
-  weakness: string;
-  academyExpectation: string;
+  referenceNotes: string;
   dateUndecided: boolean; // 다음 상담일 미정 여부
   nextContactAt: string;  // 다음 상담일(미정 아니면)
 };
 
 const empty: FormState = {
-  author: 'parent', applicantName: '', applicantPhone: '', interestSubjectId: '',
-  interestCourseId: '', desiredStartTime: '', learningAtmosphere: '', studentIntention: '',
-  weakness: '', academyExpectation: '',
+  author: 'parent', studentId: '', applicantName: '', applicantPhone: '', interestSubjectId: '',
+  referenceNotes: '',
   dateUndecided: true, nextContactAt: '',
 };
 
@@ -42,7 +32,7 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
   const createCounsel = useCreateCounsel();
   const { account } = useAccountAccess();
   const { data: subjects = [] } = useSubjects();
-  const { data: courses = [] } = useCourses();
+  const { data: students = [] } = useStudents();
   const [f, setF] = useState<FormState>(empty);
   const set = (p: Partial<FormState>) => setF((prev) => ({ ...prev, ...p }));
 
@@ -52,16 +42,12 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
     createCounsel.mutate({
       applicantName: f.applicantName.trim(),
       applicantPhone: f.applicantPhone.trim() || undefined,
+      studentId: f.studentId ? Number(f.studentId) : undefined,
       source: sourceOf(f.author),
       submitterType: f.author,
       assignedStaffId: f.author === 'staff' ? account?.id : undefined,
       interestSubjectId: f.interestSubjectId ? Number(f.interestSubjectId) : undefined,
-      interestCourseId: f.interestCourseId ? Number(f.interestCourseId) : undefined,
-      desiredStartTime: (f.desiredStartTime || undefined) as DesiredStartTime | undefined,
-      learningAtmosphere: (f.learningAtmosphere || undefined) as LearningAtmosphere | undefined,
-      studentIntention: (f.studentIntention || undefined) as StudentIntention | undefined,
-      weakness: f.weakness.trim() || undefined,
-      academyExpectation: f.academyExpectation.trim() || undefined,
+      referenceNotes: f.referenceNotes.trim() || undefined,
       nextContactAt: f.dateUndecided ? undefined : f.nextContactAt || undefined,
     }, {
       onSuccess: () => {
@@ -82,8 +68,14 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
             <option value="staff">상담실장</option>
           </select>
         </Field>
-        <Field label="신청자 이름 *"><input className="input" value={f.applicantName} onChange={(e) => set({ applicantName: e.target.value })} placeholder="한서진" /></Field>
-        <Field label="연락처"><input className="input" value={f.applicantPhone} onChange={(e) => set({ applicantPhone: e.target.value })} placeholder="010-0000-0000" /></Field>
+        <Field label="등록 학생 연결">
+          <select className="input" value={f.studentId} onChange={(event) => {
+            set({ studentId: event.target.value });
+          }}><option value="">신규 문의 · 아직 학생 없음</option>{students.map((student) => <option key={student.id} value={student.id}>{student.name} · {student.schoolName ?? '학교 미입력'}</option>)}</select>
+        </Field>
+        <Field label="접수자 이름 *"><input className="input" value={f.applicantName} onChange={(e) => set({ applicantName: e.target.value })} placeholder="학생 또는 보호자 이름" /></Field>
+        <Field label="접수자 연락처"><input className="input" value={f.applicantPhone} onChange={(e) => set({ applicantPhone: e.target.value })} placeholder="010-0000-0000" /></Field>
+        {f.studentId && <><Field label="학생 이름 (원부)"><input className="input" readOnly value={students.find((student) => student.id === Number(f.studentId))?.name ?? ''} /></Field><Field label="학생 본인 연락처 (원부)"><input className="input" readOnly value={students.find((student) => student.id === Number(f.studentId))?.phone ?? ''} /></Field><Field label="Kakao ID (원부)"><input className="input" readOnly value={students.find((student) => student.id === Number(f.studentId))?.kakaoId ?? ''} /></Field></>}
       </Section>
 
       <Section title="관심 · 희망">
@@ -93,44 +85,9 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
             {subjects.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
           </select>
         </Field>
-        <Field label="관심 코스">
-          <select className="input" value={f.interestCourseId} onChange={(e) => set({ interestCourseId: e.target.value })}>
-            <option value="">선택 안 함</option>
-            {courses.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
-          </select>
-        </Field>
-        <Field label="희망 시작 시기">
-          <select className="input" value={f.desiredStartTime} onChange={(e) => set({ desiredStartTime: e.target.value })}>
-            <option value="">선택 안 함</option>
-            <option value="immediately">즉시</option>
-            <option value="within_1_month">1개월 내</option>
-            <option value="within_2_3_months">2~3개월</option>
-            <option value="undecided">미정</option>
-          </select>
-        </Field>
       </Section>
 
-      <Section title="학습 성향">
-        <Field label="학습 분위기">
-          <select className="input" value={f.learningAtmosphere} onChange={(e) => set({ learningAtmosphere: e.target.value })}>
-            <option value="">선택 안 함</option>
-            <option value="self_directed">자기주도</option>
-            <option value="normal">보통</option>
-            <option value="needs_management">관리필요</option>
-          </select>
-        </Field>
-        <Field label="학생 의향">
-          <select className="input" value={f.studentIntention} onChange={(e) => set({ studentIntention: e.target.value })}>
-            <option value="">선택 안 함</option>
-            <option value="student_wants">학생 희망</option>
-            <option value="parent_only">학부모 주도</option>
-            <option value="unknown">미상</option>
-          </select>
-        </Field>
-        <Field label="약점"><input className="input" value={f.weakness} onChange={(e) => set({ weakness: e.target.value })} placeholder="독해 속도 등" /></Field>
-      </Section>
-
-      <Section title="예약 · 기대">
+      <Section title="예약 · 참고">
         <Field label="다음 상담일" hint="저장 즉시 상담 예약 캘린더에 표시됩니다">
           <div className="flex items-center gap-2">
             <input type="date" className="input flex-1" value={f.nextContactAt} disabled={f.dateUndecided}
@@ -142,8 +99,8 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
           </div>
         </Field>
         <div className="sm:col-span-2 lg:col-span-3">
-          <Field label="학원에 바라는 점">
-            <textarea className="input h-24 py-2" value={f.academyExpectation} onChange={(e) => set({ academyExpectation: e.target.value })} placeholder="기대하는 점을 자유롭게 적어주세요" />
+          <Field label="상담 시 참고할 점">
+            <textarea className="input h-24 py-2" value={f.referenceNotes} onChange={(e) => set({ referenceNotes: e.target.value })} placeholder="상담 전에 알아야 할 내용을 기록해 주세요" />
           </Field>
         </div>
       </Section>

@@ -16,5 +16,6 @@ export const snapshotFromForm = (form: CounselForm): CounselFormSnapshot => ({
   learningAtmosphere: form.learningAtmosphere ?? null,
   studentIntention: form.studentIntention ?? null,
   weakness: form.weakness ?? null,
+  referenceNotes: form.referenceNotes ?? null,
   nextContactAt: form.nextContactAt ?? null,
 });
