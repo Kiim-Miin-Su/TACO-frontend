@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title description">
+  <title id="title">TN Academy</title>
+  <desc id="description">브론즈 TN 모노그램과 원형 궤도를 사용한 TN Academy 브랜드 마크</desc>
+  <defs>
+    <linearGradient id="charcoal" x1="18" y1="14" x2="112" y2="118" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#29282B"/>
+      <stop offset="1" stop-color="#444247"/>
+    </linearGradient>
+    <linearGradient id="bronze" x1="22" y1="20" x2="110" y2="109" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D7AA84"/>
+      <stop offset="1" stop-color="#B9825D"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#charcoal)"/>
+  <rect x="5" y="5" width="118" height="118" rx="27" fill="none" stroke="#FFFFFF" stroke-opacity=".12" stroke-width="2"/>
+  <path d="M100 103A50 50 0 1 1 107 37" fill="none" stroke="url(#bronze)" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="108" cy="33" r="6.5" fill="#C9956F"/>
+  <g fill="url(#bronze)">
+    <rect x="28" y="39" width="35" height="10" rx="5"/>
+    <rect x="41" y="39" width="10" height="52" rx="5"/>
+  </g>
+  <path d="M68 88V55L94 88V55" fill="none" stroke="#F5D6BC" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

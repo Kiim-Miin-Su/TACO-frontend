@@ -20,6 +20,9 @@ GitHub Primer 느낌의 모던 ERP, **밝은 테마** 우선. 토큰은 `app/glo
 - 색: `canvas / fg / line / accent / success / attention / danger / done` 시맨틱 토큰
 - 컴포넌트 클래스: `.btn(.btn-primary/-danger/-invisible/-sm)`, `.card`, `.badge-*`, `.input`, `.table`, `.mono`
 - 공용 React 컴포넌트: `components/ui/*`(Badge·StatCard·SectionCard·StatusDot·icons), `components/layout/*`(Sidebar·Topbar)
+- TN Academy 브랜드: `public/brand/tn-mark.svg`가 벡터 원본, `components/brand/BrandMark`가 화면 공용 렌더러다.
+  `app/favicon.ico`·`app/icon.png`·`app/apple-icon.png`는 같은 마크의 App Router metadata 파생 자산이다.
+  런타임 외부 이미지/CDN 의존은 없다.
 
 다크 테마는 `globals.css`의 토큰을 `@media (prefers-color-scheme: dark)` 또는 `[data-theme=dark]`로 재정의하면 확장됩니다.
 

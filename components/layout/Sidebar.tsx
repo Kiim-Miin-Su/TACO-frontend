@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import BrandMark from "@/components/brand/BrandMark";
 import { usePathname } from "next/navigation";
 import { useTaskData, useNavSeen } from "@/lib/queries";
 import { booleanPreferenceCodec, preferenceKeys } from "@/lib/storage/preferences";
@@ -88,14 +89,14 @@ export default function Sidebar() {
   return (
     <aside className={`${collapsed ? "w-14" : "w-14 sm:w-60"} shrink-0 border-r flex flex-col bg-canvas transition-[width] duration-200`}>
       <div className={`h-14 flex items-center border-b ${collapsed ? "justify-center px-0" : "justify-center px-0 sm:justify-start sm:gap-2.5 sm:px-4"}`}>
-        <div className="w-7 h-7 rounded-md grid place-items-center text-fg-onemph font-bold text-body bg-[var(--color-fg)] shrink-0">
-          <Link href="/">T</Link>
-        </div>
+        <Link href="/" aria-label="TACO ERP 홈" className="w-7 h-7 rounded-md shrink-0">
+          <BrandMark size={28} className="rounded-md" priority />
+        </Link>
         {!collapsed && (
           <>
             <div className="hidden leading-tight flex-1 sm:block">
               <div className="font-semibold text-section">TACO ERP</div>
-              <div className="text-micro text-fg-subtle">TnAcademy</div>
+              <div className="text-micro text-fg-subtle">TN Academy</div>
             </div>
             <button onClick={toggle} title="네비 접기" className="hidden w-6 h-6 place-items-center rounded text-fg-subtle hover:bg-canvas-subtle text-section sm:grid">«</button>
           </>

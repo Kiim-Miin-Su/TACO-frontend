@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 import AppShell from "@/components/layout/AppShell";
 import Providers from "./providers";
+import { ACADEMY_BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "TACO ERP — TnAcademy",
-  description: "TnAcademy 백오피스 ERP",
+  applicationName: ACADEMY_BRAND.applicationName,
+  title: ACADEMY_BRAND.applicationName,
+  description: ACADEMY_BRAND.description,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
