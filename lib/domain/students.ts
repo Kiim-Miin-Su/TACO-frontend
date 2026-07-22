@@ -10,18 +10,27 @@ import type { Student, StudentStatus } from '@/types';
 // 운영 목록·일정에서 제외되는 "비활성" 상태.
 // 퇴원·등록이탈은 조회 가능한 업무 상태이며 soft delete와 별개다.
 // 백엔드 매핑: `WHERE status NOT IN (...)`  (목록 조회 기본 스코프)
-const INACTIVE_STUDENT_STATUSES: readonly StudentStatus[] = ['withdrawn', 'registration_lost'];
+export const INACTIVE_STUDENT_STATUSES: readonly StudentStatus[] = ['withdrawn', 'registration_lost'];
 
 export const isActiveStudent = (s: Student): boolean =>
   !INACTIVE_STUDENT_STATUSES.includes(s.status);
 
 /** 학생 상태 라벨·배지 톤 — 단일 소스(함수 통일 2026-07-03: StudentsView·캘린더 유저 카드 중복 제거). */
-export const STUDENT_STATUS_LABEL: Record<string, string> = {
+export const STUDENT_STATUS_LABEL: Record<StudentStatus, string> = {
   enrolled: '수강중', on_leave: '휴강', withdrawn: '퇴원', registration_lost: '등록이탈', new_inquiry: '신규접수',
 };
-export const STUDENT_STATUS_TONE: Record<string, 'accent' | 'success' | 'attention' | 'done' | 'danger'> = {
+export const STUDENT_STATUS_TONE: Record<StudentStatus, 'accent' | 'success' | 'attention' | 'done' | 'danger'> = {
   enrolled: 'success', on_leave: 'attention', withdrawn: 'danger', registration_lost: 'done', new_inquiry: 'accent',
 };
+
+export const STUDENT_STATUS_OPTIONS = (Object.keys(STUDENT_STATUS_LABEL) as StudentStatus[]).map((value) => ({
+  value,
+  label: STUDENT_STATUS_LABEL[value],
+}));
+
+/** 삭제되지 않은 DB 목록에서 업무 상태 필터만 적용한다. 퇴원/등록이탈은 삭제가 아니므로 포함 가능하다. */
+export const studentsForList = (students: readonly Student[], includeInactive: boolean): Student[] =>
+  includeInactive ? [...students] : students.filter(isActiveStudent);
 
 export const STUDENT_GRADE_OPTIONS = [
   { value: '0', label: 'Kinder (3~7세)' },

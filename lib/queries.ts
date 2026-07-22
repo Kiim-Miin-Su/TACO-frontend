@@ -11,6 +11,12 @@ import {
   invalidateInstructorAggregate,
   invalidateCourseAggregate,
   invalidateStudentAggregate,
+  acceptStudentAggregateFromDatabase,
+  acceptStudentFromDatabase,
+  optimisticallyPatchStudent,
+  optimisticallyRemoveStudent,
+  reconcileStudentCommand,
+  rollbackStudentCache,
   invalidateScheduleRequests,
   refreshScheduleRequestLifecycle,
   scheduleRequestListKey,
@@ -210,15 +216,20 @@ export const useUser = (id: number | null) => {
   return useQuery({ queryKey: qk.users.detail(id ?? 0), queryFn: () => api.users.detail(id as number), enabled: id != null && can("admin.area") });
 };
 export const useAdminUpdateUser = () => {
-  const invalidate = useInvalidator([qk.users.all]);
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (v: { id: number; patch: { name?: string; phone?: string; email?: string; role?: string } }) => api.users.adminUpdate(v.id, v.patch),
-    onSuccess: invalidate,
+    // 이름·역할 변경은 강사 선택 자원과 담당 스케줄 렌더링에도 전파된다.
+    onSuccess: () => invalidateInstructorAggregate(queryClient),
   });
 };
 export const useCreateStaffUser = () => {
-  const invalidate = useInvalidator([qk.users.all]);
-  return useMutation({ mutationFn: api.users.createStaff, onSuccess: invalidate });
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.users.createStaff,
+    // role=instructor일 수 있으므로 유저 목록만 갱신하지 않고 수업·스케줄·정산까지 같은 경계를 사용한다.
+    onSuccess: () => invalidateInstructorAggregate(queryClient),
+  });
 };
 export const useCreateInstructor = () => {
   const queryClient = useQueryClient();
@@ -435,11 +446,14 @@ export const useUpdateRoom = () =>
 export const useRemoveRoom = () => useMutation({ mutationFn: api.rooms.remove, onSuccess: useInvalidator([qk.rooms.all()]) });
 
 export const useApprovePendingAccount = () => {
-  const { scope } = useAccountAccess();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (value: { id: number; reason?: string }) => api.auth.approve(value.id, value.reason),
-    // 승인 역할에 따라 강사 aggregate/캘린더 리소스도 생길 수 있으므로 관련 root를 함께 무효화한다.
-    onSuccess: useInvalidator([qk.auth.pending, qk.users.all, qk.instructors.all, qk.schedule.resources(scope)]),
+    // 승인 역할에 따라 강사 aggregate가 생기므로 수업 기본 페이·캘린더·정산을 같은 helper로 갱신한다.
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: qk.auth.pending, refetchType: "active" }),
+      invalidateInstructorAggregate(queryClient),
+    ]),
   });
 };
 // [핫픽스 2026-07-20 ①] 레거시 pending 계정 인증 메일 재발송(대표) — 목록 갱신 불요(토큰만 갱신).
@@ -465,16 +479,51 @@ function useStudentAggregateMutationInvalidator() {
   const qc = useQueryClient();
   return () => invalidateStudentAggregate(qc);
 }
-export const useRegisterStudent = () => useMutation({ mutationFn: api.students.register, onSuccess: useStudentAggregateMutationInvalidator() });
-export const useUpdateStudent = () => useMutation({
-  mutationFn: (v: { id: number; patch: Parameters<typeof api.students.update>[1] }) => api.students.update(v.id, v.patch),
-  onSuccess: useStudentAggregateMutationInvalidator(),
-});
-export const useUpdateStudentAggregate = () => useMutation({
-  mutationFn: (v: { id: number; patch: Parameters<typeof api.students.updateAggregate>[1] }) => api.students.updateAggregate(v.id, v.patch),
-  onSuccess: useStudentAggregateMutationInvalidator(),
-});
-export const useRemoveStudent = () => useMutation({ mutationFn: api.students.remove, onSuccess: useStudentAggregateMutationInvalidator() });
+export const useRegisterStudent = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ["students", "register"],
+    mutationFn: api.students.register,
+    // 생성 중에는 폼 자체가 명확한 pending UI를 제공한다. 서버가 INSERT transaction을 확정한 뒤에만
+    // 반환된 DB row를 cache에 넣고, 곧바로 DB 목록을 재조회한다(가짜 학생 id 생성 금지).
+    onSuccess: (result) => acceptStudentFromDatabase(queryClient, result.student),
+    onSettled: (result) => reconcileStudentCommand(queryClient, { studentId: result?.student.id }),
+  });
+};
+export const useUpdateStudent = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (value: { id: number; patch: Parameters<typeof api.students.update>[1] }) =>
+      api.students.update(value.id, value.patch),
+    onMutate: (value) => optimisticallyPatchStudent(queryClient, value.id, value.patch),
+    onError: (_error, value, snapshot) => rollbackStudentCache(queryClient, value.id, snapshot),
+    onSuccess: (student) => acceptStudentFromDatabase(queryClient, student),
+    onSettled: (_student, _error, value) => reconcileStudentCommand(queryClient, { studentId: value.id }),
+  });
+};
+export const useUpdateStudentAggregate = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (value: { id: number; patch: Parameters<typeof api.students.updateAggregate>[1] }) =>
+      api.students.updateAggregate(value.id, value.patch),
+    onMutate: (value) => optimisticallyPatchStudent(queryClient, value.id, value.patch.student ?? {}),
+    onError: (_error, value, snapshot) => rollbackStudentCache(queryClient, value.id, snapshot),
+    onSuccess: (aggregate) => acceptStudentAggregateFromDatabase(queryClient, aggregate),
+    onSettled: (_aggregate, _error, value) => reconcileStudentCommand(queryClient, { studentId: value.id }),
+  });
+};
+export const useRemoveStudent = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.students.remove,
+    onMutate: (studentId) => optimisticallyRemoveStudent(queryClient, studentId),
+    onError: (_error, studentId, snapshot) => rollbackStudentCache(queryClient, studentId, snapshot),
+    onSettled: (_student, error, studentId) => reconcileStudentCommand(queryClient, {
+      studentId,
+      deleted: error == null,
+    }),
+  });
+};
 export const useCreateStudentFamilyRelation = () => useMutation({
   mutationFn: (value: { studentId: number; input: Parameters<typeof api.students.createFamilyRelation>[1] }) =>
     api.students.createFamilyRelation(value.studentId, value.input),

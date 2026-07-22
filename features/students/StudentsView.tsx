@@ -6,16 +6,17 @@ import Link from "next/link";
 // [B6 C3 2026-07-16] 행 전체 클릭 = 학생 상세(ClickableTableRow href) — 퇴원 버튼은 중첩 제외로 안전.
 import { Badge, ClickableTableRow, ConfirmModal, EmptyState, LoadingState, PageHeader, SectionCard, StatusDot, TableWrap, type Tone } from "@/components/ui";
 import { useStudents, useEnrollments, useCourses, useParentStudents, useParents, useRemoveStudent } from "@/lib/queries";
-import { isActiveStudent, activeCourseNamesOf, studentGradeLabel, STUDENT_STATUS_LABEL as label, STUDENT_STATUS_TONE } from "@/lib/domain/students";
+import { isActiveStudent, activeCourseNamesOf, studentGradeLabel, studentsForList, STUDENT_STATUS_LABEL as label, STUDENT_STATUS_TONE } from "@/lib/domain/students";
 import { CountryBadge } from "@/features/calendar/CountryInput";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import type { Student } from "@/types";
 import { StudentForm } from "./StudentForm";
+import { StudentStatusChangeModal } from "./StudentStatusChangeModal";
 import { useState } from "react";
 
 
 export function StudentsView() {
-  // [TBO-20 M1] 학생 등록·퇴원 = 관리자 전용(BE students POST/DELETE=ADMIN 정합). 강사엔 쓰기 버튼 숨김(403 방지).
+  // [TBO-20 M1] 학생 등록·상태 변경·원부 삭제 = 관리자 전용(BE ADMIN 정합). 강사엔 쓰기 버튼 숨김(403 방지).
   const admin = useAccountAccess().can("admin.area");
   const { data: students = [], isPending: loading } = useStudents(); // [E0.6 H2]
   const { data: enrollments = [] } = useEnrollments();
@@ -27,10 +28,12 @@ export function StudentsView() {
   const [showDropped, setShowDropped] = useState(false);
   const [showForm, setShowForm] = useState(false); // 등록 패널 — 기본 접힘
   const [deleteTarget, setDeleteTarget] = useState<Student | null>(null);
+  const [statusTarget, setStatusTarget] = useState<Student | null>(null);
+  const [deleteError, setDeleteError] = useState("");
   const kw = q.trim().toLowerCase();
 
   // 기본 스코프 = 활성 학생만(퇴원 제외). 토글 시 퇴원 포함.
-  const scoped = showDropped ? students : students.filter(isActiveStudent);
+  const scoped = studentsForList(students, showDropped);
   const filtered = kw
     ? scoped.filter((s) =>
         [s.name, s.englishName, s.webId, s.phone]
@@ -39,6 +42,7 @@ export function StudentsView() {
       )
     : scoped;
   const activeCount = students.filter(isActiveStudent).length;
+  const inactiveCount = students.length - activeCount;
 
   // 통일 감사 2026-07-03: 캘린더 유저 카드와 동일 함수(활성 수강 기준 — 취소된 수강 노출 제거 효과)
   const coursesOf = (studentId: number) => activeCourseNamesOf(studentId, enrollments, courses);
@@ -74,10 +78,10 @@ export function StudentsView() {
       <SectionCard
         title={`학생 목록 (${filtered.length})`}
         action={
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-caption text-fg-muted select-none">
-              <input type="checkbox" checked={showDropped} onChange={(e) => setShowDropped(e.target.checked)} />
-              퇴원·등록이탈 포함
+          <div className="flex items-center gap-3 flex-wrap justify-end">
+            <label className={`flex min-h-8 cursor-pointer items-center gap-2 rounded-md border px-3 text-caption select-none ${showDropped ? 'border-accent bg-accent-subtle text-fg' : 'border-line-muted text-fg-muted'}`}>
+              <input className="h-4 w-4" type="checkbox" checked={showDropped} onChange={(e) => setShowDropped(e.target.checked)} />
+              퇴원·등록이탈 포함 ({inactiveCount})
             </label>
             <input className="input w-56 h-7" placeholder="이름·영문·ID·연락처 검색" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
@@ -126,9 +130,14 @@ export function StudentsView() {
                     </td>
                     <td className="text-right">
                       {admin ? (
-                        <button className="btn btn-sm btn-danger" onClick={() => setDeleteTarget(s)}>
-                          학생 삭제
-                        </button>
+                        <span className="inline-flex items-center gap-1.5">
+                          <button type="button" className="btn btn-sm" onClick={() => setStatusTarget(s)}>
+                            상태 변경
+                          </button>
+                          <button type="button" className="btn btn-sm btn-danger" onClick={() => { setDeleteError(""); setDeleteTarget(s); }}>
+                            원부 삭제
+                          </button>
+                        </span>
                       ) : (
                         <span className="text-caption text-fg-subtle">—</span>
                       )}
@@ -144,14 +153,28 @@ export function StudentsView() {
 
       {deleteTarget && (
         <ConfirmModal
-          title={`${deleteTarget.name} 학생 삭제`}
-          message="등록 상태는 바꾸지 않고 학생을 soft delete합니다. 상담·감사 이력은 보존되며 목록과 일정에서 제외됩니다."
-          confirmLabel="학생 삭제"
+          title={`${deleteTarget.name} 학생 원부 삭제`}
+          message={(
+            <div className="space-y-2">
+              <p>중복 등록이나 잘못 생성한 원부를 soft delete합니다. 활성 수강과 학생 연결 관계도 종료되며 일반 목록에 다시 나타나지 않습니다.</p>
+              <p className="font-medium text-danger">퇴원 또는 등록이탈 처리라면 취소 후 “상태 변경”을 사용하세요.</p>
+              {deleteError && <p className="text-danger" role="alert">{deleteError}</p>}
+            </div>
+          )}
+          confirmLabel="원부 삭제"
+          pending={removeStudent.isPending}
           danger
           onClose={() => setDeleteTarget(null)}
-          onConfirm={() => { removeStudent.mutate(deleteTarget.id); setDeleteTarget(null); }}
+          onConfirm={() => {
+            setDeleteError("");
+            removeStudent.mutate(deleteTarget.id, {
+              onSuccess: () => setDeleteTarget(null),
+              onError: () => setDeleteError("DB에서 삭제를 확정하지 못했습니다. 학생 목록을 원래 상태로 되돌렸습니다."),
+            });
+          }}
         />
       )}
+      {statusTarget && <StudentStatusChangeModal student={statusTarget} onClose={() => setStatusTarget(null)} />}
     </div>
   );
 }

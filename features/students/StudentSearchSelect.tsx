@@ -42,8 +42,8 @@ export function StudentSearchSelect({
       </Field>
       <Field label={`검색 결과${required ? ' *' : ''}`}>
         <select
-          className="input"
-          size={Math.min(6, Math.max(2, candidates.length))}
+          className="input h-44 min-h-44 py-2 text-body"
+          size={Math.min(7, Math.max(5, candidates.length))}
           value={value ?? ''}
           onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)}
           required={required}
@@ -55,8 +55,10 @@ export function StudentSearchSelect({
             </option>
           ))}
         </select>
+        <p className="mt-1 text-caption text-fg-subtle">
+          {value == null ? '검색 결과에서 학생을 선택하세요.' : '학생이 선택되었습니다. 변경하려면 다른 행을 선택하세요.'}
+        </p>
       </Field>
     </div>
   );
 }
-

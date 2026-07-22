@@ -9,11 +9,18 @@ import {
   COURSE_AGGREGATE_SCOPES,
   INSTRUCTOR_AGGREGATE_SCOPES,
   STUDENT_AGGREGATE_SCOPES,
+  STUDENT_RELATED_SCOPES,
   invalidateInstructorAggregate,
   invalidateCourseAggregate,
   invalidateStudentAggregate,
+  optimisticallyPatchStudent,
+  optimisticallyRemoveStudent,
+  reconcileStudentCommand,
+  rollbackStudentCache,
   refreshScheduleRequestLifecycle,
 } from "./query-cache";
+import { qk } from "./queryKeys";
+import type { Student, StudentAggregate } from "@/types";
 
 const spyInvalidate = () => {
   const queryClient = new QueryClient();
@@ -69,6 +76,53 @@ describe("invalidateStudentAggregate (TBO-35 35A)", () => {
   });
 });
 
+describe("student command cache lifecycle (TBO-44)", () => {
+  const student = { id: 13, name: "학생13", status: "enrolled" } as Student;
+  const aggregate = { student, interests: [], guardians: [] } as StudentAggregate;
+
+  it("상태 변경은 list/detail을 낙관 반영하고 실패 시 동일 snapshot으로 롤백한다", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(qk.students.list(), [student]);
+    queryClient.setQueryData(qk.students.aggregate(student.id), aggregate);
+    const snapshot = await optimisticallyPatchStudent(queryClient, student.id, { status: "withdrawn" });
+    expect(queryClient.getQueryData<Student[]>(qk.students.list())?.[0].status).toBe("withdrawn");
+    expect(queryClient.getQueryData<StudentAggregate>(qk.students.aggregate(student.id))?.student.status).toBe("withdrawn");
+    rollbackStudentCache(queryClient, student.id, snapshot);
+    expect(queryClient.getQueryData<Student[]>(qk.students.list())?.[0].status).toBe("enrolled");
+    expect(queryClient.getQueryData<StudentAggregate>(qk.students.aggregate(student.id))?.student.status).toBe("enrolled");
+  });
+
+  it("원부 삭제는 목록에서 즉시 제거하고 실패 시 복구한다", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(qk.students.list(), [student]);
+    const snapshot = await optimisticallyRemoveStudent(queryClient, student.id);
+    expect(queryClient.getQueryData<Student[]>(qk.students.list())).toEqual([]);
+    rollbackStudentCache(queryClient, student.id, snapshot);
+    expect(queryClient.getQueryData<Student[]>(qk.students.list())).toEqual([student]);
+  });
+
+  it("삭제 성공 재검증은 DB list/연관 scope만 refetch하고 삭제 aggregate 404 재요청은 금지한다", async () => {
+    const { queryClient, spy } = spyInvalidate();
+    await reconcileStudentCommand(queryClient, { studentId: student.id, deleted: true });
+    const studentCalls = spy.mock.calls
+      .map(([options]) => options as { queryKey: readonly unknown[]; exact?: boolean; refetchType?: string })
+      .filter((options) => options.queryKey[0] === "students");
+    expect(studentCalls).toEqual([
+      expect.objectContaining({ queryKey: qk.students.list(), exact: true, refetchType: "active" }),
+      expect.objectContaining({ queryKey: qk.students.aggregate(student.id), exact: true, refetchType: "none" }),
+    ]);
+    expect(studentCalls).not.toContainEqual(expect.objectContaining({ queryKey: qk.students.all, refetchType: "active" }));
+  });
+
+  it("학생 등록/상태 변경은 수강·보호자·상담과 schedule 목록/자원/대시보드 prefix까지 전파한다", () => {
+    expect(STUDENT_RELATED_SCOPES).toEqual(expect.arrayContaining([
+      qk.enrollments.all, qk.parents.all, qk.counsel.all, qk.schedule.all,
+    ]));
+    expect(qk.schedule.list({}, "manager").slice(0, qk.schedule.all.length)).toEqual(qk.schedule.all);
+    expect(qk.schedule.resources("manager").slice(0, qk.schedule.all.length)).toEqual(qk.schedule.all);
+  });
+});
+
 describe("invalidateInstructorAggregate (TBO-36 36B)", () => {
   it("강사 변경 후 관리자 목록·유저·수업·calendar resources·정산을 함께 갱신한다", async () => {
     const { queryClient, spy } = spyInvalidate();
@@ -80,6 +134,12 @@ describe("invalidateInstructorAggregate (TBO-36 36B)", () => {
     }
     for (const [options] of spy.mock.calls) expect(options).toMatchObject({ refetchType: "active" });
   });
+
+  it("강사 등록/수정은 수업 기본 페이와 schedule resource/list를 같은 prefix로 갱신한다", () => {
+    expect(INSTRUCTOR_AGGREGATE_SCOPES).toEqual(expect.arrayContaining([
+      qk.instructors.all, qk.users.all, qk.courses.all, qk.schedule.all, qk.payouts.all,
+    ]));
+  });
 });
 
 describe("invalidateCourseAggregate (TBO-36 36C)", () => {
@@ -90,5 +150,11 @@ describe("invalidateCourseAggregate (TBO-36 36C)", () => {
     expect(calledRoots(spy)).toEqual(expect.arrayContaining(
       [["courses"], ["schedule"], ["payouts"]].map((root) => JSON.stringify(root)),
     ));
+  });
+
+  it("수업 등록/수정은 캘린더 join picker와 대표·매니저 대시보드 schedule을 함께 갱신한다", () => {
+    expect(COURSE_AGGREGATE_SCOPES).toEqual(expect.arrayContaining([
+      qk.courses.all, qk.schedule.all, qk.payouts.all,
+    ]));
   });
 });

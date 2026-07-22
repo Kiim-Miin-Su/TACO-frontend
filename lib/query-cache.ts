@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { ScheduleRequestEx } from "./api";
+import type { Student, StudentAggregate } from "@/types";
 import { qk } from "./queryKeys";
 
 export const scheduleRequestListKey = (scope: string) => qk.scheduleRequests.list(scope);
@@ -54,6 +55,108 @@ export async function invalidateStudentAggregate(queryClient: QueryClient): Prom
       queryClient.invalidateQueries({ queryKey: key as unknown as readonly unknown[], refetchType: "active" }),
     ),
   );
+}
+
+// [TBO-44] 학생 profile/status/삭제 command의 UI cache 수명주기.
+// 낙관적 값은 화면 응답성만 위한 임시 표현이며, onSettled에서 항상 DB-backed GET을 다시 수행한다.
+// 특히 삭제는 이미 없어진 aggregate detail을 재조회하지 않아 정상 DELETE 뒤 404 console noise를 만들지 않는다.
+export const STUDENT_RELATED_SCOPES = [
+  qk.enrollments.all,
+  qk.parents.all,
+  qk.counsel.all,
+  qk.schedule.all,
+] as const;
+
+export type StudentCacheSnapshot = {
+  list: Student[] | undefined;
+  aggregate: StudentAggregate | undefined;
+};
+
+export async function optimisticallyPatchStudent(
+  queryClient: QueryClient,
+  studentId: number,
+  patch: Partial<Student>,
+): Promise<StudentCacheSnapshot> {
+  const listKey = qk.students.list();
+  const aggregateKey = qk.students.aggregate(studentId);
+  await Promise.all([
+    queryClient.cancelQueries({ queryKey: listKey, exact: true }),
+    queryClient.cancelQueries({ queryKey: aggregateKey, exact: true }),
+  ]);
+  const snapshot = {
+    list: queryClient.getQueryData<Student[]>(listKey),
+    aggregate: queryClient.getQueryData<StudentAggregate>(aggregateKey),
+  };
+  queryClient.setQueryData<Student[]>(listKey, (previous = []) =>
+    previous.map((student) => student.id === studentId ? { ...student, ...patch } : student),
+  );
+  queryClient.setQueryData<StudentAggregate>(aggregateKey, (previous) =>
+    previous ? { ...previous, student: { ...previous.student, ...patch } } : previous,
+  );
+  return snapshot;
+}
+
+export async function optimisticallyRemoveStudent(
+  queryClient: QueryClient,
+  studentId: number,
+): Promise<StudentCacheSnapshot> {
+  const snapshot = await optimisticallyPatchStudent(queryClient, studentId, {});
+  queryClient.setQueryData<Student[]>(qk.students.list(), (previous = []) =>
+    previous.filter((student) => student.id !== studentId),
+  );
+  return snapshot;
+}
+
+export function rollbackStudentCache(
+  queryClient: QueryClient,
+  studentId: number,
+  snapshot: StudentCacheSnapshot | undefined,
+): void {
+  if (!snapshot) return;
+  queryClient.setQueryData(qk.students.list(), snapshot.list);
+  queryClient.setQueryData(qk.students.aggregate(studentId), snapshot.aggregate);
+}
+
+export function acceptStudentFromDatabase(queryClient: QueryClient, student: Student): void {
+  queryClient.setQueryData<Student[]>(qk.students.list(), (previous = []) => {
+    const next = previous.some((row) => row.id === student.id)
+      ? previous.map((row) => row.id === student.id ? student : row)
+      : [student, ...previous];
+    return next;
+  });
+  queryClient.setQueryData<StudentAggregate>(qk.students.aggregate(student.id), (previous) =>
+    previous ? { ...previous, student } : previous,
+  );
+}
+
+export function acceptStudentAggregateFromDatabase(queryClient: QueryClient, aggregate: StudentAggregate): void {
+  acceptStudentFromDatabase(queryClient, aggregate.student);
+  queryClient.setQueryData(qk.students.aggregate(aggregate.student.id), aggregate);
+}
+
+export async function reconcileStudentCommand(
+  queryClient: QueryClient,
+  options: { studentId?: number; deleted?: boolean } = {},
+): Promise<void> {
+  const jobs: Promise<unknown>[] = [
+    // 학생 목록은 모든 C/U/D 후 실제 DB READ로 확정한다.
+    queryClient.invalidateQueries({ queryKey: qk.students.list(), exact: true, refetchType: "active" }),
+    ...STUDENT_RELATED_SCOPES.map((key) =>
+      queryClient.invalidateQueries({ queryKey: key as unknown as readonly unknown[], refetchType: "active" }),
+    ),
+  ];
+  if (options.studentId != null) {
+    const aggregateKey = qk.students.aggregate(options.studentId);
+    if (options.deleted) {
+      // 삭제된 detail을 즉시 GET하면 404가 정상이어도 console 오류가 된다. 현재 observer에는 refetch를
+      // 금지하고 stale만 표시하며, 비활성 cache는 제거해 다음 명시 접근 때만 DB 404를 판정한다.
+      jobs.push(queryClient.invalidateQueries({ queryKey: aggregateKey, exact: true, refetchType: "none" }));
+      queryClient.removeQueries({ queryKey: aggregateKey, exact: true, type: "inactive" });
+    } else {
+      jobs.push(queryClient.invalidateQueries({ queryKey: aggregateKey, exact: true, refetchType: "active" }));
+    }
+  }
+  await Promise.all(jobs);
 }
 
 // 강사 aggregate 변경은 관리자 목록뿐 아니라 수업 기본 페이, 캘린더 자원, 정산 계산에 전파된다.

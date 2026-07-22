@@ -189,11 +189,12 @@ export function PromptModal({
  * 파괴적 액션은 danger 톤 버튼으로.
  */
 export function ConfirmModal({
-  title, message, confirmLabel = "확인", danger, onClose, onConfirm,
+  title, message, confirmLabel = "확인", pending = false, danger, onClose, onConfirm,
 }: {
   title: string;
   message: ReactNode;
   confirmLabel?: string;
+  pending?: boolean;
   /** 파괴적 액션(퇴원 처리 등) — 버튼을 danger 톤으로 */
   danger?: boolean;
   onClose: () => void;
@@ -206,9 +207,9 @@ export function ConfirmModal({
       bodyClassName="text-body text-fg-muted"
       footer={(
         <>
-          <button className="btn btn-sm" onClick={onClose}>취소</button>
-          <button className={`btn btn-sm ${danger ? "btn-danger" : "btn-primary"}`} data-modal-autofocus="true" onClick={onConfirm}>
-            {confirmLabel}
+          <button className="btn btn-sm" disabled={pending} onClick={onClose}>취소</button>
+          <button className={`btn btn-sm ${danger ? "btn-danger" : "btn-primary"}`} disabled={pending} data-modal-autofocus="true" onClick={onConfirm}>
+            {pending ? "처리 중…" : confirmLabel}
           </button>
         </>
       )}

@@ -108,7 +108,7 @@ export function StudentForm() {
 
       <div className="flex items-center justify-end gap-3">
         {message && <span className={`text-caption ${Object.keys(errors).length ? 'text-danger' : 'text-success'}`} role="status">{message}</span>}
-        <button type="submit" className="btn btn-primary" disabled={register.isPending}>{register.isPending ? '등록 중…' : '학생 등록'}</button>
+        <button type="submit" className="btn btn-primary" disabled={register.isPending}>{register.isPending ? 'DB 검증·등록 중…' : '학생 등록'}</button>
       </div>
     </form>
   );
