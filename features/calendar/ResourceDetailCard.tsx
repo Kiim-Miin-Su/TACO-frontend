@@ -11,6 +11,7 @@ import { COUNTRIES } from "@/lib/domain/tz";
 import { CountryBadge } from "./CountryInput";
 import { STUDENT_STATUS_LABEL as STATUS_LABEL, activeCourseNamesOf, isKinderAge, studentGradeLabel } from "@/lib/domain/students"; // 라벨·수강 코스 단일 소스
 import { StudentGradeField } from "@/features/students/StudentGradeField";
+import { scheduleResourceName } from "@/lib/domain/schedule-resources";
 
 
 export function ResourceDetailCard({
@@ -26,7 +27,7 @@ export function ResourceDetailCard({
 }) {
   // "이 유저 스케줄 추가" — 기존 유저별 추가 모달(owner·강사 프리필) 재사용(스플릿 ＋와 동일 경로)
   const addBtn = onAddSchedule && (
-    <button className="btn btn-sm h-6 btn-primary" onClick={onAddSchedule} title={`${selected.name}에게 수업·가용·불가 추가(프리필)`}>
+    <button className="btn btn-sm h-6 btn-primary" onClick={onAddSchedule} title={`${scheduleResourceName(selected)}에게 수업·가용·불가 추가(프리필)`}>
       ＋ 스케줄
     </button>
   );
@@ -67,7 +68,7 @@ export function ResourceDetailCard({
   if (selected.type === "instructor" || selected.type === "room") {
     return (
       <div className="card card-pad text-body space-y-1">
-        <div className="font-semibold text-body">{selected.name}</div>
+        <div className="font-semibold text-body">{scheduleResourceName(selected)}</div>
         {/* [QA 2026-07-03] 좁은 패널에서 버튼이 카드 밖으로 나가던 오버플로 — flex-wrap으로 줄바꿈 허용 */}
         <div className="flex items-center justify-between gap-x-2 gap-y-1 flex-wrap">
           <span className="text-fg-muted">{selected.type === "instructor" ? `강사${selected.sub ? ` · ${selected.sub}` : ""}` : "강의실"}</span>

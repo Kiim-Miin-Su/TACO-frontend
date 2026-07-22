@@ -1,6 +1,7 @@
 "use client";
 import { memo, useMemo, useState } from "react";
 import type { ScheduleResources, ScheduleResource } from "@/types";
+import { scheduleResourceName } from "@/lib/domain/schedule-resources";
 
 type RType = "instructor" | "student" | "room";
 const TABS: { key: RType; label: string }[] = [
@@ -60,7 +61,7 @@ function ResourcePanelImpl({
       >
         <span className="text-body font-semibold">{tabs.length === 1 && tabs[0]?.key === "room" ? "강의실별 스케줄" : "유저별 스케줄"}{picked.size ? <span className="ml-1.5 badge badge-accent text-[10px]">{picked.size}개 필터</span> : null}</span>
         <span className="text-caption text-fg-subtle inline-flex items-center gap-1">
-          {selected ? <span className="text-accent truncate max-w-[90px]">{selected.name}</span> : null}
+          {selected ? <span className="text-accent truncate max-w-[90px]">{scheduleResourceName(selected)}</span> : null}
           {open ? "▲" : "▼"}
         </span>
       </button>
@@ -113,7 +114,7 @@ function ResourcePanelImpl({
                     onClick={() => onToggleFilter(activeTab, Number(r.id))}
                   >
                     <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color ?? "var(--color-line)" }} />
-                    <span className={`flex-1 text-left truncate text-fg ${inFilter ? "font-semibold" : ""}`}>{r.name}</span>
+                    <span className={`flex-1 text-left truncate text-fg ${inFilter ? "font-semibold" : ""}`}>{scheduleResourceName(r)}</span>
                     {inFilter && <span className="text-accent text-caption font-bold" aria-label="필터 선택됨">✓</span>}
                     {r.sub && <span className="text-micro text-fg-subtle shrink-0">{r.sub}</span>}
                   </button>

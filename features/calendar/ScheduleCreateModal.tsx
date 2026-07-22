@@ -6,6 +6,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { AvailabilityUpsertBody, ScheduleCreateBody, ScheduleSeriesCreateBody } from "@/lib/api";
 import type { Room, ScheduleResource, ScheduleResources } from "@/types";
+import { scheduleResourceName } from "@/lib/domain/schedule-resources";
 // [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
 import { Field, ModalShell } from "@/components/ui";
 import { ColorPicker } from "./SessionEditFields";
@@ -328,11 +329,11 @@ export function ScheduleCreateModal({
                 {myCourses.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.subjectName}</option>)}
               </select>
             </Field>
-            <Field label={`강사 ${instructorId && !instAvailable(Number(instructorId)) ? `· ⚠ ${instAvailabilityLabel(Number(instructorId))}` : ""}`}>
+            <Field label={`담당자 ${instructorId && !instAvailable(Number(instructorId)) ? `· ⚠ ${instAvailabilityLabel(Number(instructorId))}` : ""}`}>
               {lockInstructorId == null ? (
                 <select className="input" value={instructorId} onChange={(e) => setInstructorId(e.target.value ? Number(e.target.value) : "")}>
                   {sortedInstructors.map((i) => (
-                    <option key={i.id} value={i.id}>{i.name} · {instAvailabilityLabel(i.id)}</option>
+                    <option key={i.id} value={i.id}>{scheduleResourceName(i)} · {instAvailabilityLabel(i.id)}</option>
                   ))}
                 </select>
               ) : (
@@ -424,7 +425,7 @@ export function ScheduleCreateModal({
                 <Field label="공통 스케줄">
                   <label className="h-9 flex items-center gap-2">
                     <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
-                    <span className="text-caption">모든 직원에게 공개</span>
+                    <span className="text-caption">학원 전체공지로 공개</span>
                   </label>
                 </Field>
               )}
