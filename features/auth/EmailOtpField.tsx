@@ -10,11 +10,14 @@
 //  · 재전송 = 발송 재호출(BE에 별도 resend 없음 — 쿨다운 60초 후 기존 pending을 대체).
 //  · [TBO-31 C5 2026-07-20] purpose='recovery'로 비로그인 복구(아이디·비밀번호 찾기)에서도 재사용 —
 //    엔드포인트(훅)와 완료 문구만 목적별로 갈라진다(BE가 purpose 교차 사용을 차단).
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import Link from "next/link";
 import { AuthField } from "@/components/auth/AuthShell";
+import { FormFeedback } from "@/components/ui/FormFeedback";
 import type { SignupEmailChallenge } from "@/lib/api";
 import { isValidEmailFormat } from "@/lib/domain/profile";
 import { formatClock, useCountdownSeconds } from "@/lib/hooks/useCountdownSeconds";
+import { logger } from "@/lib/log";
 import {
   useConfirmRecoveryEmailChallenge,
   useConfirmSignupEmailChallenge,
@@ -31,6 +34,10 @@ const apiErrorMessage = (caught: unknown, fallback: string): string => {
 
 // 서버가 "초과"(시도 한도)로 응답하면 이 챌린지는 회복 불가 — 재전송으로 새 코드를 받아야 한다.
 const isLockedMessage = (message: string) => message.includes("초과");
+const emailOtpLog = logger("email-otp");
+
+const apiStatus = (caught: unknown): number | null =>
+  (caught as { response?: { status?: number } }).response?.status ?? null;
 
 export function EmailOtpField({
   email,
@@ -40,6 +47,9 @@ export function EmailOtpField({
   disabled = false,
   purpose = "signup",
   verifiedLabel = "이메일 인증 완료 — 이 이메일로 계정이 생성됩니다.",
+  emailInputName = "email",
+  formErrorId,
+  emailInvalid = false,
 }: {
   email: string;
   onEmailChange: (email: string) => void;
@@ -52,6 +62,11 @@ export function EmailOtpField({
   purpose?: "signup" | "recovery";
   /** 인증 완료 시 표시 문구 — 목적별 맥락(가입 vs 복구)에 맞게 부모가 지정. */
   verifiedLabel?: string;
+  /** 부모 폼의 중앙 검증·포커스가 이 입력을 찾을 수 있는 안정적 name. */
+  emailInputName?: string;
+  /** 부모 폼 오류 live region과 연결할 때 사용. */
+  formErrorId?: string;
+  emailInvalid?: boolean;
 }) {
   // 두 훅 모두 생성(React 훅 규칙 — 조건부 호출 금지) 후 purpose로 선택.
   const createSignup = useCreateSignupEmailChallenge();
@@ -67,6 +82,11 @@ export function EmailOtpField({
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const codeInputRef = useRef<HTMLInputElement>(null);
+  const feedbackId = useId();
+  const errorId = `${feedbackId}-error`;
+  const statusId = `${feedbackId}-status`;
 
   const verified = verifiedChallengeId != null;
   const busy = createChallenge.isPending || confirmChallenge.isPending;
@@ -74,6 +94,14 @@ export function EmailOtpField({
   const cooldownSeconds = useCountdownSeconds(challenge?.resendAvailableAt ?? null);
   const expirySeconds = useCountdownSeconds(challenge?.expiresAt ?? null);
   const expired = !!challenge && !verified && expirySeconds <= 0;
+
+  // challenge 생성 뒤에만 나타나는 OTP 입력은 commit 이후 DOM ref가 생기므로 이 전환 effect에서 포커스한다.
+  useEffect(() => {
+    if (!challenge || verified) return;
+    // 발송 버튼이 같은 commit에서 disabled가 되며 발생시키는 browser blur보다 한 프레임 뒤에 실행한다.
+    const frame = window.requestAnimationFrame(() => codeInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [challenge?.id, verified]);
 
   function handleEmailChange(next: string) {
     onEmailChange(next);
@@ -86,6 +114,7 @@ export function EmailOtpField({
       setError(null);
       setNotice(null);
       if (verified) onVerifiedChange(null);
+      emailOtpLog.debug("verification_invalidated", { purpose });
     }
   }
 
@@ -94,17 +123,29 @@ export function EmailOtpField({
     setNotice(null);
     if (!emailNormalized || !isValidEmailFormat(emailNormalized)) {
       setError("인증할 이메일 형식이 올바르지 않습니다.");
+      emailOtpLog.debug("challenge_request_blocked", { purpose, reason: "email_format" });
+      emailInputRef.current?.focus();
       return;
     }
+    emailOtpLog.debug("challenge_request_started", { purpose });
     createChallenge.mutate(emailNormalized, {
       onSuccess: (next) => {
         setChallenge(next);
         setChallengeEmail(emailNormalized);
         setCode("");
         setLocked(false);
-        setNotice(`${next.maskedTarget}(으)로 인증 코드를 보냈습니다.`);
+        setNotice(
+          purpose === "signup"
+            ? `${next.maskedTarget}(으)로 인증 코드 요청을 접수했습니다. 메일이 보이지 않으면 스팸함을 확인하고 기존 계정은 계정 찾기를 이용해 주세요.`
+            : `${next.maskedTarget}(으)로 인증 코드 요청을 접수했습니다. 메일이 보이지 않으면 스팸함을 확인해 주세요.`,
+        );
+        emailOtpLog.debug("challenge_request_accepted", { purpose });
       },
-      onError: (caught) => setError(apiErrorMessage(caught, "인증 코드를 발송하지 못했습니다. 잠시 후 다시 시도해 주세요.")),
+      onError: (caught) => {
+        setError(apiErrorMessage(caught, "인증 코드를 발송하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+        emailOtpLog.warn("challenge_request_failed", { purpose, status: apiStatus(caught) });
+        emailInputRef.current?.focus();
+      },
     });
   }
 
@@ -114,19 +155,26 @@ export function EmailOtpField({
     setNotice(null);
     if (!isValidOtpCode(code)) {
       setError("인증 코드는 4~10자리 숫자입니다.");
+      emailOtpLog.debug("challenge_confirm_blocked", { purpose, reason: "code_format" });
+      codeInputRef.current?.focus();
       return;
     }
+    emailOtpLog.debug("challenge_confirm_started", { purpose });
     confirmChallenge.mutate(
       { id: challenge.id, email: challengeEmail, code: code.trim() },
       {
         onSuccess: () => {
           setNotice(null);
+          emailOtpLog.debug("challenge_confirm_succeeded", { purpose });
           onVerifiedChange(challenge.id);
         },
         onError: (caught) => {
           const message = apiErrorMessage(caught, "인증 코드를 확인하지 못했습니다.");
-          if (isLockedMessage(message)) setLocked(true);
+          const nextLocked = isLockedMessage(message);
+          if (nextLocked) setLocked(true);
           setError(message);
+          emailOtpLog.warn("challenge_confirm_failed", { purpose, status: apiStatus(caught), locked: nextLocked });
+          if (!nextLocked) codeInputRef.current?.focus();
         },
       },
     );
@@ -139,14 +187,24 @@ export function EmailOtpField({
         ? `재전송 (${cooldownSeconds}초)`
         : "재전송"
       : "인증 코드 발송";
+  const activeError = locked
+    ? "인증 시도 횟수를 초과했습니다. 쿨다운이 지나면 재전송으로 새 코드를 받아 주세요."
+    : expired
+      ? "인증 코드가 만료되었습니다. 재전송으로 새 코드를 받아 주세요."
+      : error;
+  const activeStatus = verified ? verifiedLabel : notice;
+  const emailDescribedBy = [errorId, statusId, formErrorId].filter(Boolean).join(" ");
 
   return (
     <div className="space-y-2">
       <AuthField label="이메일">
         <div className="flex items-center gap-2">
           <input
+            ref={emailInputRef}
             className="input min-w-0 flex-1"
+            name={emailInputName}
             type="email"
+            aria-label="이메일"
             autoComplete="email"
             maxLength={320}
             required
@@ -154,6 +212,8 @@ export function EmailOtpField({
             onChange={(event) => handleEmailChange(event.target.value)}
             placeholder="you@tnacademy.com"
             disabled={disabled}
+            aria-invalid={emailInvalid || (!!error && !challenge)}
+            aria-describedby={emailDescribedBy}
           />
           <button
             type="button"
@@ -170,7 +230,9 @@ export function EmailOtpField({
           <div className="min-w-0 flex-1">
             <AuthField label="인증 코드">
               <input
+                ref={codeInputRef}
                 className="input w-full mono tracking-widest"
+                name={`${emailInputName}OtpCode`}
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 maxLength={10}
@@ -178,6 +240,8 @@ export function EmailOtpField({
                 disabled={disabled || locked || expired}
                 value={code}
                 onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+                aria-invalid={!!activeError}
+                aria-describedby={`${errorId} ${statusId}`}
               />
             </AuthField>
           </div>
@@ -196,21 +260,18 @@ export function EmailOtpField({
           개발 모드(SMTP 미설정) — 인증 코드: <span className="mono font-medium">{challenge.devOtpCode}</span>
         </p>
       )}
-      {verified ? (
-        <p className="text-caption text-success" role="status">{verifiedLabel}</p>
-      ) : locked ? (
-        <p className="text-caption text-danger" role="alert">
-          인증 시도 횟수를 초과했습니다. 쿨다운이 지나면 재전송으로 새 코드를 받아 주세요.
-        </p>
-      ) : expired ? (
-        <p className="text-caption text-danger" role="alert">인증 코드가 만료되었습니다. 재전송으로 새 코드를 받아 주세요.</p>
-      ) : challenge ? (
+      {!verified && !locked && !expired && challenge ? (
         <p className="text-caption text-fg-subtle">
           만료까지 <span className="mono">{formatClock(expirySeconds)}</span>
         </p>
       ) : null}
-      {notice && !verified && <p className="text-caption text-success" role="status">{notice}</p>}
-      {error && !locked && <p className="text-caption text-danger" role="alert">{error}</p>}
+      <FormFeedback id={errorId} kind="error" message={activeError} />
+      <FormFeedback id={statusId} kind="status" message={activeStatus} />
+      {purpose === "signup" && challenge && !verified && (
+        <p className="text-caption text-fg-muted">
+          이미 계정이 있다면 <Link href="/recover" className="font-medium text-accent hover:underline">계정 찾기</Link>를 이용해 주세요.
+        </p>
+      )}
     </div>
   );
 }
