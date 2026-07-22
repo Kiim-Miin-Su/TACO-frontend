@@ -32,7 +32,7 @@ export default function Topbar() {
     // [E0 storage 감사 2026-07-15] UI 취향 preference(사이드바·캘린더 뷰·최근 국가 등)는 계정 무관
     //  전역 키라 같은 브라우저의 다음 계정에게 잔존한다 — 로그아웃 시 일괄 정리(계정 간 누출 차단).
     resetPreferences();
-    // /logout route handler도 access cookie를 방어적으로 만료시킨 뒤 hard navigation한다.
+    // /logout route handler도 access/refresh cookie를 방어적으로 만료시킨 뒤 hard navigation한다.
     window.location.replace('/logout');
   };
 

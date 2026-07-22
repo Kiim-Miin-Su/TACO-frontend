@@ -71,11 +71,13 @@ export default function SecuritySettingsView() {
   const emailNormalized = profileDraft.email.trim().toLowerCase();
   const emailVerifiedForCurrentTarget = otpVerified && otpTarget === emailNormalized;
 
-  function logout() {
-    setCurrentAccount(null);
+  async function logout() {
+    try { await api.auth.logout(); } catch { /* fallback route에서 두 인증 cookie를 다시 만료한다. */ }
+    await queryClient.cancelQueries();
     queryClient.clear();
-    resetPreferences(); // [E0 storage 감사] 계정 간 취향 preference 누출 차단
-    router.replace("/login");
+    setCurrentAccount(null);
+    resetPreferences();
+    window.location.replace("/logout");
   }
 
   async function sendOtp() {
