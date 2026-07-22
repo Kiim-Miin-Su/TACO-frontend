@@ -6,7 +6,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { AvailabilityUpsertBody, ScheduleCreateBody, ScheduleSeriesCreateBody } from "@/lib/api";
 import type { Room, ScheduleResource, ScheduleResources } from "@/types";
-import { scheduleResourceName } from "@/lib/domain/schedule-resources";
+import { courseRosterFromScheduleResources, scheduleResourceName } from "@/lib/domain/schedule-resources";
 // [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
 import { Field, ModalShell } from "@/components/ui";
 import { ColorPicker } from "./SessionEditFields";
@@ -14,7 +14,7 @@ import { STATUS_LABEL } from "@/lib/domain/lantiv";
 import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
 
 const isCanceledStatus = (s?: string) => s === "canceled" || s === "no_show";
-import { useAllAvailability, useEnrollments, useStudents } from "@/lib/queries";
+import { useAllAvailability } from "@/lib/queries";
 // [B4 2026-07-16 대표 결정 ②] 강의실 관리 — 수업탭(CoursesView)과 같은 공용 컴포넌트 재사용(사설 사본 금지)
 import { RoomManagerPanel } from "@/features/rooms/RoomManagerPanel";
 import { weekdayOf, toMin, fromMin, durationMinutesBetween, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
@@ -189,18 +189,11 @@ export function ScheduleCreateModal({
 
   // ── [v0.1.13] 수업 학생 선택(단체) — 코스 활성 수강생 체크리스트(기본 전원 선택) ──
   //  전원 선택 = studentIds 미전송(기존 코스 파생과 동일 — 하위 호환). 부분 선택 = 명시 코호트 저장.
-  //  수강생 산출은 캘린더와 동일 데이터(useEnrollments·useStudents 캐시 — 함수 통일: 활성 수강 기준).
-  const { data: mEnrollments = [] } = useEnrollments();
-  const { data: mStudents = [] } = useStudents();
+  //  수강생 산출은 `/schedule/resources` course.studentIds 한 곳을 사용한다. 강사 모달에서
+  //  전역 /enrollments·/students cache를 읽지 않아 계정 전환 시 타 강사 roster가 섞이지 않는다.
   const courseRoster = useMemo(
-    () =>
-      mEnrollments
-        .filter((en) => Number(en.courseId) === Number(courseId) && en.status === "active")
-        .map((en) => {
-          const st = mStudents.find((x) => Number(x.id) === Number(en.studentId));
-          return { id: Number(en.studentId), name: st?.name ?? `학생 ${en.studentId}` };
-        }),
-    [mEnrollments, mStudents, courseId],
+    () => courseRosterFromScheduleResources(resources, courseId),
+    [resources, courseId],
   );
   const [pickedStudentState, setPickedStudentState] = useState<{ courseId: number; ids: Set<number> | null } | null>(null);
   const pickedStudents = pickedStudentState?.courseId === courseId ? pickedStudentState.ids : null;
@@ -267,9 +260,9 @@ export function ScheduleCreateModal({
     // [이슈1] 각 발생일(현지)을 KST로 변환해 저장 — 종료는 시작과 같은 현지날짜 기준으로 변환.
     const mk = (dLocal: string): ScheduleCreateBody => {
       const ks = toKst(dLocal, start), ke = toKst(dLocal, end);
-      return { courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: ks.date, startTime: ks.time, endTime: ke.time, durationMinutes: durationMinutesBetween(start, end), memo: memo || undefined, color, status, studentIds,
+      return { courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: ks.date, startTime: ks.time, endTime: ke.time, durationMinutes: durationMinutesBetween(start, end), memo: memo || undefined, color, studentIds,
         kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined, mode: sessionMode,
-        ...(!requestMode ? { isPublic } : {}) }; // 공개 여부는 관리자 확정 일정에만 적용
+        ...(!requestMode ? { status, isPublic } : {}) }; // 상태·공개 여부는 관리자 확정 일정에만 적용
     };
     const days = occurrences();
     if (days.length <= 1) { onCreate(mk(days[0] ?? date)); return; }
@@ -312,7 +305,7 @@ export function ScheduleCreateModal({
         {requestMode && type === "session" && (
           /* [UX H1] 강사에게 실제 동작(승인 요청)을 사전 고지 — 버튼 라벨과 일치 */
           <div className="rounded-md px-2.5 py-1.5 text-caption" style={{ background: "color-mix(in srgb, var(--color-accent) 10%, transparent)", color: "var(--color-accent)" }}>
-            수업은 매니저 승인 후 캘린더에 확정됩니다. 가용시간 변경이 기존 수업에 영향을 주면 승인 요청으로 전환됩니다.
+            DB에 연결된 내 담당 코스·학생만 선택할 수 있습니다. 수업은 매니저 승인 후 예정 상태로 확정됩니다.
           </div>
         )}
         {tzActive && (
@@ -396,22 +389,26 @@ export function ScheduleCreateModal({
                 <select className="input" value={kind} onChange={(e) => setKind(e.target.value as "class" | "level_test" | "counsel")}>
                   <option value="class">일반 수업</option>
                   <option value="level_test">진단고사</option>
-                  <option value="counsel">상담</option>
+                  {!requestMode && <option value="counsel">상담</option>}
                 </select>
               </Field>
-              {kind !== "class" ? (
+              {!requestMode && kind !== "class" ? (
                 <Field label="가격(원) — 선택">
                   <input className="input" type="number" min={0} max={100000000} placeholder="예: 50000" value={price} onChange={(e) => setPrice(e.target.value)} />
                 </Field>
               ) : <div />}
               <Field label="상태">
-                <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
-                  {Object.keys(STATUS_LABEL).map((s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABEL[s]}{s === "held" ? " (시수 측정)" : isCanceledStatus(s) ? " (시수 미측정)" : ""}
-                    </option>
-                  ))}
-                </select>
+                {requestMode ? (
+                  <input className="input" value="예정 (승인 후 확정)" disabled readOnly />
+                ) : (
+                  <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
+                    {Object.keys(STATUS_LABEL).map((s) => (
+                      <option key={s} value={s}>
+                        {STATUS_LABEL[s]}{s === "held" ? " (시수 측정)" : isCanceledStatus(s) ? " (시수 미측정)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </Field>
               {/* [C2D] 강사 요청 모드에서도 수업방식 노출 — 요청→승인까지 mode 보존 */}
               <Field label="수업방식">

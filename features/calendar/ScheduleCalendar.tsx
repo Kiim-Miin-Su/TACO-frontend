@@ -21,10 +21,6 @@ import {
   type CalendarFacetFilters } from "@/lib/domain/lantiv";
 import {
   useAttendance,
-  useStudents,
-  useEnrollments,
-  useCourses,
-  useSubjects,
   useCreateViewPreset,
   useUpdateViewPreset,
   useScheduleRequests,
@@ -51,6 +47,7 @@ import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
 import { formatScheduleConflicts } from "@/lib/domain/conflict-messages";
 import { applyScheduleRowPatch } from "@/lib/domain/schedule-row";
 import { scopeCalendarRowsToInstructor } from "@/lib/domain/calendar-access";
+import { calendarEnrollmentRows, calendarScheduleCourses, calendarSubjectOptions } from "@/lib/domain/schedule-resources";
 import { appendCalendarPane, companionPaneSeed, currentPaneSeeds } from "@/lib/domain/calendar-panes";
 import { availabilityGhostBandsForColumn } from "@/lib/domain/pending-ghosts";
 import { buildAvailabilityRequestBody, buildSessionDeleteRequestBody } from "@/lib/domain/request-drafts";
@@ -339,20 +336,16 @@ export function ScheduleCalendar() {
   //  paneCountry: 표(스플릿)별 override — 강사 표는 KST, 학생 표는 미국 시간처럼 표마다 다르게.
   //  저장은 항상 KST(단일 진실원). [개방 2026-07-06] 비KST 컬럼도 드래그·리사이즈·생성·복제 전부 허용 —
   //  커밋 직전 tzCellToKst(R-1b DST 2-패스)로 KST 변환(익일 연속 블록만 표시 전용 유지).
-  // 학생 국가·수강·코스(붙여넣기 코스 재배정 + 국가 필터) — TanStack Query 캐시 공유.
-  const { data: allStudents = [] } = useStudents();
-  const { data: allEnrollments = [] } = useEnrollments();
-  const { data: allCourses = [] } = useCourses();
-  // [#2 2026-07-06] 과목 split — 옵션(useSubjects) + courseId→subjectId 리졸버(A안: ScheduleRow엔 subjectId 없음).
-  const { data: allSubjects = [] } = useSubjects();
-  const subjectOpts = useMemo(
-    () => allSubjects.map((s) => ({ id: Number(s.id), name: s.name, color: (s as { color?: string }).color })),
-    [allSubjects],
-  );
+  // 학생 국가·수강·코스·과목은 역할별 `/schedule/resources` 한 query에서만 파생한다.
+  // 강사 캘린더가 전역 courses/subjects/enrollments/students cache를 읽지 않으므로 모든 UI 축이 같은 scope다.
+  const allStudents = resources?.students ?? [];
+  const allEnrollments = useMemo(() => calendarEnrollmentRows(resources), [resources]);
+  const allCourses = useMemo(() => calendarScheduleCourses(resources), [resources]);
+  const subjectOpts = useMemo(() => calendarSubjectOptions(resources), [resources]);
   const subjectFilterOptions = useMemo(() => [
     ...[...new Set((resources?.courses ?? []).map((course) => course.subjectName).filter(Boolean))].sort(),
-    ...SUBJECT_KIND_OPTIONS.map((option) => option.value),
-  ], [resources]);
+    ...SUBJECT_KIND_OPTIONS.filter((option) => !isInstructor || option.kind !== "counsel").map((option) => option.value),
+  ], [resources, isInstructor]);
   const subjectIdOf = useMemo(() => {
     const m = new Map(allCourses.map((c) => [Number(c.id), c.subjectId != null ? Number(c.subjectId) : undefined]));
     return (courseId: number) => m.get(courseId);
@@ -458,7 +451,7 @@ export function ScheduleCalendar() {
     if (!country) return null;
     const want = country.code.split("-")[0];
     return new Set(
-      allStudents.filter((st) => ((st.country ?? "KR").toUpperCase() === want)).map((st) => Number(st.id)),
+      allStudents.filter((st) => ((st.countryCode ?? "KR").toUpperCase() === want)).map((st) => Number(st.id)),
     );
   }, [country, allStudents]);
 
