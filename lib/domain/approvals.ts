@@ -26,7 +26,7 @@ export const REQUEST_STATUS_LABEL: Record<string, string> = {
 
 // schedule_requests audit diff 라벨(ChangeHistory fieldLabels 병합용)
 export const REQUEST_FIELD_LABEL: Record<string, string> = {
-  requestKind: "요청 종류", requesterId: "요청자", status: "상태", requestReason: "요청 사유", reason: "반려 사유",
+  requestKind: "요청 종류", requesterId: "요청자", status: "상태", requestReason: "요청 사유", reason: "반려 사유", memo: "메모",
   decidedBy: "처리자", decidedAt: "처리 시각", createdSessionId: "생성 세션",
   targetSessionId: "대상 수업",
   targetAvailabilityId: "대상 블록", availabilityKind: "종류", availabilityWeekday: "요일",

@@ -96,7 +96,7 @@ export function RequestDetailModal({
           }
         : {
             sessionDate: r.sessionDate ?? '', startTime: r.startTime ?? '', endTime: r.endTime ?? '',
-            roomId: r.roomId != null ? String(r.roomId) : '', topic: r.topic ?? '',
+            roomId: r.roomId != null ? String(r.roomId) : '', topic: r.topic ?? '', memo: r.memo ?? '',
             kind: r.kind ?? 'class', mode: r.mode ?? 'in_person',
           },
     );
@@ -119,6 +119,7 @@ export function RequestDetailModal({
       const roomId = form.roomId === '' ? undefined : Number(form.roomId);
       if (roomId !== r.roomId && roomId != null) body.roomId = roomId;
       if (form.topic !== (r.topic ?? '')) body.topic = form.topic;
+      if (form.memo !== (r.memo ?? '')) body.memo = form.memo;
       if (form.kind !== (r.kind ?? 'class')) body.kind = form.kind as UpdateScheduleRequestBody['kind'];
       if (form.mode !== (r.mode ?? 'in_person')) body.mode = form.mode as UpdateScheduleRequestBody['mode'];
     }
@@ -226,6 +227,9 @@ export function RequestDetailModal({
                 <div className="col-span-2">
                   <EditField label="주제"><input type="text" className="input w-full" value={form.topic} onChange={set('topic')} maxLength={200} /></EditField>
                 </div>
+                <div className="col-span-2">
+                  <EditField label="메모"><input type="text" className="input w-full" value={form.memo} onChange={set('memo')} maxLength={500} /></EditField>
+                </div>
               </div>
             )}
             {err && <div className="text-caption text-danger">{err}</div>}
@@ -263,6 +267,7 @@ export function RequestDetailModal({
             <MetaRow label="수업방식">{(r.mode ?? 'in_person') === 'online' ? '비대면' : '대면'}</MetaRow>
             <div className="col-span-2"><MetaRow label="학생">{studentNames(r.studentIds)}</MetaRow></div>
             {r.topic && <div className="col-span-2"><MetaRow label="주제">{r.topic}</MetaRow></div>}
+            {r.memo && <div className="col-span-2"><MetaRow label="메모">{r.memo}</MetaRow></div>}
           </div>
         )}
       </section>

@@ -89,6 +89,7 @@ export type ScheduleRequestEx = ScheduleRequest & {
   impactSessionIds?: number[];
   changeSummary?: string;
   requestReason?: string;
+  memo?: string;
   scope?: RecurrenceScope;
   mode?: "in_person" | "online"; // [C2D] 요청 단계 수업방식 보존(contracts src 반영·게시 전 로컬 확장)
   // [C2C-b] 상세 모달 표시용 — BE BaseRow가 항상 내려주는 시각(contracts 0.1.16엔 미표기, 로컬 확장)
@@ -108,6 +109,7 @@ export type CreateScheduleRequestBody = Partial<CreateScheduleRequestInput> & {
   availabilityEffectiveFrom?: string;
   availabilityEffectiveTo?: string;
   requestReason?: string;
+  memo?: string;
   scope?: RecurrenceScope;
   mode?: "in_person" | "online"; // [C2D] 요청 payload 수업방식(session_create)
 };
@@ -115,7 +117,7 @@ export type CreateScheduleRequestBody = Partial<CreateScheduleRequestInput> & {
 export type UpdateScheduleRequestBody = {
   courseId?: number; instructorId?: number; roomId?: number;
   sessionDate?: string; startTime?: string; endTime?: string; durationMinutes?: number;
-  studentIds?: number[]; topic?: string; kind?: SessionKind; mode?: "in_person" | "online";
+  studentIds?: number[]; topic?: string; memo?: string; kind?: SessionKind; mode?: "in_person" | "online";
   requestReason?: string; scope?: RecurrenceScope;
   availabilityKind?: AvailabilityKindEx; availabilityWeekday?: number;
   availabilityStartTime?: string; availabilityEndTime?: string;

@@ -50,7 +50,7 @@ import { scopeCalendarRowsToInstructor } from "@/lib/domain/calendar-access";
 import { calendarEnrollmentRows, calendarScheduleCourses, calendarSubjectOptions } from "@/lib/domain/schedule-resources";
 import { appendCalendarPane, companionPaneSeed, currentPaneSeeds } from "@/lib/domain/calendar-panes";
 import { availabilityGhostBandsForColumn } from "@/lib/domain/pending-ghosts";
-import { buildAvailabilityRequestBody, buildSessionDeleteRequestBody } from "@/lib/domain/request-drafts";
+import { buildAvailabilityRequestBody, buildSessionCreateRequestBody, buildSessionDeleteRequestBody } from "@/lib/domain/request-drafts";
 import { calendarExportFilename, resolveExportPeople } from "@/lib/domain/calendar-export";
 import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
 import { axisCompanionTimezone, buildTimezonePaneGroups, resourceTimezoneKey, resourceTimezoneOf, type ResourceTimezoneOverrides } from "@/lib/domain/resource-timezone";
@@ -1153,6 +1153,7 @@ export function ScheduleCalendar() {
       durationMinutes: merged.durationMinutes,
       studentIds: merged.studentIds,
       topic: merged.topic,
+      memo: merged.memo,
       kind: merged.kind,
       mode: merged.mode,
       requestReason,
@@ -1211,12 +1212,7 @@ export function ScheduleCalendar() {
   async function createSession(body: ScheduleCreateBody) {
     if (isInstructor) {
       try {
-        await createScheduleRequest.mutateAsync({
-          courseId: body.courseId, instructorId: myInstructorId ?? body.instructorId, roomId: body.roomId,
-          sessionDate: body.sessionDate, startTime: body.startTime, endTime: body.endTime,
-          durationMinutes: body.durationMinutes, studentIds: body.studentIds, topic: body.topic, kind: body.kind,
-          mode: body.mode, // [C2D] 수업방식 보존 — 승인 시 세션 mode로 반영
-        });
+        await createScheduleRequest.mutateAsync(buildSessionCreateRequestBody(body, myInstructorId ?? undefined));
         setCreating(null);
         setMsg("승인 요청을 보냈습니다 — 매니저 승인 시 캘린더에 반영됩니다.");
       } catch (e) {
@@ -1297,11 +1293,7 @@ export function ScheduleCalendar() {
     let ok = 0;
     try {
       for (const b of bodies) {
-        await createScheduleRequest.mutateAsync({
-          courseId: b.courseId, instructorId: myInstructorId ?? b.instructorId, roomId: b.roomId,
-          sessionDate: b.sessionDate, startTime: b.startTime, endTime: b.endTime,
-          durationMinutes: b.durationMinutes, studentIds: b.studentIds, topic: b.topic, kind: b.kind, mode: b.mode,
-        });
+        await createScheduleRequest.mutateAsync(buildSessionCreateRequestBody(b, myInstructorId ?? undefined));
         ok += 1;
       }
       setMsg(`반복 수업 승인 요청 ${ok}건을 보냈습니다 — 매니저 승인 시 캘린더에 반영됩니다.`);

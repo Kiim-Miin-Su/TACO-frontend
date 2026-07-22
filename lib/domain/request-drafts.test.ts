@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAvailabilityRequestBody, buildSessionDeleteRequestBody } from './request-drafts';
+import { buildAvailabilityRequestBody, buildSessionCreateRequestBody, buildSessionDeleteRequestBody } from './request-drafts';
 
 describe('request draft builders', () => {
   it('availability_upsert 요청 payload에 사유와 block 필드를 보존', () => {
@@ -45,6 +45,41 @@ describe('request draft builders', () => {
       targetSessionId: 9,
       requestReason: '반복 수업 종료',
       scope: 'this_and_following',
+    });
+  });
+
+  it('session_create 요청은 메모·코호트·종류·방식을 보존하고 관리자 확정 필드는 제외', () => {
+    expect(buildSessionCreateRequestBody({
+      courseId: 10,
+      instructorId: 2,
+      roomId: 3,
+      sessionDate: '2026-07-23',
+      startTime: '16:00',
+      endTime: '17:00',
+      durationMinutes: 60,
+      studentIds: [7],
+      topic: '진단 범위',
+      memo: '교재 지참',
+      kind: 'level_test',
+      mode: 'online',
+      status: 'held',
+      isPublic: true,
+      price: 30_000,
+      color: '#0969da',
+    }, 1)).toEqual({
+      requestKind: 'session_create',
+      courseId: 10,
+      instructorId: 1,
+      roomId: 3,
+      sessionDate: '2026-07-23',
+      startTime: '16:00',
+      endTime: '17:00',
+      durationMinutes: 60,
+      studentIds: [7],
+      topic: '진단 범위',
+      memo: '교재 지참',
+      kind: 'level_test',
+      mode: 'online',
     });
   });
 });
