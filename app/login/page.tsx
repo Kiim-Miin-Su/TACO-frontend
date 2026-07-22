@@ -60,10 +60,10 @@ function LoginForm() {
     <AuthShell title="로그인" subtitle="사내 담당자 전용 백오피스">
       <form onSubmit={submit} className="space-y-3.5">
         <AuthField label="아이디">
-          <input className="input w-full" value={webId} onChange={(e) => setWebId(e.target.value)} placeholder="admin" autoFocus />
+          <input className="input w-full" value={webId} onChange={(e) => setWebId(e.target.value)} autoFocus />
         </AuthField>
         <AuthField label="비밀번호">
-          <input className="input w-full" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+          <input className="input w-full" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="password" />
         </AuthField>
         {err && <p className="text-caption text-danger">{err}</p>}
         <button className="btn btn-primary w-full h-10" disabled={busy}>{busy ? "로그인 중…" : "로그인"}</button>
