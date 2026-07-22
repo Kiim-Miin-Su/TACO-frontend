@@ -60,11 +60,6 @@ export const qk = {
   reportTemplates: { all: ["reportTemplates"] as const, list: () => ["reportTemplates", "list"] as const },
   events: { all: ["events"] as const, list: () => ["events", "list"] as const },
   attendance: { all: ["attendance"] as const, list: (scope = "global") => ["attendance", "list", scope] as const },
-  roadmaps: {
-    all: ["roadmaps"] as const,
-    list: () => ["roadmaps", "list"] as const,
-    courses: () => ["roadmaps", "courses"] as const,
-  },
   parents: {
     all: ["parents"] as const,
     list: () => ["parents", "list"] as const,

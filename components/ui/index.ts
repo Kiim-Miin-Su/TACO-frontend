@@ -14,6 +14,8 @@ export { StatCard } from './StatCard';
 export { SectionCard } from './SectionCard';
 export { MonthCalendar } from './MonthCalendar';
 export { Combobox } from './Combobox';
+export { SearchableCheckList } from './SearchableCheckList';
+export type { SearchableCheckListItem } from './SearchableCheckList';
 export { Chart } from './Chart';
 export { toneBg, toneFg } from './tokens';
 export type { Tone } from './tokens';

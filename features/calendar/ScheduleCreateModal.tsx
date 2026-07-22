@@ -8,7 +8,7 @@ import type { AvailabilityUpsertBody, ScheduleCreateBody, ScheduleSeriesCreateBo
 import type { Room, ScheduleResource, ScheduleResources } from "@/types";
 import { courseRosterFromScheduleResources, scheduleResourceName } from "@/lib/domain/schedule-resources";
 // [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
-import { Field, ModalShell } from "@/components/ui";
+import { Field, ModalShell, SearchableCheckList } from "@/components/ui";
 import { ColorPicker } from "./SessionEditFields";
 import { STATUS_LABEL } from "@/lib/domain/lantiv";
 import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
@@ -31,37 +31,6 @@ const addDaysISO = (iso: string, n: number) => {
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 };
-
-// [이슈1] 검색 가능한 다중 선택 리스트 — 인원이 많아도 검색으로 좁혀 선택(체크박스 나열 대체).
-function SearchableCheckList({ items, selected, onToggle, placeholder }: {
-  items: { id: number; name: string }[];
-  selected: Set<number>;
-  onToggle: (id: number) => void;
-  placeholder?: string;
-}) {
-  const [q, setQ] = useState("");
-  const n = q.trim().toLowerCase();
-  const filtered = n ? items.filter((it) => it.name.toLowerCase().includes(n)) : items;
-  return (
-    <div className="border rounded-md overflow-hidden">
-      <input className="input h-8 w-full text-caption rounded-none border-0 border-b"
-        placeholder={placeholder ?? "검색"} value={q} onChange={(e) => setQ(e.target.value)} />
-      <div className="max-h-[168px] overflow-y-auto p-1 space-y-0.5">
-        {filtered.length === 0 ? (
-          <p className="text-caption text-fg-subtle text-center py-3">검색 결과 없음</p>
-        ) : filtered.map((it) => {
-          const on = selected.has(it.id);
-          return (
-            <label key={it.id} className={`flex items-center gap-2 px-2 h-7 rounded cursor-pointer text-caption ${on ? "badge-accent" : "hover:bg-canvas-subtle"}`}>
-              <input type="checkbox" checked={on} onChange={() => onToggle(it.id)} />
-              <span className="flex-1 truncate">{it.name}</span>
-            </label>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 // ── 관리자: 스케줄 추가 모달 ──
 export function ScheduleCreateModal({

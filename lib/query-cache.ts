@@ -186,6 +186,23 @@ export async function invalidateCourseAggregate(queryClient: QueryClient): Promi
   );
 }
 
+// [TBO-48] 수업 개설은 subject/course/enrollment/session을 한 transaction에서 함께 바꾼다.
+// 성공 응답 뒤 네 aggregate 및 파생 출결·리포트·정산·감사 조회를 한 경계로 갱신한다.
+export const CLASS_OPENING_SCOPES = [
+  qk.subjects.all,
+  qk.courses.all,
+  qk.enrollments.all,
+  ...CALENDAR_COMMAND_SCOPES,
+] as const;
+
+export async function invalidateClassOpening(queryClient: QueryClient): Promise<void> {
+  await Promise.all(
+    CLASS_OPENING_SCOPES.map((key) =>
+      queryClient.invalidateQueries({ queryKey: key as unknown as readonly unknown[], refetchType: 'active' }),
+    ),
+  );
+}
+
 /** @deprecated [C4] invalidateCalendarCommand로 통일 — 부분 무효화 편차 방지를 위해 위임만 남긴다. */
 export async function invalidateScheduleLifecycle(queryClient: QueryClient): Promise<void> {
   await invalidateCalendarCommand(queryClient);

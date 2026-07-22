@@ -24,9 +24,6 @@ import type {
   AuditLog,
   Attendance,
   AttendanceStatus,
-  Roadmap,
-  RoadmapCourse,
-  CreateRoadmapInput,
   Parent,
   ParentStudent,
   CreateCourseInput,
@@ -69,6 +66,10 @@ import type {
   CreateInstructorInput,
   UpdateInstructorInput,
   PayReadiness,
+  OpenClassInput,
+  OpenClassSeriesInput,
+  OpenClassResult,
+  OpenClassSeriesResult,
 } from "@kms545487/contracts";
 
 export type ScheduleQuery = { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number };
@@ -610,11 +611,6 @@ export const api = {
     upsert: (body: { sessionId: number; studentId: number; status: AttendanceStatus }) =>
       http.put<Attendance>("/attendance", body).then((r) => r.data),
   },
-  roadmaps: {
-    list: () => http.get<Roadmap[]>("/roadmaps").then((r) => r.data),
-    courses: () => http.get<RoadmapCourse[]>("/roadmaps/courses").then((r) => r.data),
-    create: (input: CreateRoadmapInput) => http.post<Roadmap>("/roadmaps", input).then((r) => r.data),
-  },
   parents: {
     list: () => http.get<Parent[]>("/parents").then((r) => r.data),
     relations: () => http.get<ParentStudent[]>("/parents/relations").then((r) => r.data),
@@ -689,6 +685,11 @@ export const api = {
     // [TBO-29C C2] 반복 생성 bulk — 서버 발급 series ID + 전체 원자 커밋(중간 실패=전부 롤백).
     createSeries: (body: ScheduleSeriesCreateBody) =>
       http.post<{ series: ScheduleSeriesInfo; rows: ScheduleRow[]; conflicts: Conflict[] }>("/schedule/series", body).then((r) => r.data),
+    // [TBO-48] 과목명 → subject/course/enrollment/session을 서버 transaction 한 번으로 개설.
+    openClass: (body: OpenClassInput) =>
+      http.post<OpenClassResult>("/schedule/open-class", body).then((response) => response.data),
+    openClassSeries: (body: OpenClassSeriesInput) =>
+      http.post<OpenClassSeriesResult>("/schedule/open-class-series", body).then((response) => response.data),
     // 이동·리사이즈·편집 → { row, conflicts }. 충돌 시 409(서버) → force로 재시도.
     update: (id: number, body: SchedulePatchBody) =>
       http.patch<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }>(`/schedule/${id}`, body).then((r) => r.data),

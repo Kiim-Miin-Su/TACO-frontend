@@ -1,6 +1,6 @@
 "use client";
 // [B6 C3 2026-07-16] 행 전체 클릭 = 상세 진입(ClickableTableRow href) — 셀 native <a>는 Link로 교체.
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge, ClickableTableRow, SectionCard, PageHeader, EmptyState, LoadingState, TableWrap, type Tone } from "@/components/ui";
 import { useSchedule, useCourses, useInstructors } from "@/lib/queries";
@@ -34,12 +34,14 @@ export function SessionsView() {
 
   const [q, setQ] = useState("");
   const kw = q.trim().toLowerCase();
-  const rows = classSessions.filter((cs) => {
+  const courseById = useMemo(() => new Map(courses.map((course) => [course.id, course])), [courses]);
+  const instructorById = useMemo(() => new Map(instructors.map((instructor) => [instructor.id, instructor])), [instructors]);
+  const rows = useMemo(() => classSessions.filter((session) => {
     if (!kw) return true;
-    const course = courses.find((c) => c.id === cs.courseId)?.name ?? "";
-    const instructor = instructors.find((i) => i.id === cs.instructorId)?.name ?? "";
-    return [course, instructor, cs.topic ?? "", cs.sessionDate].some((v) => v.toLowerCase().includes(kw));
-  });
+    const course = courseById.get(session.courseId)?.name ?? "";
+    const instructor = instructorById.get(session.instructorId)?.name ?? "";
+    return [course, instructor, session.topic ?? "", session.sessionDate].some((value) => value.toLowerCase().includes(kw));
+  }), [classSessions, courseById, instructorById, kw]);
 
   return (
     <div className="p-6 max-w-page mx-auto space-y-6">
@@ -56,7 +58,7 @@ export function SessionsView() {
         action={
           <input
             className="input w-56 h-7"
-            placeholder="코스·강사·주제·날짜 검색"
+            placeholder="과목·강사·주제·날짜 검색"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -72,7 +74,7 @@ export function SessionsView() {
           <thead>
             <tr>
               <th>날짜</th>
-              <th>코스</th>
+              <th>과목</th>
               <th>강사</th>
               <th>주제</th>
               <th>상태</th>
@@ -81,8 +83,8 @@ export function SessionsView() {
           </thead>
           <tbody>
             {rows.map((cs) => {
-              const course = courses.find((c) => c.id === cs.courseId);
-              const instructor = instructors.find((i) => i.id === cs.instructorId);
+              const course = courseById.get(cs.courseId);
+              const instructor = instructorById.get(cs.instructorId);
               return (
                 <ClickableTableRow
                   key={cs.id}

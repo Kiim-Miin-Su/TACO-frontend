@@ -1,14 +1,14 @@
 'use client';
 // [B7 E3 2026-07-16] 주 엔티티 단건화(useCourse(id) + DetailStates) — full-list find 제거(EP16)
-// [TBO-20 20-C] 코스 상세 — 수강생·세션·로드맵 종합. 관리자 전용(AdminGuard).
-//  참조 무결성: 단일 소스 Query에서 코스 FK로 조립(수강=enrollments, 세션=schedule, 로드맵=roadmapCourses).
+// [TBO-20 20-C] 코스 상세 — 수강생·세션 종합. 관리자 전용(AdminGuard).
+//  참조 무결성: 단일 소스 Query에서 코스 FK로 조립(수강=enrollments, 세션=schedule).
 //  유령 courseId는 단건 404 → DetailStates가 구분 렌더. 읽기 위주(편집은 카탈로그·캘린더·수강 화면).
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { Badge, DetailStates, EmptyState, PageHeader, SectionCard, StatCard, TableWrap, type Tone } from '@/components/ui';
 import {
   useCourse, useSubjects, useInstructorAdminList, useEnrollments, useStudents,
-  useSchedule, useRoadmaps, useRoadmapCourses,
+  useSchedule,
 } from '@/lib/queries';
 import { won, shortDate } from '@/lib/format';
 import type { EnrollmentStatus } from '@/types';
@@ -27,8 +27,6 @@ export function CourseDetailView({ courseId }: { courseId: number }) {
   const { data: enrollments = [] } = useEnrollments();
   const { data: students = [] } = useStudents();
   const { data: sessions = [] } = useSchedule();
-  const { data: roadmaps = [] } = useRoadmaps();
-  const { data: roadmapCourses = [] } = useRoadmapCourses();
 
   const studentName = (id: number) => students.find((s) => s.id === id)?.name ?? `학생#${id}`;
 
@@ -36,10 +34,6 @@ export function CourseDetailView({ courseId }: { courseId: number }) {
   const courseSessions = useMemo(
     () => sessions.filter((s) => s.courseId === courseId).sort((a, b) => (b.sessionDate + (b.startTime ?? '')).localeCompare(a.sessionDate + (a.startTime ?? ''))),
     [sessions, courseId],
-  );
-  const inRoadmaps = useMemo(
-    () => roadmapCourses.filter((rc) => rc.courseId === courseId).map((rc) => roadmaps.find((r) => r.id === rc.roadmapId)).filter(Boolean),
-    [roadmapCourses, roadmaps, courseId],
   );
 
   const activeCount = roster.filter((e) => e.status === 'active').length;
@@ -87,34 +81,19 @@ export function CourseDetailView({ courseId }: { courseId: number }) {
                 )}
               </SectionCard>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <SectionCard title={`세션 (${courseSessions.length})`} action={<Link href="/calendar" className="btn btn-sm">캘린더 →</Link>}>
-                  {!courseSessions.length ? <EmptyState message="세션이 없습니다." /> : (
-                    <div className="divide-y border-line-muted max-h-[360px] overflow-y-auto">
-                      {courseSessions.map((s) => (
-                        <Link key={s.id} href={`/sessions/${s.id}`} className="flex items-center gap-x-3 p-2.5 hover:bg-canvas-subtle">
-                          <span className="mono text-caption">{s.sessionDate}</span>
-                          <span className="text-caption text-fg-muted">{s.startTime ?? '—'}</span>
-                          <Badge tone={sessTone[s.status] ?? 'neutral'}>{sessLabel[s.status] ?? s.status}</Badge>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </SectionCard>
-
-                <SectionCard title={`로드맵 (${inRoadmaps.length})`}>
-                  {!inRoadmaps.length ? <EmptyState message="연결된 로드맵이 없습니다." /> : (
-                    <div className="divide-y border-line-muted">
-                      {inRoadmaps.map((r) => (
-                        <div key={r!.id} className="p-3">
-                          <div className="font-medium">{r!.title}</div>
-                          {r!.description && <div className="text-caption text-fg-muted">{r!.description}</div>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </SectionCard>
-              </div>
+              <SectionCard title={`세션 (${courseSessions.length})`} action={<Link href="/calendar" className="btn btn-sm">캘린더 →</Link>}>
+                {!courseSessions.length ? <EmptyState message="세션이 없습니다." /> : (
+                  <div className="divide-y border-line-muted max-h-[360px] overflow-y-auto">
+                    {courseSessions.map((s) => (
+                      <Link key={s.id} href={`/sessions/${s.id}`} className="flex items-center gap-x-3 p-2.5 hover:bg-canvas-subtle">
+                        <span className="mono text-caption">{s.sessionDate}</span>
+                        <span className="text-caption text-fg-muted">{s.startTime ?? '—'}</span>
+                        <Badge tone={sessTone[s.status] ?? 'neutral'}>{sessLabel[s.status] ?? s.status}</Badge>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </SectionCard>
 
               <p className="text-caption text-fg-subtle">읽기 전용 종합 뷰 — 편집은 카탈로그·캘린더·수강 화면에서.</p>
             </>

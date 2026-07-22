@@ -1,189 +1,211 @@
-"use client";
-import { useMemo, useState } from "react";
-import { Combobox, Field } from "@/components/ui";
-import { useCourses, useInstructors, useSchedule, useCreateSchedule } from "@/lib/queries";
+'use client';
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
-const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
+import { useMemo, useState } from 'react';
+import type { AxiosError } from 'axios';
+import { useInstructorAdminList, useOpenClass, useOpenClassSeries, useRooms, useSchedule, useStudents, useSubjects } from '@/lib/queries';
+import { PALETTE } from '@/lib/domain/lantiv';
+import { dateInTimeZone, isActiveStudent } from '@/lib/domain/students';
+import { weekdayOf } from '@/lib/domain/schedule';
+import {
+  buildOpenClassInput,
+  buildOpenClassSeriesInput,
+  classOpeningOccurrences,
+  recentSubjectSuggestions,
+  validateClassOpening,
+  type ClassOpeningDraft,
+} from '@/lib/domain/class-opening';
+import type { ScheduleRepeat } from '@/features/calendar/inputs/ScheduleRepeatFields';
+import { ClassOpeningCatalogFields } from './ClassOpeningCatalogFields';
+import { ClassOpeningScheduleFields } from './ClassOpeningScheduleFields';
 
-// 기간+요일 반복을 날짜 배열로 전개(store.addRecurringClassSessions 로직 복제).
-function expandRecurringDates(input: { startDate: string; endDate: string; weekdays: number[] }): string[] {
-  const dates: string[] = [];
-  for (const d = new Date(input.startDate); d <= new Date(input.endDate); d.setDate(d.getDate() + 1)) {
-    if (input.weekdays.includes(d.getDay())) dates.push(d.toISOString().slice(0, 10));
-  }
-  return dates;
-}
+const addDays = (iso: string, days: number): string => {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
 
+const initialDraft = (): ClassOpeningDraft => ({
+  subjectName: '',
+  instructorId: null,
+  studentIds: [],
+  hourlyRateOverride: '',
+  coursePrice: '',
+  isKinder: false,
+  color: PALETTE[0],
+  roomId: null,
+  date: dateInTimeZone(),
+  startTime: '09:00',
+  endTime: '10:30',
+  topic: '',
+  memo: '',
+  mode: 'in_person',
+});
+
+const apiErrorMessage = (caught: unknown): string => {
+  const data = (caught as AxiosError<{ message?: string | string[] }>).response?.data;
+  if (Array.isArray(data?.message)) return data.message.join(', ');
+  return data?.message ?? '수업을 개설하지 못했습니다. 입력값과 기존 스케줄 충돌을 확인하세요.';
+};
+
+/** 과목 카탈로그부터 수강·스케줄까지 서버의 원자 command 하나로 개설한다. */
 export function SessionForm() {
-  const { data: courses = [] } = useCourses();
-  const { data: instructors = [] } = useInstructors();
+  const { data: subjects = [] } = useSubjects();
+  const { data: instructors = [] } = useInstructorAdminList();
+  const { data: students = [] } = useStudents();
+  const { data: rooms = [] } = useRooms();
   const { data: classSessions = [] } = useSchedule();
-  const createSchedule = useCreateSchedule();
+  const openClass = useOpenClass();
+  const openClassSeries = useOpenClassSeries();
 
-  const [mode, setMode] = useState<"single" | "recurring">("single");
-  const [courseId, setCourseId] = useState("");
-  const [instructorId, setInstructorId] = useState("");
-  const [duration, setDuration] = useState("90");
-  const [topic, setTopic] = useState("");
-  // single
-  const [sessionDate, setSessionDate] = useState(todayStr());
-  // recurring
-  const [startDate, setStartDate] = useState(todayStr());
-  const [endDate, setEndDate] = useState(todayStr());
-  const [weekdays, setWeekdays] = useState<number[]>([]);
-  // [C-1] alert 대체 — 인라인 검증(err)·완료(notice) 메시지
-  const [err, setErr] = useState("");
-  const [notice, setNotice] = useState("");
+  const [draft, setDraft] = useState<ClassOpeningDraft>(initialDraft);
+  const [repeat, setRepeat] = useState<ScheduleRepeat>('none');
+  const [untilDate, setUntilDate] = useState(() => addDays(dateInTimeZone(), 28));
+  const [customWeekdays, setCustomWeekdays] = useState<number[]>(() => [weekdayOf(dateInTimeZone())]);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
-  // 이미 사용된 주제 라벨(중복 제거)
+  const activeStudents = useMemo(() => students.filter(isActiveStudent), [students]);
+  const selectedStudentIds = useMemo(() => new Set(draft.studentIds), [draft.studentIds]);
+  const subjectSuggestions = useMemo(
+    () => recentSubjectSuggestions(classSessions, subjects),
+    [classSessions, subjects],
+  );
   const topicSuggestions = useMemo(
-    () => Array.from(new Set(classSessions.map((s) => s.topic).filter((t): t is string => !!t))),
+    () => [...new Set(classSessions.map((row) => row.topic?.trim()).filter((value): value is string => Boolean(value)))].slice(0, 10),
     [classSessions],
   );
+  const seriesWeekdays = repeat === 'weekly' ? [weekdayOf(draft.date)] : customWeekdays;
+  const occurrences = repeat === 'none'
+    ? [draft.date]
+    : classOpeningOccurrences(draft.date, untilDate, seriesWeekdays);
+  const selectedInstructor = instructors.find((instructor) => instructor.id === draft.instructorId);
+  const pending = openClass.isPending || openClassSeries.isPending;
 
-  const pickCourse = (id: string) => {
-    setCourseId(id);
-    const c = courses.find((x) => x.id === Number(id));
-    if (c) setInstructorId(String(c.instructorId));
+  const patchDraft = <K extends keyof ClassOpeningDraft>(key: K, value: ClassOpeningDraft[K]) => {
+    setDraft((current) => ({ ...current, [key]: value }));
   };
 
-  const toggleWeekday = (d: number) => setWeekdays((w) => (w.includes(d) ? w.filter((x) => x !== d) : [...w, d].sort()));
-
-  const resetForm = () => {
-    setCourseId("");
-    setInstructorId("");
-    setTopic("");
-    setDuration("90");
-    setSessionDate(todayStr());
-    setWeekdays([]);
+  const reset = () => {
+    const next = initialDraft();
+    setDraft(next);
+    setRepeat('none');
+    setUntilDate(addDays(next.date, 28));
+    setCustomWeekdays([weekdayOf(next.date)]);
   };
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!courseId || !instructorId) return;
-    const common = {
-      courseId: Number(courseId),
-      instructorId: Number(instructorId),
-      durationMinutes: Number(duration) || 90,
-      topic: topic.trim() || undefined,
-      startTime: "09:00",
-      status: "scheduled" as const,
-    };
-    setErr(""); setNotice("");
-    if (mode === "single") {
-      createSchedule.mutate({ ...common, sessionDate }, { onSuccess: () => { resetForm(); setNotice("수업이 생성되었습니다."); } });
-    } else {
-      if (weekdays.length === 0) {
-        setErr("반복 요일을 1개 이상 선택하세요.");
-        return;
-      }
-      const dates = expandRecurringDates({ startDate, endDate, weekdays });
-      const seriesId = Date.now();
-      for (const iso of dates) {
-        createSchedule.mutate({ ...common, sessionDate: iso, seriesId });
-      }
-      setNotice(`${dates.length}개의 수업이 생성되었습니다.`);
-      resetForm();
+  const toggleStudent = (id: number) => {
+    patchDraft('studentIds', selectedStudentIds.has(id)
+      ? draft.studentIds.filter((studentId) => studentId !== id)
+      : [...draft.studentIds, id]);
+  };
+
+  const toggleWeekday = (weekday: number) => {
+    setCustomWeekdays((current) => current.includes(weekday)
+      ? current.filter((value) => value !== weekday)
+      : [...current, weekday].sort((a, b) => a - b));
+  };
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+
+    const validationError = validateClassOpening(draft, selectedInstructor);
+    if (validationError) {
+      setError(validationError);
+      return;
     }
+    if (repeat !== 'none' && untilDate < draft.date) {
+      setError('반복 종료일은 첫 수업일 이후여야 합니다.');
+      return;
+    }
+    if (repeat === 'custom' && customWeekdays.length === 0) {
+      setError('반복 요일을 1개 이상 선택하세요.');
+      return;
+    }
+    if (repeat !== 'none' && occurrences.length === 0) {
+      setError('선택한 기간에 생성할 수업이 없습니다.');
+      return;
+    }
+
+    const onSuccess = (count: number) => {
+      reset();
+      setNotice(`${count}개 수업이 DB에 개설되고 관련 목록을 새로고침했습니다.`);
+    };
+
+    if (repeat === 'none') {
+      openClass.mutate(buildOpenClassInput(draft), {
+        onSuccess: () => onSuccess(1),
+        onError: (caught) => setError(apiErrorMessage(caught)),
+      });
+      return;
+    }
+    openClassSeries.mutate(buildOpenClassSeriesInput(draft, {
+      kind: repeat,
+      weekdays: seriesWeekdays,
+      endsOn: untilDate,
+    }), {
+      onSuccess: (result) => onSuccess(result.rows.length),
+      onError: (caught) => setError(apiErrorMessage(caught)),
+    });
   };
 
   return (
-    <form onSubmit={submit} className="p-4 space-y-4">
-      <div className="flex gap-2">
-        <button
-          type="button"
-          className={`btn btn-sm ${mode === "single" ? "badge-accent" : ""}`}
-          onClick={() => setMode("single")}
-        >
-          단일
-        </button>
-        <button
-          type="button"
-          className={`btn btn-sm ${mode === "recurring" ? "badge-accent" : ""}`}
-          onClick={() => setMode("recurring")}
-        >
-          기간·반복
-        </button>
-      </div>
+    <form onSubmit={submit} className="p-4 space-y-5">
+      <ClassOpeningCatalogFields
+        subjectName={draft.subjectName}
+        subjectSuggestions={subjectSuggestions}
+        instructorId={draft.instructorId}
+        instructors={instructors}
+        students={activeStudents}
+        selectedStudentIds={selectedStudentIds}
+        pay={{ hourlyRateOverride: draft.hourlyRateOverride, isKinder: draft.isKinder }}
+        coursePrice={draft.coursePrice}
+        onSubjectNameChange={(value) => patchDraft('subjectName', value)}
+        onInstructorChange={(value) => patchDraft('instructorId', value)}
+        onStudentToggle={toggleStudent}
+        onPayChange={(value) => setDraft((current) => ({ ...current, ...value }))}
+        onCoursePriceChange={(value) => patchDraft('coursePrice', value)}
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <Field label="코스 *">
-          <select className="input" value={courseId} onChange={(e) => pickCourse(e.target.value)}>
-            <option value="">선택</option>
-            {courses.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="강사 *">
-          <select className="input" value={instructorId} onChange={(e) => setInstructorId(e.target.value)}>
-            <option value="">선택</option>
-            {instructors.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="시간(분)">
-          <input
-            className="input"
-            type="number"
-            min={10}
-            step={10}
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-          />
-        </Field>
-        <div className="sm:col-span-2 lg:col-span-3">
-          <Field label="주제 (기존 라벨 추천 / 새로 입력)">
-            <Combobox value={topic} onChange={setTopic} suggestions={topicSuggestions} placeholder="Reading: Inference" />
-          </Field>
-        </div>
-      </div>
+      <div className="border-t border-line-muted" />
 
-      {mode === "single" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Field label="날짜 *">
-            <input type="date" className="input" value={sessionDate} onChange={(e) => setSessionDate(e.target.value)} />
-          </Field>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="시작일 *">
-              <input type="date" className="input" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-            </Field>
-            <Field label="종료일 *">
-              <input type="date" className="input" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-            </Field>
-          </div>
-          <div>
-            <span className="block text-caption font-medium text-fg-muted mb-1">반복 요일 *</span>
-            <div className="flex gap-1.5">
-              {WEEK.map((w, i) => (
-                <button
-                  key={w}
-                  type="button"
-                  onClick={() => toggleWeekday(i)}
-                  className={`btn btn-sm w-9 ${weekdays.includes(i) ? "badge-accent" : ""} ${i === 0 ? "text-danger" : i === 6 ? "text-accent" : ""}`}
-                >
-                  {w}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      <ClassOpeningScheduleFields
+        rooms={rooms}
+        date={draft.date}
+        startTime={draft.startTime}
+        endTime={draft.endTime}
+        roomId={draft.roomId}
+        mode={draft.mode}
+        color={draft.color}
+        topic={draft.topic}
+        memo={draft.memo}
+        topicSuggestions={topicSuggestions}
+        repeat={repeat}
+        customWeekdays={customWeekdays}
+        untilDate={untilDate}
+        occurrencesCount={occurrences.length}
+        onDateChange={(value) => patchDraft('date', value)}
+        onStartTimeChange={(value) => patchDraft('startTime', value)}
+        onEndTimeChange={(value) => patchDraft('endTime', value)}
+        onRoomChange={(value) => patchDraft('roomId', value)}
+        onModeChange={(value) => patchDraft('mode', value)}
+        onColorChange={(value) => patchDraft('color', value)}
+        onTopicChange={(value) => patchDraft('topic', value)}
+        onMemoChange={(value) => patchDraft('memo', value)}
+        onRepeatChange={setRepeat}
+        onToggleWeekday={toggleWeekday}
+        onUntilDateChange={setUntilDate}
+      />
 
-      <div className="flex items-center justify-end gap-3">
-        {err && <span className="text-caption text-danger">{err}</span>}
-        {notice && <span className="text-caption text-success">{notice}</span>}
-        <button type="submit" className="btn btn-primary">
-          {mode === "single" ? "수업 개설" : "반복 수업 생성"}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {error && <span className="text-caption text-danger mr-auto" role="alert">{error}</span>}
+        {notice && <span className="text-caption text-success mr-auto" role="status">{notice}</span>}
+        <span className="text-caption text-fg-subtle">
+          {repeat === 'none' ? '단일 수업' : `${occurrences.length}회 반복`} · {draft.studentIds.length}명 연결
+        </span>
+        <button type="submit" className="btn btn-primary" disabled={pending}>
+          {pending ? 'DB에 개설 중…' : repeat === 'none' ? '수업 개설' : `반복 수업 ${occurrences.length}회 개설`}
         </button>
       </div>
     </form>

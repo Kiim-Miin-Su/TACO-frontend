@@ -17,7 +17,7 @@ export function CoursePayFields({
   return (
     <>
       <Field label="수업 시급 override (원/시간)">
-        <input className="input" type="number" min={0} max={100000000} value={value.hourlyRateOverride}
+        <input className="input" type="number" min={1} max={100000000} value={value.hourlyRateOverride}
           onChange={(e) => onChange({ ...value, hourlyRateOverride: e.target.value })}
           placeholder={instructor ? `비우면 기본 ${instructor.defaultHourlyRate.toLocaleString('ko-KR')}원` : '강사를 먼저 선택'} />
         <span className="block text-micro text-fg-subtle mt-1">

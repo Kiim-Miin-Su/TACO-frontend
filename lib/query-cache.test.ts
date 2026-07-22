@@ -7,11 +7,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CALENDAR_COMMAND_SCOPES,
   COURSE_AGGREGATE_SCOPES,
+  CLASS_OPENING_SCOPES,
   INSTRUCTOR_AGGREGATE_SCOPES,
   STUDENT_AGGREGATE_SCOPES,
   STUDENT_RELATED_SCOPES,
   invalidateInstructorAggregate,
   invalidateCourseAggregate,
+  invalidateClassOpening,
   invalidateStudentAggregate,
   optimisticallyPatchStudent,
   optimisticallyRemoveStudent,
@@ -156,5 +158,18 @@ describe("invalidateCourseAggregate (TBO-36 36C)", () => {
     expect(COURSE_AGGREGATE_SCOPES).toEqual(expect.arrayContaining([
       qk.courses.all, qk.schedule.all, qk.payouts.all,
     ]));
+  });
+});
+
+describe('invalidateClassOpening (TBO-48 48C)', () => {
+  it('원자 개설 성공 후 과목·수업·수강·캘린더·정산 파생 캐시를 모두 갱신한다', async () => {
+    const { queryClient, spy } = spyInvalidate();
+    await invalidateClassOpening(queryClient);
+    expect(spy).toHaveBeenCalledTimes(CLASS_OPENING_SCOPES.length);
+    expect(calledRoots(spy)).toEqual(expect.arrayContaining(
+      [['subjects'], ['courses'], ['enrollments'], ['schedule'], ['attendance'], ['reports'], ['payouts'], ['audit']]
+        .map((root) => JSON.stringify(root)),
+    ));
+    for (const [options] of spy.mock.calls) expect(options).toMatchObject({ refetchType: 'active' });
   });
 });

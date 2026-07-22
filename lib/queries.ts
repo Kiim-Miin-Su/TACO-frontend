@@ -10,6 +10,7 @@ import {
   invalidateCalendarCommand,
   invalidateInstructorAggregate,
   invalidateCourseAggregate,
+  invalidateClassOpening,
   invalidateStudentAggregate,
   acceptStudentAggregateFromDatabase,
   acceptStudentFromDatabase,
@@ -178,8 +179,6 @@ export const useInstructorAttendanceSummary = (from?: string, to?: string, instr
     enabled: can("admin.area") && !!from && !!to,
   });
 };
-export const useRoadmaps = () => useQuery({ queryKey: qk.roadmaps.list(), queryFn: () => api.roadmaps.list() });
-export const useRoadmapCourses = () => useQuery({ queryKey: qk.roadmaps.courses(), queryFn: () => api.roadmaps.courses() });
 export const usePendingAccounts = () => {
   const { can } = useAccountAccess();
   return useQuery({
@@ -359,8 +358,6 @@ export function useAppData() {
   const counselForms = useCounselForms().data ?? [];
   const counselRounds = useCounselRounds().data ?? [];
   const academyEvents = useAcademyEvents().data ?? [];
-  const roadmaps = useRoadmaps().data ?? [];
-  const roadmapCourses = useRoadmapCourses().data ?? [];
   const instructors = useInstructors().data ?? [];
   const scheduleRequests = useScheduleRequests().data ?? []; // TBO-16 — 배지·승인센터 동일 모집단
   // [핫픽스 2026-07-20 ②] 가입 승인·프로필 변경도 배지/할일 모집단에 — 권한 게이트는 각 훅이 수행
@@ -372,7 +369,7 @@ export function useAppData() {
   return {
     students, parents, parentStudents, subjects, courses, enrollments, classSessions,
     attendance, sessionReports, payments, transactions, expenses, instructorPayouts,
-    counselForms, counselRounds, academyEvents, roadmaps, roadmapCourses, instructors,
+    counselForms, counselRounds, academyEvents, instructors,
     scheduleRequests, pendingAccounts, profileChangeRequests, myProfileChangeRequests, payReadiness,
   };
 }
@@ -615,6 +612,14 @@ const useCalendarCommandInvalidator = () => {
 };
 export const useCreateSchedule = () => useMutation({ mutationFn: api.schedule.create, onSuccess: useCalendarCommandInvalidator() });
 export const useCreateScheduleSeries = () => useMutation({ mutationFn: api.schedule.createSeries, onSuccess: useCalendarCommandInvalidator() }); // [C2/C4] 반복 bulk
+export const useOpenClass = () => {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: api.schedule.openClass, onSuccess: () => invalidateClassOpening(queryClient) });
+};
+export const useOpenClassSeries = () => {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: api.schedule.openClassSeries, onSuccess: () => invalidateClassOpening(queryClient) });
+};
 export type AccountingImpactPrompt = {
   payoutLocked: boolean;
   impact: {
