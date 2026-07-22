@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge, ClickableTableRow, SectionCard, PageHeader, EmptyState, LoadingState, TableWrap, type Tone } from "@/components/ui";
-import { useSchedule, useCourses, useInstructors } from "@/lib/queries";
+import { useSchedule } from "@/lib/queries";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import type { SessionStatus } from "@/types";
 import { shortDate } from "@/lib/format";
@@ -29,19 +29,14 @@ export function SessionsView() {
   //  강사는 캘린더의 수업요청(schedule-requests) 경로로 개설.
   const admin = useAccountAccess().can("calendar.manage");
   const { data: classSessions = [], isPending: loading } = useSchedule(); // [E0.6 H2]
-  const { data: courses = [] } = useCourses();
-  const { data: instructors = [] } = useInstructors();
 
   const [q, setQ] = useState("");
   const kw = q.trim().toLowerCase();
-  const courseById = useMemo(() => new Map(courses.map((course) => [course.id, course])), [courses]);
-  const instructorById = useMemo(() => new Map(instructors.map((instructor) => [instructor.id, instructor])), [instructors]);
   const rows = useMemo(() => classSessions.filter((session) => {
     if (!kw) return true;
-    const course = courseById.get(session.courseId)?.name ?? "";
-    const instructor = instructorById.get(session.instructorId)?.name ?? "";
-    return [course, instructor, session.topic ?? "", session.sessionDate].some((value) => value.toLowerCase().includes(kw));
-  }), [classSessions, courseById, instructorById, kw]);
+    return [session.courseName, session.instructorName ?? "", session.topic ?? "", session.sessionDate]
+      .some((value) => value.toLowerCase().includes(kw));
+  }), [classSessions, kw]);
 
   return (
     <div className="p-6 max-w-page mx-auto space-y-6">
@@ -83,17 +78,15 @@ export function SessionsView() {
           </thead>
           <tbody>
             {rows.map((cs) => {
-              const course = courseById.get(cs.courseId);
-              const instructor = instructorById.get(cs.instructorId);
               return (
                 <ClickableTableRow
                   key={cs.id}
                   href={`/sessions/${cs.id}`}
-                  label={`${shortDate(cs.sessionDate)} ${course?.name ?? "수업"} 상세 · 출석`}
+                  label={`${shortDate(cs.sessionDate)} ${cs.courseName || "수업"} 상세 · 출석`}
                 >
                   <td className="mono">{shortDate(cs.sessionDate)}</td>
-                  <td className="font-medium">{course?.name ?? "—"}</td>
-                  <td className="text-fg-muted">{instructor?.name ?? "—"}</td>
+                  <td className="font-medium">{cs.courseName || "—"}</td>
+                  <td className="text-fg-muted">{cs.instructorName ?? "—"}</td>
                   <td className="text-fg-muted">{cs.topic ?? "—"}</td>
                   <td>
                     <Badge tone={tone[cs.status]}>{label[cs.status]}</Badge>
