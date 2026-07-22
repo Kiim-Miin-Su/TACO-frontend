@@ -27,7 +27,7 @@ export const profileChangeApprovalRows = <T extends Pick<ProfileChangeRequest, '
   rows.filter((r) => r.status === 'pending');
 
 // 가입 승인 대기 — /auth/pending 응답 전원이 대상(모집단 그 자체).
-export const signupApprovalRows = <T extends Pick<PendingAccount, 'status'>>(rows: T[]): T[] => rows;
+const signupApprovalRows = <T extends Pick<PendingAccount, 'status'>>(rows: T[]): T[] => rows;
 
 export type ApprovalCenterSlice = {
   sessionReports: Array<Pick<SessionReport, 'status'> & { approvalStatus?: string }>;

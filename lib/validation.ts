@@ -3,11 +3,11 @@
 //  FE 검증은 1차 방어이고 권위는 항상 서버 DTO — 각 항목 주석에 대응 서버 규칙을 명시한다.
 
 /** 국내 전화 형식 — BE SignupDto·ChangeCredentialsDto @Matches와 동일(010-1234-5678). */
-export const PHONE_KR_RE = /^\d{2,3}-\d{3,4}-\d{4}$/;
+const PHONE_KR_RE = /^\d{2,3}-\d{3,4}-\d{4}$/;
 /** 국제 E.164(+국가코드) — 서버 libphonenumber 정규화가 권위(SENS 준비 §13.87). */
-export const PHONE_INTL_RE = /^\+[1-9]\d{7,14}$/;
+const PHONE_INTL_RE = /^\+[1-9]\d{7,14}$/;
 /** 인증 코드(이메일/SMS OTP) — BE profile-verifications confirm 규칙. */
-export const OTP_CODE_RE = /^\d{4,10}$/;
+const OTP_CODE_RE = /^\d{4,10}$/;
 /** 출생연도 — BE SignupDto @Min(1940)/@Max(2020) 채택(현실 범위·엄격측 통일).
  *  change-credentials DTO(1900~2100)보다 좁다 — FE가 더 엄격한 쪽은 안전. */
 export const BIRTH_YEAR_MIN = 1940;
@@ -22,7 +22,6 @@ export const REASON_MIN = 5;
 export const REASON_MAX = 500;
 /** 아이디(webId) — BE ChangeCredentialsDto @MinLength(3)/@MaxLength(50). */
 export const WEB_ID_MIN = 3;
-export const WEB_ID_MAX = 50;
 
 export const isValidKrPhone = (value: string) => PHONE_KR_RE.test(value.trim());
 /** 국내 형식 또는 국제 E.164(공백/하이픈 허용) — 프로필 변경 등 해외 번호 허용 경로. */
@@ -35,7 +34,7 @@ export const isValidBirthYear = (value: string | number) => {
 };
 // [TBO-31 C2 2026-07-16] 주민등록번호(RRN) — BE common/rrn-crypto.util.ts RRN_REGEX와 동일 규칙.
 /** 앞 6자리(생년월일) + 성별자리 1~8(내국인 1-4·외국인 5-8) + 6자리, 하이픈 선택. */
-export const RRN_RE = /^\d{6}-?[1-8]\d{6}$/;
+const RRN_RE = /^\d{6}-?[1-8]\d{6}$/;
 const rrnDigits = (value: string) => value.trim().replace(/-/g, "");
 /**
  * 형식 검증 — 정규식 + 앞 6자리의 MM(01-12)·DD(01-31) 타당성만 본다(BE validateRrnFormat 동일).

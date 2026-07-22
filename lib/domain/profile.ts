@@ -9,7 +9,7 @@ import type {
 import type { Tone } from "@/components/ui/tokens";
 import { REASON_MAX, REASON_MIN, WEB_ID_MIN, isValidPhoneAny } from "@/lib/validation";
 
-export const PROFILE_FIELD_LABEL: Record<keyof ProfileChangeFields, string> = {
+const PROFILE_FIELD_LABEL: Record<keyof ProfileChangeFields, string> = {
   name: "이름",
   webId: "아이디", // [E0] 승인제 — 승인 시 재로그인 필요
   email: "이메일",
@@ -40,7 +40,7 @@ export type ProfileChangePayload = Omit<CreateProfileChangeRequestBody, "current
 //  여기서는 발송 전에 명백한 형식 오류만 거른다(백엔드 §5와 동일 계열 규칙).
 export const isValidEmailFormat = (value: string) => value.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
 // [B6 C2 2026-07-16] 전화·사유·아이디 규칙은 lib/validation 단일 소스로 이관 — 여기선 별칭만 유지(호환).
-export const isValidPhoneFormat = isValidPhoneAny;
+const isValidPhoneFormat = isValidPhoneAny;
 
 const normalize = (field: ProfileField, value?: string | null) => {
   const trimmed = (value ?? "").trim();

@@ -238,15 +238,6 @@ export function paidTeachingHours(
 }
 
 // ── 이동(드래그)·리사이즈 → 충돌검사용 후보 + PATCH 페이로드 ──
-export type SchedulePatch = {
-  sessionDate?: string;
-  startTime?: string;
-  endTime?: string;
-  durationMinutes?: number;
-  roomId?: ID;
-  instructorId?: ID;
-};
-
 /** 드래그 이동: 날짜/시작시각(과 선택적으로 강의실/강사) 변경. 길이 유지. */
 export function moveCandidate(
   s: ClassSession,
@@ -273,15 +264,6 @@ export function resizeCandidate(
   const durationMinutes = Math.max(minMinutes, toMin(endTime) - toMin(startTime));
   return { sessionDate: s.sessionDate, startTime, durationMinutes, instructorId: s.instructorId, roomId: s.roomId, ignoreSessionId: s.id };
 }
-
-/** 후보 → PATCH 페이로드. */
-export const candidateToPatch = (c: ConflictCandidate): SchedulePatch => ({
-  sessionDate: c.sessionDate,
-  startTime: c.startTime,
-  durationMinutes: c.durationMinutes,
-  roomId: c.roomId,
-  instructorId: c.instructorId,
-});
 
 // ── 슬롯 추천: 가용 ∩ − 점유 → 겹치지 않는 후보 시간 ──
 export type SuggestInput = {
@@ -448,7 +430,7 @@ export function suggestPairSlots(input: PairSuggestInput, ctx: PairSuggestCtx): 
 // 학생 가용 − 학생 불가 − 학생 점유 안에서 후보 시간을 만들고,
 // 각 코스(=강사)에 대해 강사가 그 시간에 가용한지(instructorFree) 표시.
 // 불가능한 강사도 후보로 노출하되 색을 달리해 사용자가 "조정"으로 선택할 수 있게 한다.
-export type StudentRecoCourse = { id: ID; name: string; instructorId: ID; instructorName?: string; color?: string };
+type StudentRecoCourse = { id: ID; name: string; instructorId: ID; instructorName?: string; color?: string };
 export type StudentRecoInput = {
   weekStart: string;
   weekdays?: number[];

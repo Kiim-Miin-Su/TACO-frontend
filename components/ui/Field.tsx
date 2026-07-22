@@ -20,10 +20,14 @@ export function Field({ label, children, hint, error }: FieldProps) {
       <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
       {children}
       {error ? (
-        <span className="block text-micro text-danger mt-1">{error}</span>
+        <FieldError>{error}</FieldError>
       ) : (
         hint && <span className="block text-micro text-fg-subtle mt-1">{hint}</span>
       )}
     </label>
   );
+}
+
+export function FieldError({ children }: { children: ReactNode }) {
+  return <span className="block text-micro text-danger mt-1" role="alert">{children}</span>;
 }

@@ -20,7 +20,7 @@ export type BookColumn = {
   status: ClassSession['status'];
 };
 
-export type BookCell = {
+type BookCell = {
   sessionId: number;
   inCohort: boolean; // 이 학생의 회차인가(코호트 밖 = '-')
   held: boolean;

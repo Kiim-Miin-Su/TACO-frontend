@@ -7,7 +7,7 @@ import type { CalendarViewPreset, CreateViewPresetInput } from '@/types';
 import { countryByCode, type CountryInfo } from './tz';
 import type { SplitDim, StatusFilter, SessionKindFilter, SessionModeFilter } from './lantiv';
 
-export type CalendarPaneState = {
+type CalendarPaneState = {
   uid?: number;
   dim: SplitDim;
   ids: number[];

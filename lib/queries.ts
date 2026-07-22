@@ -27,7 +27,7 @@ import { useState } from "react";
 
 // 백엔드 보고서(status=draft|submitted|sent, approvalStatus=draft|submitted|approved|rejected)를 store 모델로 정규화.
 //  구형 응답 호환: approvalStatus가 없으면 status를 승인상태로 해석한다.
-export function toStoreReport(r: ApiReport): SessionReport {
+function toStoreReport(r: ApiReport): SessionReport {
   const approvalStatus = r.approvalStatus ?? (r.status === "sent" ? "approved" : r.status);
   const status: SessionReport["status"] =
     approvalStatus === "approved" ? "sent" : approvalStatus === "rejected" ? "draft" : r.status;
@@ -114,7 +114,7 @@ export const useMyPayoutPreview = (from: string, to: string) => {
     enabled: can("instructor.self") && !!from && !!to,
   });
 };
-export const usePayReadiness = () => {
+const usePayReadiness = () => {
   const { role, scope, can } = useAccountAccess();
   const isInstructor = role === "instructor";
   return useQuery({
@@ -163,8 +163,6 @@ export const useEntityAudit = (entity: string, entityId: number | null) => {
     enabled: can("admin.area") && entityId != null,
   });
 };
-// [R-6] 세션 변경 이력 — entity='class_sessions' 별칭(기존 소비처 유지, 단일 구현=useEntityAudit).
-export const useSessionAudit = (sessionId: number | null) => useEntityAudit("class_sessions", sessionId);
 // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터. 서버 집계(DB 이관 시 GROUP BY 승격).
 export const useInstructorAttendanceSummary = (from?: string, to?: string, instructorId?: number) => {
   const { can } = useAccountAccess();
@@ -282,10 +280,6 @@ export const useStudentAggregate = (id: number | null) =>
 export const useScheduleSession = (id: number | null) => {
   const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.schedule.detail(id ?? 0, scope), queryFn: () => api.schedule.get(id as number), enabled: id != null, retry: detailRetry });
-};
-export const useCounselForm = (id: number | null) => {
-  const { scope, can } = useAccountAccess();
-  return useQuery({ queryKey: qk.counsel.form(id ?? 0, scope), queryFn: () => api.counsel.get(id as number), enabled: can("counsel.manage") && id != null, retry: detailRetry });
 };
 export const useCounselAggregate = (id: number | null) => {
   const { scope, can } = useAccountAccess();
@@ -434,7 +428,6 @@ export const useUpdateEvent = () =>
     onSuccess: useInvalidator([qk.events.all]),
   });
 export const useRemoveEvent = () => useMutation({ mutationFn: api.events.remove, onSuccess: useInvalidator([qk.events.all]) });
-export const useCreateRoadmap = () => useMutation({ mutationFn: api.roadmaps.create, onSuccess: useInvalidator([qk.roadmaps.all]) });
 // [B4 2026-07-16] 강의실 관리(매니저 이상) — 성공 시 qk.rooms 무효화로 수업탭 목록·수업 추가 모달 select가 동시 갱신.
 export const useCreateRoom = () => useMutation({ mutationFn: api.rooms.create, onSuccess: useInvalidator([qk.rooms.all()]) });
 export const useUpdateRoom = () =>
@@ -520,7 +513,6 @@ export const useUpdateParentRelation = () => useMutation({
   onSuccess: useStudentAggregateMutationInvalidator(),
 });
 export const useRemoveGuardian = () => useMutation({ mutationFn: api.parents.removeGuardian, onSuccess: useStudentAggregateMutationInvalidator() });
-export const useCreateEnrollment = () => useMutation({ mutationFn: api.enrollments.create, onSuccess: useInvalidator([qk.enrollments.all, qk.students.all]) });
 
 // 결제
 export const useCreatePayment = () => useMutation({ mutationFn: api.payments.create, onSuccess: useInvalidator([qk.payments.all]) });
@@ -537,7 +529,6 @@ export const useRejectExpense = () =>
     mutationFn: (v: { id: number; reason: string }) => api.expenses.reject(v.id, v.reason),
     onSuccess: useInvalidator([qk.expenses.all]),
   });
-export const useRefundPayment = () => useMutation({ mutationFn: api.payments.refund, onSuccess: useInvalidator([qk.payments.all, qk.transactions.all]) });
 
 // ── 자산화 2차(2026-07-03): 뷰 프리셋·리포트 템플릿 — 클라 휘발 → DB 컬렉션 ──
 export const useViewPresets = () => useQuery({ queryKey: qk.viewPresets.list(), queryFn: () => api.viewPresets.list(), staleTime: CATALOG_STALE });
@@ -546,7 +537,6 @@ export const useUpdateViewPreset = () => useMutation({ mutationFn: (v: { id: num
 export const useRemoveViewPreset = () => useMutation({ mutationFn: api.viewPresets.remove, onSuccess: useInvalidator([qk.viewPresets.all]) });
 export const useReportTemplates = () => useQuery({ queryKey: qk.reportTemplates.list(), queryFn: () => api.reportTemplates.list(), staleTime: CATALOG_STALE });
 export const useCreateReportTemplate = () => useMutation({ mutationFn: api.reportTemplates.create, onSuccess: useInvalidator([qk.reportTemplates.all]) });
-export const useRemoveReportTemplate = () => useMutation({ mutationFn: api.reportTemplates.remove, onSuccess: useInvalidator([qk.reportTemplates.all]) });
 
 // 상담
 export const useCreateCounsel = () => useMutation({ mutationFn: api.counsel.create, onSuccess: useInvalidator([qk.counsel.all]) });
@@ -676,16 +666,6 @@ export const useUpdateScheduleRequest = () => {
     }, // 이력 즉시 갱신(상세 모달)
   });
 };
-export const useWithdrawScheduleRequest = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: api.scheduleRequests.withdraw,
-    onSuccess: async () => {
-      await refreshScheduleRequestLifecycle(qc);
-    },
-  });
-};
-
 // 출결(강사 마킹) — session×student upsert
 export const useUpsertAttendance = () => useMutation({ mutationFn: api.attendance.upsert, onSuccess: useInvalidator([qk.attendance.all]) });
 

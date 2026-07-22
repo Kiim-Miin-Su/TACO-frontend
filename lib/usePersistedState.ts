@@ -34,9 +34,3 @@ export function usePersistedState<T>(
 
   return [value, setValue];
 }
-
-// Set<number|string> 직렬화 코덱 — 캘린더 리소스/상태 필터 등 Set 상태 영속용(후속 확장).
-export const setCodec = <T extends number | string>(): PreferenceCodec<Set<T>> => ({
-  serialize: (v) => JSON.stringify([...v]),
-  deserialize: (s) => new Set(JSON.parse(s) as T[]),
-});

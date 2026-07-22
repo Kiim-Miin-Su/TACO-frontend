@@ -42,9 +42,6 @@ export const IconSearch = (p: SVGProps<SVGSVGElement>) => (
 export const IconBell = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" /><path d="M10 19a2 2 0 0 0 4 0" /></svg>
 );
-export const IconPlus = (p: SVGProps<SVGSVGElement>) => (
-  <svg {...base(p)}><path d="M12 5v14M5 12h14" /></svg>
-);
 export const IconArrowUp = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M12 19V5M6 11l6-6 6 6" /></svg>
 );

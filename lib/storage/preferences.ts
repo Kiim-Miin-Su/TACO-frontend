@@ -107,7 +107,7 @@ export function writePreference<T>(
   }
 }
 
-export function removePreference(key: string): void {
+function removePreference(key: string): void {
   const s = storage();
   if (!s) return;
   try {

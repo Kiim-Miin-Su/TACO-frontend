@@ -25,7 +25,7 @@ import { approvalCenterCounts, expenseApprovalRows, payoutApprovalRows, profileC
 import type { PendingAccount, ProfileChangeRequest } from '@/lib/api';
 
 // 회계상 분리: pay(강사 페이=출금) / expense(지출=출금) / payment(결제·수납=입금) / counsel(상담) / report·class(강사)
-export type TaskGroup = 'pay' | 'expense' | 'payment' | 'counsel' | 'report' | 'class' | 'schedule' | 'account'; // [핫픽스 07-20 ②] account=가입·계정 승인
+type TaskGroup = 'pay' | 'expense' | 'payment' | 'counsel' | 'report' | 'class' | 'schedule' | 'account'; // [핫픽스 07-20 ②] account=가입·계정 승인
 
 export type TaskItem = {
   id: string;
@@ -37,10 +37,6 @@ export type TaskItem = {
   /** 빨간 배지(미룰 수 없는 할 일)에 포함할지 — 정보성 항목(다가오는 수업)은 false */
   counts: boolean;
 };
-
-// 대시보드/사이드바 데모에서 'instructor' 역할 = 박지훈(강사 id 1)로 매핑.
-// 월 정산(재결제) 주기 기준 수업 횟수(데모). 주 2회 × 4주 = 8회.
-export const PAYMENT_CYCLE_SESSIONS = 8;
 
 type StoreSlice = ReportSlice & {
   currentRole: AccountRole;

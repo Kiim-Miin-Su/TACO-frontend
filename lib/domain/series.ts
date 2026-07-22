@@ -4,7 +4,7 @@
 //  DST 있는 시간대는 첫 발생일의 오프셋을 기간 전체에 적용: 기존 availability 반복과 동일한 근사).
 import { weekdayOf } from "./schedule";
 
-export type SeriesRepeatKind = "weekly" | "custom";
+type SeriesRepeatKind = "weekly" | "custom";
 
 export type SeriesRuleInput = {
   /** 시작일(현지) — 모달의 date */

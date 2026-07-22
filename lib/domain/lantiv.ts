@@ -330,7 +330,7 @@ export const SUBJECT_KIND_OPTIONS: { value: string; kind: SessionKindFilter }[] 
   { value: '상담', kind: 'counsel' },
 ];
 /** 과목 필터 매칭 — 실제 과목명 합집합 + 종류 유사 옵션(진단고사/상담) 합집합. */
-export function matchesSubjectFilter(
+function matchesSubjectFilter(
   r: Pick<ScheduleRow, 'subjectName' | 'kind'>,
   fSubjects: Set<string>,
 ): boolean {

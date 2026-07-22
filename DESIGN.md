@@ -27,7 +27,7 @@ Lantiv의 핵심은 "**Scheduling is all about seeing the BIG picture**" — 한
 
 | 인프런 패턴 | TACO 적용 |
 |---|---|
-| Pretendard 폰트 | `--font-sans` 최우선을 Pretendard Variable로 교체(npm `pretendard` 패키지, 로컬 서빙) |
+| Pretendard 폰트 | `--font-sans` 최우선을 Pretendard Variable로 교체(OFL asset을 `public/`에서 로컬 서빙) |
 | 라운드 8~12px, 그림자 최소, 경계는 연한 회색 | `--radius-md` 6→**8px**, 카드 그림자 resting 유지(과한 그림자 금지) |
 | 제목 700 / 본문 400의 뚜렷한 굵기 대비, 넉넉한 행간 | §3 타이포 스케일에 행간 포함 정의, 페이지 h1은 `font-bold`로 상향 |
 | 칩·태그는 rounded-full 연회색 | 기존 badge 체계와 일치 — 유지 |
@@ -146,7 +146,8 @@ Lantiv의 핵심은 "**Scheduling is all about seeing the BIG picture**" — 한
 - 14px(SectionCard 제목)는 section(15px)으로 흡수, 26px(StatCard 값)는 예외 토큰 `--text-stat: 26px`
 - 기존 311곳은 sed 일괄 치환 가능한 1:1 매핑 (13→body, 12→caption, 11→micro, 20→title, 15→section)
 
-**폰트 (§R2)**: npm `pretendard` 패키지 설치, `PretendardVariable.woff2` 로컬 서빙(오프라인 데모 안전). 스택:
+**폰트 (§R2)**: `public/fonts/pretendard`의 OFL CSS/woff2를 직접 로컬 서빙한다. 빌드/runtime npm
+dependency는 두지 않으며 asset의 license와 원본 URL은 CSS header가 권위다. 스택:
 
 ```css
 --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,

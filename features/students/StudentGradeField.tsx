@@ -1,6 +1,6 @@
 'use client';
 
-import { Field } from '@/components/ui';
+import { Field, FieldError } from '@/components/ui';
 import { STUDENT_GRADE_OPTIONS } from '@/lib/domain/students';
 
 type StudentGradeFieldProps = {
@@ -23,9 +23,5 @@ export function StudentGradeField({ value, onChange, error, compact = false }: S
     </select>
   );
   if (compact) return <label className="block"><span className="text-micro text-fg-muted">학년</span>{select}{error && <FieldError>{error}</FieldError>}</label>;
-  return <Field label="학년 *">{select}{error && <FieldError>{error}</FieldError>}</Field>;
-}
-
-function FieldError({ children }: { children: React.ReactNode }) {
-  return <p className="mt-1 text-caption text-danger" role="alert">{children}</p>;
+  return <Field label="학년 *" error={error}>{select}</Field>;
 }

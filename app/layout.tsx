@@ -14,8 +14,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // 앱 외부 요인으로 인한 hydration 경고를 무시 (앱 내부 포맷은 결정적으로 처리됨)
     <html lang="ko" suppressHydrationWarning>
       <head>
-        {/* Pretendard Variable — public/ 정적 서빙(DESIGN.md §R2·§3). 번들 제외로 빌드 IO 절감.
-            원본: node_modules/pretendard (npm), 갱신 시 public/fonts/pretendard/ 재복사. */}
+        {/* Pretendard Variable — OFL asset을 public/에서 직접 정적 서빙(DESIGN.md §R2·§3).
+            빌드/runtime npm dependency 없이 CSS와 woff2를 함께 버전 관리한다. */}
         <link
           rel="preload"
           href="/fonts/pretendard/woff2/PretendardVariable.woff2"

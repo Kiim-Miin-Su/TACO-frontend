@@ -25,7 +25,7 @@ type Option = { id: number; name: string; color?: string; sub?: string };
 
 // ── [일관성 2026-07-06] 범용 옵션 팝오버 — 리소스(MultiPick)와 같은 "버튼+▾+체크 팝오버" 문법을
 //  상태·종류·유형·과목 필터에 공통 적용(인라인 칩 나열 → 팝오버 통일, 대표 지시). 빈 선택=전체.
-export function OptionPick({
+function OptionPick({
   icon, label, options, picked, onToggle, onClear, title,
 }: {
   icon: string;
@@ -168,8 +168,6 @@ export function MultiPick({
 }
 
 // [v0.1.14] 종류(kind) 필터 어휘 — lib/domain/lantiv 단일 소스 재수출(프리셋·표별 필터와 공유)
-export { KIND_FILTERS, KIND_FILTER_LABEL } from "@/lib/domain/lantiv";
-export type { SessionKindFilter } from "@/lib/domain/lantiv";
 
 export function CalendarFilterBar({
   resources, rooms,

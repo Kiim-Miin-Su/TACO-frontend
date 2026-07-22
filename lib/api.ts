@@ -73,7 +73,7 @@ import type {
 
 export type ScheduleQuery = { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number };
 export type AvailabilityKindEx = AvailabilityKind | "online_only";
-export type ScheduleRequestKindEx = "session_create" | "session_update" | "session_delete" | "availability_upsert" | "availability_delete";
+type ScheduleRequestKindEx = "session_create" | "session_update" | "session_delete" | "availability_upsert" | "availability_delete";
 export type ScheduleRequestEx = ScheduleRequest & {
   requestKind?: ScheduleRequestKindEx;
   targetSessionId?: number;
@@ -169,7 +169,7 @@ export type InstructorContract = {
   createdAt: string; updatedAt: string;
 };
 // [TBO-19] 강사 출결 현황 집계 응답
-export type InstructorAttendanceRow = {
+type InstructorAttendanceRow = {
   instructorId: number; instructorName: string;
   held: number; present: number; late: number; absent: number; makeup: number; unmarked: number;
   attendanceRate: number | null; teachingMinutes: number; teachingHours: number;
@@ -218,7 +218,7 @@ export type LedgerTx = {
 
 export type ApiReadOptions = Pick<AxiosRequestConfig, "signal">;
 
-export const http = axios.create({
+const http = axios.create({
   baseURL: "/api",
   headers: { "Content-Type": "application/json" },
   timeout: 10000,

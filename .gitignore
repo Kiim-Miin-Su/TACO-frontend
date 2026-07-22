@@ -12,6 +12,3 @@ tsconfig.tsbuildinfo
 
 # FUSE 마운트 삭제 잔재 (샌드박스)
 **/.fuse_hidden*
-
-# 브라우저 QA 하네스 스크린샷 (B8 E4 — 산출물 비커밋)
-qa/shots/
