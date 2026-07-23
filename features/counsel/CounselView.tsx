@@ -36,7 +36,13 @@ export function CounselView() {
       <PageHeader
         title="상담"
         sub="최근 접수순 상담카드 · 예약 캘린더 · 신청"
-        actions={<Link href="/counsel/new" className="btn btn-primary">+ 상담 신청</Link>}
+        actions={(
+          <span className="flex gap-1.5">
+            {/* [TBO-30D/30E] 퍼널·상관관계 분석 — 서버 파생 집계 화면 */}
+            <Link href="/counsel/analytics" className="btn">퍼널 분석</Link>
+            <Link href="/counsel/new" className="btn btn-primary">+ 상담 신청</Link>
+          </span>
+        )}
       />
 
       {/* 탭 */}

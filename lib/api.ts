@@ -18,6 +18,8 @@ import type {
   Subject,
   CounselForm,
   CounselRound,
+  CounselStatus,
+  CounselResult,
   Transaction,
   AcademyEvent,
   CreateEventInput,
@@ -221,6 +223,34 @@ export type StudentFamilyMember = {
   sharedGuardianParentIds: number[];
 };
 export type StudentFamilyAggregate = { studentId: number; members: StudentFamilyMember[] };
+
+// [TBO-30D/30E 2026-07-23] 상담 퍼널·상관관계 — BE counsel-analytics.ts(순수 함수 단일 진실원) 응답 미러.
+export type CounselFunnel = {
+  range: { from: string | null; to: string | null };
+  total: number;
+  statusCounts: Record<CounselStatus, number>;
+  roundReach: Array<{ minRounds: number; count: number }>;
+  dropAfterRounds: Array<{ rounds: number; count: number }>;
+  resultDistribution: Record<CounselResult, number>;
+  conversionRate: number;
+  dropRate: number;
+  avgRoundsToConversion: number | null;
+  avgDaysToConversion: number | null;
+};
+export type CounselCorrelationRow = {
+  interestKey: string;
+  counselCount: number;
+  convertedCount: number;
+  conversionRate: number;
+  enrolledBySubject: Array<{ subject: string; count: number }>;
+};
+export type CounselCorrelation = {
+  range: { from: string | null; to: string | null };
+  totalForms: number;
+  rows: CounselCorrelationRow[];
+  enrolledSubjects: string[];
+};
+export type CounselAnalyticsRange = { from?: string | null; to?: string | null };
 
 // [TBO-32 C4] 미정산 감지·일괄 산정 응답 — BE C1/C2 계약.
 export type UncoveredPayoutEntry = {
@@ -607,6 +637,11 @@ export const api = {
     forms: () => http.get<CounselForm[]>("/counsel").then((r) => r.data),
     get: (id: number) => http.get<CounselForm>(`/counsel/${id}`).then((r) => r.data), // [B7 E3] 상세 단건(BE 신설)
     aggregate: (id: number) => http.get<CounselAggregate>(`/counsel/${id}/aggregate`).then((r) => r.data),
+    // [TBO-30D/30E] 집계는 서버 순수 함수 파생(전 목록 클라 계산 금지 — TBO-30 불변식 5)
+    funnel: (range: CounselAnalyticsRange = {}) =>
+      http.get<CounselFunnel>("/counsel/analytics/funnel", { params: { ...(range.from ? { from: range.from } : {}), ...(range.to ? { to: range.to } : {}) } }).then((r) => r.data),
+    correlation: (range: CounselAnalyticsRange = {}) =>
+      http.get<CounselCorrelation>("/counsel/analytics/correlation", { params: { ...(range.from ? { from: range.from } : {}), ...(range.to ? { to: range.to } : {}) } }).then((r) => r.data),
     rounds: (counselFormId?: number) =>
       http.get<CounselRound[]>("/counsel/rounds", { params: counselFormId ? { counselFormId } : undefined }).then((r) => r.data),
     create: (input: CreateCounselInput) => http.post<CounselForm>("/counsel", input).then((r) => r.data),

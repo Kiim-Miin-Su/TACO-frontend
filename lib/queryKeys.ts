@@ -57,6 +57,8 @@ export const qk = {
     form: (id: number, scope = "global") => ["counsel", "form", scope, id] as const, // [B7 E3] 상세 단건
     aggregate: (id: number, scope = "global") => ["counsel", "aggregate", scope, id] as const,
     rounds: (counselFormId?: number, scope = "global") => ["counsel", "rounds", scope, counselFormId ?? null] as const,
+    funnel: (from?: string | null, to?: string | null) => ["counsel", "funnel", from ?? null, to ?? null] as const, // [TBO-30D]
+    correlation: (from?: string | null, to?: string | null) => ["counsel", "correlation", from ?? null, to ?? null] as const, // [TBO-30E]
   },
   transactions: { all: ["transactions"] as const, list: () => ["transactions", "list"] as const },
   viewPresets: { all: ["viewPresets"] as const, list: () => ["viewPresets", "list"] as const },

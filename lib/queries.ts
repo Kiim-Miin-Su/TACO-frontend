@@ -144,6 +144,24 @@ export const useCounselRounds = () => {
   const { scope, can } = useAccountAccess();
   return useQuery({ queryKey: qk.counsel.rounds(undefined, scope), queryFn: () => api.counsel.rounds(), enabled: can("counsel.manage") });
 };
+// [TBO-30D/30E] 상담 분석 — 서버 순수 함수 파생만 소비(전 목록 클라 계산 금지). counsel prefix 키라
+//  상담 쓰기의 기존 무효화(counsel.all)에 자동 포함된다.
+export const useCounselFunnel = (range: { from?: string | null; to?: string | null } = {}) => {
+  const { can } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.counsel.funnel(range.from, range.to),
+    queryFn: () => api.counsel.funnel(range),
+    enabled: can("counsel.manage"),
+  });
+};
+export const useCounselCorrelation = (range: { from?: string | null; to?: string | null } = {}) => {
+  const { can } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.counsel.correlation(range.from, range.to),
+    queryFn: () => api.counsel.correlation(range),
+    enabled: can("counsel.manage"),
+  });
+};
 export const useAcademyEvents = () => useQuery({ queryKey: qk.events.list(), queryFn: () => api.events.list() });
 // [TBO-19 Sprint4] 강사 계약(매니저 전용 — 계약 대비 실제 시수). 백엔드 GET이 ADMIN 게이트라 비관리자는 비활성.
 export const useInstructorContracts = () => {
