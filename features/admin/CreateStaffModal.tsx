@@ -4,6 +4,7 @@
 //  재사용: ModalShell·useWebIdAvailable(가입 폼과 같은 공개 중복 라이브 체크·같은 문구)·
 //  useDebouncedValue·passwordLengthError/isValidKrPhone(validation 단일 소스)·중앙 훅.
 import { useState } from 'react';
+import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 단일 진실원
 import { ModalShell } from '@/components/ui';
 import { AuthField } from '@/components/auth/AuthShell';
 import { roleLabel } from '@/lib/roles';
@@ -12,12 +13,6 @@ import { useCreateStaffUser, useWebIdAvailable } from '@/lib/queries';
 import { WEB_ID_MIN, isValidKrPhone, passwordLengthError } from '@/lib/validation';
 
 const ROLE_OPTS = ['instructor', 'manager', 'admin'] as const;
-
-const apiErrorMessage = (caught: unknown, fallback: string): string => {
-  const apiError = caught as { response?: { data?: { message?: string | string[] } } };
-  const message = apiError.response?.data?.message;
-  return Array.isArray(message) ? message.join(' ') : message ?? fallback;
-};
 
 export function CreateStaffModal({ onClose, onCreated }: { onClose: () => void; onCreated: (name: string) => void }) {
   const create = useCreateStaffUser();

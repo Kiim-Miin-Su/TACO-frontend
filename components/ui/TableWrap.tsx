@@ -14,7 +14,7 @@ type TableWrapProps = {
 
 export function TableWrap({ children, minWidth }: TableWrapProps) {
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="표 스크롤 영역">{/* [TBO-34 C4] axe scrollable-region-focusable */}
       <div style={minWidth ? { minWidth } : undefined}>{children}</div>
     </div>
   );

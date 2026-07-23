@@ -8,21 +8,9 @@ import { useAccountAccess } from "@/lib/useAccountAccess";
 import type { SessionStatus } from "@/types";
 import { shortDate } from "@/lib/format";
 import { SessionForm } from "./SessionForm";
+import { SESSION_STATUS_LABEL as label, SESSION_STATUS_TONE as tone } from "./session-shared";
 
-const tone: Record<SessionStatus, Tone> = {
-  scheduled: "accent",
-  held: "success",
-  canceled: "danger",
-  no_show: "attention",
-  makeup: "done",
-};
-const label: Record<SessionStatus, string> = {
-  scheduled: "예정",
-  held: "진행완료",
-  canceled: "취소",
-  no_show: "결석",
-  makeup: "보강",
-};
+// [TBO-34 C3] 상태 표기 = session-shared 단일 진실원(사본 제거 — no_show 표기 '노쇼'로 정규화)
 
 export function SessionsView() {
   // [권한 정합] 수업 직접 개설(POST /schedule)은 BE ADMIN 전용 → 매니저 이상만 폼 노출(강사=403 방지).

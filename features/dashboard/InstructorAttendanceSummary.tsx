@@ -58,7 +58,7 @@ export function InstructorAttendanceSummary() {
               <input type="date" className="input h-7 w-[130px] text-caption" value={custom.to} min={custom.from} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))} />
             </>
           )}
-          <select className="input h-7 w-28 text-caption" value={instructorId} onChange={(e) => setInstructorId(Number(e.target.value))}>
+          <select aria-label="강사 필터" className="input h-7 w-28 text-caption" value={instructorId} onChange={(e) => setInstructorId(Number(e.target.value))}>
             <option value={0}>강사 전체</option>
             {instructors.map((i) => (
               <option key={i.id} value={Number(i.id)}>{i.name}</option>

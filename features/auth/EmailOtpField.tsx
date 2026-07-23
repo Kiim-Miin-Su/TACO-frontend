@@ -11,6 +11,7 @@
 //  · [TBO-31 C5 2026-07-20] purpose='recovery'로 비로그인 복구(아이디·비밀번호 찾기)에서도 재사용 —
 //    엔드포인트(훅)와 완료 문구만 목적별로 갈라진다(BE가 purpose 교차 사용을 차단).
 import { useEffect, useId, useRef, useState } from "react";
+import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 단일 진실원
 import Link from "next/link";
 import { AuthField } from "@/components/auth/AuthShell";
 import { FormFeedback } from "@/components/ui/FormFeedback";
@@ -25,12 +26,6 @@ import {
   useCreateSignupEmailChallenge,
 } from "@/lib/queries";
 import { isValidOtpCode } from "@/lib/validation";
-
-const apiErrorMessage = (caught: unknown, fallback: string): string => {
-  const apiError = caught as { response?: { data?: { message?: string | string[] } } };
-  const message = apiError.response?.data?.message;
-  return Array.isArray(message) ? message.join(" ") : message ?? fallback;
-};
 
 // 서버가 "초과"(시도 한도)로 응답하면 이 챌린지는 회복 불가 — 재전송으로 새 코드를 받아야 한다.
 const isLockedMessage = (message: string) => message.includes("초과");

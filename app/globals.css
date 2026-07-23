@@ -15,7 +15,7 @@
   /* Text */
   --color-fg: #1f2328;
   --color-fg-muted: #59636e;
-  --color-fg-subtle: #818b98;
+  --color-fg-subtle: #666f7e; /* [TBO-34 C4] WCAG AA — 종전 #818b98(3.45:1) → 흰 배경 5.03:1·subtle 배경(#f6f8fa) 4.63:1, 색조 유지 최소 이동 */
   --color-fg-onemph: #ffffff;
 
   /* Borders */

@@ -49,9 +49,9 @@ export function RevenueCharts() {
         title={`매출 분석 (실현 매출 ${won(report.realizedTotal)}${report.unpaidCount ? ` · 미납 ${report.unpaidCount}건 ${won(report.unpaidTotal)}` : ''})`}
         action={
           <div className="flex items-center gap-1.5">
-            <input type="date" className="input h-7 w-36" max={today} value={start} onChange={(e) => setStart(e.target.value)} />
+            <input aria-label="조회 시작일" type="date" className="input h-7 w-36" max={today} value={start} onChange={(e) => setStart(e.target.value)} />
             <span className="text-fg-subtle">~</span>
-            <input type="date" className="input h-7 w-36" max={today} min={start} value={end} onChange={(e) => setEnd(e.target.value)} />
+            <input aria-label="조회 종료일" type="date" className="input h-7 w-36" max={today} min={start} value={end} onChange={(e) => setEnd(e.target.value)} />
           </div>
         }
       >

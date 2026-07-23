@@ -6,6 +6,7 @@
 //   verify: 코드 확인(만료 카운트다운·재전송 cooldown·실패 잠금) → verified 후 요청 등록(챌린지 일회 소비)
 //  상태 분리: 형식 오류 / 발송 중 / cooldown / 만료 / 잘못된 코드 / 잠김 / 인증 완료(요청 등록).
 import { useEffect, useRef, useState } from "react";
+import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 단일 진실원
 import { Field, ModalShell } from "@/components/ui";
 import type { MyProfile, ProfileChangeRequest, ProfileVerification } from "@/lib/api";
 import {
@@ -30,12 +31,6 @@ import {
 import { roleLabel } from "@/lib/roles";
 import { WEB_ID_MIN, isValidOtpCode } from "@/lib/validation"; // [B6 C2] 검증 규칙 단일 소스
 import { ProfileDetailsFields } from "./ProfileDetailsFields";
-
-const apiErrorMessage = (caught: unknown, fallback: string): string => {
-  const apiError = caught as { response?: { data?: { message?: string | string[] } } };
-  const message = apiError.response?.data?.message;
-  return Array.isArray(message) ? message.join(" ") : message ?? fallback;
-};
 
 // 서버가 "초과"(시도/재전송 한도)로 응답하면 이 챌린지는 회복 불가 — 처음부터 다시.
 const isLockedMessage = (message: string) => message.includes("초과");

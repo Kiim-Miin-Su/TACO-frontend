@@ -3,17 +3,12 @@
 //  결과 요약(생성/건너뜀/실패 — 조용한 누락 금지) 표시. 재사용: ModalShell(§18-1)·
 //  중앙 훅(useGenerateBulkPayouts)·payout-shared(monthPeriod·previousMonthYm)·won(lib/format).
 import { useState } from 'react';
+import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 단일 진실원
 import { Badge, ModalShell } from '@/components/ui';
 import { useGenerateBulkPayouts, useInstructors } from '@/lib/queries';
 import { won } from '@/lib/format';
 import { monthPeriod, previousMonthYm } from '@/features/payouts/payout-shared';
 import type { BulkGenerateResult } from '@/lib/api';
-
-const apiErrorMessage = (caught: unknown, fallback: string): string => {
-  const apiError = caught as { response?: { data?: { message?: string | string[] } } };
-  const message = apiError.response?.data?.message;
-  return Array.isArray(message) ? message.join(' ') : message ?? fallback;
-};
 
 export function BulkGenerateModal({ onClose }: { onClose: () => void }) {
   const bulk = useGenerateBulkPayouts();

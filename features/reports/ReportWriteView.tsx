@@ -11,8 +11,8 @@ import { useAccountAccess } from '@/lib/useAccountAccess';
 import { pendingReportSummary, rosterStudentIds, sessionNeedsReport } from '@/lib/reports';
 import type { ClassSession, Student } from '@/types';
 
-const sessionTone: Record<string, Tone> = { held: 'success', scheduled: 'accent', canceled: 'danger', no_show: 'danger', makeup: 'attention' };
-const sessionLabel: Record<string, string> = { held: '진행완료', scheduled: '예정', canceled: '취소', no_show: '노쇼', makeup: '보강' };
+// [TBO-34 C3] 상태 표기 = session-shared 단일 진실원(사본 제거)
+import { sessionStatusLabel, sessionStatusTone } from '@/features/sessions/session-shared';
 
 // 한 페이지 리포트 작성 — 강사의 진행중 모든 수업·학생을 좌(목록)/우(인라인 작성)로.
 export function ReportWriteView() {
@@ -110,7 +110,7 @@ export function ReportWriteView() {
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-micro text-fg-subtle mono">{s.sessionDate} {s.startTime ?? ''}</span>
-                      <Badge tone={sessionTone[s.status] ?? 'neutral'}>{sessionLabel[s.status] ?? s.status}</Badge>
+                      <Badge tone={sessionStatusTone(s.status) ?? 'neutral'}>{sessionStatusLabel(s.status) ?? s.status}</Badge>
                       <span className="text-micro text-fg-subtle ml-auto">{p.done}/{p.total}</span>
                     </div>
                   </button>
@@ -132,10 +132,10 @@ export function ReportWriteView() {
           ) : (
             <SectionCard
               title={`${courseName(selected.courseId)} · ${selected.sessionDate} ${selected.startTime ?? ''}`}
-              action={<Badge tone={sessionTone[selected.status] ?? 'neutral'}>{sessionLabel[selected.status] ?? selected.status}</Badge>}
+              action={<Badge tone={sessionStatusTone(selected.status) ?? 'neutral'}>{sessionStatusLabel(selected.status) ?? selected.status}</Badge>}
             >
               {selected.status !== 'held' && (
-                <div className="px-4 pt-3 text-caption text-fg-subtle">진행 완료(held) 후 작성한 리포트만 시수로 측정됩니다. (현재: {sessionLabel[selected.status] ?? selected.status})</div>
+                <div className="px-4 pt-3 text-caption text-fg-subtle">진행 완료(held) 후 작성한 리포트만 시수로 측정됩니다. (현재: {sessionStatusLabel(selected.status) ?? selected.status})</div>
               )}
               <div className="divide-y border-line-muted">
                 {roster.map((student) => (

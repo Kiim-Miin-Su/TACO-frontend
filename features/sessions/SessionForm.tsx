@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { apiErrorMessage as sharedApiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3]
 import type { AxiosError } from 'axios';
 import { useInstructorAdminList, useOpenClass, useOpenClassSeries, useRooms, useSchedule, useStudents, useSubjects } from '@/lib/queries';
 import { PALETTE } from '@/lib/domain/lantiv';
@@ -41,11 +42,6 @@ const initialDraft = (): ClassOpeningDraft => ({
   mode: 'in_person',
 });
 
-const apiErrorMessage = (caught: unknown): string => {
-  const data = (caught as AxiosError<{ message?: string | string[] }>).response?.data;
-  if (Array.isArray(data?.message)) return data.message.join(', ');
-  return data?.message ?? '수업을 개설하지 못했습니다. 입력값과 기존 스케줄 충돌을 확인하세요.';
-};
 
 /** 과목 카탈로그부터 수강·스케줄까지 서버의 원자 command 하나로 개설한다. */
 export function SessionForm() {
@@ -136,7 +132,7 @@ export function SessionForm() {
     if (repeat === 'none') {
       openClass.mutate(buildOpenClassInput(draft), {
         onSuccess: () => onSuccess(1),
-        onError: (caught) => setError(apiErrorMessage(caught)),
+        onError: (caught) => setError(sharedApiErrorMessage(caught, '수업을 개설하지 못했습니다. 입력값과 기존 스케줄 충돌을 확인하세요.')),
       });
       return;
     }
@@ -146,7 +142,7 @@ export function SessionForm() {
       endsOn: untilDate,
     }), {
       onSuccess: (result) => onSuccess(result.rows.length),
-      onError: (caught) => setError(apiErrorMessage(caught)),
+      onError: (caught) => setError(sharedApiErrorMessage(caught, '수업을 개설하지 못했습니다. 입력값과 기존 스케줄 충돌을 확인하세요.')),
     });
   };
 

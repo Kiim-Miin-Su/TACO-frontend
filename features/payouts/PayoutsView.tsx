@@ -5,6 +5,7 @@
 //  payout-shared + PayoutStatusBadge(단일 진실원) 소비. 행 클릭 = 정산서 **단건** 상세(/payouts/detail/[id]).
 //  미정산 감지 배너(UncoveredBanner) + 월 일괄 산정(BulkGenerateModal) + confirmed '확정 취소'(unconfirm).
 import Link from 'next/link';
+import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3]
 import { Fragment, useCallback, useState } from 'react';
 import { Badge, ClickableTableRow, EmptyState, Field, LoadingState, PageHeader, PromptModal, SectionCard, TableWrap } from '@/components/ui';
 import {
@@ -78,10 +79,8 @@ export function PayoutsView() {
 
   // [C-1] alert 대체 — 하단 토스트(에러/검증). 리로드는 invalidateQueries가 담당.
   const [toast, setToast] = useState('');
-  const onErr = (e: unknown) => {
-    const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-    setToast(`처리 실패: ${msg ?? String(e)}`);
-  };
+  // [TBO-34 C3] 오류 파싱 = lib/api-error 단일 진실원(사설 파싱 제거)
+  const onErr = (e: unknown) => setToast(`처리 실패: ${apiErrorMessage(e, '잠시 후 다시 시도해 주세요.')}`);
   const generateM = useGeneratePayout();
   const confirmM = useConfirmPayout();
   const payM = usePayPayout();
@@ -214,7 +213,7 @@ export function PayoutsView() {
         <SectionCard
           title={`적격 수업 내역 (${lines.length}건)`}
           action={
-            <select className="input h-8 w-40" value={fCourse} onChange={(e) => setFCourse(e.target.value)}>
+            <select aria-label="수업 필터" className="input h-8 w-40" value={fCourse} onChange={(e) => setFCourse(e.target.value)}>
               <option value="">전체 수업</option>
               {courseOpts.map(([id, name]) => (<option key={id} value={id}>{name}</option>))}
             </select>
@@ -262,11 +261,11 @@ export function PayoutsView() {
           title={`정산 목록 (${filtered.length})`}
           action={
             <div className="flex gap-1.5">
-              <select className="input h-8 w-28" value={fInstructor} onChange={(e) => setFInstructor(e.target.value)}>
+              <select aria-label="강사 필터" className="input h-8 w-28" value={fInstructor} onChange={(e) => setFInstructor(e.target.value)}>
                 <option value="">전체 강사</option>
                 {instructors.map((i) => (<option key={i.id} value={i.id}>{i.name}</option>))}
               </select>
-              <select className="input h-8 w-28" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+              <select aria-label="상태 필터" className="input h-8 w-28" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
                 <option value="">전체 상태</option>
                 <option value="pending">승인대기</option>
                 <option value="confirmed">승인됨</option>

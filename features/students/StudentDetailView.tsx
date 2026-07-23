@@ -23,8 +23,8 @@ import { StudentGuardiansSection } from './StudentGuardiansSection';
 import { StudentFamilyRelationsSection } from './StudentFamilyRelationsSection';
 import { StudentAcademicHistoriesSection } from './StudentAcademicHistoriesSection';
 
-const enrollTone: Record<EnrollmentStatus, Tone> = { active: 'success', paused: 'attention', completed: 'done', canceled: 'danger' };
-const enrollLabel: Record<EnrollmentStatus, string> = { active: '수강중', paused: '일시정지', completed: '수료', canceled: '취소' };
+// [TBO-34 C3] 수강 상태 표기 = lib/domain/enrollments 단일 진실원(사본 제거)
+import { ENROLLMENT_STATUS_LABEL as enrollLabel, ENROLLMENT_STATUS_TONE as enrollTone } from '@/lib/domain/enrollments';
 
 export function StudentDetailView({ studentId }: { studentId: number }) {
   const access = useAccountAccess();
@@ -88,8 +88,8 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                 <ProfileItem label="재학 학교" value={student.schoolName ?? '—'} />
                 <ProfileItem label="연락처" value={student.phone ?? '—'} />
                 {student.country !== 'KR' && <ProfileItem label="카카오톡 ID" value={student.kakaoId ?? '—'} />}
-                <div className="sm:col-span-2 lg:col-span-3"><ProfileItem label="상담 주제" value={student.counselTopic ?? '—'} /></div>
-                {student.memo && <div className="sm:col-span-2 lg:col-span-3"><ProfileItem label="내부 메모" value={student.memo} /></div>}
+                <ProfileItem className="sm:col-span-2 lg:col-span-3" label="상담 주제" value={student.counselTopic ?? '—'} />
+                {student.memo && <ProfileItem className="sm:col-span-2 lg:col-span-3" label="내부 메모" value={student.memo} />}
               </dl>
             </SectionCard>
 
@@ -180,8 +180,9 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
   );
 }
 
-function ProfileItem({ label, value }: { label: string; value: string }) {
-  return <div><dt className="text-caption text-fg-subtle">{label}</dt><dd className="mt-1 whitespace-pre-wrap">{value}</dd></div>;
+// [TBO-34 C4] dl 직계는 div(dt/dd 포함) 1단만 허용(axe definition-list) — 래퍼 중첩 대신 className 전달
+function ProfileItem({ label, value, className }: { label: string; value: string; className?: string }) {
+  return <div className={className}><dt className="text-caption text-fg-subtle">{label}</dt><dd className="mt-1 whitespace-pre-wrap">{value}</dd></div>;
 }
 
 function genderLabel(gender: 'male' | 'female' | 'other' | 'undisclosed' | undefined): string {

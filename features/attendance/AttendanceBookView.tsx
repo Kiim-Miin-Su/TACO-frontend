@@ -286,6 +286,7 @@ export function AttendanceBookView() {
             <div className="flex items-center gap-1.5 flex-wrap">
               {/* [req2] 과목 필터(학생 출석처럼) */}
               <select
+                aria-label="과목 필터"
                 className="input h-7 w-28 text-caption"
                 value={attSubject}
                 onChange={(e) => setAttSubject(e.target.value)}
@@ -297,6 +298,7 @@ export function AttendanceBookView() {
                 ))}
               </select>
               <select
+                aria-label="표시 필터"
                 className="input h-7 w-28 text-caption"
                 value={attFilter}
                 onChange={(e) => setAttFilter(e.target.value as typeof attFilter)}

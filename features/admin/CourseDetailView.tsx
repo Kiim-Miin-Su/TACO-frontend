@@ -14,10 +14,9 @@ import { won, shortDate } from '@/lib/format';
 import type { EnrollmentStatus } from '@/types';
 import { AdminGuard } from './AdminShell';
 
-const enrollTone: Record<EnrollmentStatus, Tone> = { active: 'success', paused: 'attention', completed: 'done', canceled: 'danger' };
-const enrollLabel: Record<EnrollmentStatus, string> = { active: '수강중', paused: '일시정지', completed: '수료', canceled: '취소' };
-const sessTone: Record<string, Tone> = { held: 'success', scheduled: 'accent', canceled: 'danger', no_show: 'danger', makeup: 'attention' };
-const sessLabel: Record<string, string> = { held: '진행완료', scheduled: '예정', canceled: '취소', no_show: '노쇼', makeup: '보강' };
+// [TBO-34 C3] 상태 표기 = 단일 진실원 소비(세션·수강 사본 제거)
+import { sessionStatusLabel, sessionStatusTone } from '@/features/sessions/session-shared';
+import { ENROLLMENT_STATUS_LABEL as enrollLabel, ENROLLMENT_STATUS_TONE as enrollTone } from '@/lib/domain/enrollments';
 
 export function CourseDetailView({ courseId }: { courseId: number }) {
   const courseQuery = useCourse(courseId);
@@ -88,7 +87,7 @@ export function CourseDetailView({ courseId }: { courseId: number }) {
                       <Link key={s.id} href={`/sessions/${s.id}`} className="flex items-center gap-x-3 p-2.5 hover:bg-canvas-subtle">
                         <span className="mono text-caption">{s.sessionDate}</span>
                         <span className="text-caption text-fg-muted">{s.startTime ?? '—'}</span>
-                        <Badge tone={sessTone[s.status] ?? 'neutral'}>{sessLabel[s.status] ?? s.status}</Badge>
+                        <Badge tone={sessionStatusTone(s.status) ?? 'neutral'}>{sessionStatusLabel(s.status) ?? s.status}</Badge>
                       </Link>
                     ))}
                   </div>

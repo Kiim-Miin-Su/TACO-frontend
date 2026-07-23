@@ -65,18 +65,8 @@ const TASK_GROUPS = [
 
 const iso = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
 
-const statusTone: Record<EnrollmentStatus, Tone> = {
-  active: 'success',
-  paused: 'attention',
-  completed: 'done',
-  canceled: 'danger',
-};
-const statusLabel: Record<EnrollmentStatus, string> = {
-  active: '수강중',
-  paused: '일시정지',
-  completed: '수료',
-  canceled: '취소',
-};
+// [TBO-34 C3] 수강 상태 표기 = lib/domain/enrollments 단일 진실원(사본 제거)
+import { ENROLLMENT_STATUS_LABEL as statusLabel, ENROLLMENT_STATUS_TONE as statusTone } from '@/lib/domain/enrollments';
 
 function requesterRequestTitle(r: ScheduleRequestEx) {
   if (r.changeSummary) return r.changeSummary;

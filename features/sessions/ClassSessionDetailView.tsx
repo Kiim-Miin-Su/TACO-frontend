@@ -21,8 +21,8 @@ import type { AttendanceStatus, InstructorAttendanceStatus } from "@/types";
 import { shortDate } from "@/lib/format";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 
-const statusTone: Record<string, Tone> = { held: "success", scheduled: "accent", canceled: "danger", no_show: "danger", makeup: "attention" };
-const statusLabel: Record<string, string> = { held: "진행완료", scheduled: "예정", canceled: "취소", no_show: "노쇼", makeup: "보강" };
+// [TBO-34 C3] 상태 표기 = session-shared 단일 진실원(사본 제거)
+import { sessionStatusLabel as statusLabelOf, sessionStatusTone as statusToneOf } from "./session-shared";
 
 export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   const access = useAccountAccess();
@@ -64,7 +64,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                 <Link href="/sessions" className="text-caption text-fg-muted hover:underline">← 수업 목록</Link>
                 <div className="flex items-center gap-2 mt-1">
                   <h1 className="text-title font-bold">{session.courseName || "수업"} · {shortDate(session.sessionDate)}</h1>
-                  <Badge tone={statusTone[session.status] ?? "neutral"}>{statusLabel[session.status] ?? session.status}</Badge>
+                  <Badge tone={statusToneOf(session.status) ?? "neutral"}>{statusLabelOf(session.status) ?? session.status}</Badge>
                 </div>
                 <p className="text-body text-fg-muted mt-0.5">
                   강사 {session.instructorName || "—"} · {session.startTime ?? "시간 미정"} · {session.durationMinutes}분 · {session.topic ?? "주제 미정"}
@@ -73,7 +73,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <StatCard label="학생" value={`${roster.length}명`} />
-                <StatCard label="회차 상태" value={statusLabel[session.status] ?? session.status} />
+                <StatCard label="회차 상태" value={statusLabelOf(session.status) ?? session.status} />
                 <StatCard label="강사 출결" value={session.instructorAttendance ? (INSTRUCTOR_ATT_OPTIONS.find((o) => o.value === session.instructorAttendance)?.label ?? "—") : "미표시"} />
                 <StatCard label="시수 인정" value={paid ? `${Math.round((session.durationMinutes / 60) * 100) / 100}h` : "제외"} tone={paid ? "accent" : undefined} />
               </div>
@@ -83,7 +83,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                 <div className="p-4 flex items-center gap-3 flex-wrap">
                   <AttMarker value={session.instructorAttendance} options={INSTRUCTOR_ATT_OPTIONS} canEdit={canInst} pending={updateSchedule.isPending} onMark={markInst} onClear={clearInst} />
                   <span className="text-caption text-fg-subtle">
-                    {paid ? "시수 인정(진행·결석 아님)" : `시수 제외${session.instructorAttendance === "absent" ? "(결석)" : session.status === "makeup" ? "(보강)" : session.status !== "held" ? `(${statusLabel[session.status] ?? session.status})` : ""}`}
+                    {paid ? "시수 인정(진행·결석 아님)" : `시수 제외${session.instructorAttendance === "absent" ? "(결석)" : session.status === "makeup" ? "(보강)" : session.status !== "held" ? `(${statusLabelOf(session.status) ?? session.status})` : ""}`}
                   </span>
                   {!canInst && <span className="text-caption text-fg-subtle ml-auto">열람 전용 (수정은 매니저)</span>}
                 </div>

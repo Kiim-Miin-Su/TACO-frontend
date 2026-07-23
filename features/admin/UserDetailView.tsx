@@ -5,6 +5,7 @@
 //  validation.ts(전화 형식)·중앙 훅(useUser/useAdminUpdateUser — CLAUDE §18). sudo 상태는
 //  lib/sudo 단일 소스(5분 TTL·저장소 미사용), 검증 권위는 서버 POST /auth/reauth.
 import { useState } from 'react';
+import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 단일 진실원
 import { useRouter } from 'next/navigation';
 import { Badge, DetailStates, SectionCard, type Tone } from '@/components/ui';
 import { AuthField } from '@/components/auth/AuthShell';
@@ -22,12 +23,6 @@ import type { AccountRole } from '@/types';
 const STATUS_LABEL: Record<string, string> = { active: '활성', pending: '승인 대기', rejected: '반려됨' };
 const STATUS_TONE: Record<string, Tone> = { active: 'success', pending: 'attention', rejected: 'danger' };
 const EDITABLE_ROLES = ['instructor', 'manager', 'admin'] as const;
-
-const apiErrorMessage = (caught: unknown, fallback: string): string => {
-  const apiError = caught as { response?: { data?: { message?: string | string[] } } };
-  const message = apiError.response?.data?.message;
-  return Array.isArray(message) ? message.join(' ') : message ?? fallback;
-};
 
 // ── 비밀번호 재확인 게이트(서버 권위 /auth/reauth — 실패 문구 그대로 표출) ─────────
 function SudoGate({ onVerified }: { onVerified: () => void }) {

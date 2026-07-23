@@ -9,6 +9,7 @@
 //  · 평시(비강제): 비밀번호 변경만 — 현재 비밀번호 재확인 + 본인 이메일 OTP 소비(대표 참고사항).
 //    아이디 변경은 마이 페이지의 프로필 변경 요청(승인제)로 이동 — 안내만 표시.
 import { useState } from "react";
+import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 단일 진실원
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
@@ -23,12 +24,6 @@ import { isValidEmailFormat } from "@/lib/domain/profile";
 // [B6 C2] 검증 규칙 단일 소스(lib/validation) — OTP·전화·출생연도·비밀번호 byte 기준.
 import { BIRTH_YEAR_MAX, BIRTH_YEAR_MIN, isValidBirthYear, isValidKrPhone, isValidOtpCode, passwordLengthError } from "@/lib/validation";
 import { ProfileDetailsFields, type ProfileDetailsValues } from "./ProfileDetailsFields";
-
-const apiErrorMessage = (caught: unknown, fallback: string): string => {
-  const apiError = caught as { response?: { data?: { message?: string | string[] } } };
-  const message = apiError.response?.data?.message;
-  return Array.isArray(message) ? message.join(" ") : message ?? fallback;
-};
 
 export default function SecuritySettingsView() {
   const router = useRouter();

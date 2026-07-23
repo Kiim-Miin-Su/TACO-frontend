@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 단일 진실원
 import { useState } from "react";
 import { Badge, ConfirmModal, EmptyState, LoadingState, PageHeader, SectionCard, TableWrap } from "@/components/ui";
 import {
@@ -16,12 +17,6 @@ import { useMyProfile, useMyProfileChangeRequests, useRequestPasswordReset } fro
 import ProfileChangeModal from "./ProfileChangeModal";
 
 const valueOrDash = (value?: string | null) => value?.trim() || "—";
-
-const apiErrorMessage = (caught: unknown, fallback: string): string => {
-  const apiError = caught as { response?: { data?: { message?: string | string[] } } };
-  const message = apiError.response?.data?.message;
-  return Array.isArray(message) ? message.join(" ") : message ?? fallback;
-};
 
 export default function MyPageView() {
   const profileQuery = useMyProfile();
