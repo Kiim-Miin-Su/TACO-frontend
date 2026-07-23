@@ -4,31 +4,23 @@
 //  시수/적격 규칙은 정산 서비스와 동일(중복 기준 없음). 출결 상세와 상호 링크.
 import { Fragment, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Badge, EmptyState, PageHeader, SectionCard, StatCard, TableWrap, type Tone } from '@/components/ui';
+import { ClickableTableRow, EmptyState, PageHeader, SectionCard, StatCard, TableWrap } from '@/components/ui';
 import { useInstructors, usePayouts, usePayoutPreview } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { won, dateOnly } from '@/lib/format'; // [B9 E5 2026-07-16] dateOnly — 회수 일시 표기
-import type { PayoutRow, PayoutRowStatus } from '@/lib/api';
+// [TBO-32 C4 2026-07-22] 사설 정의(statusLabel·statusTone·isReversed·hrs·monthRange) 제거 →
+//  payout-shared + PayoutStatusBadge(단일 진실원) 소비. 정산서 행 클릭 = 단건 상세(/payouts/detail/[id]).
+import { isReversedPayout as isReversed, payoutHours as hrs, monthPeriod } from '@/features/payouts/payout-shared';
+import { PayoutStatusBadge } from '@/features/payouts/PayoutStatusBadge';
 
-const statusLabel: Record<PayoutRowStatus, string> = { pending: '승인대기', confirmed: '승인됨', paid: '지급완료', rejected: '반려' };
-const statusTone: Record<PayoutRowStatus, Tone> = { pending: 'attention', confirmed: 'accent', paid: 'success', rejected: 'danger' };
-// [B9 E5 2026-07-16] 지급 회수(status='rejected'+reversedAt)는 '반려'와 구분해 '회수됨'으로 표기.
-//  이 화면은 읽기 전용(편집·회수 액션은 강사 페이 화면) — 표기만 추가.
-const isReversed = (p: PayoutRow) => p.status === 'rejected' && !!p.reversedAt;
-const hrs = (min?: number) => `${((min ?? 0) / 60).toFixed(1)}h`;
-const pad2 = (n: number) => String(n).padStart(2, '0');
 const thisYm = () => new Date().toISOString().slice(0, 7);
-const monthRange = (ym: string) => {
-  const [y, m] = ym.split('-').map(Number);
-  return { from: `${ym}-01`, to: `${ym}-${pad2(new Date(y, m, 0).getDate())}` };
-};
 
 export function PayoutDetailView({ instructorId }: { instructorId: number }) {
   const finance = useAccountAccess().can('finance.access');
   const { data: instructors = [], isLoading: loadingInst } = useInstructors();
   const { data: allPayouts = [] } = usePayouts();
   const [ym, setYm] = useState(thisYm());
-  const range = monthRange(ym);
+  const range = monthPeriod(ym); // 1일~말일 — payout-shared(단일 진실원)
   const { data: preview } = usePayoutPreview(finance ? instructorId : null, range.from, range.to);
 
   const instructor = instructors.find((i) => i.id === instructorId);
@@ -129,20 +121,17 @@ export function PayoutDetailView({ instructorId }: { instructorId: number }) {
                   const isOpen = open.has(p.id);
                   return (
                     <Fragment key={p.id}>
-                      <tr>
+                      {/* [TBO-32 C4] 행 클릭 = 정산서 단건 상세 — 확장 토글 버튼은 중첩 제외 */}
+                      <ClickableTableRow href={`/payouts/detail/${p.id}`} label={`정산서 ${p.periodStart}~${p.periodEnd} 상세`}>
                         <td><button type="button" className="text-fg-subtle hover:text-accent" onClick={() => toggle(p.id)}>{isOpen ? '▾' : '▸'}</button></td>
                         <td className="mono">{p.periodStart} ~ {p.periodEnd}</td>
                         <td className="mono text-fg-muted">{p.sessionCount}회</td>
                         <td className="mono text-fg-muted">{hrs(p.totalMinutes)}</td>
                         <td className="mono">{won(p.computedAmount)}</td>
                         <td className="mono font-medium">{won(p.amount)}{p.adjustedAmount != null && p.adjustedAmount !== p.computedAmount ? ' *' : ''}</td>
-                        {/* [B9 E5 2026-07-16] 회수됨 구분 배지(툴팁 = 회수 일자) */}
-                        <td>
-                          {isReversed(p)
-                            ? <span title={`지급 회수됨 — ${dateOnly(p.reversedAt)}`}><Badge tone="danger">회수됨</Badge></span>
-                            : <Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge>}
-                        </td>
-                      </tr>
+                        {/* [B9 E5 → TBO-32 C4] 회수됨 구분 배지 — 공용 PayoutStatusBadge(단일 진실원) */}
+                        <td><PayoutStatusBadge p={p} /></td>
+                      </ClickableTableRow>
                       {isOpen && (
                         <tr>
                           <td colSpan={7} className="bg-canvas-subtle">
@@ -150,7 +139,8 @@ export function PayoutDetailView({ instructorId }: { instructorId: number }) {
                               {p.adjustReason && <div className="text-caption text-attention">조정 사유: {p.adjustReason}</div>}
                               {/* [B9 E5 2026-07-16] 회수 일시 + 사유 라벨 구분(회수 vs 반려) */}
                               {isReversed(p) && <div className="text-caption text-danger">지급 회수됨 — {dateOnly(p.reversedAt)}</div>}
-                              {p.rejectedReason && <div className="text-caption text-danger">{isReversed(p) ? '회수 사유' : '반려 사유'}: {p.rejectedReason}</div>}
+                              {/* [TBO-32 C2] reversedReason 우선(회수 사유 전용 컬럼) — 구 데이터는 rejectedReason 폴백 */}
+                              {(p.reversedReason ?? p.rejectedReason) && <div className="text-caption text-danger">{isReversed(p) ? '회수 사유' : '반려 사유'}: {p.reversedReason ?? p.rejectedReason}</div>}
                               <table className="table text-caption">
                                 <thead><tr><th>날짜</th><th>코스</th><th>시수</th><th>시급</th><th className="text-right">금액</th></tr></thead>
                                 <tbody>

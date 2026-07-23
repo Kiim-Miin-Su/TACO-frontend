@@ -1,47 +1,27 @@
 'use client';
-// [B6 C3 2026-07-16] 행 전체 클릭 = 강사 정산 상세(ClickableTableRow href) — 확장 토글·관리 버튼은 중첩 제외로 유지.
+// [B6 C3 2026-07-16] 행 전체 클릭 = 정산 상세(ClickableTableRow href) — 확장 토글·관리 버튼은 중첩 제외로 유지.
 //  '내 정산서' isPending 구독(빈 상태 깜빡임 제거) + 근거 확장 빈 상태 EmptyState compact 규격화.
+// [TBO-32 C4 2026-07-22] 사설 정의(statusLabel·statusTone·isReversed·배지·hours·monthRange) 전부 제거 →
+//  payout-shared + PayoutStatusBadge(단일 진실원) 소비. 행 클릭 = 정산서 **단건** 상세(/payouts/detail/[id]).
+//  미정산 감지 배너(UncoveredBanner) + 월 일괄 산정(BulkGenerateModal) + confirmed '확정 취소'(unconfirm).
 import Link from 'next/link';
 import { Fragment, useCallback, useState } from 'react';
-import { Badge, ClickableTableRow, EmptyState, Field, LoadingState, PageHeader, PromptModal, SectionCard, TableWrap, type Tone } from '@/components/ui';
+import { Badge, ClickableTableRow, EmptyState, Field, LoadingState, PageHeader, PromptModal, SectionCard, TableWrap } from '@/components/ui';
 import {
   useSchedule, useCourses, useSubjects, useEnrollments, useStudents,
   useInstructors, usePayouts, usePayoutPreview, useMyPayouts, useMyPayoutPreview,
   useGeneratePayout, useConfirmPayout, usePayPayout, useAdjustPayout, useRejectPayout,
   useReversePayout, // [B9 E5 2026-07-16] 지급 회수
+  useUnconfirmPayout, // [TBO-32 C2/C4] 확정 취소(confirmed → pending)
 } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
-import { won, dateOnly } from '@/lib/format'; // [B9 E5 2026-07-16] dateOnly — 회수 일자 툴팁
-import type { PayoutRow, PayoutRowStatus, PayoutLine } from '@/lib/api';
+import { won } from '@/lib/format';
+import type { PayoutRow, PayoutLine } from '@/lib/api';
 import { ReasonModal } from '@/components/ReasonModal';
-
-const statusLabel: Record<PayoutRowStatus, string> = {
-  pending: '승인대기', confirmed: '승인됨', paid: '지급완료', rejected: '반려',
-};
-const statusTone: Record<PayoutRowStatus, Tone> = {
-  pending: 'attention', confirmed: 'accent', paid: 'success', rejected: 'danger',
-};
-// [B9 E5 2026-07-16] 지급 회수된 정산(status='rejected' + reversedAt)은 '반려' 배지 자리에 '회수됨'으로 구분 표기.
-//  기존 Badge 컴포넌트 사용 · 툴팁 = 회수 일자.
-const isReversed = (p: PayoutRow) => p.status === 'rejected' && !!p.reversedAt;
-const PayoutStatusBadge = ({ p }: { p: PayoutRow }) =>
-  isReversed(p) ? (
-    <span title={`지급 회수됨 — ${dateOnly(p.reversedAt)}`}><Badge tone="danger">회수됨</Badge></span>
-  ) : (
-    <Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge>
-  );
-const hours = (min?: number) => `${((min ?? 0) / 60).toFixed(1)}h`;
-
-// 기본 산정 기간 = 이번 달 1일~말일(하드코딩 금지 — DESIGN §8 공통)
-const pad2 = (n: number) => String(n).padStart(2, '0');
-const monthRange = () => {
-  const d = new Date();
-  const y = d.getFullYear(), m = d.getMonth();
-  return {
-    from: `${y}-${pad2(m + 1)}-01`,
-    to: `${y}-${pad2(m + 1)}-${pad2(new Date(y, m + 1, 0).getDate())}`,
-  };
-};
+import { isReversedPayout as isReversed, payoutHours as hours, monthPeriod } from '@/features/payouts/payout-shared';
+import { PayoutStatusBadge } from '@/features/payouts/PayoutStatusBadge';
+import { UncoveredBanner } from '@/features/payouts/UncoveredBanner';
+import { BulkGenerateModal } from '@/features/payouts/BulkGenerateModal';
 
 export function PayoutsView() {
   const access = useAccountAccess();
@@ -77,7 +57,8 @@ export function PayoutsView() {
     : (finance && payoutsQ.isSuccess) || (instructorSelf && myPayoutsQ.isSuccess) ? 'online' : 'checking';
 
   const [instructorId, setInstructorId] = useState('');
-  const [{ from: defFrom, to: defTo }] = useState(monthRange);
+  // 기본 산정 기간 = 이번 달 1일~말일 — payout-shared.monthPeriod(단일 진실원, 하드코딩 금지 DESIGN §8)
+  const [{ from: defFrom, to: defTo }] = useState(() => monthPeriod());
   const [start, setStart] = useState(defFrom);
   const [end, setEnd] = useState(defTo);
   // 산정 미리보기(읽기전용) — 강사·기간 키의 쿼리(캐시·중복요청 제거)
@@ -107,7 +88,8 @@ export function PayoutsView() {
   const adjustM = useAdjustPayout();
   const rejectM = useRejectPayout();
   const reverseM = useReversePayout(); // [B9 E5 2026-07-16] 지급 회수(paid → rejected+reversedAt)
-  const busy = generateM.isPending || confirmM.isPending || payM.isPending || adjustM.isPending || rejectM.isPending || reverseM.isPending;
+  const unconfirmM = useUnconfirmPayout(); // [TBO-32 C4] 확정 취소(confirmed → pending, 사유 필수)
+  const busy = generateM.isPending || confirmM.isPending || payM.isPending || adjustM.isPending || rejectM.isPending || reverseM.isPending || unconfirmM.isPending;
 
   const generate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,8 +98,10 @@ export function PayoutsView() {
   };
   // [DESIGN §5.5] 급여 수정 — prompt 2연타 대신 금액+사유 한 화면 모달
   const [adjustModal, setAdjustModal] = useState<PayoutRow | null>(null);
-  // 반려 사유 모달(입력/보기) — [B9 E5 2026-07-16] action='reverse'면 같은 모달로 지급 회수 사유 입력
-  const [reasonModal, setReasonModal] = useState<{ mode: 'input' | 'view'; payout: PayoutRow; action?: 'reject' | 'reverse' } | null>(null);
+  // 반려 사유 모달(입력/보기) — [B9 E5] action='reverse'=지급 회수 · [TBO-32 C4] action='unconfirm'=확정 취소
+  const [reasonModal, setReasonModal] = useState<{ mode: 'input' | 'view'; payout: PayoutRow; action?: 'reject' | 'reverse' | 'unconfirm' } | null>(null);
+  // [TBO-32 C4] 월 일괄 산정 모달 — UncoveredBanner·상단 버튼 양쪽에서 연다.
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   if (!finance && !instructorSelf) {
     return (
@@ -166,14 +150,15 @@ export function PayoutsView() {
               <table className="table">
                 <thead><tr><th>기간</th><th>상태</th><th className="text-right">시수</th><th className="text-right">금액</th><th>지급일</th></tr></thead>
                 <tbody>
+                  {/* [TBO-32 C4] 행 클릭 = 정산서 단건 상세(서버가 본인만 허용 — findOneScoped) */}
                   {payouts.map((p) => (
-                    <tr key={p.id}>
+                    <ClickableTableRow key={p.id} href={`/payouts/detail/${p.id}`} label={`정산서 ${p.periodStart}~${p.periodEnd} 상세`}>
                       <td className="mono text-fg-muted">{p.periodStart} ~ {p.periodEnd}</td>
                       <td><PayoutStatusBadge p={p} /></td>{/* [B9 E5 2026-07-16] 회수됨 구분 표기 */}
                       <td className="text-right mono">{hours(p.totalMinutes)}</td>
                       <td className="text-right mono">{won(p.amount)}</td>
                       <td className="mono text-fg-muted">{p.paidAt ?? '—'}</td>
-                    </tr>
+                    </ClickableTableRow>
                   ))}
                 </tbody>
               </table>
@@ -192,7 +177,13 @@ export function PayoutsView() {
         actions={<Badge tone={conn === 'online' ? 'success' : 'neutral'}>{conn === 'online' ? '실시간 API' : '확인 중…'}</Badge>}
       />
 
-      <SectionCard title="정산 산정 · 정산서 생성">
+      {/* [TBO-32 C4] 미정산 감지 배너 — 적격 시수가 있는데 정산서 미연결인 (강사×월) 상시 센서 */}
+      <UncoveredBanner onBulkGenerate={() => setBulkOpen(true)} />
+
+      <SectionCard
+        title="정산 산정 · 정산서 생성"
+        action={<button type="button" className="btn btn-sm" onClick={() => setBulkOpen(true)}>월 일괄 산정</button>}
+      >
         <form onSubmit={generate} className="p-4 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
           <Field label="강사 *">
             <select className="input" value={instructorId} onChange={(e) => setInstructorId(e.target.value)}>
@@ -298,14 +289,14 @@ export function PayoutsView() {
             )}
             {filtered.map((p) => (
               <Fragment key={p.id}>
-              {/* 행 클릭 = 강사 정산 상세 이동 — 확장 토글/승인·지급 버튼은 ClickableTableRow 중첩 제외가 담당 */}
-              <ClickableTableRow href={`/payouts/${p.instructorId}`} label={`${instructorName(p.instructorId)} 정산 상세`}>
+              {/* [TBO-32 C4] 행 클릭 = 정산서 **단건** 상세(/payouts/detail/[id]) — 확장 토글/승인·지급 버튼은 중첩 제외가 담당 */}
+              <ClickableTableRow href={`/payouts/detail/${p.id}`} label={`정산서 #${p.id} — ${instructorName(p.instructorId)} 상세`}>
                 <td className="font-medium">
                   <button className="hover:underline" onClick={() => setExpanded(expanded === p.id ? null : p.id)} title="정산 근거 보기">
                     {expanded === p.id ? '▾' : '▸'} {instructorName(p.instructorId)}
                   </button>
-                  {/* [TBO-20 20-B] 강사별 정산 상세(회차 내역·이번 달 미리보기) */}
-                  <Link href={`/payouts/${p.instructorId}`} className="ml-1.5 text-caption text-accent hover:underline" title="이 강사 정산 상세">상세</Link>
+                  {/* [TBO-20 20-B] 강사별 정산 요약(회차 내역·이번 달 미리보기) */}
+                  <Link href={`/payouts/${p.instructorId}`} className="ml-1.5 text-caption text-accent hover:underline" title="이 강사 정산 요약">강사별</Link>
                 </td>
                 <td className="mono text-fg-muted">{p.periodStart} ~ {p.periodEnd}</td>
                 <td className="text-right mono">{hours(p.totalMinutes)} · {p.sessionCount}회</td>
@@ -333,7 +324,11 @@ export function PayoutsView() {
                         <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => confirmM.mutate(p.id, { onError: onErr })}>승인</button>
                       )}
                       {p.status === 'confirmed' && (
-                        <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => payM.mutate(p.id, { onError: onErr })}>지급</button>
+                        <>
+                          <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => payM.mutate(p.id, { onError: onErr })}>지급</button>
+                          {/* [TBO-32 C4] 확정 취소(confirmed → pending, 사유 필수) — 지급 전 되돌리기 */}
+                          <button className="btn btn-sm" disabled={busy} onClick={() => setReasonModal({ mode: 'input', payout: p, action: 'unconfirm' })}>확정 취소</button>
+                        </>
                       )}
                       {(p.status === 'pending' || p.status === 'confirmed') && (
                         <>
@@ -405,19 +400,29 @@ export function PayoutsView() {
               // [B9 E5 2026-07-16] 회수 사유는 서버 DTO MinLength 5 — 제목에 5자 이상 안내(미달 400 메시지는 기존 토스트로 인라인 표시)
               : reasonModal.action === 'reverse'
                 ? `지급 회수 — ${instructorName(reasonModal.payout.instructorId)} (사유 5자 이상 필수)`
-                : `강사 페이 반려 — ${instructorName(reasonModal.payout.instructorId)}`
+                // [TBO-32 C4] 확정 취소 — 승인 대기로 되돌림(사유 필수, 서버 audit 기록)
+                : reasonModal.action === 'unconfirm'
+                  ? `확정 취소 — ${instructorName(reasonModal.payout.instructorId)} (승인 대기로 되돌림)`
+                  : `강사 페이 반려 — ${instructorName(reasonModal.payout.instructorId)}`
           }
-          initial={reasonModal.payout.rejectedReason ?? ''}
+          submitLabel={reasonModal.action === 'reverse' ? '지급 회수' : reasonModal.action === 'unconfirm' ? '확정 취소' : '반려'}
+          initial={reasonModal.mode === 'view'
+            ? (isReversed(reasonModal.payout) ? reasonModal.payout.reversedReason ?? reasonModal.payout.rejectedReason ?? '' : reasonModal.payout.rejectedReason ?? '')
+            : ''}
           onClose={() => setReasonModal(null)}
           onSubmit={(reason) => {
             const m = reasonModal;
             setReasonModal(null);
-            // [B9 E5 2026-07-16] action 분기 — 지급 회수 vs 반려(둘 다 중앙 훅, 인라인 useMutation 금지)
+            // action 분기 — 지급 회수/확정 취소/반려(전부 중앙 훅, 인라인 useMutation 금지)
             if (m.action === 'reverse') reverseM.mutate({ id: m.payout.id, reason }, { onError: onErr });
+            else if (m.action === 'unconfirm') unconfirmM.mutate({ id: m.payout.id, reason }, { onError: onErr });
             else rejectM.mutate({ id: m.payout.id, reason }, { onError: onErr });
           }}
         />
       )}
+
+      {/* [TBO-32 C4] 월 일괄 산정 — ModalShell 규격, 결과 요약(생성/건너뜀/실패) 즉시 표시 */}
+      {bulkOpen && <BulkGenerateModal onClose={() => setBulkOpen(false)} />}
 
       {/* [DESIGN §5.5] 급여 수정 — window.prompt 2연타 대체(금액+사유 한 화면) */}
       {adjustModal && (

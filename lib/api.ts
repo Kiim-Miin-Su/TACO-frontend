@@ -205,12 +205,23 @@ export type MeasureResult = {
   sessionCount: number; totalMinutes: number; computedAmount: number; lines: PayoutLine[];
 };
 export type PayoutRowStatus = "pending" | "confirmed" | "paid" | "rejected";
+// [TBO-32 C4] 미정산 감지·일괄 산정 응답 — BE C1/C2 계약.
+export type UncoveredPayoutEntry = {
+  instructorId: number; instructorName: string; instructorStatus: string; month: string;
+  periodStart: string; periodEnd: string; sessionCount: number; totalMinutes: number; computedAmount: number;
+};
+export type BulkGenerateResult = {
+  generated: Array<{ instructorId: number; payoutId: number; amount: number; sessionCount: number }>;
+  skipped: Array<{ instructorId: number; reason: string }>;
+  failed: Array<{ instructorId: number; error: string }>;
+};
 export type PayoutRow = {
   id: number; instructorId: number; periodStart: string; periodEnd: string;
   sessionCount: number; totalMinutes: number; computedAmount: number;
   adjustedAmount?: number; adjustReason?: string; amount: number;
   status: PayoutRowStatus; lines: PayoutLine[]; rejectedReason?: string;
   paidAt?: string; confirmedAt?: string; createdAt: string; updatedAt: string;
+  reversedReason?: string; // [TBO-32 C2] 회수 사유 전용(반려 사유와 분리 영속 — 상세 타임라인 표시)
   // [B9 E5 2026-07-16] 지급 회수 — 회수된 정산은 status='rejected' + reversedAt(ISO) 세트(반려와 구분 표기)
   reversedAt?: string;
 };
@@ -765,6 +776,13 @@ export const api = {
       http.get<PayReadiness>("/payouts/readiness", { params }).then((r) => r.data),
     readinessMine: (params: { from?: string; to?: string } = {}) =>
       http.get<PayReadiness>("/payouts/me/readiness", { params }).then((r) => r.data),
+    // [TBO-32 C4 2026-07-22] 미정산 감지·일괄 산정·확정 취소 — BE C1/C2 라우트 소비.
+    uncovered: (months = 3) =>
+      http.get<UncoveredPayoutEntry[]>("/payouts/uncovered", { params: { months } }).then((r) => r.data),
+    generateBulk: (periodStart: string, periodEnd: string, instructorIds?: number[]) =>
+      http.post<BulkGenerateResult>("/payouts/generate-bulk", { periodStart, periodEnd, ...(instructorIds?.length ? { instructorIds } : {}) }).then((r) => r.data),
+    unconfirm: (id: number, reason: string) =>
+      http.post<PayoutRow>(`/payouts/${id}/unconfirm`, { reason }).then((r) => r.data),
     // 정산서 생성(pending) + 세션 연결(이중 계상 방지)
     generate: (instructorId: number, from: string, to: string) =>
       http.post<PayoutRow>("/payouts/generate", { instructorId, from, to }).then((r) => r.data),

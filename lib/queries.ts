@@ -747,6 +747,25 @@ export const useReversePayout = () =>
   useMutation({ mutationFn: (v: { id: number; reason: string }) => api.payouts.reverse(v.id, v.reason), onSuccess: useInvalidator([qk.payouts.all, qk.transactions.all, qk.schedule.all]) });
 export const useAdjustPayout = () =>
   useMutation({ mutationFn: (v: { id: number; amount: number; reason?: string }) => api.payouts.adjust(v.id, v.amount, v.reason), onSuccess: useInvalidator([qk.payouts.all]) });
+// [TBO-32 C4 2026-07-22] 단건 상세(B7 규약 — DetailStates 소비, 강사=본인만·타인 403)·미정산 감지·
+//  일괄 산정·확정 취소 — 전 화면이 이 중앙 훅만 소비(§18-2 단일 진실원).
+export const usePayout = (id: number | null) => {
+  const { can } = useAccountAccess();
+  const finance = can("finance.access");
+  const self = can("instructor.self");
+  return useQuery({ queryKey: qk.payouts.detail(id ?? 0), queryFn: () => api.payouts.get(id as number), enabled: id != null && (finance || self) });
+};
+export const useUncoveredPayouts = (months = 3) => {
+  const { can } = useAccountAccess();
+  return useQuery({ queryKey: qk.payouts.uncovered(months), queryFn: () => api.payouts.uncovered(months), enabled: can("finance.access") });
+};
+export const useGenerateBulkPayouts = () =>
+  useMutation({
+    mutationFn: (v: { periodStart: string; periodEnd: string; instructorIds?: number[] }) => api.payouts.generateBulk(v.periodStart, v.periodEnd, v.instructorIds),
+    onSuccess: useInvalidator([qk.payouts.all, qk.schedule.all]),
+  });
+export const useUnconfirmPayout = () =>
+  useMutation({ mutationFn: (v: { id: number; reason: string }) => api.payouts.unconfirm(v.id, v.reason), onSuccess: useInvalidator([qk.payouts.all]) });
 
 // [E0.5 ①] 대표(super_admin)는 서버가 같은 tx에서 즉시 적용(approved 응답) — 프로필 쿼리도 무효화.
 export const useCreateProfileChangeRequest = () =>
