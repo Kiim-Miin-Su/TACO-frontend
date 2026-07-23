@@ -252,6 +252,15 @@ export type CounselCorrelation = {
 };
 export type CounselAnalyticsRange = { from?: string | null; to?: string | null };
 
+// [TBO-46 G2 2026-07-23] GraphQL 매출 게이트웨이 응답 미러(BE revenue-analytics.ts 단일 진실원).
+export type RevenueKeyAmount = { key: string; amount: number; count: number };
+export type RevenueReport = {
+  from: string | null; to: string | null;
+  realizedTotal: number; unpaidTotal: number; unpaidCount: number;
+  byMonth: RevenueKeyAmount[]; bySubject: RevenueKeyAmount[]; byCourse: RevenueKeyAmount[]; byStudent: RevenueKeyAmount[];
+};
+export type FinanceSummary = { from: string | null; to: string | null; revenue: number; expenses: number; payouts: number; net: number };
+
 // [TBO-32 C4] 미정산 감지·일괄 산정 응답 — BE C1/C2 계약.
 export type UncoveredPayoutEntry = {
   instructorId: number; instructorName: string; instructorStatus: string; month: string;
@@ -653,6 +662,22 @@ export const api = {
       http.patch<CounselRound>(`/counsel/${formId}/rounds/${roundId}`, input).then((r) => r.data),
     removeRound: (formId: number, roundId: number) =>
       http.delete<{ id: number; deleted: true }>(`/counsel/${formId}/rounds/${roundId}`).then((r) => r.data),
+  },
+  // [TBO-46 G2] GraphQL 게이트웨이(읽기 전용·대표 전용) — 매출·재무는 서버 파생 1쿼리로 소비
+  graphql: {
+    revenueReport: (range: CounselAnalyticsRange = {}) =>
+      http.post<{ data: { revenueReport: RevenueReport } }>("/graphql", {
+        query: `query Revenue($from: String, $to: String) { revenueReport(from: $from, to: $to) {
+          from to realizedTotal unpaidTotal unpaidCount
+          byMonth { key amount count } bySubject { key amount count }
+          byCourse { key amount count } byStudent { key amount count } } }`,
+        variables: { from: range.from ?? null, to: range.to ?? null },
+      }).then((r) => r.data.data.revenueReport),
+    financeSummary: (range: CounselAnalyticsRange = {}) =>
+      http.post<{ data: { financeSummary: FinanceSummary } }>("/graphql", {
+        query: `query Finance($from: String, $to: String) { financeSummary(from: $from, to: $to) { from to revenue expenses payouts net } }`,
+        variables: { from: range.from ?? null, to: range.to ?? null },
+      }).then((r) => r.data.data.financeSummary),
   },
   transactions: {
     list: () => http.get<Transaction[]>("/transactions").then((r) => r.data),

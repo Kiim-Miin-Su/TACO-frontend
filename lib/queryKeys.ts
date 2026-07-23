@@ -34,6 +34,11 @@ export const qk = {
     uncovered: (months: number) => ["payouts", "uncovered", months] as const, // [TBO-32 C4] 미정산 감지
     readiness: (scope = "global") => ["payouts", "readiness", scope] as const,
   },
+  revenue: { // [TBO-46 G2] GraphQL 매출 게이트웨이
+    all: ["revenue"] as const,
+    report: (from?: string | null, to?: string | null) => ["revenue", "report", from ?? null, to ?? null] as const,
+    summary: (from?: string | null, to?: string | null) => ["revenue", "summary", from ?? null, to ?? null] as const,
+  },
   reports: { all: ["reports"] as const, list: (sessionId?: number, scope = "global") => ["reports", "list", scope, sessionId ?? null] as const },
   students: {
     all: ["students"] as const,

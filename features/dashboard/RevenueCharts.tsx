@@ -1,7 +1,12 @@
 'use client';
-import { useMemo, useState } from 'react';
-import { Chart, SectionCard } from '@/components/ui';
-import { usePayments, useEnrollments, useCourses, useSubjects, useStudents } from '@/lib/queries';
+// [TBO-46 G2 2026-07-23] 매출 분석 — GraphQL 서버 파생(revenueReport) 소비로 전환.
+//  종전: payments·enrollments·courses·subjects·students **전 목록 5개**를 내려받아 브라우저에서
+//  조인·집계(클라 계산). 이제 서버 순수 함수(revenue-analytics — 단일 진실원)가 파생한 결과 1쿼리만
+//  소비한다. 실현 매출은 paidAmount??amount로 통일(종전 이 화면 amount vs 학생 상세 paidAmount
+//  불일치 해소 — TBO-46 §5). 차트·기간 UI는 기존 그대로 재사용.
+import { useState } from 'react';
+import { Chart, EmptyState, LoadingState, SectionCard } from '@/components/ui';
+import { useRevenueReport } from '@/lib/queries';
 import { won } from '@/lib/format';
 import type { ChartConfiguration } from 'chart.js';
 
@@ -9,68 +14,39 @@ const PALETTE = ['#0f766e', '#2563eb', '#e08a00', '#8250df', '#0f9d6b', '#cf222e
 const wonTick = (v: number | string) => `₩${Number(v).toLocaleString('ko-KR')}`;
 
 export function RevenueCharts() {
-  const { data: payments = [] } = usePayments();
-  const { data: enrollments = [] } = useEnrollments();
-  const { data: courses = [] } = useCourses();
-  const { data: subjects = [] } = useSubjects();
-  const { data: students = [] } = useStudents();
-
   const today = new Date().toISOString().slice(0, 10);
   const [start, setStart] = useState('2026-05-01');
   const [end, setEnd] = useState('2026-06-30');
+  const { data: report, isPending, isError } = useRevenueReport({ from: start, to: end });
 
-  const { total, byMonth, byStudent, bySubject, byCourse } = useMemo(() => {
-    const paid = payments.filter((p) => p.status === 'paid' && p.paidAt && p.paidAt >= start && p.paidAt <= end);
-    const sum = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) ?? 0) + v);
-    const month = new Map<string, number>();
-    const student = new Map<string, number>();
-    const subject = new Map<string, number>();
-    const course = new Map<string, number>();
-    for (const p of paid) {
-      sum(month, p.paidAt!.slice(0, 7), p.amount);
-      sum(student, students.find((s) => s.id === p.studentId)?.name ?? `#${p.studentId}`, p.amount);
-      const enr = p.enrollmentId ? enrollments.find((e) => e.id === p.enrollmentId) : undefined;
-      const c = enr ? courses.find((x) => x.id === enr.courseId) : undefined;
-      if (c) {
-        sum(course, c.name, p.amount);
-        sum(subject, subjects.find((s) => s.id === c.subjectId)?.name ?? '기타', p.amount);
-      }
-    }
-    const sorted = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]);
-    return {
-      total: paid.reduce((a, p) => a + p.amount, 0),
-      byMonth: [...month.entries()].sort((a, b) => a[0].localeCompare(b[0])),
-      byStudent: sorted(student),
-      bySubject: sorted(subject),
-      byCourse: sorted(course),
-    };
-  }, [payments, enrollments, courses, subjects, students, start, end]);
+  if (isPending) return <LoadingState />;
+  if (isError || !report) return <EmptyState message="매출 데이터를 불러오지 못했습니다." />;
 
   const periodCfg: ChartConfiguration = {
     type: 'bar',
-    data: { labels: byMonth.map((x) => x[0]), datasets: [{ label: '매출', data: byMonth.map((x) => x[1]), backgroundColor: '#0f766e', borderRadius: 4 }] },
+    data: { labels: report.byMonth.map((x) => x.key), datasets: [{ label: '매출', data: report.byMonth.map((x) => x.amount), backgroundColor: '#0f766e', borderRadius: 4 }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: (v) => wonTick(v as number) } } } },
   };
   const studentCfg: ChartConfiguration = {
     type: 'bar',
-    data: { labels: byStudent.map((x) => x[0]), datasets: [{ label: '매출', data: byStudent.map((x) => x[1]), backgroundColor: '#2563eb', borderRadius: 4 }] },
+    data: { labels: report.byStudent.map((x) => x.key), datasets: [{ label: '매출', data: report.byStudent.map((x) => x.amount), backgroundColor: '#2563eb', borderRadius: 4 }] },
     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: (v) => wonTick(v as number) } } } },
   };
   const subjectCfg: ChartConfiguration = {
     type: 'doughnut',
-    data: { labels: bySubject.map((x) => x[0]), datasets: [{ data: bySubject.map((x) => x[1]), backgroundColor: PALETTE }] },
+    data: { labels: report.bySubject.map((x) => x.key), datasets: [{ data: report.bySubject.map((x) => x.amount), backgroundColor: PALETTE }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } },
   };
   const courseCfg: ChartConfiguration = {
     type: 'bar',
-    data: { labels: byCourse.map((x) => x[0]), datasets: [{ label: '매출', data: byCourse.map((x) => x[1]), backgroundColor: '#e08a00', borderRadius: 4 }] },
+    data: { labels: report.byCourse.map((x) => x.key), datasets: [{ label: '매출', data: report.byCourse.map((x) => x.amount), backgroundColor: '#e08a00', borderRadius: 4 }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: (v) => wonTick(v as number) } } } },
   };
 
   return (
     <div className="space-y-6">
       <SectionCard
-        title={`매출 분석 (실현 매출 ${won(total)})`}
+        title={`매출 분석 (실현 매출 ${won(report.realizedTotal)}${report.unpaidCount ? ` · 미납 ${report.unpaidCount}건 ${won(report.unpaidTotal)}` : ''})`}
         action={
           <div className="flex items-center gap-1.5">
             <input type="date" className="input h-7 w-36" max={today} value={start} onChange={(e) => setStart(e.target.value)} />

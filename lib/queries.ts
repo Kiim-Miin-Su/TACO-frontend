@@ -155,6 +155,23 @@ export const useCounselFunnel = (range: { from?: string | null; to?: string | nu
     enabled: can("counsel.manage"),
   });
 };
+// [TBO-46 G2] 매출 보고 — GraphQL 서버 파생 소비(전 목록 5개 클라 조인 대체). 대표(finance) 전용.
+export const useRevenueReport = (range: { from?: string | null; to?: string | null } = {}) => {
+  const { can } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.revenue.report(range.from, range.to),
+    queryFn: () => api.graphql.revenueReport(range),
+    enabled: can("finance.access"),
+  });
+};
+export const useFinanceSummary = (range: { from?: string | null; to?: string | null } = {}) => {
+  const { can } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.revenue.summary(range.from, range.to),
+    queryFn: () => api.graphql.financeSummary(range),
+    enabled: can("finance.access"),
+  });
+};
 export const useCounselCorrelation = (range: { from?: string | null; to?: string | null } = {}) => {
   const { can } = useAccountAccess();
   return useQuery({
