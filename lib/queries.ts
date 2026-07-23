@@ -4,6 +4,7 @@
 //  - buildTasks/navBadges/lib.reports 등 "여러 도메인 slice"가 필요한 로직은 useAppData()로 조립해 넘긴다.
 "use client";
 import { useQuery, useMutation, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { clearSudo, isSudoRequiredError } from '@/lib/sudo'; // [TBO-34 C2-C]
 import { api, type SessionReport as ApiReport } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import {
@@ -238,6 +239,8 @@ export const useAdminUpdateUser = () => {
     mutationFn: (v: { id: number; patch: { name?: string; phone?: string; email?: string; role?: string } }) => api.users.adminUpdate(v.id, v.patch),
     // 이름·역할 변경은 강사 선택 자원과 담당 스케줄 렌더링에도 전파된다.
     onSuccess: () => invalidateInstructorAggregate(queryClient),
+    // [TBO-34 C2-C] 서버 sudo 창 만료(403 SUDO_REQUIRED) → FE 세션 상태 초기화(게이트가 재인증 재출력)
+    onError: (caught) => { if (isSudoRequiredError(caught)) clearSudo(); },
   });
 };
 export const useCreateStaffUser = () => {

@@ -19,3 +19,10 @@ export function clearSudo(): void {
 }
 
 export { SUDO_TTL_MS };
+
+// [TBO-34 C2-C 2026-07-23] 서버측 sudo 강제 대응 — 민감 명령이 403(SUDO_REQUIRED)로 거부되면
+//  FE 세션 상태를 지워 기존 게이트가 재인증 모달을 다시 띄우게 한다(판정 로직 단일 소스).
+export function isSudoRequiredError(caught: unknown): boolean {
+  const body = (caught as { response?: { status?: number; data?: unknown } })?.response;
+  return body?.status === 403 && JSON.stringify(body?.data ?? '').includes('SUDO_REQUIRED');
+}
