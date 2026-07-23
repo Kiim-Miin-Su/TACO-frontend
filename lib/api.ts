@@ -72,7 +72,20 @@ import type {
   OpenClassSeriesInput,
   OpenClassResult,
   OpenClassSeriesResult,
+  Roadmap,
+  CreateRoadmapInput,
 } from "@kms545487/contracts";
+
+// [TBO-47 2026-07-23] 로드맵 aggregate — BE RoadmapsService.toAggregate 미러(코스명은 courses SSOT 조인 파생, 사본 저장 0).
+export type RoadmapAggregate = Roadmap & {
+  courses: Array<{ linkId: number; courseId: number; sortOrder: number; courseName: string; subjectId: number }>;
+};
+// 계약(CreateRoadmapInput) + BE 운영 필드(durationWeeks) — 수정은 courseIds 제외(연결은 전용 라우트).
+//  수정에서 null = 값 해제(대상 학년 '전체'로 등) — BE @IsOptional이 null 통과 → store가 NULL 저장.
+export type CreateRoadmapBody = CreateRoadmapInput & { durationWeeks?: number };
+export type UpdateRoadmapInput = {
+  title?: string; description?: string; targetGrade?: number | null; durationWeeks?: number | null; isActive?: boolean;
+};
 
 export type ScheduleQuery = { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number };
 export type AvailabilityKindEx = AvailabilityKind | "online_only";
@@ -641,6 +654,20 @@ export const api = {
     create: (input: CreateSubjectInput) => http.post<Subject>("/subjects", input).then((r) => r.data),
     update: (id: number, patch: Partial<CreateSubjectInput>) => http.patch<Subject>(`/subjects/${id}`, patch).then((r) => r.data),
     remove: (id: number) => http.delete<Subject>(`/subjects/${id}`).then((r) => r.data),
+  },
+  // [TBO-47 2026-07-23] 수강 로드맵 — 코스 묶음 카탈로그(조회 전 직원·쓰기 매니저 이상).
+  //  응답은 전부 RoadmapAggregate(코스 조인 sortOrder 정렬) — 화면 자체 조인 금지(사본 0).
+  roadmaps: {
+    list: () => http.get<RoadmapAggregate[]>("/roadmaps").then((r) => r.data),
+    get: (id: number) => http.get<RoadmapAggregate>(`/roadmaps/${id}`).then((r) => r.data),
+    create: (input: CreateRoadmapBody) => http.post<RoadmapAggregate>("/roadmaps", input).then((r) => r.data),
+    update: (id: number, patch: UpdateRoadmapInput) => http.patch<RoadmapAggregate>(`/roadmaps/${id}`, patch).then((r) => r.data),
+    remove: (id: number) => http.delete<{ id: number; deleted: true }>(`/roadmaps/${id}`).then((r) => r.data),
+    addCourse: (id: number, courseId: number) => http.post<RoadmapAggregate>(`/roadmaps/${id}/courses`, { courseId }).then((r) => r.data),
+    removeCourse: (id: number, courseId: number) => http.delete<RoadmapAggregate>(`/roadmaps/${id}/courses/${courseId}`).then((r) => r.data),
+    // 전체 순서 교체 — 부분 목록은 서버가 400(조용한 누락 금지)
+    reorderCourses: (id: number, courseIds: number[]) =>
+      http.patch<RoadmapAggregate>(`/roadmaps/${id}/courses/reorder`, { courseIds }).then((r) => r.data),
   },
   counsel: {
     forms: () => http.get<CounselForm[]>("/counsel").then((r) => r.data),

@@ -22,6 +22,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
 const TABS: [string, string][] = [
   ['/admin', '개요·캘린더'],
   ['/admin/courses', '코스·과목'],
+  ['/admin/roadmaps', '로드맵'], // [TBO-47 07-23] 수강 로드맵(코스 묶음 카탈로그) — 마지막 dormant 도메인 실구현
   ['/admin/events', '이벤트'],
   ['/admin/approvals', '승인'],
   ['/admin/users', '유저 관리'], // [핫픽스 확장 07-20] 전 계정(활성·대기·반려) 관리 — 대표 지시

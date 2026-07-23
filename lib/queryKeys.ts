@@ -55,6 +55,7 @@ export const qk = {
   expenses: { all: ["expenses"] as const, list: () => ["expenses", "list"] as const, detail: (id: number) => ["expenses", "detail", id] as const }, // [B7 E3]
   courses: { all: ["courses"] as const, list: () => ["courses", "list"] as const, detail: (id: number) => ["courses", "detail", id] as const }, // [B7 E3]
   subjects: { all: ["subjects"] as const, list: () => ["subjects", "list"] as const },
+  roadmaps: { all: ["roadmaps"] as const, list: () => ["roadmaps", "list"] as const, detail: (id: number) => ["roadmaps", "detail", id] as const }, // [TBO-47]
   enrollments: { all: ["enrollments"] as const, list: (studentId?: number) => ["enrollments", "list", studentId ?? null] as const },
   counsel: {
     all: ["counsel"] as const,
