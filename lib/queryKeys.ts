@@ -39,6 +39,7 @@ export const qk = {
     all: ["students"] as const,
     list: () => ["students", "list"] as const,
     aggregate: (id: number) => ["students", "aggregate", id] as const,
+    family: (id: number) => ["students", "family", id] as const, // [TBO-30G] 가족 조인 SSOT — students prefix라 기존 무효화에 자동 포함
   }, // [B7 E3]
   instructors: {
     all: ["instructors"] as const,

@@ -287,6 +287,16 @@ const detailRetry = (failureCount: number, error: unknown) => {
 };
 export const useStudentAggregate = (id: number | null) =>
   useQuery({ queryKey: qk.students.aggregate(id ?? 0), queryFn: () => api.students.aggregate(id as number), enabled: id != null, retry: detailRetry });
+// [TBO-30G] 가족 조인 단일 진실원 — 학생 상세·상담 상세·상담 접수가 이 훅 하나만 소비(매니저 이상 API).
+export const useStudentFamily = (id: number | null) => {
+  const { can } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.students.family(id ?? 0),
+    queryFn: () => api.students.family(id as number),
+    enabled: id != null && can("admin.area"),
+    retry: detailRetry,
+  });
+};
 export const useScheduleSession = (id: number | null) => {
   const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.schedule.detail(id ?? 0, scope), queryFn: () => api.schedule.get(id as number), enabled: id != null, retry: detailRetry });

@@ -205,6 +205,23 @@ export type MeasureResult = {
   sessionCount: number; totalMinutes: number; computedAmount: number; lines: PayoutLine[];
 };
 export type PayoutRowStatus = "pending" | "confirmed" | "paid" | "rejected";
+// [TBO-30G 2026-07-23 대표 지시] 가족(형제·자매) 테이블 조인 단일 진실원 — BE student-family.types.ts 미러.
+//  관계→학생→보호자→수강→상담 서버 조인 파생(읽기 전용·사본 0). 학생 상세·상담 화면이 이 하나만 소비.
+export type StudentFamilyMemberCounsel = Pick<CounselForm, "id" | "status" | "source" | "createdAt"> & {
+  nextContactAt: string | null;
+};
+export type StudentFamilyMember = {
+  relationId: number;
+  relationType: StudentFamilyRelation["relationType"];
+  relationLabel: string | null;
+  student: Student;
+  guardians: Array<{ parent: Parent; relation: ParentStudent }>;
+  activeEnrollmentCount: number;
+  counselForms: StudentFamilyMemberCounsel[];
+  sharedGuardianParentIds: number[];
+};
+export type StudentFamilyAggregate = { studentId: number; members: StudentFamilyMember[] };
+
 // [TBO-32 C4] 미정산 감지·일괄 산정 응답 — BE C1/C2 계약.
 export type UncoveredPayoutEntry = {
   instructorId: number; instructorName: string; instructorStatus: string; month: string;
@@ -519,12 +536,16 @@ export const api = {
       http.patch<Student>(`/students/${id}`, patch).then((r) => r.data),
     updateAggregate: (id: number, patch: UpdateStudentAggregateInput) =>
       http.patch<StudentAggregate>(`/students/${id}/aggregate`, patch).then((r) => r.data),
-    createFamilyRelation: (studentId: number, input: CreateStudentFamilyRelationInput) =>
+    // [TBO-30G] linkGuardians=true면 같은 tx에서 두 학생 보호자를 관계 행으로 합집합 연결(사본 0)
+    createFamilyRelation: (studentId: number, input: CreateStudentFamilyRelationInput & { linkGuardians?: boolean }) =>
       http.post<StudentFamilyRelation>(`/students/${studentId}/family-relations`, input).then((r) => r.data),
     updateFamilyRelation: (studentId: number, relationId: number, input: UpdateStudentFamilyRelationInput) =>
       http.patch<StudentFamilyRelation>(`/students/${studentId}/family-relations/${relationId}`, input).then((r) => r.data),
     removeFamilyRelation: (studentId: number, relationId: number) =>
       http.delete<{ id: number; deleted: true }>(`/students/${studentId}/family-relations/${relationId}`).then((r) => r.data),
+    // [TBO-30G] 가족 조인 단일 진실원 — 서버 조인 파생 aggregate(학생 상세·상담 화면 공용)
+    family: (studentId: number) =>
+      http.get<StudentFamilyAggregate>(`/students/${studentId}/family`).then((r) => r.data),
     createAcademicHistory: (studentId: number, input: Omit<CreateStudentAcademicHistoryInput, "studentId">) =>
       http.post<StudentAcademicHistory>(`/students/${studentId}/academic-histories`, input).then((r) => r.data),
     updateAcademicHistory: (studentId: number, historyId: number, input: UpdateStudentAcademicHistoryInput) =>
