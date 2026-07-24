@@ -46,6 +46,7 @@ export const qk = {
     all: ["revenue"] as const,
     report: (from?: string | null, to?: string | null) => ["revenue", "report", from ?? null, to ?? null] as const,
     summary: (from?: string | null, to?: string | null) => ["revenue", "summary", from ?? null, to ?? null] as const,
+    ceo: (from?: string | null, to?: string | null) => ["revenue", "ceo", from ?? null, to ?? null] as const, // [TBO-60]
   },
   reports: { all: ["reports"] as const, list: (sessionId?: number, scope = "global") => ["reports", "list", scope, sessionId ?? null] as const },
   students: {

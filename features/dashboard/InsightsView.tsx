@@ -9,6 +9,7 @@ import { useTransactions, usePayments } from '@/lib/queries';
 import { roleLabel } from '@/lib/roles';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { RevenueCharts } from './RevenueCharts';
+import { CeoDashboards } from './CeoDashboards'; // [TBO-60] 대표 대시보드 6종(서버 파생)
 
 export function InsightsView() {
   const access = useAccountAccess();
@@ -42,6 +43,9 @@ export function InsightsView() {
         <StatCard label="이번 달 출금" value={won(outbound)} tone="attention" icon={<IconArrowUp />} sub="강사 페이 · 지출" />
         <StatCard label="미수금" value={won(unpaid)} tone="danger" icon={<IconReceipt />} sub={`청구 ${payments.filter((p) => p.status === 'pending').length}건 대기`} />
       </div>
+
+      {/* [TBO-60] 대시보드 6종 — D1 재무(서버 financeSummary)·D2 aging·D3 증감·D6 수익성·D4 링크·D5 가동률 */}
+      <CeoDashboards />
 
       <RevenueCharts />
 

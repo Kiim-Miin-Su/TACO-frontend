@@ -32,6 +32,7 @@ import { logger } from "@/lib/log";
 // [TBO-54 C2 대표 지시 콘솔 로깅] 머니 액션 관측 — id·금액·결과만(PII 0).
 const moneyLog = logger("money");
 import type { Instructor, InstructorAttendanceStatus, SessionReport } from "@/types";
+import { pushScheduleUndo } from "@/lib/schedule-undo"; // [TBO-63] 캘린더 undo 스택
 import { useState } from "react";
 
 // Query scope와 enabled는 AppShell의 권위 `/auth/me` 검증을 통과한 currentAccount 한 곳에서 파생한다.
@@ -188,6 +189,15 @@ export const useFinanceSummary = (range: { from?: string | null; to?: string | n
   return useQuery({
     queryKey: qk.revenue.summary(range.from, range.to),
     queryFn: () => api.graphql.financeSummary(range),
+    enabled: can("finance.access"),
+  });
+};
+// [TBO-60 2026-07-24] 대표 대시보드 — qk.revenue 하위 키라 수납/지출/정산 mutation 무효화가 자동 도달.
+export const useCeoDashboard = (range: { from?: string | null; to?: string | null } = {}) => {
+  const { can } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.revenue.ceo(range.from, range.to),
+    queryFn: () => api.graphql.ceoDashboard(range),
     enabled: can("finance.access"),
   });
 };
@@ -707,12 +717,42 @@ export const useUpsertAvailability = () =>
 export const useRemoveAvailability = () =>
   useMutation({ mutationFn: api.availability.remove, onSuccess: useInvalidator([qk.availability.all]) });
 
+
+// [TBO-63] undo용 before 스냅샷 — ["schedule"] 하위 캐시(목록·단건)에서 세션 행을 찾는다.
+//  서버 캐시가 곧 화면의 진실이므로, 사용자가 되돌리길 기대하는 값과 항상 일치한다.
+function cachedScheduleRow(qc: ReturnType<typeof useQueryClient>, id: number): Record<string, unknown> | undefined {
+  for (const [, data] of qc.getQueriesData<unknown>({ queryKey: ["schedule"] })) {
+    if (Array.isArray(data)) {
+      const hit = (data as Array<{ id?: number }>).find((row) => row && row.id === id);
+      if (hit) return hit as Record<string, unknown>;
+    } else if (data && typeof data === "object" && (data as { id?: number }).id === id) {
+      return data as Record<string, unknown>;
+    }
+  }
+  return undefined;
+}
+// 역패치 대상 필드(단일 회차 편집 표면) — patch가 건드린 키만 before 값으로 되돌린다.
+const UNDOABLE_FIELDS = [
+  "sessionDate", "startTime", "endTime", "durationMinutes", "roomId", "instructorId", "courseId",
+  "studentIds", "topic", "memo", "color", "status", "kind", "mode", "instructorAttendance",
+] as const;
 // 스케줄(생성·수정·삭제) — [C4] 캘린더 명령 무효화 단일 소스(invalidateCalendarCommand)로 통일.
 const useCalendarCommandInvalidator = () => {
   const qc = useQueryClient();
   return () => invalidateCalendarCommand(qc);
 };
-export const useCreateSchedule = () => useMutation({ mutationFn: api.schedule.create, onSuccess: useCalendarCommandInvalidator() });
+export const useCreateSchedule = () => {
+  const invalidate = useCalendarCommandInvalidator();
+  return useMutation({
+    mutationFn: api.schedule.create,
+    onSuccess: (data) => {
+      // [TBO-63] 생성의 역연산 = 삭제(단일 회차만 — 반복 bulk는 스택 제외)
+      const id = (data as { row?: { id?: number } })?.row?.id;
+      if (id) pushScheduleUndo({ label: "수업 생성 되돌리기(삭제)", run: () => api.schedule.remove(id) });
+      return invalidate();
+    },
+  });
+};
 export const useCreateScheduleSeries = () => useMutation({ mutationFn: api.schedule.createSeries, onSuccess: useCalendarCommandInvalidator() }); // [C2/C4] 반복 bulk
 export const useOpenClass = () => {
   const queryClient = useQueryClient();
@@ -734,9 +774,35 @@ export type AccountingImpactPrompt = {
 export const useUpdateSchedule = () => {
   type Variables = { id: number; body: Parameters<typeof api.schedule.update>[1] };
   const [pending, setPending] = useState<{ variables: Variables; prompt: AccountingImpactPrompt } | null>(null);
+  const qc = useQueryClient();
+  const invalidate = useCalendarCommandInvalidator();
   const mutation = useMutation({
-    mutationFn: (v: Variables) => api.schedule.update(v.id, v.body),
-    onSuccess: useCalendarCommandInvalidator(), // [C4] 단일 무효화 — 시수·정산 미리보기 동시 재계산
+    mutationFn: (v: Variables) => {
+      // [TBO-63] before 스냅샷은 요청 직전 캐시에서 — 성공 시 역패치를 스택에 적재.
+      (v as Variables & { __undoBefore?: Record<string, unknown> }).__undoBefore = cachedScheduleRow(qc, v.id);
+      return api.schedule.update(v.id, v.body);
+    },
+    onSuccess: (_data, v) => {
+      const body = v.body as Record<string, unknown>;
+      const before = (v as Variables & { __undoBefore?: Record<string, unknown> }).__undoBefore;
+      const scoped = body.scope != null && body.scope !== "this";
+      if (before && !scoped) {
+        const inverse: Record<string, unknown> = {};
+        for (const field of UNDOABLE_FIELDS) if (field in body) inverse[field] = before[field] ?? null;
+        if ((body as { clearInstructorAttendance?: boolean }).clearInstructorAttendance && before.instructorAttendance != null)
+          inverse.instructorAttendance = before.instructorAttendance;
+        if ("instructorAttendance" in inverse && inverse.instructorAttendance == null) {
+          delete inverse.instructorAttendance;
+          inverse.clearInstructorAttendance = true;
+        }
+        if (Object.keys(inverse).length)
+          pushScheduleUndo({
+            label: "수업 변경 되돌리기",
+            run: () => api.schedule.update(v.id, { ...inverse, force: true, acknowledgeAccountingImpact: true } as Variables["body"]),
+          });
+      }
+      return invalidate(); // [C4] 단일 무효화 — 시수·정산 미리보기 동시 재계산
+    },
   });
   const mutate: typeof mutation.mutate = (variables, options) => mutation.mutate(variables, {
     ...options,
@@ -763,13 +829,20 @@ export const useUpdateSchedule = () => {
     },
   };
 };
-export const useRemoveSchedule = () =>
-  useMutation({
+export const useRemoveSchedule = () => {
+  const invalidate = useCalendarCommandInvalidator();
+  return useMutation({
     // [TBO-29C C3] scope/CAS 인자와 TanStack context 인자 충돌 방지 — 명시 래핑
     mutationFn: (vars: { id: number; scope?: "this" | "this_and_following" | "all"; expectedSeriesVersion?: number }) =>
       api.schedule.remove(vars.id, vars.scope || vars.expectedSeriesVersion != null ? { scope: vars.scope, expectedSeriesVersion: vars.expectedSeriesVersion } : undefined),
-    onSuccess: useCalendarCommandInvalidator(), // [C4] 단일 무효화
+    onSuccess: (_data, vars) => {
+      // [TBO-63] 삭제의 역연산 = 복구(soft delete 해제 — BE restore). 시리즈 scope 삭제는 스택 제외.
+      if (vars.scope == null || vars.scope === "this")
+        pushScheduleUndo({ label: "수업 삭제 되돌리기(복구)", run: () => api.schedule.restore(vars.id) });
+      return invalidate(); // [C4] 단일 무효화
+    },
   });
+};
 
 // 수업 요청(TBO-16 #9) — 승인 시 세션이 생기므로 schedule도 무효화(참조 무결성 — 캘린더·배지 동시 갱신)
 export const useCreateScheduleRequest = () => {

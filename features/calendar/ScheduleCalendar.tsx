@@ -79,6 +79,7 @@ import {
   type ScheduleDeleteApprovalDraft,
 } from "./modals/ApprovalRequestModals";
 import { BlockEditModal } from "./modals/BlockEditModal";
+import { UndoHotkey } from './UndoHotkey'; // [TBO-63] cmd/ctrl+Z
 import { SessionDetailModal } from "./modals/SessionDetailModal";
 import { RecurrencePrompt } from "./modals/RecurrencePrompt";
 import { SessionListPanel } from "./SessionListPanel";
@@ -2696,6 +2697,8 @@ export function ScheduleCalendar() {
           </div>
         </div>
       </div>
+
+      <UndoHotkey />{/* [TBO-63] 스케줄 변동 undo — 스택 100·cmd/ctrl+Z */}
 
       {editing && (
         <SessionDetailModal

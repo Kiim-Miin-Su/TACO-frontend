@@ -713,6 +713,16 @@ export const api = {
           byCourse { key amount count } byStudent { key amount count } } }`,
         variables: { from: range.from ?? null, to: range.to ?? null },
       }).then((r) => r.data.data.revenueReport),
+    // [TBO-60 2026-07-24] 대표 대시보드 — 한 쿼리로 D1 재무+D2 aging+D3 증감+D6 수익성(서버 파생).
+    ceoDashboard: (range: CounselAnalyticsRange = {}) =>
+      http.post<{ data: { ceoDashboard: CeoDashboard } }>("/graphql", {
+        query: `query Ceo($from: String, $to: String) { ceoDashboard(from: $from, to: $to) {
+          from to finance { revenue expenses payouts net }
+          receivables { bucket amount count }
+          enrollmentTrend { month started ended net }
+          courseProfit { courseId courseName revenue cost profit } } }`,
+        variables: range,
+      }).then((r) => r.data.data.ceoDashboard),
     financeSummary: (range: CounselAnalyticsRange = {}) =>
       http.post<{ data: { financeSummary: FinanceSummary } }>("/graphql", {
         query: `query Finance($from: String, $to: String) { financeSummary(from: $from, to: $to) { from to revenue expenses payouts net } }`,
@@ -817,6 +827,9 @@ export const api = {
     // [TBO-64 2026-07-24] 회차 가격 책정(정산 연결 전) — null=해제. 매니저 이상.
     setPayAmount: (id: number, amount: number | null) =>
       http.put<{ row: ScheduleRow }>(`/schedule/${id}/pay-amount`, { amount }).then((r) => r.data),
+    // [TBO-63 2026-07-24] 삭제 복구(캘린더 undo) — soft delete 해제.
+    restore: (id: number) =>
+      http.post<{ row: ScheduleRow }>(`/schedule/${id}/restore`).then((r) => r.data),
     // 추천→배정·수동 추가 → { row, conflicts }. 충돌 시 409 → force로 재시도.
     create: (body: ScheduleCreateBody) =>
       http.post<{ row: ScheduleRow; conflicts: Conflict[] }>("/schedule", body).then((r) => r.data),
@@ -953,4 +966,13 @@ export type PayoutWorksheet = {
     autoAmount: number; manualAmount: number; totalAmount: number;
     unpricedCount: number; excludedCount: number;
   };
+};
+
+// ── [TBO-60] 대표 대시보드 타입(GraphQL CeoDashboard 미러) ──
+export type CeoDashboard = {
+  from: string | null; to: string | null;
+  finance: FinanceSummary;
+  receivables: Array<{ bucket: string; amount: number; count: number }>;
+  enrollmentTrend: Array<{ month: string; started: number; ended: number; net: number }>;
+  courseProfit: Array<{ courseId: number; courseName: string; revenue: number; cost: number; profit: number }>;
 };
