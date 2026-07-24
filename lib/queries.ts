@@ -57,8 +57,15 @@ function toStoreReport(r: ApiReport): SessionReport {
 //  쓰기 훅이 invalidate로 즉시 갱신하므로 안전. 나머지는 전역 기본(30s, app/providers.tsx).
 const CATALOG_STALE = 5 * 60 * 1000;
 export const useStudents = () => useQuery({ queryKey: qk.students.list(), queryFn: () => api.students.list(), staleTime: CATALOG_STALE });
-export const useParents = () => useQuery({ queryKey: qk.parents.list(), queryFn: () => api.parents.list(), staleTime: CATALOG_STALE });
-export const useParentStudents = () => useQuery({ queryKey: qk.parents.relations(), queryFn: () => api.parents.relations(), staleTime: CATALOG_STALE });
+// [TBO-59 C3 · P0-5] 보호자 연락처 = 관리자 전용 API — 강사 계정에선 조회 자체를 막아 403 소음 제거.
+export const useParents = () => {
+  const { can } = useAccountAccess();
+  return useQuery({ queryKey: qk.parents.list(), queryFn: () => api.parents.list(), staleTime: CATALOG_STALE, enabled: can("admin.area") });
+};
+export const useParentStudents = () => {
+  const { can } = useAccountAccess();
+  return useQuery({ queryKey: qk.parents.relations(), queryFn: () => api.parents.relations(), staleTime: CATALOG_STALE, enabled: can("admin.area") });
+};
 export const useSubjects = () => useQuery({ queryKey: qk.subjects.list(), queryFn: () => api.subjects.list(), staleTime: CATALOG_STALE });
 export const useCourses = () => useQuery({ queryKey: qk.courses.list(), queryFn: () => api.courses.list(), staleTime: CATALOG_STALE });
 export const useEnrollments = () => useQuery({ queryKey: qk.enrollments.list(), queryFn: () => api.enrollments.list(), staleTime: CATALOG_STALE });
