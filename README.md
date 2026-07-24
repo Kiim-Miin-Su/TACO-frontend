@@ -1,6 +1,11 @@
 # TACO Web (frontend)
 
-Next.js(App Router) + Tailwind v4 기반 TACO ERP 웹. **독립 repo**로 운영하며, 추후 데스크탑(Electron/Tauri)으로 확장합니다.
+Next.js 15(App Router) + React 19 + Tailwind v4 기반 TACO ERP 웹. **독립 repo**로 운영하며,
+배포는 Vercel입니다. 서버 상태는 **TanStack Query 단일 소스**(DB reconciliation 계약),
+브라우저 저장소에 업무 데이터를 두지 않습니다(localStorage는 UI 선호만).
+
+게이트(커밋마다 그린): `npx tsc --noEmit` · `npx vitest run`(48 files / 350+) · `npx next build`.
+전체 설계·운영 문서 입구는 형제 repo [`docs/README.md`](../docs/README.md).
 
 ## 실행
 
@@ -45,7 +50,7 @@ lib/                 # api(axios same-origin) · store(zustand) · mock/seed · 
 types/               # @kms545487/contracts 재노출(단일 소스)
 ```
 
-데이터 계층: **서버 상태 = TanStack Query 단일 소스**(`lib/queries.ts` 도메인 훅 — 읽기 `useX`, 쓰기 `useCreateX/useUpdateX`+invalidate). zustand(`lib/store`)는 클라이언트 상태(currentRole·reportTemplates 등)만 유지합니다. 캘린더 엔진(충돌·추천·스플릿·복제)은 `lib/domain/schedule.ts`·`lib/domain/lantiv.ts` 순수 함수로 분리되어 vitest로 검증됩니다.
+데이터 계층: **서버 상태 = TanStack Query 단일 소스**(`lib/queries.ts` 도메인 훅 — 읽기 `useX`, 쓰기 `useCreateX/useUpdateX`+invalidate, 키는 `lib/queryKeys.ts` 레지스트리). zustand(`lib/store`)는 인증 세션 등 클라이언트 상태만 유지합니다(업무 데이터 0 — 2026-07 전수 감사 실측). 캘린더 엔진(충돌·추천·스플릿·복제)은 `lib/domain/schedule.ts`·`lib/domain/lantiv.ts` 순수 함수로 분리되어 vitest로 검증됩니다.
 
 ## 타입 컨벤션
 
