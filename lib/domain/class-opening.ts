@@ -148,7 +148,7 @@ export function validateClassOpening(
     ? instructor?.defaultHourlyRate ?? 0
     : Number(draft.hourlyRateOverride);
   if (effectiveRate <= 0) return '강사 기본 시급 또는 수업 시급 override를 1원 이상 입력하세요.';
-  if (draft.isKinder && instructor && !instructor.canTeachKinder) return '선택한 강사는 Kinder 수업을 담당할 수 없습니다.';
+  // [TBO-61 2026-07-24] Kinder 가능 여부 게이트 제거(대표 지시 '유연하게') — canTeachKinder는 정보 표시용.
   return null;
 }
 

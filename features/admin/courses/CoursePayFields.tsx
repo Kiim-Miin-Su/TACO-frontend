@@ -29,7 +29,7 @@ export function CoursePayFields({
           <input type="checkbox" checked={value.isKinder} onChange={(e) => onChange({ ...value, isKinder: e.target.checked })} />
           <span className="text-body">3~7세 대상</span>
         </label>
-        {value.isKinder && instructor && !instructor.canTeachKinder && <span className="block text-micro text-danger">선택한 강사는 Kinder 수업이 불가능합니다.</span>}
+        {/* [TBO-61 2026-07-24] Kinder 가능 여부 차단 문구 제거(대표 지시 유연화) — 프로필 값은 정보 표시용 */}
       </Field>
     </>
   );

@@ -87,9 +87,10 @@ describe('subject-first class opening', () => {
     expect(classOpeningOccurrences('2026-08-09', '2026-07-27', [1])).toEqual([]);
   });
 
-  it('Kinder 불가 강사와 시간·금액 경계를 저장 전에 차단한다', () => {
+  it('시간·금액 경계는 저장 전에 차단하고 Kinder는 강사와 무관하게 허용한다', () => {
     const instructor = { defaultHourlyRate: 40000, canTeachKinder: false } as InstructorAggregate;
-    expect(validateClassOpening(draft({ isKinder: true }), instructor)).toContain('Kinder');
+    // [TBO-61] Kinder 가능 여부 게이트 제거 — canTeachKinder=false여도 Kinder 수업 개설 가능(유연화)
+    expect(validateClassOpening(draft({ isKinder: true }), instructor)).toBeNull();
     expect(validateClassOpening(draft({ startTime: '09:00', endTime: '09:00' }), instructor)).toContain('시작과 종료');
     expect(validateClassOpening(draft({ hourlyRateOverride: '-1' }), instructor)).toContain('시급');
     expect(validateClassOpening(draft({ hourlyRateOverride: '' }), { ...instructor, defaultHourlyRate: 0 })).toContain('1원');

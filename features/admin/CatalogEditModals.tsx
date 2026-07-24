@@ -35,8 +35,7 @@ export function CourseEditModal({
   });
   const [error, setError] = useState<string | null>(null);
   const invalid = !form.name.trim() || !form.subjectId || !form.instructorId
-    || Number(form.price) < 0 || Number(pay.hourlyRateOverride || 0) < 0
-    || (pay.isKinder && !instructors.find((row) => row.id === Number(form.instructorId))?.canTeachKinder);
+    || Number(form.price) < 0 || Number(pay.hourlyRateOverride || 0) < 0; // [TBO-61] Kinder 게이트 제거(유연화)
 
   const save = () => {
     if (invalid || update.isPending) return;
