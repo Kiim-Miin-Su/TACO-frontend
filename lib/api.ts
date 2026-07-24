@@ -814,6 +814,9 @@ export const api = {
     // [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크(최초 1회) — 수정·초기화는 매니저 PATCH 전용.
     markInstructorAttendance: (id: number, status: InstructorAttendanceStatus) =>
       http.post<{ row: ScheduleRow }>(`/schedule/${id}/instructor-attendance`, { status }).then((r) => r.data),
+    // [TBO-64 2026-07-24] 회차 가격 책정(정산 연결 전) — null=해제. 매니저 이상.
+    setPayAmount: (id: number, amount: number | null) =>
+      http.put<{ row: ScheduleRow }>(`/schedule/${id}/pay-amount`, { amount }).then((r) => r.data),
     // 추천→배정·수동 추가 → { row, conflicts }. 충돌 시 409 → force로 재시도.
     create: (body: ScheduleCreateBody) =>
       http.post<{ row: ScheduleRow; conflicts: Conflict[] }>("/schedule", body).then((r) => r.data),
@@ -897,6 +900,9 @@ export const api = {
     // [TBO-62 ⑥ 2026-07-24] 강사용 preview/readiness 제거 — 강사는 지급 완료(paid) 내역만(서버 라우트 삭제).
     readiness: (params: { instructorId?: number; from?: string; to?: string } = {}) =>
       http.get<PayReadiness>("/payouts/readiness", { params }).then((r) => r.data),
+    // [TBO-64 2026-07-24] 시수 워크시트 — 회차별 출결·리포트·가격 분류·합계(매니저 이상).
+    worksheet: (instructorId: number, from: string, to: string) =>
+      http.get<PayoutWorksheet>("/payouts/worksheet", { params: { instructorId, from, to } }).then((r) => r.data),
     // [TBO-32 C4 2026-07-22] 미정산 감지·일괄 산정·확정 취소 — BE C1/C2 라우트 소비.
     uncovered: (months = 3) =>
       http.get<UncoveredPayoutEntry[]>("/payouts/uncovered", { params: { months } }).then((r) => r.data),
@@ -921,4 +927,30 @@ export const api = {
     reverse: (id: number, reason: string) =>
       http.post<{ payout: PayoutRow; transaction: LedgerTx }>(`/payouts/${id}/reverse`, { reason }).then((r) => r.data),
   },
+};
+
+// ── [TBO-64] 시수 워크시트 타입(BE payout-worksheet.policy 미러) ──
+export type WorksheetPricing = {
+  kind: 'auto' | 'manual' | 'excluded';
+  manualReasons: Array<'late' | 'report_incomplete' | 'roster_missing' | 'rate_missing'>;
+  excludedReason?: 'not_held' | 'instructor_absent' | 'payout_linked';
+  autoAmount: number | null;
+  overrideAmount: number | null;
+  effectiveAmount: number | null;
+};
+export type PayoutWorksheetRow = {
+  sessionId: number; sessionDate: string; startTime: string | null; durationMinutes: number;
+  courseId: number; courseName: string; hourlyRate: number | null; status: string;
+  instructorAttendance: string | null; payoutId: number | null;
+  participants: Array<{ studentId: number; name: string; attendance: string | null; reportApproval: string | null }>;
+  pricing: WorksheetPricing;
+};
+export type PayoutWorksheet = {
+  instructorId: number; periodStart: string; periodEnd: string;
+  rows: PayoutWorksheetRow[];
+  totals: {
+    sessionCount: number; includedCount: number; totalMinutes: number;
+    autoAmount: number; manualAmount: number; totalAmount: number;
+    unpricedCount: number; excludedCount: number;
+  };
 };

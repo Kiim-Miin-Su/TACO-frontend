@@ -125,6 +125,21 @@ export const usePayoutPreview = (instructorId: number | null, from: string, to: 
     enabled: can("finance.access") && instructorId != null && !!from && !!to,
   });
 };
+// [TBO-64 2026-07-24] 시수 워크시트 — 회차·출결·가격 분류·합계(매니저 이상). 출결·가격 mutation이
+//  qk.payouts/qk.schedule을 무효화하므로 자동 재계산된다.
+export const usePayoutWorksheet = (instructorId: number | null, from: string, to: string) => {
+  const { can } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.payouts.worksheet(instructorId ?? 0, from, to),
+    queryFn: () => api.payouts.worksheet(instructorId as number, from, to),
+    enabled: can("admin.area") && instructorId != null && !!from && !!to,
+  });
+};
+export const useSetSessionPayAmount = () =>
+  useMutation({
+    mutationFn: (v: { id: number; amount: number | null }) => api.schedule.setPayAmount(v.id, v.amount),
+    onSuccess: useInvalidator([qk.payouts.all, qk.schedule.all]),
+  });
 // [TBO-62 ⑥ 2026-07-24] useMyPayoutPreview 제거 — 강사 시수 미리보기는 관리자 전용(서버 라우트 삭제).
 const usePayReadiness = () => {
   const { scope, can } = useAccountAccess();

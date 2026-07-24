@@ -7,6 +7,7 @@
 import Link from 'next/link';
 import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3]
 import { Fragment, useCallback, useState } from 'react';
+import { PayoutWorksheet } from './PayoutWorksheet';
 import { Badge, ClickableTableRow, EmptyState, Field, LoadingState, PageHeader, PromptModal, SectionCard, TableWrap } from '@/components/ui';
 import {
   useSchedule, useCourses, useSubjects, useEnrollments, useStudents,
@@ -195,6 +196,9 @@ export function PayoutsView() {
           )}
         </form>
       </SectionCard>
+
+      {/* [TBO-64] 시수 워크시트 — 회차별 출결·리포트·금액 확정(강사·기간은 위 폼과 공유) */}
+      <PayoutWorksheet instructorId={instructorId ? Number(instructorId) : null} from={start} to={end} />
 
       {preview && preview.sessionCount > 0 && (() => {
         const courseOpts = Array.from(new Map(preview.lines.map((l) => [l.courseId, l.courseName])).entries());

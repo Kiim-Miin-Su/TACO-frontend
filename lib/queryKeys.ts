@@ -37,6 +37,7 @@ export const qk = {
     mine: (scope = "global") => ["payouts", "mine", scope] as const,
     preview: (instructorId: number, from: string, to: string) => ["payouts", "preview", instructorId, from, to] as const,
     previewMine: (scope: string, from: string, to: string) => ["payouts", "previewMine", scope, from, to] as const,
+    worksheet: (instructorId: number, from: string, to: string) => ["payouts", "worksheet", instructorId, from, to] as const, // [TBO-64]
     detail: (id: number) => ["payouts", "detail", id] as const, // [TBO-32 C4] 단건 상세(B7 규약)
     uncovered: (months: number) => ["payouts", "uncovered", months] as const, // [TBO-32 C4] 미정산 감지
     readiness: (scope = "global") => ["payouts", "readiness", scope] as const,
