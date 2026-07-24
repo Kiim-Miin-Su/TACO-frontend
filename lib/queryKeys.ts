@@ -15,6 +15,11 @@ export const qk = {
     resources: (scope = "global") => ["schedule", "resources", scope] as const,
     // [B7 E3] 상세 단건 — 루트("schedule") 하위라 기존 캘린더 명령 무효화가 자동 포함.
     detail: (id: number, scope = "global") => ["schedule", "detail", scope, id] as const,
+    // [TBO-56 C2b] 강사 출결 집계 — 종전 ad-hoc 키(["instructor-attendance-summary"])는 어떤
+    //  mutation도 무효화하지 않아 세션 출결 변경이 대시보드 위젯에 미반영(TBO-55 확정 갭 ②).
+    //  "schedule" 루트 하위로 편입 → invalidateCalendarCommand(qk.schedule.all)가 자동 커버.
+    instructorAttendanceSummary: (from?: string | null, to?: string | null, instructorId?: number | null) =>
+      ["schedule", "instructor-attendance-summary", from ?? null, to ?? null, instructorId ?? null] as const,
   },
   availability: {
     all: ["availability"] as const,

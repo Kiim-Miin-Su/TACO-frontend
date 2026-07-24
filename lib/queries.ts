@@ -214,7 +214,7 @@ export const useEntityAudit = (entity: string, entityId: number | null) => {
 export const useInstructorAttendanceSummary = (from?: string, to?: string, instructorId?: number) => {
   const { can } = useAccountAccess();
   return useQuery({
-    queryKey: ["instructor-attendance-summary", from ?? null, to ?? null, instructorId ?? null] as const,
+    queryKey: qk.schedule.instructorAttendanceSummary(from, to, instructorId), // [TBO-56 C2b] schedule 루트 편입 — 캘린더 명령 무효화 자동 커버
     queryFn: () => api.schedule.instructorAttendanceSummary(from, to, instructorId),
     enabled: can("admin.area") && !!from && !!to,
   });
@@ -633,9 +633,10 @@ export const useUpdateParentRelation = () => useMutation({
 export const useRemoveGuardian = () => useMutation({ mutationFn: api.parents.removeGuardian, onSuccess: useStudentAggregateMutationInvalidator() });
 
 // 결제
-export const useCreatePayment = () => useMutation({ mutationFn: api.payments.create, onSuccess: useInvalidator([qk.payments.all]) });
+// [TBO-56 C2b] 생성·정정도 매출 보고(미수금 포함) 입력이 바뀐다 — qk.revenue 무효화 누락(TBO-55 확정 갭 ①) 해소.
+export const useCreatePayment = () => useMutation({ mutationFn: api.payments.create, onSuccess: useInvalidator([qk.payments.all, qk.revenue.all]) });
 export const useUpdatePayment = () =>
-  useMutation({ mutationFn: (v: { id: number; patch: Parameters<typeof api.payments.update>[1] }) => api.payments.update(v.id, v.patch), onSuccess: useInvalidator([qk.payments.all]) });
+  useMutation({ mutationFn: (v: { id: number; patch: Parameters<typeof api.payments.update>[1] }) => api.payments.update(v.id, v.patch), onSuccess: useInvalidator([qk.payments.all, qk.revenue.all]) });
 // [TBO-54 C2] 수납·환불 = 원장·매출 파생까지 한 세트 무효화(qk.revenue — TBO-50 P1 갭 해소) + 콘솔 로그(PII 0).
 export const useMarkPaymentPaid = () => {
   const invalidate = useInvalidator([qk.payments.all, qk.transactions.all, qk.revenue.all]);
