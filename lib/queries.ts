@@ -27,6 +27,10 @@ import {
 import { canAccessFinance } from "@/lib/roles";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { WEB_ID_MIN } from "@/lib/validation"; // [TBO-31 C2 2026-07-16] 아이디 라이브 체크 최소 길이
+import { logger } from "@/lib/log";
+
+// [TBO-54 C2 대표 지시 콘솔 로깅] 머니 액션 관측 — id·금액·결과만(PII 0).
+const moneyLog = logger("money");
 import type { Instructor, SessionReport } from "@/types";
 import { useState } from "react";
 
@@ -632,7 +636,21 @@ export const useRemoveGuardian = () => useMutation({ mutationFn: api.parents.rem
 export const useCreatePayment = () => useMutation({ mutationFn: api.payments.create, onSuccess: useInvalidator([qk.payments.all]) });
 export const useUpdatePayment = () =>
   useMutation({ mutationFn: (v: { id: number; patch: Parameters<typeof api.payments.update>[1] }) => api.payments.update(v.id, v.patch), onSuccess: useInvalidator([qk.payments.all]) });
-export const useMarkPaymentPaid = () => useMutation({ mutationFn: api.payments.markPaid, onSuccess: useInvalidator([qk.payments.all, qk.transactions.all]) });
+// [TBO-54 C2] 수납·환불 = 원장·매출 파생까지 한 세트 무효화(qk.revenue — TBO-50 P1 갭 해소) + 콘솔 로그(PII 0).
+export const useMarkPaymentPaid = () => {
+  const invalidate = useInvalidator([qk.payments.all, qk.transactions.all, qk.revenue.all]);
+  return useMutation({
+    mutationFn: api.payments.markPaid,
+    onSuccess: (row) => { moneyLog.info(`action=markPaid payment=${row.id} amount=${row.paidAmount} result=paid`); return invalidate(); },
+  });
+};
+export const useRefundPayment = () => {
+  const invalidate = useInvalidator([qk.payments.all, qk.transactions.all, qk.revenue.all]);
+  return useMutation({
+    mutationFn: api.payments.refund,
+    onSuccess: (row) => { moneyLog.info(`action=refund payment=${row.id} result=refunded`); return invalidate(); },
+  });
+};
 
 // 지출(승인 워크플로우)
 export const useCreateExpense = () => useMutation({ mutationFn: api.expenses.create, onSuccess: useInvalidator([qk.expenses.all]) });

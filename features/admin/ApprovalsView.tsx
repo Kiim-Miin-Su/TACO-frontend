@@ -1,6 +1,8 @@
 'use client';
 // [B6 C3 2026-07-16] 승인 행 클릭 진입 — 수기 <tr onClick> 제거, ClickableTableRow(onActivate)로 통일(키보드 접근 포함).
 import { useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { qk } from '@/lib/queryKeys';
 import { ClickableTableRow, ConfirmModal, EmptyState, SectionCard, TableWrap } from '@/components/ui';
 import {
   useInstructors,
@@ -175,13 +177,20 @@ export function ApprovalsView() {
   // [E0.6 M 2026-07-16] 보고서·지출·페이 승인/반려 — 성공/실패 피드백 통일(가입 승인 msg 패턴 재사용).
   //  종전엔 mutate가 조용히 끝나 실패(권한·409 이중 처리)가 화면에 드러나지 않았다.
   const [sectionMsg, setSectionMsg] = useState<Partial<Record<'reports' | 'expenses' | 'payouts', string>>>({});
+  const queryClient = useQueryClient();
   const feedback = (key: 'reports' | 'expenses' | 'payouts', okMsg: string) => ({
     onSuccess: () => setSectionMsg((m) => ({ ...m, [key]: okMsg })),
     onError: (error: unknown) => {
       const status = (error as { response?: { status?: number } }).response?.status;
+      // [TBO-54 C2] 409 = 다른 기기가 먼저 결재(백엔드 CAS) — 안내 문구가 참이 되도록 실제로 invalidate.
+      if (status === 409) {
+        void queryClient.invalidateQueries({ queryKey: qk.reports.all });
+        void queryClient.invalidateQueries({ queryKey: qk.expenses.all });
+        void queryClient.invalidateQueries({ queryKey: qk.payouts.all });
+      }
       setSectionMsg((m) => ({
         ...m,
-        [key]: status === 409 ? '이미 처리된 건입니다(목록이 갱신되었습니다).'
+        [key]: status === 409 ? '다른 기기에서 먼저 처리되었습니다 — 목록을 최신 상태로 새로고침했습니다.'
           : status === 403 ? '처리 권한이 없습니다(대표 전용).'
             : '처리에 실패했습니다. 다시 시도해 주세요.',
       }));

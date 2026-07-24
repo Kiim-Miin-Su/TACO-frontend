@@ -1,27 +1,53 @@
 'use client';
 // [B7 E3 2026-07-16] 주 엔티티 단건화(usePayment(id) + DetailStates) — full-list find 제거(EP16)
+// [TBO-54 C2 2026-07-23 대표 지시 "원장 수정·반려 주의"] 수납·환불은 **원장 기록 동작** —
+//  확인 모달(금액 명시)로만 실행, 환불 버튼 신설(종전 API만 있고 UI 없음), 409(동시 변경)는
+//  "다른 기기에서 먼저 처리됨" 안내 + 자동 새로고침(invalidate)으로 복구한다.
 import { useState } from 'react';
 import Link from 'next/link';
-import { Badge, DetailStates, Field, SectionCard } from '@/components/ui';
-import { usePayment, useStudents, useEnrollments, useCourses, useUpdatePayment, useMarkPaymentPaid } from '@/lib/queries';
+import { useQueryClient } from '@tanstack/react-query';
+import { Badge, ConfirmModal, DetailStates, Field, SectionCard } from '@/components/ui';
+import { usePayment, useStudents, useEnrollments, useCourses, useUpdatePayment, useMarkPaymentPaid, useRefundPayment } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
+import { qk } from '@/lib/queryKeys';
+import { apiErrorMessage } from '@/lib/api-error';
 import type { PaymentMethod, PaymentStatus } from '@/types';
 import { dateOnly, won } from '@/lib/format';
 import { statusLabel, statusTone, methodLabel, METHODS, STATUSES } from './labels';
 
+const isConflict = (caught: unknown): boolean =>
+  (caught as { response?: { status?: number } })?.response?.status === 409;
+
 export function PaymentDetailView({ paymentId }: { paymentId: number }) {
   const finance = useAccountAccess().can('finance.access');
   const paymentQuery = usePayment(paymentId);
+  const queryClient = useQueryClient();
   const { data: students = [] } = useStudents();
   const { data: enrollments = [] } = useEnrollments();
   const { data: courses = [] } = useCourses();
   const updatePayment = useUpdatePayment();
   const markPaid = useMarkPaymentPaid();
+  const refund = useRefundPayment();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ amount: '', paymentMethod: '', dueAt: '', status: '' as string });
+  const [confirming, setConfirming] = useState<'pay' | 'refund' | null>(null);
   // [E0.6 M] 금전 데이터 저장 신뢰성 — 실패 시 편집 유지+에러 표시, 저장 중 비활성.
   const [saveError, setSaveError] = useState<string | null>(null);
-  const saving = updatePayment.isPending || markPaid.isPending;
+  const [notice, setNotice] = useState<string | null>(null); // 409 등 비파괴 안내(자동 복구됨)
+  const saving = updatePayment.isPending || markPaid.isPending || refund.isPending;
+
+  // [TBO-54 C2] 409 = 다른 인스턴스/기기가 먼저 전이 — 오류가 아니라 "최신화 필요" 안내 + 자동 invalidate.
+  const recoverFromConflict = (caught: unknown, fallback: string) => {
+    if (isConflict(caught)) {
+      setNotice('다른 기기에서 먼저 처리되었습니다 — 최신 상태로 새로고침했습니다.');
+      setSaveError(null);
+      void queryClient.invalidateQueries({ queryKey: qk.payments.all });
+      void queryClient.invalidateQueries({ queryKey: qk.transactions.all });
+    } else {
+      setNotice(null);
+      setSaveError(apiErrorMessage(caught, fallback));
+    }
+  };
 
   // usePayment는 finance.access 게이트(enabled) — 비-finance는 isPending이 계속 true라
   // DetailStates보다 **앞에서** 차단해야 무한 skeleton이 아니라 권한 안내가 보인다.
@@ -41,6 +67,8 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
           const student = students.find((s) => s.id === payment.studentId);
           const enrollment = payment.enrollmentId ? enrollments.find((e) => e.id === payment.enrollmentId) : undefined;
           const course = enrollment ? courses.find((c) => c.id === enrollment.courseId) : undefined;
+          const refundable = payment.status === 'paid';
+          const payable = payment.status === 'pending' || payment.status === 'overdue';
 
           const startEdit = () => {
             setDraft({
@@ -49,6 +77,7 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
               dueAt: payment.dueAt ?? '',
               status: payment.status,
             });
+            setNotice(null);
             setEditing(true);
           };
           // [E0.6 M 2026-07-16] 종전엔 성공/실패와 무관하게 즉시 편집을 닫아 실패가 조용히 사라졌다(금전 데이터).
@@ -65,15 +94,14 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
                   dueAt: draft.dueAt || undefined,
                 },
               });
-              // 상태를 '수납완료'로 바꿨다면 전용 수납 처리(markPaid)로 원장 반영.
+              // 상태를 '완납'으로 바꿨다면 전용 수납 처리(markPaid)로 원장 반영.
               if ((draft.status as PaymentStatus) === 'paid' && payment.status !== 'paid') {
                 await markPaid.mutateAsync(payment.id);
               }
               setEditing(false);
             } catch (caught) {
-              const err = caught as { response?: { data?: { message?: string | string[] } } };
-              const message = err.response?.data?.message;
-              setSaveError(Array.isArray(message) ? message.join(' ') : message ?? '저장하지 못했습니다. 다시 시도해 주세요.');
+              if (isConflict(caught)) { setEditing(false); recoverFromConflict(caught, ''); return; }
+              setSaveError(apiErrorMessage(caught, '저장하지 못했습니다. 다시 시도해 주세요.'));
             }
           };
 
@@ -98,14 +126,15 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
                   ) : (
                     <div className="flex gap-1.5">
                       <button className="btn btn-sm" onClick={startEdit}>수정</button>
-                      {payment.status === 'pending' && (
-                        <button
-                          className="btn btn-sm btn-primary"
-                          disabled={saving}
-                          onClick={() => markPaid.mutate(payment.id, {
-                            onError: () => setSaveError('수납 처리에 실패했습니다. 다시 시도해 주세요.'),
-                          })}
-                        >수납 처리</button>
+                      {payable && (
+                        <button className="btn btn-sm btn-primary" disabled={saving} onClick={() => { setNotice(null); setConfirming('pay'); }}>
+                          수납 처리
+                        </button>
+                      )}
+                      {refundable && (
+                        <button className="btn btn-sm text-danger" disabled={saving} onClick={() => { setNotice(null); setConfirming('refund'); }}>
+                          환불
+                        </button>
                       )}
                     </div>
                   )
@@ -150,8 +179,41 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
                   </div>
                 )}
               </SectionCard>
+              {notice && <p className="text-body text-fg-muted" role="status">{notice}</p>}
               {saveError && <p className="text-body text-danger" role="alert">{saveError}</p>}
-              <p className="text-caption text-fg-subtle">수납 처리하면 입·출금 원장과 대시보드 입금/미수금에 반영됩니다.</p>
+              <p className="text-caption text-fg-subtle">
+                수납·환불은 입·출금 원장에 기록됩니다. 원장 기록은 삭제되지 않으며, 정정은 반대 기록(환불)로만 가능합니다.
+              </p>
+
+              {confirming === 'pay' && (
+                <ConfirmModal
+                  title="수납 처리"
+                  message={`${student?.name ?? '학생'}의 청구 ${won(payment.amount)}을(를) 수납 처리하고 원장에 입금 기록합니다. 진행할까요?`}
+                  confirmLabel={`${won(payment.amount)} 수납`}
+                  onClose={() => setConfirming(null)}
+                  onConfirm={() => {
+                    setConfirming(null);
+                    markPaid.mutate(payment.id, {
+                      onError: (caught) => recoverFromConflict(caught, '수납 처리에 실패했습니다. 다시 시도해 주세요.'),
+                    });
+                  }}
+                />
+              )}
+              {confirming === 'refund' && (
+                <ConfirmModal
+                  title="환불 (원장 출금 기록)"
+                  message={`수납액 ${won(payment.paidAmount ?? payment.amount)} 전액을 환불하고 원장에 출금 기록합니다. 원장 기록은 삭제되지 않습니다. 진행할까요?`}
+                  confirmLabel={`${won(payment.paidAmount ?? payment.amount)} 환불`}
+                  danger
+                  onClose={() => setConfirming(null)}
+                  onConfirm={() => {
+                    setConfirming(null);
+                    refund.mutate(payment.id, {
+                      onError: (caught) => recoverFromConflict(caught, '환불 처리에 실패했습니다. 다시 시도해 주세요.'),
+                    });
+                  }}
+                />
+              )}
             </>
           );
         }}
