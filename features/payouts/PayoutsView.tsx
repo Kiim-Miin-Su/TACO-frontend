@@ -28,6 +28,7 @@ import { BulkGenerateModal } from '@/features/payouts/BulkGenerateModal';
 export function PayoutsView() {
   const access = useAccountAccess();
   const finance = access.can('finance.access');
+  const adminArea = access.can('admin.area'); // [감사 1-A 2026-07-24] 매니저 시수 표면(BE ADMIN 허용인데 UI 부재로 사장)
   const instructorSelf = access.can('instructor.self');
   // 정산 근거를 사람이 읽을 수 있게 — 세션→시각, 코스→과목, 코스→수강 학생 조인(Query 훅).
   const { data: classSessions = [] } = useSchedule();
@@ -102,11 +103,38 @@ export function PayoutsView() {
   // [TBO-32 C4] 월 일괄 산정 모달 — UncoveredBanner·상단 버튼 양쪽에서 연다.
   const [bulkOpen, setBulkOpen] = useState(false);
 
-  if (!finance && !instructorSelf) {
+  if (!finance && !adminArea && !instructorSelf) {
     return (
       <div className="p-6 max-w-page mx-auto">
         <PageHeader title="강사 페이" />
-        <EmptyState message="강사 페이는 대표와 본인 강사만 조회할 수 있습니다." />
+        <EmptyState message="강사 페이는 매니저 이상과 본인 강사만 조회할 수 있습니다." />
+      </div>
+    );
+  }
+
+  // [감사 1-A 해소 2026-07-24] 매니저·admin = 시수 워크시트 표면(대표 지시 TBO-62 ⑥ "매니저 이상만
+  //  시수 조회" — 종전엔 BE(worksheet·pay-amount ADMIN)만 열려 있고 UI 경로가 없어 사장됐던 실갭).
+  //  회차별 출결 CRUD·금액 책정까지 가능(BE 권한 그대로). 정산서 생성·확정·지급·원장은 대표 전용 유지.
+  if (adminArea && !finance) {
+    return (
+      <div className="p-6 max-w-page mx-auto space-y-6">
+        <PageHeader
+          title="시수 워크시트"
+          sub="회차별 출결·리포트·금액 확정(매니저) · 정산서 생성·확정·지급은 대표 전용"
+        />
+        <SectionCard title="강사 · 기간 선택">
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+            <Field label="강사 *">
+              <select className="input" value={instructorId} onChange={(e) => setInstructorId(e.target.value)}>
+                <option value="">선택</option>
+                {instructors.map((i) => (<option key={i.id} value={i.id}>{i.name}</option>))}
+              </select>
+            </Field>
+            <Field label="시작일"><input type="date" className="input" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
+            <Field label="종료일"><input type="date" className="input" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
+          </div>
+        </SectionCard>
+        <PayoutWorksheet instructorId={instructorId ? Number(instructorId) : null} from={start} to={end} />
       </div>
     );
   }

@@ -8,13 +8,15 @@
 "use client";
 import { Fragment, useMemo, useState } from "react";
 import Link from "next/link";
-import { Badge, DetailStates, EmptyState, SectionCard, StatCard, type Tone } from "@/components/ui";
+import { Badge, ConfirmModal, DetailStates, EmptyState, Field, ModalShell, SectionCard, StatCard, type Tone } from "@/components/ui";
+import { useRouter } from "next/navigation";
 import {
-  useScheduleSession, useEnrollments, useStudents,
-  useAttendance, useUpdateSchedule, useUpsertAttendance, useMarkMyInstructorAttendance,
+  useScheduleSession, useEnrollments, useStudents, useRooms,
+  useAttendance, useUpdateSchedule, useRemoveSchedule, useUpsertAttendance, useMarkMyInstructorAttendance,
 } from "@/lib/queries";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { countsForPay } from "@/lib/domain/schedule";
+import { payoutHours as hoursLabel } from "@/features/payouts/payout-shared"; // [감사 3] 시수 표기 단일화
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from "@/features/attendance/AttMarker";
 import { SessionFeedbackForm } from "@/features/reports/SessionFeedbackForm";
 import type { AttendanceStatus, InstructorAttendanceStatus } from "@/types";
@@ -22,7 +24,7 @@ import { shortDate } from "@/lib/format";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 
 // [TBO-34 C3] 상태 표기 = session-shared 단일 진실원(사본 제거)
-import { sessionStatusLabel as statusLabelOf, sessionStatusTone as statusToneOf } from "./session-shared";
+import { SESSION_STATUS_LABEL as SESSION_STATUS_LABEL_ENTRIES, sessionStatusLabel as statusLabelOf, sessionStatusTone as statusToneOf } from "./session-shared";
 
 export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   const access = useAccountAccess();
@@ -32,9 +34,12 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   const { data: enrollments = [] } = useEnrollments();
   const { data: students = [] } = useStudents();
   const { data: attendance = [] } = useAttendance();
+  const router = useRouter();
   const updateSchedule = useUpdateSchedule();
+  const removeSchedule = useRemoveSchedule(); // [TBO-58 P2] 상세에서 삭제(soft delete·undo 스택 편입)
   const markMine = useMarkMyInstructorAttendance(); // [TBO-62 ④] 강사 본인 최초 체크 전용
   const upsert = useUpsertAttendance();
+  const [manageModal, setManageModal] = useState<'edit' | 'remove' | null>(null); // [TBO-58 P2]
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const toggle = (id: number) => setExpanded((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -77,11 +82,31 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                 </p>
               </div>
 
+              {/* [TBO-58 P2] 세션 편집·삭제 — 종전엔 캘린더로만 우회 가능(검증①). BE PATCH/DELETE 재사용:
+                  회계 영향 ack 모달·자동 전이·undo 스택(TBO-63)까지 캘린더와 동일 규약. 매니저 이상만. */}
+              {admin && (
+                <div className="flex gap-2">
+                  <button type="button" className="btn btn-sm" onClick={() => setManageModal('edit')}>수업 정보 수정</button>
+                  <button type="button" className="btn btn-sm text-danger" onClick={() => setManageModal('remove')}>수업 삭제</button>
+                </div>
+              )}
+              {manageModal === 'edit' && <SessionEditModal session={session} onClose={() => setManageModal(null)} />}
+              {manageModal === 'remove' && (
+                <ConfirmModal
+                  title="수업 삭제"
+                  message={`${shortDate(session.sessionDate)} ${session.courseName || '수업'} 회차를 삭제할까요? (소프트 삭제 — cmd/ctrl+Z 복구 가능)`}
+                  confirmLabel="삭제"
+                  danger
+                  onClose={() => setManageModal(null)}
+                  onConfirm={() => removeSchedule.mutate({ id: session.id }, { onSuccess: () => router.push('/sessions') })}
+                />
+              )}
+
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <StatCard label="학생" value={`${roster.length}명`} />
                 <StatCard label="회차 상태" value={statusLabelOf(session.status) ?? session.status} />
                 <StatCard label="강사 출결" value={session.instructorAttendance ? (INSTRUCTOR_ATT_OPTIONS.find((o) => o.value === session.instructorAttendance)?.label ?? "—") : "미표시"} />
-                <StatCard label="시수 인정" value={paid ? `${Math.round((session.durationMinutes / 60) * 100) / 100}h` : "제외"} tone={paid ? "accent" : undefined} />
+                <StatCard label="시수 인정" value={paid ? hoursLabel(session.durationMinutes) : "제외"} tone={paid ? "accent" : undefined} />
               </div>
 
               {/* ① 강사 출결 — 매니저 CRUD + 강사 본인 최초 1회 체크(TBO-62 ④) — AttMarker 재사용 */}
@@ -137,5 +162,80 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
       </DetailStates>
       <AccountingImpactModal prompt={updateSchedule.accountingPrompt} onClose={updateSchedule.dismissAccountingPrompt} onConfirm={updateSchedule.confirmAccountingImpact} />
     </div>
+  );
+}
+
+// [TBO-58 P2] 수업 정보 수정 모달 — 시간·강의실·상태·주제(요구 명시 필드). useUpdateSchedule 재사용이라
+//  회계 영향 ack(409→모달)·undo 캡처·캐시 무효화가 캘린더 편집과 완전 동일하게 적용된다.
+function SessionEditModal({ session, onClose }: {
+  session: { id: number; sessionDate: string; startTime?: string | null; durationMinutes: number; roomId?: number | null; status: string; topic?: string | null };
+  onClose: () => void;
+}) {
+  const updateSchedule = useUpdateSchedule();
+  const { data: rooms = [] } = useRooms();
+  const [sessionDate, setSessionDate] = useState(session.sessionDate);
+  const [startTime, setStartTime] = useState(session.startTime ?? '');
+  const [durationMinutes, setDurationMinutes] = useState(String(session.durationMinutes));
+  const [roomId, setRoomId] = useState(session.roomId != null ? String(session.roomId) : '');
+  const [status, setStatus] = useState(session.status);
+  const [topic, setTopic] = useState(session.topic ?? '');
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const minutes = Number(durationMinutes);
+    if (!sessionDate) return setError('날짜를 입력해 주세요.');
+    if (!Number.isInteger(minutes) || minutes <= 0) return setError('수업 시간을 분 단위로 입력해 주세요.');
+    updateSchedule.mutate({
+      id: session.id,
+      body: {
+        sessionDate,
+        startTime: startTime || undefined,
+        durationMinutes: minutes,
+        ...(roomId ? { roomId: Number(roomId) } : {}),
+        status: status as never,
+        topic: topic.trim() || undefined,
+      },
+    }, {
+      onSuccess: onClose,
+      onError: (caught) => {
+        // 회계 영향 ack(409 ACCOUNTING_IMPACT_ACK_REQUIRED)는 useUpdateSchedule 래퍼가 code 기반으로
+        //  가로채 모달을 띄우므로 여기 도달하지 않는다(감사 5-A: 메시지 includes 분기는 죽은 코드라 제거).
+        const err = caught as { response?: { data?: { message?: string | string[] } } };
+        const message = err.response?.data?.message;
+        setError(Array.isArray(message) ? message.join(' ') : message ?? '수정하지 못했습니다(충돌·검증을 확인하세요).');
+      },
+    });
+  };
+
+  return (
+    <ModalShell title="수업 정보 수정" onClose={onClose}>
+      <form onSubmit={submit} className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="날짜 *"><input type="date" className="input" value={sessionDate} onChange={(e) => setSessionDate(e.target.value)} /></Field>
+        <Field label="시작 시각"><input type="time" className="input" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></Field>
+        <Field label="수업 시간(분) *"><input type="number" min={10} step={10} className="input" value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} /></Field>
+        <Field label="강의실">
+          <select className="input" value={roomId} onChange={(e) => setRoomId(e.target.value)}>
+            <option value="">미지정</option>
+            {rooms.map((room) => (<option key={room.id} value={room.id}>{room.name}</option>))}
+          </select>
+        </Field>
+        <Field label="상태">
+          <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
+            {Object.entries(SESSION_STATUS_LABEL_ENTRIES).map(([value, label]) => (<option key={value} value={value}>{label}</option>))}
+          </select>
+        </Field>
+        <Field label="주제"><input className="input" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="수업 주제" /></Field>
+        <div className="sm:col-span-2 flex items-center justify-end gap-3 pt-1">
+          {error && <p className="text-body text-danger mr-auto" role="alert">{error}</p>}
+          <button type="button" className="btn" onClick={onClose}>취소</button>
+          <button type="submit" className="btn btn-primary" disabled={updateSchedule.isPending}>
+            {updateSchedule.isPending ? '저장 중...' : '저장'}
+          </button>
+        </div>
+      </form>
+      <AccountingImpactModal prompt={updateSchedule.accountingPrompt} onClose={updateSchedule.dismissAccountingPrompt} onConfirm={updateSchedule.confirmAccountingImpact} />
+    </ModalShell>
   );
 }

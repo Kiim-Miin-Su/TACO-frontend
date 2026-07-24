@@ -335,7 +335,10 @@ type MetaConfig = { meta?: { seq: number; start: number } };
 
 http.interceptors.request.use((cfg) => {
   (cfg as unknown as MetaConfig).meta = { seq: ++reqSeq, start: Date.now() };
-  apiLog.debug(`→ ${cfg.method?.toUpperCase()} ${safeUrlForLog(cfg.url)}`, safeLogValue(cfg.params ?? cfg.data ?? ""));
+  // [TBO-58 P2] rid 상관관계 — 서버 로그와 브라우저 콘솔을 같은 rid로 교차 대조(BE request-context 수용 형식).
+  const rid = `fe-${Date.now().toString(36)}-${reqSeq}`;
+  cfg.headers.set?.("X-Request-Id", rid);
+  apiLog.debug(`→ ${cfg.method?.toUpperCase()} ${safeUrlForLog(cfg.url)} rid=${rid}`, safeLogValue(cfg.params ?? cfg.data ?? ""));
   return cfg;
 });
 http.interceptors.response.use(
@@ -349,8 +352,9 @@ http.interceptors.response.use(
     if (axios.isCancel(err)) return Promise.reject(err);
     const status = err?.response?.status ?? "ERR";
     const meta = (err?.config as unknown as MetaConfig)?.meta;
+    const errRid = String(err?.response?.headers?.["x-request-id"] ?? "");
     apiLog.error(
-      `✗ ${status} ${err?.config?.method?.toUpperCase() ?? ""} ${safeUrlForLog(err?.config?.url)} ${meta ? `${Date.now() - meta.start}ms #${meta.seq}` : ""}`,
+      `✗ ${status} ${err?.config?.method?.toUpperCase() ?? ""} ${safeUrlForLog(err?.config?.url)} ${meta ? `${Date.now() - meta.start}ms #${meta.seq}` : ""}${errRid ? ` rid=${errRid}` : ""}`,
       safeLogValue(err?.response?.data ?? err?.message),
     );
     // [대표 지시 ④] 401 → refresh 회전으로 조용한 갱신 시도(1회) — 성공 시 원 요청 재실행.
@@ -637,6 +641,9 @@ export const api = {
     list: () => http.get<Expense[]>("/expenses").then((r) => r.data),
     get: (id: number) => http.get<Expense>(`/expenses/${id}`).then((r) => r.data), // [B7 E3] 상세 단건
     create: (input: CreateExpenseInput) => http.post<Expense>("/expenses", input).then((r) => r.data),
+    // [TBO-58 P2] 오기입 정정(requested만 — 승인 후엔 서버 400, 원장 정합) + 철회(soft delete)
+    update: (id: number, patch: Partial<CreateExpenseInput>) => http.patch<Expense>(`/expenses/${id}`, patch).then((r) => r.data),
+    remove: (id: number) => http.delete<{ id: number; deleted: true }>(`/expenses/${id}`).then((r) => r.data),
     approve: (id: number) => http.post<Expense>(`/expenses/${id}/approve`, {}).then((r) => r.data),
     // 반려 사유 **필수**(Q2 2026-07-06 — 반려류 패턴 통일). 서버 저장(Expense.rejectedReason).
     reject: (id: number, reason: string) => http.post<Expense>(`/expenses/${id}/reject`, { reason }).then((r) => r.data),
@@ -891,6 +898,7 @@ export const api = {
   reports: {
     list: (sessionId?: number) =>
       http.get<SessionReport[]>("/reports", { params: sessionId ? { sessionId } : undefined }).then((r) => r.data),
+    get: (id: number) => http.get<SessionReport>(`/reports/${id}`).then((r) => r.data), // [TBO-58 P2] 상세 딥링크
     create: (body: { sessionId: number; studentId: number; instructorId?: number; content: string; homework?: string; status?: "draft" | "submitted" }) =>
       http.post<SessionReport>("/reports", body).then((r) => r.data),
     // [E0.6 H1] 기존 보고서 본문/숙제 수정(임시 저장) — 승인 전까지, 본인 보고서만.

@@ -4,8 +4,8 @@
 //  재사용처: ReportWriteView(인라인 목록)·FeedbackFormView(전용 페이지)·세션 상세 허브(20-3).
 'use client';
 import { useState } from 'react';
-import { Badge, PromptModal, type Tone } from '@/components/ui';
-import { useReports, useReportTemplates, useCreateReportTemplate, useCreateReport, useSubmitReport, useUpdateReport } from '@/lib/queries';
+import { Badge, ModalShell, PromptModal, type Tone } from '@/components/ui';
+import { useReports, useReportTemplates, useCreateReportTemplate, useRemoveReportTemplate, useCreateReport, useSubmitReport, useUpdateReport } from '@/lib/queries';
 import type { ClassSession, ReportStatus, Student } from '@/types';
 
 const reportTone: Record<ReportStatus, Tone> = { draft: 'neutral', submitted: 'accent', sent: 'success' };
@@ -40,6 +40,7 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
     if (t.homework) setHomework((h) => h || t.homework!);
   };
   const [templateOpen, setTemplateOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false); // [TBO-58 P2] 템플릿 삭제 모달
   const saveTemplate = (name: string) => {
     setTemplateOpen(false);
     if (name.trim() && content.trim()) createTemplate.mutate({ name: name.trim(), content, homework: homework || undefined });
@@ -104,13 +105,16 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
         </div>
       ) : (
         <>
-          {/* 템플릿 적용/저장 */}
+          {/* 템플릿 적용/저장/관리 — [TBO-58 P2] 삭제 UI(BE DELETE 기구현, 훅·버튼만 부재였던 갭) */}
           <div className="flex items-center gap-2 mb-2">
             <select className="input h-8 w-44 text-caption" value="" onChange={(e) => e.target.value && applyTemplate(Number(e.target.value))}>
               <option value="">템플릿 적용…</option>
               {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
             <button type="button" className="btn btn-sm" onClick={() => setTemplateOpen(true)} disabled={!content.trim()}>현재 내용을 템플릿으로</button>
+            {templates.length > 0 && (
+              <button type="button" className="btn btn-sm" onClick={() => setManageOpen(true)}>템플릿 관리</button>
+            )}
           </div>
           <textarea
             className="input h-24 py-2 leading-relaxed"
@@ -143,8 +147,45 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
               onSubmit={(v) => saveTemplate(v.name)}
             />
           )}
+          {manageOpen && <TemplateManageModal onClose={() => setManageOpen(false)} />}
         </>
       )}
     </div>
+  );
+}
+
+// [TBO-58 P2] 템플릿 관리(삭제) — 공용 자산이라 목록·삭제 모두 전 직원(soft delete — DB 이력 보존).
+//  2단계 확인: 행의 '삭제' 클릭 → 같은 행이 '정말 삭제' 확인 버튼으로 바뀐다(모달 위 모달 회피).
+function TemplateManageModal({ onClose }: { onClose: () => void }) {
+  const { data: templates = [] } = useReportTemplates();
+  const removeTemplate = useRemoveReportTemplate();
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+  return (
+    <ModalShell title="리포트 템플릿 관리" onClose={onClose}>
+      <div className="p-2 max-h-80 overflow-y-auto">
+        {templates.length === 0 ? (
+          <p className="p-3 text-body text-fg-subtle">템플릿이 없습니다.</p>
+        ) : templates.map((t) => (
+          <div key={t.id} className="flex items-center gap-2 px-2 py-1.5 border-b border-line-muted last:border-b-0">
+            <div className="min-w-0 flex-1">
+              <div className="text-body font-medium truncate">{t.name}</div>
+              <div className="text-caption text-fg-subtle truncate">{t.content}</div>
+            </div>
+            {confirmId === t.id ? (
+              <>
+                <button type="button" className="btn btn-sm btn-danger" disabled={removeTemplate.isPending}
+                  onClick={() => removeTemplate.mutate(t.id, { onSuccess: () => setConfirmId(null) })}>
+                  정말 삭제
+                </button>
+                <button type="button" className="btn btn-sm" onClick={() => setConfirmId(null)}>취소</button>
+              </>
+            ) : (
+              <button type="button" className="btn btn-sm text-danger" onClick={() => setConfirmId(t.id)}>삭제</button>
+            )}
+          </div>
+        ))}
+      </div>
+      <p className="px-4 pb-3 text-caption text-fg-subtle">템플릿은 강사 공용 자산입니다 — 삭제해도 이미 작성된 리포트에는 영향이 없습니다.</p>
+    </ModalShell>
   );
 }

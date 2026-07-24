@@ -9,13 +9,16 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Badge, EmptyState, LoadingState, SectionCard, TableWrap, type Tone } from '@/components/ui';
 import { usePayoutWorksheet, useSetSessionPayAmount, useUpdateSchedule, useUpsertAttendance } from '@/lib/queries';
+import { won } from '@/lib/format';
+import { payoutHours as hoursOf } from '@/features/payouts/payout-shared';
 import type { PayoutWorksheetRow } from '@/lib/api';
 import type { AttendanceStatus, InstructorAttendanceStatus } from '@/types';
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from '@/features/attendance/AttMarker';
 import { AccountingImpactModal } from '@/components/AccountingImpactModal';
 
-const won = (v: number) => `₩${v.toLocaleString()}`;
-const hoursOf = (min: number) => `${Math.round((min / 60) * 100) / 100}h`;
+// [감사 3·5 해소 2026-07-24] 지역 won(toLocaleString — SSR 하이드레이션 금지 규약 위반)·hoursOf
+//  (2자리 반올림 — payoutHours 1자리와 화면 간 불일치) 사본 제거 → format.won·payout-shared 소비.
+
 
 const MANUAL_REASON_LABEL: Record<string, string> = {
   late: '지각',
@@ -118,7 +121,7 @@ export function PayoutWorksheet({ instructorId, from, to }: { instructorId: numb
                     </td>
                     <td>
                       <span className="font-medium">{row.courseName}</span>
-                      {row.hourlyRate != null && <span className="text-caption text-fg-subtle ml-1">₩{row.hourlyRate.toLocaleString()}/h</span>}
+                      {row.hourlyRate != null && <span className="text-caption text-fg-subtle ml-1">{won(row.hourlyRate)}/h</span>}
                       {row.pricing.kind === 'manual' && (
                         <span className="block text-caption text-warning">
                           {row.pricing.manualReasons.map((reason) => MANUAL_REASON_LABEL[reason] ?? reason).join(' · ')} — 책정 필요

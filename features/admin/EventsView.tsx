@@ -5,9 +5,9 @@
 //  [B6 C2] 인라인 useMutation(api.events.create 사설 정의) 제거 — 중앙 훅만 사용(E1 불변식 2).
 'use client';
 import { useState } from 'react';
-import { Badge, SectionCard, EmptyState, LoadingState, TableWrap, ConfirmModal, PromptModal } from '@/components/ui';
+import { Badge, SectionCard, EmptyState, LoadingState, TableWrap, ConfirmModal, ModalShell } from '@/components/ui';
 import { useAcademyEvents, useCreateEvent, useRemoveEvent, useUpdateEvent } from '@/lib/queries';
-import type { EventType, EventPriority } from '@/types';
+import type { AcademyEvent, EventType, EventPriority } from '@/types';
 import { AdminGuard, AdminHeader } from './AdminShell';
 import { Field } from '@/components/ui';
 import { eventLabel, eventTone, EVENT_TYPES, priorityLabel, EVENT_PRIORITIES } from './labels';
@@ -15,9 +15,9 @@ import { eventLabel, eventTone, EVENT_TYPES, priorityLabel, EVENT_PRIORITIES } f
 export function EventsView() {
   const { data: events = [], isPending: loading } = useAcademyEvents(); // [E0.6 H2]
   // [TBO-29D 요구 ⑥] 매니저 이상 수정/삭제 — 제목 수정은 PromptModal, 삭제는 ConfirmModal(soft delete).
-  const update = useUpdateEvent();
   const removeEvent = useRemoveEvent();
-  const [editing, setEditing] = useState<{ id: number; title: string } | null>(null);
+  // [TBO-58 P2] 전체 필드 수정 — 종전 PromptModal은 제목만 patch 가능(검증① '이벤트 부분수정' 갭).
+  const [editing, setEditing] = useState<AcademyEvent | null>(null);
   const [removing, setRemoving] = useState<{ id: number; title: string } | null>(null);
   return (
     <AdminGuard>
@@ -41,7 +41,7 @@ export function EventsView() {
                   <td>{e.priority === 'high' ? <Badge tone="danger">★ 중요</Badge> : <span className="text-fg-muted">{priorityLabel[e.priority]}</span>}</td>
                   <td className="mono text-fg-muted">{e.startDate}{e.endDate !== e.startDate ? ` ~ ${e.endDate}` : ''}</td>
                   <td className="text-right whitespace-nowrap">
-                    <button className="btn btn-sm mr-1.5" onClick={() => setEditing({ id: e.id, title: e.title })}>수정</button>
+                    <button className="btn btn-sm mr-1.5" onClick={() => setEditing(e)}>수정</button>
                     <button className="btn btn-sm text-danger" onClick={() => setRemoving({ id: e.id, title: e.title })}>삭제</button>
                   </td>
                 </tr>
@@ -51,19 +51,7 @@ export function EventsView() {
           </TableWrap>
           )}
         </SectionCard>
-        {editing && (
-          <PromptModal
-            title="이벤트 제목 수정"
-            fields={[{ name: 'title', label: '제목', initial: editing.title }]}
-            submitLabel="수정"
-            onClose={() => setEditing(null)}
-            onSubmit={(values) => {
-              const title = (values.title ?? '').trim();
-              if (title) update.mutate({ id: editing.id, patch: { title } });
-              setEditing(null);
-            }}
-          />
-        )}
+        {editing && <EventEditModal event={editing} onClose={() => setEditing(null)} />}
         {removing && (
           <ConfirmModal
             title="이벤트 삭제"
@@ -76,6 +64,60 @@ export function EventsView() {
         )}
       </div>
     </AdminGuard>
+  );
+}
+
+// [TBO-58 P2] 전체 필드 수정 모달 — 발행 폼(EventForm)과 같은 필드 구성(유형·기간·우선순위·메모).
+//  구간 무결성(종료≥시작)은 폼 선검증 + 서버 400 재검증(부분 patch 역전 방지 — BE update DTO 규약).
+function EventEditModal({ event, onClose }: { event: AcademyEvent; onClose: () => void }) {
+  const update = useUpdateEvent();
+  const [title, setTitle] = useState(event.title);
+  const [type, setType] = useState<EventType>(event.type);
+  const [priority, setPriority] = useState<EventPriority>(event.priority);
+  const [startDate, setStartDate] = useState(event.startDate);
+  const [endDate, setEndDate] = useState(event.endDate);
+  const [memo, setMemo] = useState(event.memo ?? '');
+  const [error, setError] = useState('');
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!title.trim() || !startDate) return setError('제목·시작일은 필수입니다.');
+    const end = endDate || startDate;
+    if (end < startDate) return setError('종료일은 시작일 이후여야 합니다.');
+    update.mutate({
+      id: event.id,
+      patch: { title: title.trim(), type, priority, startDate, endDate: end, memo: memo.trim() || undefined },
+    }, {
+      onSuccess: onClose,
+      onError: () => setError('수정에 실패했습니다. 날짜 구간(종료일 ≥ 시작일)과 권한을 확인하세요.'),
+    });
+  };
+
+  return (
+    <ModalShell title="이벤트 수정 (전체 필드)" onClose={onClose}>
+      <form onSubmit={submit} className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="제목 *"><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
+        <Field label="유형">
+          <select className="input" value={type} onChange={(e) => setType(e.target.value as EventType)}>
+            {EVENT_TYPES.map((t) => (<option key={t} value={t}>{eventLabel[t]}</option>))}
+          </select>
+        </Field>
+        <Field label="우선순위">
+          <select className="input" value={priority} onChange={(e) => setPriority(e.target.value as EventPriority)}>
+            {EVENT_PRIORITIES.map((p) => (<option key={p} value={p}>{priorityLabel[p]}</option>))}
+          </select>
+        </Field>
+        <Field label="시작일 *"><input type="date" className="input" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></Field>
+        <Field label="종료일"><input type="date" className="input" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></Field>
+        <Field label="메모"><input className="input" value={memo} onChange={(e) => setMemo(e.target.value)} /></Field>
+        <div className="sm:col-span-2 flex items-center justify-end gap-3 pt-1">
+          {error && <span className="text-sm text-danger mr-auto" role="alert">{error}</span>}
+          <button type="button" className="btn" onClick={onClose}>취소</button>
+          <button type="submit" className="btn btn-primary" disabled={update.isPending}>{update.isPending ? '저장 중…' : '저장'}</button>
+        </div>
+      </form>
+    </ModalShell>
   );
 }
 

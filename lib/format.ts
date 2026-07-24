@@ -5,9 +5,13 @@ export const won = (n: number) =>
   '₩' + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
 // 'YYYY-MM-DD'(또는 datetime ISO) → 'MM/DD'
+// [TBO-58 P2] 형식 방어 보강 — 종전엔 'not-a-date'처럼 하이픈만 있으면 'a/date'로 오변환됐다
+//  (테스트 작성 중 발견). 날짜 형식이 아니면 원문 그대로(조용한 오표기 금지).
 export const shortDate = (iso: string) => {
-  const [, m, d] = iso.slice(0, 10).split('-');
-  return m && d ? `${m}/${d}` : iso;
+  const head = iso.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(head)) return iso;
+  const [, m, d] = head.split('-');
+  return `${m}/${d}`;
 };
 
 // [E0.6 M 2026-07-16] 날짜 표기 통일 — timestamptz ISO(시각 포함)를 'YYYY-MM-DD'로.

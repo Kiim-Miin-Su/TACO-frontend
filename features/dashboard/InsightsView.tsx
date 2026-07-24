@@ -1,11 +1,13 @@
 'use client';
 // [참조/처리] 경영 지표(수입·지출) 상세 — 대시보드에서 분리(CEO 전용).
-//  - transactions(입·출금 원장)에서 입금 합/출금 합, payments에서 미수금 파생 — TanStack Query.
-//  - 매출 시각화(RevenueCharts) + 입·출금 원장 리스트. 비-CEO 접근 시 안내만. role만 zustand(클라 상태).
+//  [감사 1·2-D 해소 2026-07-24] 상단 자체 재합산 StatCard 3종(입금/출금/미수금) 제거 — C4 잔여였던
+//  클라 재계산(전기간 합산인데 '이번 달' 라벨, 미수금은 pending만 집계해 overdue 전량 누락)이
+//  같은 화면 하단의 서버 파생(CeoDashboards D1 재무·D2 미수금 aging)과 다른 수치를 동시 노출했다.
+//  재무 수치는 이제 서버 파생만 렌더한다(단일 진실원). 원장 리스트는 원장 원본 그대로(파생 아님).
 import Link from 'next/link';
-import { StatCard, SectionCard, PageHeader, IconArrowDown, IconArrowUp, IconReceipt } from '@/components/ui';
+import { SectionCard, PageHeader, IconArrowDown, IconArrowUp } from '@/components/ui';
 import { won, shortDate } from '@/lib/format';
-import { useTransactions, usePayments } from '@/lib/queries';
+import { useTransactions } from '@/lib/queries';
 import { roleLabel } from '@/lib/roles';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { RevenueCharts } from './RevenueCharts';
@@ -14,8 +16,7 @@ import { CeoDashboards } from './CeoDashboards'; // [TBO-60] 대표 대시보드
 export function InsightsView() {
   const access = useAccountAccess();
   const role = access.role ?? 'instructor';
-  const { data: transactions = [] } = useTransactions();
-  const { data: payments = [] } = usePayments();
+  const { data: transactions = [] } = useTransactions(); // 원장 리스트 표시용(집계는 서버 파생만)
 
   if (!access.can('finance.access')) {
     return (
@@ -26,10 +27,6 @@ export function InsightsView() {
     );
   }
 
-  const inbound = transactions.filter((t) => t.direction === 'in').reduce((a, t) => a + t.amount, 0);
-  const outbound = transactions.filter((t) => t.direction === 'out').reduce((a, t) => a + t.amount, 0);
-  const unpaid = payments.filter((p) => p.status === 'pending').reduce((a, p) => a + p.amount, 0);
-
   return (
     <div className="p-6 max-w-page mx-auto space-y-6">
       <PageHeader
@@ -37,12 +34,6 @@ export function InsightsView() {
         sub="수입·지출·매출 추이 (대표 전용)"
         actions={<Link href="/" className="btn btn-sm">← 대시보드</Link>}
       />
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <StatCard label="이번 달 입금" value={won(inbound)} tone="success" icon={<IconArrowDown />} sub="신규·재수강" />
-        <StatCard label="이번 달 출금" value={won(outbound)} tone="attention" icon={<IconArrowUp />} sub="강사 페이 · 지출" />
-        <StatCard label="미수금" value={won(unpaid)} tone="danger" icon={<IconReceipt />} sub={`청구 ${payments.filter((p) => p.status === 'pending').length}건 대기`} />
-      </div>
 
       {/* [TBO-60] 대시보드 6종 — D1 재무(서버 financeSummary)·D2 aging·D3 증감·D6 수익성·D4 링크·D5 가동률 */}
       <CeoDashboards />

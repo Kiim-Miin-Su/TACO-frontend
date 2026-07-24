@@ -17,6 +17,7 @@ import type {
   PayReadinessIssue,
 } from '@/types';
 import type { Tone } from '@/components/ui';
+import { won } from '@/lib/format'; // [감사 10] 사본 제거 — 단일 진실원
 import { isAdmin } from '@/lib/roles';
 import type { ReportSlice } from '@/lib/reports';
 import { makeupNeeds, MAKEUP_REASON_LABEL } from '@/lib/makeup';
@@ -105,7 +106,6 @@ function myProfileChangeRejectedTasks(rows: ProfileChangeRequest[]): TaskItem[] 
 }
 
 const todayISO = (): string => new Date().toISOString().slice(0, 10);
-const won = (n: number) => '₩' + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
 // 관리자/매니저: 승인·지급·요청 대기 건 (회계상 그룹 분리)
 function adminTasks(s: StoreSlice): TaskItem[] {

@@ -6,6 +6,7 @@
 //   · 카운트/시수는 정산과 동일 규칙(countsForPay/paidTeachingHours) — 이중 기준 없음.
 //   · 읽기 전용(진실원은 세션·출석부) — 편집은 출석부/캘린더에서.
 import { Fragment, useMemo, useState } from 'react';
+import { payoutHours as hoursLabel } from '@/features/payouts/payout-shared'; // [감사 3] 시수 표기 단일화
 import Link from 'next/link';
 import type { AttendanceStatus, InstructorAttendanceStatus } from '@/types';
 import { EmptyState, LoadingState, PageHeader, SectionCard, StatCard, TableWrap } from '@/components/ui';
@@ -165,7 +166,7 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
                         </td>
                         <td className="text-center">
                           {paid ? (
-                            <span className="mono text-success">{Math.round((s.durationMinutes / 60) * 100) / 100}h</span>
+                            <span className="mono text-success">{hoursLabel(s.durationMinutes)}</span>
                           ) : (
                             <span className="text-fg-subtle text-caption">제외{s.instructorAttendance === 'absent' ? '(결석)' : s.status === 'makeup' ? '(보강)' : ''}</span>
                           )}

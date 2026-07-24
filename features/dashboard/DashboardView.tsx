@@ -163,7 +163,7 @@ export function DashboardView() {
           }
         />
 
-        <SectionCard title={`리포트 미작성 (${reportTasks.length})`} action={<a href="/reports" className="btn btn-sm">리포트 작성</a>}>
+        <SectionCard title={`리포트 미작성 (${reportTasks.length})`} action={<Link href="/reports" className="btn btn-sm">리포트 작성</Link>}>
           <TaskList items={reportTasks} empty="작성할 리포트가 없습니다. 진행한 수업의 리포트가 모두 제출되었습니다." />
         </SectionCard>
 
@@ -185,8 +185,8 @@ export function DashboardView() {
         <PageHeader title={`안녕하세요 (${roleLabel[role]})`} sub="학원 일정과 내 수업을 캘린더에서 확인하세요." />
         <SectionCard title="바로가기">
           <div className="p-4 flex gap-2">
-            <a href="/schedule" className="btn btn-primary">학원 캘린더 보기</a>
-            <a href="/reports" className="btn">수업 피드백</a>
+            <Link href="/schedule" className="btn btn-primary">학원 캘린더 보기</Link>
+            <Link href="/reports" className="btn">수업 피드백</Link>
           </div>
         </SectionCard>
       </div>

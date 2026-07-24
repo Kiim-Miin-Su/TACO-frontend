@@ -397,6 +397,13 @@ export const useReports = () => {
   const { scope } = useAccountAccess();
   return useQuery({ queryKey: qk.reports.list(undefined, scope), queryFn: async () => (await api.reports.list()).map(toStoreReport) });
 };
+// [TBO-58 P2] 보고서 단건 — /reports/[id] 딥링크(강사는 본인 것만: 서버 403 그대로 표면)
+export const useReport = (id: number | null) =>
+  useQuery({
+    queryKey: qk.reports.detail(id ?? -1),
+    queryFn: async () => toStoreReport(await api.reports.get(id!)),
+    enabled: id != null,
+  });
 
 // 강사 목록 = 스케줄 자원(resources)에서 파생(단일 소스). store.instructors 대체.
 export const useInstructors = () => {
@@ -687,6 +694,14 @@ export const useRejectExpense = () =>
     mutationFn: (v: { id: number; reason: string }) => api.expenses.reject(v.id, v.reason),
     onSuccess: useInvalidator([qk.expenses.all]),
   });
+// [TBO-58 P2] 오기입 정정(requested만) — 서버가 상태 가드(승인 후 400)·CAS까지 판정
+export const useUpdateExpense = () =>
+  useMutation({
+    mutationFn: (v: { id: number; patch: Parameters<typeof api.expenses.update>[1] }) => api.expenses.update(v.id, v.patch),
+    onSuccess: useInvalidator([qk.expenses.all]),
+  });
+// [TBO-58 P2] 철회(soft delete, requested만) — 원장 무기록이라 transactions 무효화 불요
+export const useWithdrawExpense = () => useMutation({ mutationFn: api.expenses.remove, onSuccess: useInvalidator([qk.expenses.all]) });
 
 // ── 자산화 2차(2026-07-03): 뷰 프리셋·리포트 템플릿 — 클라 휘발 → DB 컬렉션 ──
 export const useViewPresets = () => useQuery({ queryKey: qk.viewPresets.list(), queryFn: () => api.viewPresets.list(), staleTime: CATALOG_STALE });
@@ -695,6 +710,8 @@ export const useUpdateViewPreset = () => useMutation({ mutationFn: (v: { id: num
 export const useRemoveViewPreset = () => useMutation({ mutationFn: api.viewPresets.remove, onSuccess: useInvalidator([qk.viewPresets.all]) });
 export const useReportTemplates = () => useQuery({ queryKey: qk.reportTemplates.list(), queryFn: () => api.reportTemplates.list(), staleTime: CATALOG_STALE });
 export const useCreateReportTemplate = () => useMutation({ mutationFn: api.reportTemplates.create, onSuccess: useInvalidator([qk.reportTemplates.all]) });
+// [TBO-58 P2] 템플릿 삭제 — BE DELETE 기구현, FE 훅·버튼만 부재였던 갭(검증①)
+export const useRemoveReportTemplate = () => useMutation({ mutationFn: api.reportTemplates.remove, onSuccess: useInvalidator([qk.reportTemplates.all]) });
 
 // 상담
 export const useCreateCounsel = () => useMutation({ mutationFn: api.counsel.create, onSuccess: useInvalidator([qk.counsel.all]) });

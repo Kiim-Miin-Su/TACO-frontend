@@ -22,7 +22,7 @@ import {
   IconCalendar,
 } from "../ui/icons";
 
-type Item = { label: string; icon: React.FC<any>; href: string; adminOnly?: boolean; counselOnly?: boolean; financeOnly?: boolean; instructorVisible?: boolean };
+type Item = { label: string; icon: React.FC<any>; href: string; adminOnly?: boolean; counselOnly?: boolean; financeOnly?: boolean; instructorVisible?: boolean; adminVisible?: boolean };
 
 const groups: { title: string; items: Item[] }[] = [
   {
@@ -42,7 +42,7 @@ const groups: { title: string; items: Item[] }[] = [
   {
     title: "출금",
     items: [
-      { label: "강사 페이", icon: IconWallet, href: "/payouts", financeOnly: true, instructorVisible: true },
+      { label: "강사 페이", icon: IconWallet, href: "/payouts", financeOnly: true, instructorVisible: true, adminVisible: true }, // [감사 1-A] 매니저=시수 워크시트
       { label: "지출 · 비품", icon: IconReceipt, href: "/expenses", financeOnly: true },
     ],
   },
@@ -118,7 +118,7 @@ export default function Sidebar() {
             items: g.items.filter((it: Item) =>
               (!it.adminOnly || access.can("admin.area")) &&
               (!it.counselOnly || access.can("counsel.manage")) &&
-              (!it.financeOnly || access.can("finance.access") || (it.instructorVisible && access.can("instructor.self"))),
+              (!it.financeOnly || access.can("finance.access") || (it.instructorVisible && access.can("instructor.self")) || (it.adminVisible && access.can("admin.area"))),
             ),
           }))
           .filter((g) => g.items.length > 0)

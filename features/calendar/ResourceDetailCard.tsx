@@ -169,7 +169,7 @@ export function ResourceDetailCard({
             </label>
           </div>
           {f.status === "canceled" && (
-            <p className="text-micro text-attention">퇴원(수강 자동 정리)은 학생·부모 탭의 "퇴원 처리"를 권장합니다 — 여기서는 상태 표기만 바뀝니다.</p>
+            <p className="text-micro text-attention">퇴원(수강 자동 정리)은 학생·부모 탭의 &ldquo;퇴원 처리&rdquo;를 권장합니다 — 여기서는 상태 표기만 바뀝니다.</p>
           )}
           <div className="flex gap-1.5 justify-end">
             <button className="btn btn-sm h-6" onClick={() => setEditing(false)}>취소</button>

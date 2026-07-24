@@ -2,8 +2,8 @@
 // [B6 C3 2026-07-16] 행 전체 클릭 = 상세 진입(ClickableTableRow href) — 셀 native <a>는 Link로 교체.
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Badge, ClickableTableRow, SectionCard, PageHeader, EmptyState, LoadingState, TableWrap, type Tone } from "@/components/ui";
-import { useSchedule } from "@/lib/queries";
+import { Badge, ClickableTableRow, ConfirmModal, SectionCard, PageHeader, EmptyState, LoadingState, TableWrap, type Tone } from "@/components/ui";
+import { useSchedule, useRemoveSchedule } from "@/lib/queries";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import type { SessionStatus } from "@/types";
 import { shortDate } from "@/lib/format";
@@ -17,6 +17,8 @@ export function SessionsView() {
   //  강사는 캘린더의 수업요청(schedule-requests) 경로로 개설.
   const admin = useAccountAccess().can("calendar.manage");
   const { data: classSessions = [], isPending: loading } = useSchedule(); // [E0.6 H2]
+  const removeSchedule = useRemoveSchedule(); // [TBO-58 P2] 목록에서 바로 삭제(soft·undo 스택 편입)
+  const [removing, setRemoving] = useState<{ id: number; label: string } | null>(null);
 
   const [q, setQ] = useState("");
   const kw = q.trim().toLowerCase();
@@ -79,10 +81,20 @@ export function SessionsView() {
                   <td>
                     <Badge tone={tone[cs.status]}>{label[cs.status]}</Badge>
                   </td>
-                  <td className="text-right">
+                  <td className="text-right whitespace-nowrap">
                     <Link href={`/sessions/${cs.id}`} className="btn btn-sm">
                       상세 · 출석
                     </Link>
+                    {/* [TBO-58 P2] 매니저 이상 — 목록에서 즉시 삭제(행 클릭 내비와 분리: stopPropagation) */}
+                    {admin && (
+                      <button
+                        type="button"
+                        className="btn btn-sm text-danger ml-1.5"
+                        onClick={(e) => { e.stopPropagation(); setRemoving({ id: cs.id, label: `${shortDate(cs.sessionDate)} ${cs.courseName || '수업'}` }); }}
+                      >
+                        삭제
+                      </button>
+                    )}
                   </td>
                 </ClickableTableRow>
               );
@@ -92,6 +104,16 @@ export function SessionsView() {
         </TableWrap>
         )}
       </SectionCard>
+      {removing && (
+        <ConfirmModal
+          title="수업 삭제"
+          message={`${removing.label} 회차를 삭제할까요? (소프트 삭제 — cmd/ctrl+Z 복구 가능)`}
+          confirmLabel="삭제"
+          danger
+          onClose={() => setRemoving(null)}
+          onConfirm={() => { removeSchedule.mutate({ id: removing.id }); setRemoving(null); }}
+        />
+      )}
     </div>
   );
 }
