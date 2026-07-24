@@ -1,38 +1,20 @@
 "use client";
 
 // [TBO-31 C2 2026-07-16] 가입 전 이메일 OTP 공용 필드 — 이메일 입력 + '인증 코드 발송' + 코드
-//  확인/재전송(쿨다운 카운트다운) + 상태 인라인(발송됨/인증 완료/오류). SecuritySettingsView OTP 행·
-//  ProfileChangeModal stepper 패턴의 공개(비로그인) 판이다.
-//  · 카운트다운은 lib/hooks/useCountdownSeconds(모달에서 추출한 공용 훅) 재사용.
-//  · devOtpCode(비prod+SMTP 부재)는 기존 devVerifyLink 관례의 OTP판 — 개발 안내로 코드 표기.
-//  · 인증 완료 시 challengeId를 부모에 전달, 이메일을 수정하면 발송/인증을 즉시 무효화한다
-//    (BE consume이 challenge 이메일과 가입 이메일 일치를 강제 — 불일치 제출을 FE에서 선행 차단).
-//  · 재전송 = 발송 재호출(BE에 별도 resend 없음 — 쿨다운 60초 후 기존 pending을 대체).
+//  확인/재전송(쿨다운 카운트다운) + 상태 인라인(발송됨/인증 완료/오류).
 //  · [TBO-31 C5 2026-07-20] purpose='recovery'로 비로그인 복구(아이디·비밀번호 찾기)에서도 재사용 —
 //    엔드포인트(훅)와 완료 문구만 목적별로 갈라진다(BE가 purpose 교차 사용을 차단).
-import { useEffect, useId, useRef, useState } from "react";
-import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 단일 진실원
+//  · [TBO-57 2026-07-24] 발송/확인/무효화/성공·실패 UX 코어를 OtpChallengeField로 추출 —
+//    이 파일은 이메일 채널 어댑터(정규화·검증·훅·문구)만 소유한다(휴대전화판과 코어 공유).
 import Link from "next/link";
-import { AuthField } from "@/components/auth/AuthShell";
-import { FormFeedback } from "@/components/ui/FormFeedback";
-import type { SignupEmailChallenge } from "@/lib/api";
+import { OtpChallengeField, type OtpChallengeAdapter } from "@/features/auth/OtpChallengeField";
 import { isValidEmailFormat } from "@/lib/domain/profile";
-import { formatClock, useCountdownSeconds } from "@/lib/hooks/useCountdownSeconds";
-import { logger } from "@/lib/log";
 import {
   useConfirmRecoveryEmailChallenge,
   useConfirmSignupEmailChallenge,
   useCreateRecoveryEmailChallenge,
   useCreateSignupEmailChallenge,
 } from "@/lib/queries";
-import { isValidOtpCode } from "@/lib/validation";
-
-// 서버가 "초과"(시도 한도)로 응답하면 이 챌린지는 회복 불가 — 재전송으로 새 코드를 받아야 한다.
-const isLockedMessage = (message: string) => message.includes("초과");
-const emailOtpLog = logger("email-otp");
-
-const apiStatus = (caught: unknown): number | null =>
-  (caught as { response?: { status?: number } }).response?.status ?? null;
 
 export function EmailOtpField({
   email,
@@ -70,203 +52,45 @@ export function EmailOtpField({
   const confirmRecovery = useConfirmRecoveryEmailChallenge();
   const createChallenge = purpose === "recovery" ? createRecovery : createSignup;
   const confirmChallenge = purpose === "recovery" ? confirmRecovery : confirmSignup;
-  const [challenge, setChallenge] = useState<SignupEmailChallenge | null>(null);
-  // challenge가 발급된(=인증이 유효한) 이메일 — 입력이 여기서 벗어나면 발송/인증을 무효화한다.
-  const [challengeEmail, setChallengeEmail] = useState<string | null>(null);
-  const [code, setCode] = useState("");
-  const [locked, setLocked] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const emailInputRef = useRef<HTMLInputElement>(null);
-  const codeInputRef = useRef<HTMLInputElement>(null);
-  const feedbackId = useId();
-  const errorId = `${feedbackId}-error`;
-  const statusId = `${feedbackId}-status`;
 
-  const verified = verifiedChallengeId != null;
-  const busy = createChallenge.isPending || confirmChallenge.isPending;
-  const emailNormalized = email.trim().toLowerCase();
-  const cooldownSeconds = useCountdownSeconds(challenge?.resendAvailableAt ?? null);
-  const expirySeconds = useCountdownSeconds(challenge?.expiresAt ?? null);
-  const expired = !!challenge && !verified && expirySeconds <= 0;
-
-  // challenge 생성 뒤에만 나타나는 OTP 입력은 commit 이후 DOM ref가 생기므로 이 전환 effect에서 포커스한다.
-  useEffect(() => {
-    if (!challenge || verified) return;
-    // 발송 버튼이 같은 commit에서 disabled가 되며 발생시키는 browser blur보다 한 프레임 뒤에 실행한다.
-    const frame = window.requestAnimationFrame(() => codeInputRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
-  }, [challenge?.id, verified]);
-
-  function handleEmailChange(next: string) {
-    onEmailChange(next);
-    // 이메일 수정 = 기존 발송/인증 무효(대상 불일치) — 상태를 즉시 리셋한다.
-    if (challengeEmail != null && next.trim().toLowerCase() !== challengeEmail) {
-      setChallenge(null);
-      setChallengeEmail(null);
-      setCode("");
-      setLocked(false);
-      setError(null);
-      setNotice(null);
-      if (verified) onVerifiedChange(null);
-      emailOtpLog.debug("verification_invalidated", { purpose });
-    }
-  }
-
-  function send() {
-    setError(null);
-    setNotice(null);
-    if (!emailNormalized || !isValidEmailFormat(emailNormalized)) {
-      setError("인증할 이메일 형식이 올바르지 않습니다.");
-      emailOtpLog.debug("challenge_request_blocked", { purpose, reason: "email_format" });
-      emailInputRef.current?.focus();
-      return;
-    }
-    emailOtpLog.debug("challenge_request_started", { purpose });
-    createChallenge.mutate(emailNormalized, {
-      onSuccess: (next) => {
-        setChallenge(next);
-        setChallengeEmail(emailNormalized);
-        setCode("");
-        setLocked(false);
-        setNotice(
-          purpose === "signup"
-            ? `${next.maskedTarget}(으)로 인증 코드 요청을 접수했습니다. 메일이 보이지 않으면 스팸함을 확인하고 기존 계정은 계정 찾기를 이용해 주세요.`
-            : `${next.maskedTarget}(으)로 인증 코드 요청을 접수했습니다. 메일이 보이지 않으면 스팸함을 확인해 주세요.`,
-        );
-        emailOtpLog.debug("challenge_request_accepted", { purpose });
-      },
-      onError: (caught) => {
-        setError(apiErrorMessage(caught, "인증 코드를 발송하지 못했습니다. 잠시 후 다시 시도해 주세요."));
-        emailOtpLog.warn("challenge_request_failed", { purpose, status: apiStatus(caught) });
-        emailInputRef.current?.focus();
-      },
-    });
-  }
-
-  function confirm() {
-    if (!challenge || !challengeEmail || locked || verified || expired) return;
-    setError(null);
-    setNotice(null);
-    if (!isValidOtpCode(code)) {
-      setError("인증 코드는 4~10자리 숫자입니다.");
-      emailOtpLog.debug("challenge_confirm_blocked", { purpose, reason: "code_format" });
-      codeInputRef.current?.focus();
-      return;
-    }
-    emailOtpLog.debug("challenge_confirm_started", { purpose });
-    confirmChallenge.mutate(
-      { id: challenge.id, email: challengeEmail, code: code.trim() },
-      {
-        onSuccess: () => {
-          setNotice(null);
-          emailOtpLog.debug("challenge_confirm_succeeded", { purpose });
-          onVerifiedChange(challenge.id);
-        },
-        onError: (caught) => {
-          const message = apiErrorMessage(caught, "인증 코드를 확인하지 못했습니다.");
-          const nextLocked = isLockedMessage(message);
-          if (nextLocked) setLocked(true);
-          setError(message);
-          emailOtpLog.warn("challenge_confirm_failed", { purpose, status: apiStatus(caught), locked: nextLocked });
-          if (!nextLocked) codeInputRef.current?.focus();
-        },
-      },
-    );
-  }
-
-  const sendLabel = createChallenge.isPending
-    ? "발송 중..."
-    : challenge
-      ? cooldownSeconds > 0
-        ? `재전송 (${cooldownSeconds}초)`
-        : "재전송"
-      : "인증 코드 발송";
-  const activeError = locked
-    ? "인증 시도 횟수를 초과했습니다. 쿨다운이 지나면 재전송으로 새 코드를 받아 주세요."
-    : expired
-      ? "인증 코드가 만료되었습니다. 재전송으로 새 코드를 받아 주세요."
-      : error;
-  const activeStatus = verified ? verifiedLabel : notice;
-  const emailDescribedBy = [errorId, statusId, formErrorId].filter(Boolean).join(" ");
+  const adapter: OtpChallengeAdapter = {
+    normalize: (raw) => raw.trim().toLowerCase(),
+    isValidTarget: isValidEmailFormat,
+    invalidTargetMessage: "인증할 이메일 형식이 올바르지 않습니다.",
+    create: (target, handlers) => createChallenge.mutate(target, handlers),
+    createPending: createChallenge.isPending,
+    confirm: ({ id, target, code }, handlers) => confirmChallenge.mutate({ id, email: target, code }, handlers),
+    confirmPending: confirmChallenge.isPending,
+    sentNotice: (masked) =>
+      purpose === "signup"
+        ? `${masked}(으)로 인증 코드 요청을 접수했습니다. 메일이 보이지 않으면 스팸함을 확인하고 기존 계정은 계정 찾기를 이용해 주세요.`
+        : `${masked}(으)로 인증 코드 요청을 접수했습니다. 메일이 보이지 않으면 스팸함을 확인해 주세요.`,
+    devCodeLabel: "개발 모드(SMTP 미설정) — 인증 코드:",
+    sendFailFallback: "인증 코드를 발송하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    logScope: "email-otp",
+  };
 
   return (
-    <div className="space-y-2">
-      <AuthField label="이메일">
-        <div className="flex items-center gap-2">
-          <input
-            ref={emailInputRef}
-            className="input min-w-0 flex-1"
-            name={emailInputName}
-            type="email"
-            aria-label="이메일"
-            autoComplete="email"
-            maxLength={320}
-            required
-            value={email}
-            onChange={(event) => handleEmailChange(event.target.value)}
-            placeholder="you@tnacademy.com"
-            disabled={disabled}
-            aria-invalid={emailInvalid || (!!error && !challenge)}
-            aria-describedby={emailDescribedBy}
-          />
-          <button
-            type="button"
-            className="btn btn-sm shrink-0"
-            onClick={send}
-            disabled={disabled || busy || verified || !emailNormalized || (!!challenge && cooldownSeconds > 0)}
-          >
-            {verified ? "인증 완료" : sendLabel}
-          </button>
-        </div>
-      </AuthField>
-      {challenge && !verified && (
-        <div className="flex items-end gap-2">
-          <div className="min-w-0 flex-1">
-            <AuthField label="인증 코드">
-              <input
-                ref={codeInputRef}
-                className="input w-full mono tracking-widest"
-                name={`${emailInputName}OtpCode`}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={10}
-                placeholder="6자리 숫자"
-                disabled={disabled || locked || expired}
-                value={code}
-                onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
-                aria-invalid={!!activeError}
-                aria-describedby={`${errorId} ${statusId}`}
-              />
-            </AuthField>
-          </div>
-          <button
-            type="button"
-            className="btn btn-sm shrink-0"
-            onClick={confirm}
-            disabled={disabled || busy || locked || expired}
-          >
-            {confirmChallenge.isPending ? "확인 중..." : "코드 확인"}
-          </button>
-        </div>
-      )}
-      {challenge?.devOtpCode && !verified && (
-        <p className="text-caption text-accent">
-          개발 모드(SMTP 미설정) — 인증 코드: <span className="mono font-medium">{challenge.devOtpCode}</span>
-        </p>
-      )}
-      {!verified && !locked && !expired && challenge ? (
-        <p className="text-caption text-fg-subtle">
-          만료까지 <span className="mono">{formatClock(expirySeconds)}</span>
-        </p>
-      ) : null}
-      <FormFeedback id={errorId} kind="error" message={activeError} />
-      <FormFeedback id={statusId} kind="status" message={activeStatus} />
-      {purpose === "signup" && challenge && !verified && (
-        <p className="text-caption text-fg-muted">
-          이미 계정이 있다면 <Link href="/recover" className="font-medium text-accent hover:underline">계정 찾기</Link>를 이용해 주세요.
-        </p>
-      )}
-    </div>
+    <OtpChallengeField
+      label="이메일"
+      target={email}
+      onTargetChange={onEmailChange}
+      verifiedChallengeId={verifiedChallengeId}
+      onVerifiedChange={onVerifiedChange}
+      adapter={adapter}
+      disabled={disabled}
+      verifiedLabel={verifiedLabel}
+      inputName={emailInputName}
+      inputProps={{ type: "email", autoComplete: "email", placeholder: "you@tnacademy.com", maxLength: 320 }}
+      formErrorId={formErrorId}
+      targetInvalid={emailInvalid}
+      footer={
+        purpose === "signup" ? (
+          <p className="text-caption text-fg-muted">
+            이미 계정이 있다면 <Link href="/recover" className="font-medium text-accent hover:underline">계정 찾기</Link>를 이용해 주세요.
+          </p>
+        ) : null
+      }
+    />
   );
 }

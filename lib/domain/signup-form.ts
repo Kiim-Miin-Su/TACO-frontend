@@ -29,6 +29,7 @@ export type SignupIssueCode =
   | "password_mismatch"
   | "phone_required"
   | "phone_invalid"
+  | "phone_unverified"
   | "university_required"
   | "rrn_invalid"
   | "role_invalid";
@@ -45,13 +46,17 @@ const issue = (field: SignupField, code: SignupIssueCode, message: string): Sign
   message,
 });
 
-/** 화면 순서대로 첫 오류를 반환한다. 최종 권위 검증은 항상 backend SignupDto/DB command다. */
+/** 화면 순서대로 첫 오류를 반환한다. 최종 권위 검증은 항상 backend SignupDto/DB command다.
+ *  [TBO-57] phoneVerificationRequired = GET /auth/signup-config(BE required()와 단일 진실원) —
+ *  true면 verified phoneChallengeId 없이는 제출 자체를 막는다(서버 400과 같은 판정). */
 export function firstSignupIssue(input: {
   form: SignupFormValues;
   emailChallengeId: number | null;
   webIdVerdict: boolean | null;
+  phoneVerificationRequired?: boolean;
+  phoneChallengeId?: number | null;
 }): SignupIssue | null {
-  const { form, emailChallengeId, webIdVerdict } = input;
+  const { form, emailChallengeId, webIdVerdict, phoneVerificationRequired = false, phoneChallengeId = null } = input;
   if (form.webId.trim().length < WEB_ID_MIN) {
     return issue("webId", "web_id_required", `아이디는 ${WEB_ID_MIN}자 이상 입력해 주세요.`);
   }
@@ -77,6 +82,9 @@ export function firstSignupIssue(input: {
   if (!form.phone.trim()) return issue("phone", "phone_required", "전화번호를 입력해 주세요.");
   if (!isValidKrPhone(form.phone)) {
     return issue("phone", "phone_invalid", "전화번호는 010-1234-5678 형식으로 입력해 주세요.");
+  }
+  if (phoneVerificationRequired && phoneChallengeId == null) {
+    return issue("phone", "phone_unverified", "휴대전화 인증을 완료해 주세요. 인증 문자가 오지 않으면 번호 확인 후 재전송해 주세요.");
   }
   if (!form.university.trim()) {
     return issue("university", "university_required", "대학교(출신교)를 입력해 주세요.");

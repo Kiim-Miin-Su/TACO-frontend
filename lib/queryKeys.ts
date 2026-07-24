@@ -8,6 +8,8 @@ export const qk = {
     pending: ["auth", "pending"] as const,
     // [TBO-31 C2 2026-07-16] 아이디 가용성 공개 체크(가입 폼 디바운스 라이브 체크)
     webIdAvailable: (webId: string) => ["auth", "web-id-available", webId] as const,
+    // [TBO-57] 가입 폼 구성(공개) — 휴대전화 인증 필수 여부(BE 단일 진실원 판정 노출)
+    signupConfig: ["auth", "signup-config"] as const,
   },
   schedule: {
     all: ["schedule"] as const,

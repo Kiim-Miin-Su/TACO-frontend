@@ -405,6 +405,8 @@ export type ChangeCredentialsBody = {
 export type SignupBody = {
   webId: string; name: string; email: string; password: string; role?: string;
   rrn: string; emailChallengeId: number;
+  // [TBO-57] SENS 설정 시 서버가 필수 강제(signup-config 단일 진실원) — verified challenge id.
+  phoneChallengeId?: number;
   phone?: string; university?: string; major?: string;
 };
 // [TBO-31 C2] devVerifyLink 제거 — OTP 가입은 emailVerified=true 생성이라 인증 링크 단계가 소멸.
@@ -418,6 +420,10 @@ export type SignupEmailChallenge = {
   resendAvailableAt: string;
   devOtpCode?: string;
 };
+// [TBO-57] 가입 전 휴대전화 OTP — 응답 형상은 이메일판과 동일(공용 OtpChallengeField가 소비).
+export type OtpChallenge = SignupEmailChallenge;
+// [TBO-57] 가입 폼 구성(공개) — 휴대전화 인증 필수 여부(BE required()와 같은 단일 진실원).
+export type SignupConfig = { phoneVerificationRequired: boolean };
 export type PendingAccount = {
   id: number; webId: string; name: string; email: string; role: string; status: string; emailVerified: boolean; createdAt: string;
   // [E0.5 ④b] 지원자 제공 정보 — 승인센터 상세 표시(승인 판단 근거).
@@ -517,6 +523,13 @@ export const api = {
     // [TBO-31 C2] OTP 확인(10회/분) — 오답 400(한글 메시지·5회 잠금·만료), 성공 시 verified.
     confirmSignupEmailChallenge: (id: number, email: string, code: string) =>
       http.post<{ id: number; status: "verified" }>(`/auth/signup-email-challenge/${id}/confirm`, { email, code }).then((r) => r.data),
+    // [TBO-57] 가입 전 휴대전화 OTP — 발송(5회/분·쿨다운 60초 supersede 재전송)·확인(10회/분·5회 잠금).
+    signupPhoneChallenge: (phone: string) =>
+      http.post<OtpChallenge>("/auth/signup-phone-challenge", { phone }).then((r) => r.data),
+    confirmSignupPhoneChallenge: (id: number, phone: string, code: string) =>
+      http.post<{ id: number; status: "verified" }>(`/auth/signup-phone-challenge/${id}/confirm`, { phone, code }).then((r) => r.data),
+    // [TBO-57] 가입 폼 구성(공개) — { phoneVerificationRequired } 단일 필드(스테퍼·submit 게이트 공용).
+    signupConfig: () => http.get<SignupConfig>("/auth/signup-config").then((r) => r.data),
     // [TBO-31 C2] 아이디 가용성 공개 체크 — {available}만(이름·역할 미노출), 3자 미만 400·10회/분.
     webIdAvailable: (webId: string) =>
       http.get<{ available: boolean }>("/auth/web-id-available", { params: { webId } }).then((r) => r.data),

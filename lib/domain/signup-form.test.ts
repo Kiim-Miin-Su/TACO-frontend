@@ -41,6 +41,31 @@ describe("회원가입 폼 첫 오류", () => {
   it("모든 1차 검증이 통과하면 서버 command로 진행한다", () => {
     expect(firstSignupIssue({ form: validForm, emailChallengeId: 7, webIdVerdict: true })).toBeNull();
   });
+
+  // [TBO-57] 휴대전화 인증 게이트 — signup-config(BE required()와 단일 진실원)가 true면
+  //  verified phoneChallengeId 없이는 제출 자체가 막힌다(서버 400과 같은 판정).
+  it("phoneVerificationRequired=true면 휴대전화 인증 완료 전 제출을 차단한다", () => {
+    expect(firstSignupIssue({
+      form: validForm, emailChallengeId: 7, webIdVerdict: true,
+      phoneVerificationRequired: true, phoneChallengeId: null,
+    })).toMatchObject({ field: "phone", code: "phone_unverified" });
+    expect(firstSignupIssue({
+      form: validForm, emailChallengeId: 7, webIdVerdict: true,
+      phoneVerificationRequired: true, phoneChallengeId: 11,
+    })).toBeNull();
+    // 비필수 환경(SENS 미설정)은 기존 규칙 그대로 — 인증 없이 제출 가능
+    expect(firstSignupIssue({
+      form: validForm, emailChallengeId: 7, webIdVerdict: true,
+      phoneVerificationRequired: false, phoneChallengeId: null,
+    })).toBeNull();
+  });
+
+  it("휴대전화 형식 오류가 인증 게이트보다 먼저다(형식 → 인증 순서)", () => {
+    expect(firstSignupIssue({
+      form: { ...validForm, phone: "01012345678" }, emailChallengeId: 7, webIdVerdict: true,
+      phoneVerificationRequired: true, phoneChallengeId: null,
+    })).toMatchObject({ field: "phone", code: "phone_invalid" });
+  });
 });
 
 describe("가입 API 오류 포커스 매핑", () => {

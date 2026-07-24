@@ -865,6 +865,14 @@ export const useSignup = () => useMutation({ mutationFn: api.auth.signup });
 export const useCreateSignupEmailChallenge = () => useMutation({ mutationFn: api.auth.signupEmailChallenge });
 export const useConfirmSignupEmailChallenge = () =>
   useMutation({ mutationFn: (v: { id: number; email: string; code: string }) => api.auth.confirmSignupEmailChallenge(v.id, v.email, v.code) });
+// [TBO-57] 가입 전 휴대전화 OTP — challenge는 폼-로컬 상태(서버 GET 없음)라 무효화 없음.
+export const useCreateSignupPhoneChallenge = () => useMutation({ mutationFn: api.auth.signupPhoneChallenge });
+export const useConfirmSignupPhoneChallenge = () =>
+  useMutation({ mutationFn: (v: { id: number; phone: string; code: string }) => api.auth.confirmSignupPhoneChallenge(v.id, v.phone, v.code) });
+// [TBO-57] 가입 폼 구성(공개 — 로그인 불요) — 휴대전화 인증 필수 여부. BE required()와 같은 판정을
+//  스테퍼 표시·submit 게이트가 소비한다(단일 진실원). 실패 시엔 서버 400이 최종 방어라 UI는 관대.
+export const useSignupConfig = () =>
+  useQuery({ queryKey: qk.auth.signupConfig, queryFn: () => api.auth.signupConfig(), staleTime: 60_000, retry: 1 });
 // 마이 페이지 '비밀번호 재설정 메일 받기' — 본인 webId+email로 공개 복구 엔드포인트 호출
 //  (응답은 계정 존재와 무관하게 동일 문구 — 열거 방지 규약 그대로, 캐시 무효화 없음).
 export const useRequestPasswordReset = () =>

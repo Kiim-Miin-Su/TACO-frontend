@@ -8,6 +8,7 @@ import Link from "next/link";
 import { AuthShell, AuthField } from "@/components/auth/AuthShell";
 import { FormFeedback } from "@/components/ui/FormFeedback";
 import { EmailOtpField } from "@/features/auth/EmailOtpField";
+import { PhoneOtpField } from "@/features/auth/PhoneOtpField"; // [TBO-57] 휴대전화 OTP(공용 코어 재사용)
 import {
   firstSignupIssue,
   signupFieldForApiMessage,
@@ -16,7 +17,7 @@ import {
 } from "@/lib/domain/signup-form";
 import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { logger } from "@/lib/log";
-import { useSignup, useWebIdAvailable } from "@/lib/queries";
+import { useSignup, useSignupConfig, useWebIdAvailable } from "@/lib/queries";
 // [B6 C2] 검증 규칙 단일 소스 — 전화·비밀번호 byte·주민등록번호(계정 보안 화면과 같은 규칙·같은 문구).
 import { WEB_ID_MIN, passwordLengthError } from "@/lib/validation";
 
@@ -47,6 +48,11 @@ export default function SignupPage() {
   });
   // [TBO-31 C2] 가입 전 이메일 OTP — 인증 완료 challenge id(이메일 수정 시 EmailOtpField가 무효화).
   const [emailChallengeId, setEmailChallengeId] = useState<number | null>(null);
+  // [TBO-57] 가입 전 휴대전화 OTP — signup-config(BE required()와 단일 진실원)가 true일 때만
+  //  스테퍼 표시+필수 게이트. 인증 완료 challenge id(번호 수정 시 PhoneOtpField가 무효화).
+  const [phoneChallengeId, setPhoneChallengeId] = useState<number | null>(null);
+  const signupConfig = useSignupConfig();
+  const phoneVerificationRequired = signupConfig.data?.phoneVerificationRequired === true;
   const [done, setDone] = useState<{ message: string } | null>(null);
   const [formError, setFormError] = useState<SignupFormError | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -69,7 +75,9 @@ export default function SignupPage() {
   const passwordsMatch = !!form.password && form.password === form.passwordConfirm;
 
   // [TBO-31 C2] submit 게이트 — 이메일 인증 완료 + 중복 아님(중복 확정만 차단) + 비밀번호 일치.
-  const canSubmit = emailChallengeId != null && webIdVerdict !== false && passwordsMatch && !passwordError;
+  //  [TBO-57] + SENS 설정 환경이면 휴대전화 인증 완료(서버 400과 같은 단일 진실원 판정).
+  const canSubmit = emailChallengeId != null && webIdVerdict !== false && passwordsMatch && !passwordError
+    && (!phoneVerificationRequired || phoneChallengeId != null);
   const busy = signup.isPending;
 
   function focusField(field: SignupField) {
@@ -97,7 +105,7 @@ export default function SignupPage() {
     e.preventDefault();
     if (busy) return;
     setFormError(null);
-    const issue = firstSignupIssue({ form, emailChallengeId, webIdVerdict });
+    const issue = firstSignupIssue({ form, emailChallengeId, webIdVerdict, phoneVerificationRequired, phoneChallengeId });
     if (issue) return rejectLocally(issue);
     if (emailChallengeId == null) return; // firstSignupIssue 통과 후의 타입 불변식
 
@@ -107,6 +115,7 @@ export default function SignupPage() {
         webId: form.webId, name: form.name, email: form.email, password: form.password, role: form.role,
         rrn: form.rrn.trim(),
         emailChallengeId,
+        ...(phoneChallengeId != null ? { phoneChallengeId } : {}), // [TBO-57] verified challenge — 가입 tx 소비
         ...(form.phone.trim() ? { phone: form.phone.trim() } : {}),
         ...(form.university.trim() ? { university: form.university.trim() } : {}),
         ...(form.major.trim() ? { major: form.major.trim() } : {}),
@@ -189,10 +198,31 @@ export default function SignupPage() {
           <input className="input w-full" name="passwordConfirm" type="password" autoComplete="new-password" value={form.passwordConfirm} onChange={set("passwordConfirm")} placeholder="••••••••" required maxLength={72} aria-invalid={formError?.field === "passwordConfirm" || passwordMismatch} aria-describedby="signup-password-confirm-feedback signup-form-error" />
         </AuthField>
         <FormFeedback id="signup-password-confirm-feedback" kind="error" message={passwordMismatch ? "비밀번호가 일치하지 않습니다." : null} />
-        {/* [E0.5 ④b] 승인 판단 근거 필드 — 대표가 승인센터에서 확인 */}
-        <AuthField label="전화번호">
-          <input className="input w-full" name="phone" type="tel" value={form.phone} onChange={set("phone")} placeholder="010-1234-5678" required aria-invalid={formError?.field === "phone"} aria-describedby="signup-form-error" />
-        </AuthField>
+        {/* [E0.5 ④b] 승인 판단 근거 필드 — 대표가 승인센터에서 확인.
+            [TBO-57] SENS 설정 환경(phoneVerificationRequired)에서는 OTP 스테퍼로 교체 —
+            인증 완료해야 가입 가능(서버 400과 같은 단일 진실원 판정). */}
+        {phoneVerificationRequired ? (
+          <PhoneOtpField
+            phone={form.phone}
+            onPhoneChange={(phone) => {
+              setForm((current) => ({ ...current, phone }));
+              setFormError((current) => current?.field === "phone" ? null : current);
+            }}
+            verifiedChallengeId={phoneChallengeId}
+            onVerifiedChange={(challengeId) => {
+              setPhoneChallengeId(challengeId);
+              setFormError((current) => current?.field === "phone" ? null : current);
+            }}
+            disabled={busy}
+            phoneInputName="phone"
+            formErrorId="signup-form-error"
+            phoneInvalid={formError?.field === "phone"}
+          />
+        ) : (
+          <AuthField label="전화번호">
+            <input className="input w-full" name="phone" type="tel" value={form.phone} onChange={set("phone")} placeholder="010-1234-5678" required aria-invalid={formError?.field === "phone"} aria-describedby="signup-form-error" />
+          </AuthField>
+        )}
         <div className="grid grid-cols-2 gap-2">
           <AuthField label="대학교 (출신교)">
             <input className="input w-full" name="university" value={form.university} onChange={set("university")} placeholder="서울대학교" required aria-invalid={formError?.field === "university"} aria-describedby="signup-form-error" />
@@ -230,6 +260,9 @@ export default function SignupPage() {
         <FormFeedback id="signup-form-error" kind="error" message={formError?.message ?? null} />
         {emailChallengeId == null && (
           <p className="text-caption text-fg-subtle">이메일 인증을 완료해야 가입 신청을 보낼 수 있습니다.</p>
+        )}
+        {phoneVerificationRequired && emailChallengeId != null && phoneChallengeId == null && (
+          <p className="text-caption text-fg-subtle">휴대전화 인증까지 완료해야 가입 신청을 보낼 수 있습니다.</p>
         )}
         <button className="btn btn-primary w-full h-10" disabled={busy || !canSubmit} aria-describedby="signup-form-error">
           {busy ? "신청 중…" : "가입 신청"}
