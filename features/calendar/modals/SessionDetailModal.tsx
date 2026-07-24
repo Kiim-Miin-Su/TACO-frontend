@@ -21,6 +21,7 @@ export function SessionDetailModal({
   instructors,
   colorOf,
   ownerTz,
+  canEdit = true,
   onClose,
   onSave,
   onDelete,
@@ -30,6 +31,7 @@ export function SessionDetailModal({
   instructors: { id: number; name: string }[];
   colorOf: (r: ScheduleRow) => string;
   ownerTz?: CountryInfo | null; // [이슈1] 비KST 편집이면 이 tz(현지 시각 입력 → 저장 시 KST 변환)
+  canEdit?: boolean; // [TBO-62 ② 2026-07-24] 강사는 열람 전용 — 편집·삭제 UI 자체 미노출(서버 403은 기구현)
   onClose: () => void;
   onSave: (patch: SchedulePatchBody) => void;
   onDelete: () => void;
@@ -90,9 +92,13 @@ export function SessionDetailModal({
               <button className="btn btn-sm" onClick={onClose}>
                 닫기
               </button>
-              <button className="btn btn-sm btn-primary" onClick={() => setMode("edit")}>
-                편집
-              </button>
+              {canEdit ? (
+                <button className="btn btn-sm btn-primary" onClick={() => setMode("edit")}>
+                  편집
+                </button>
+              ) : (
+                <span className="text-caption text-fg-subtle self-center">열람 전용 — 변경은 수업 요청으로</span>
+              )}
             </div>
           </div>
         </>

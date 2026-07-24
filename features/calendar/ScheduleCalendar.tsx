@@ -2703,6 +2703,7 @@ export function ScheduleCalendar() {
           rooms={rooms}
           instructors={(resources?.instructors ?? []).map((i) => ({ id: Number(i.id), name: i.name }))}
           colorOf={colorOf}
+          canEdit={canManage} // [TBO-62 ②] 강사 열람 전용 — 편집·삭제 UI 미노출(서버 ADMIN 403은 기구현)
           ownerTz={editingTz}
           onClose={() => { setEditing(null); setEditingTz(null); }}
           onDelete={() => deleteSession(editing.id)}

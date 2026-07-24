@@ -31,7 +31,7 @@ import { logger } from "@/lib/log";
 
 // [TBO-54 C2 대표 지시 콘솔 로깅] 머니 액션 관측 — id·금액·결과만(PII 0).
 const moneyLog = logger("money");
-import type { Instructor, SessionReport } from "@/types";
+import type { Instructor, InstructorAttendanceStatus, SessionReport } from "@/types";
 import { useState } from "react";
 
 // Query scope와 enabled는 AppShell의 권위 `/auth/me` 검증을 통과한 currentAccount 한 곳에서 파생한다.
@@ -125,21 +125,14 @@ export const usePayoutPreview = (instructorId: number | null, from: string, to: 
     enabled: can("finance.access") && instructorId != null && !!from && !!to,
   });
 };
-export const useMyPayoutPreview = (from: string, to: string) => {
-  const { scope, can } = useAccountAccess();
-  return useQuery({
-    queryKey: qk.payouts.previewMine(scope, from, to),
-    queryFn: () => api.payouts.previewMine(from, to),
-    enabled: can("instructor.self") && !!from && !!to,
-  });
-};
+// [TBO-62 ⑥ 2026-07-24] useMyPayoutPreview 제거 — 강사 시수 미리보기는 관리자 전용(서버 라우트 삭제).
 const usePayReadiness = () => {
-  const { role, scope, can } = useAccountAccess();
-  const isInstructor = role === "instructor";
+  const { scope, can } = useAccountAccess();
+  // [TBO-62 ⑥ 2026-07-24] 시수·페이 누락(readiness)은 관리자 전용 — 강사 분기 제거(강사는 지급 완료 내역만).
   return useQuery({
     queryKey: qk.payouts.readiness(scope),
-    queryFn: () => isInstructor ? api.payouts.readinessMine() : api.payouts.readiness(),
-    enabled: isInstructor ? can("instructor.self") : can("admin.area"),
+    queryFn: () => api.payouts.readiness(),
+    enabled: can("admin.area"),
   });
 };
 // [TBO-16 #9] 수업 요청 — 승인센터·배지(tasks)·캘린더가 **같은 queryKey를 구독**(단일 이벤트 객체).
@@ -815,13 +808,18 @@ export const useUpdateScheduleRequest = () => {
   });
 };
 // 출결(강사 마킹) — session×student upsert
-export const useUpsertAttendance = () => useMutation({ mutationFn: api.attendance.upsert, onSuccess: useInvalidator([qk.attendance.all]) });
+// [TBO-62 ⑤ 2026-07-24] 출결 기록 시 서버가 scheduled→held 자동 전이 — 캘린더·세션 상세 캐시도 무효화.
+export const useUpsertAttendance = () => useMutation({ mutationFn: api.attendance.upsert, onSuccess: useInvalidator([qk.attendance.all, qk.schedule.all, qk.payouts.all]) });
+// [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크(최초 1회) — 수정·초기화는 매니저 PATCH.
+export const useMarkMyInstructorAttendance = () =>
+  useMutation({ mutationFn: (v: { id: number; status: InstructorAttendanceStatus }) => api.schedule.markInstructorAttendance(v.id, v.status), onSuccess: useInvalidator([qk.schedule.all, qk.payouts.all]) });
 
 // 리포트(작성·제출·승인/반려) — 승인은 시수/정산 적격 변동
 export const useCreateReport = () => useMutation({ mutationFn: api.reports.create, onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });
 // [E0.6 H1] 기존 보고서 임시 저장(본문/숙제 수정) — 승인 전까지.
+// [TBO-62 ① 2026-07-24] body에 id가 섞여 서버 whitelist 400("property id should not exist") — 운영 콘솔 실측. patch만 전송.
 export const useUpdateReport = () =>
-  useMutation({ mutationFn: (v: { id: number; content?: string; homework?: string }) => api.reports.update(v.id, v), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });
+  useMutation({ mutationFn: ({ id, ...patch }: { id: number; content?: string; homework?: string }) => api.reports.update(id, patch), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });
 export const useSubmitReport = () => useMutation({ mutationFn: api.reports.submit, onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });
 export const useApproveReport = () =>
   useMutation({ mutationFn: (v: { id: number; approvedBy?: number }) => api.reports.approve(v.id, v.approvedBy), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });

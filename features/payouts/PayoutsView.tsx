@@ -10,7 +10,7 @@ import { Fragment, useCallback, useState } from 'react';
 import { Badge, ClickableTableRow, EmptyState, Field, LoadingState, PageHeader, PromptModal, SectionCard, TableWrap } from '@/components/ui';
 import {
   useSchedule, useCourses, useSubjects, useEnrollments, useStudents,
-  useInstructors, usePayouts, usePayoutPreview, useMyPayouts, useMyPayoutPreview,
+  useInstructors, usePayouts, usePayoutPreview, useMyPayouts,
   useGeneratePayout, useConfirmPayout, usePayPayout, useAdjustPayout, useRejectPayout,
   useReversePayout, // [B9 E5 2026-07-16] 지급 회수
   useUnconfirmPayout, // [TBO-32 C2/C4] 확정 취소(confirmed → pending)
@@ -64,7 +64,6 @@ export function PayoutsView() {
   const [end, setEnd] = useState(defTo);
   // 산정 미리보기(읽기전용) — 강사·기간 키의 쿼리(캐시·중복요청 제거)
   const previewQ = usePayoutPreview(instructorId ? Number(instructorId) : null, start, end);
-  const myPreviewQ = useMyPayoutPreview(start, end);
   const preview = previewQ.data ?? null;
 
   // 필터 — 정산 목록(강사·상태) / 적격 수업 내역(수업)
@@ -121,29 +120,21 @@ export function PayoutsView() {
   }
 
   if (instructorSelf && !finance) {
-    const minePreview = myPreviewQ.data ?? null;
+    // [TBO-62 ⑥ 2026-07-24] 강사 표면 = 지급 완료(paid) 내역만(서버 필터) — 시수 산정 미리보기·
+    //  누락(readiness)·예상 페이는 관리자 전용으로 이동(대표 지시: "받은 내용만").
     return (
       <div className="p-6 max-w-page mx-auto space-y-6">
         <PageHeader
           title="내 페이"
-          sub="진행 완료 수업 중 승인된 보고서 기준으로 시수와 페이가 산정됩니다."
+          sub="지급 완료된 정산 내역입니다. 시수 산정과 정산 생성·확정은 관리자가 진행합니다."
           actions={<Badge tone={conn === 'online' ? 'success' : 'neutral'}>{conn === 'online' ? '조회 가능' : '확인 중'}</Badge>}
         />
-        <SectionCard title="이번 달 산정 미리보기">
-          <div className="p-4 text-body text-fg-muted">
-            {minePreview && minePreview.sessionCount > 0 ? (
-              <>적격 수업 <b>{minePreview.sessionCount}</b>회 · 시수 <b>{hours(minePreview.totalMinutes)}</b> · 예상 페이 <b className="text-fg">{won(minePreview.computedAmount)}</b></>
-            ) : (
-              <span className="text-fg-subtle">이번 달 정산 대상 수업이 없습니다.</span>
-            )}
-          </div>
-        </SectionCard>
-        <SectionCard title={`내 정산서 (${payouts.length})`}>
+        <SectionCard title={`받은 정산 (${payouts.length})`}>
           {/* [E0.6 H2] 로드 중 빈 상태 깜빡임 방지 — EmptyState는 로드 완료 후에만 */}
           {myPayoutsQ.isPending ? (
             <LoadingState />
           ) : payouts.length === 0 ? (
-            <EmptyState message="아직 생성된 정산서가 없습니다." />
+            <EmptyState message="아직 지급 완료된 정산이 없습니다." />
           ) : (
             <TableWrap minWidth={720}>
               <table className="table">

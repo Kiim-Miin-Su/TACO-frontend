@@ -11,7 +11,7 @@ import Link from "next/link";
 import { Badge, DetailStates, EmptyState, SectionCard, StatCard, type Tone } from "@/components/ui";
 import {
   useScheduleSession, useEnrollments, useStudents,
-  useAttendance, useUpdateSchedule, useUpsertAttendance,
+  useAttendance, useUpdateSchedule, useUpsertAttendance, useMarkMyInstructorAttendance,
 } from "@/lib/queries";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { countsForPay } from "@/lib/domain/schedule";
@@ -33,6 +33,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   const { data: students = [] } = useStudents();
   const { data: attendance = [] } = useAttendance();
   const updateSchedule = useUpdateSchedule();
+  const markMine = useMarkMyInstructorAttendance(); // [TBO-62 ④] 강사 본인 최초 체크 전용
   const upsert = useUpsertAttendance();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const toggle = (id: number) => setExpanded((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -45,8 +46,13 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
     [loaded, enrollments, students],
   );
 
-  const canInst = admin; // 강사 출결 CRUD = 매니저만(강사는 본인 것도 열람만)
-  const markInst = (st: InstructorAttendanceStatus) => updateSchedule.mutate({ id: sessionId, body: { instructorAttendance: st } });
+  // [TBO-62 ④ 2026-07-24] 강사 본인 출결 = 최초 1회 체크 가능(대표 지시), 수정·초기화는 매니저 이상.
+  const ownUnmarked = (s0?: { instructorId: number; instructorAttendance?: string | null }) =>
+    !!s0 && myId != null && s0.instructorId === myId && s0.instructorAttendance == null;
+  const markInst = (st: InstructorAttendanceStatus) =>
+    admin
+      ? updateSchedule.mutate({ id: sessionId, body: { instructorAttendance: st } })
+      : markMine.mutate({ id: sessionId, status: st });
   const clearInst = () => updateSchedule.mutate({ id: sessionId, body: { clearInstructorAttendance: true } });
   const attOf = (stuId: number): AttendanceStatus | undefined => attendance.find((a) => a.sessionId === sessionId && a.studentId === stuId)?.status;
   const markStu = (stuId: number, st: AttendanceStatus) => upsert.mutate({ sessionId, studentId: stuId, status: st });
@@ -78,14 +84,18 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                 <StatCard label="시수 인정" value={paid ? `${Math.round((session.durationMinutes / 60) * 100) / 100}h` : "제외"} tone={paid ? "accent" : undefined} />
               </div>
 
-              {/* ① 강사 출결 (매니저 CRUD · 강사 열람) — AttMarker 재사용 */}
+              {/* ① 강사 출결 — 매니저 CRUD + 강사 본인 최초 1회 체크(TBO-62 ④) — AttMarker 재사용 */}
               <SectionCard title="강사 출결">
                 <div className="p-4 flex items-center gap-3 flex-wrap">
-                  <AttMarker value={session.instructorAttendance} options={INSTRUCTOR_ATT_OPTIONS} canEdit={canInst} pending={updateSchedule.isPending} onMark={markInst} onClear={clearInst} />
+                  <AttMarker value={session.instructorAttendance} options={INSTRUCTOR_ATT_OPTIONS} canEdit={admin || ownUnmarked(session)} pending={updateSchedule.isPending || markMine.isPending} onMark={markInst} onClear={admin ? clearInst : undefined} />
                   <span className="text-caption text-fg-subtle">
                     {paid ? "시수 인정(진행·결석 아님)" : `시수 제외${session.instructorAttendance === "absent" ? "(결석)" : session.status === "makeup" ? "(보강)" : session.status !== "held" ? `(${statusLabelOf(session.status) ?? session.status})` : ""}`}
                   </span>
-                  {!canInst && <span className="text-caption text-fg-subtle ml-auto">열람 전용 (수정은 매니저)</span>}
+                  {!admin && (
+                    <span className="text-caption text-fg-subtle ml-auto">
+                      {ownUnmarked(session) ? "본인 수업 — 최초 1회 체크 가능 (수정은 매니저)" : "열람 전용 (수정은 매니저)"}
+                    </span>
+                  )}
                 </div>
               </SectionCard>
 

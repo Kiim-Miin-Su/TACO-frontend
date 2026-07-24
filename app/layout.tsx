@@ -17,14 +17,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ko" suppressHydrationWarning>
       <head>
         {/* Pretendard Variable — OFL asset을 public/에서 직접 정적 서빙(DESIGN.md §R2·§3).
-            빌드/runtime npm dependency 없이 CSS와 woff2를 함께 버전 관리한다. */}
-        <link
-          rel="preload"
-          href="/fonts/pretendard/woff2/PretendardVariable.woff2"
-          as="font"
-          type="font/woff2"
-          crossOrigin="anonymous"
-        />
+            빌드/runtime npm dependency 없이 CSS와 woff2를 함께 버전 관리한다.
+            [TBO-62 ① 2026-07-24] 수동 <link rel=preload> 제거 — CSS 폰트 요청과 자격 증명 모드가
+            달라 브라우저가 "preload 미사용" 경고를 냄(운영 콘솔 실측). same-origin 소형 CSS라
+            preload 이득이 없어 스타일시트 로드만 유지(경고 원천 제거). */}
         <link rel="stylesheet" href="/fonts/pretendard/pretendardvariable.css" />
       </head>
       <body suppressHydrationWarning>

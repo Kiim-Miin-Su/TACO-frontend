@@ -811,6 +811,9 @@ export const api = {
     // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터
     instructorAttendanceSummary: (from?: string, to?: string, instructorId?: number) =>
       http.get<InstructorAttendanceSummary>("/schedule/instructor-attendance-summary", { params: { from, to, instructorId } }).then((r) => r.data),
+    // [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크(최초 1회) — 수정·초기화는 매니저 PATCH 전용.
+    markInstructorAttendance: (id: number, status: InstructorAttendanceStatus) =>
+      http.post<{ row: ScheduleRow }>(`/schedule/${id}/instructor-attendance`, { status }).then((r) => r.data),
     // 추천→배정·수동 추가 → { row, conflicts }. 충돌 시 409 → force로 재시도.
     create: (body: ScheduleCreateBody) =>
       http.post<{ row: ScheduleRow; conflicts: Conflict[] }>("/schedule", body).then((r) => r.data),
@@ -891,12 +894,9 @@ export const api = {
     // 읽기전용 산정 미리보기(정산서 생성 없음). 적격: held + 승인 보고서.
     preview: (instructorId: number, from: string, to: string) =>
       http.get<MeasureResult>("/payouts/preview", { params: { instructorId, from, to } }).then((r) => r.data),
-    previewMine: (from: string, to: string) =>
-      http.get<MeasureResult>("/payouts/me/preview", { params: { from, to } }).then((r) => r.data),
+    // [TBO-62 ⑥ 2026-07-24] 강사용 preview/readiness 제거 — 강사는 지급 완료(paid) 내역만(서버 라우트 삭제).
     readiness: (params: { instructorId?: number; from?: string; to?: string } = {}) =>
       http.get<PayReadiness>("/payouts/readiness", { params }).then((r) => r.data),
-    readinessMine: (params: { from?: string; to?: string } = {}) =>
-      http.get<PayReadiness>("/payouts/me/readiness", { params }).then((r) => r.data),
     // [TBO-32 C4 2026-07-22] 미정산 감지·일괄 산정·확정 취소 — BE C1/C2 라우트 소비.
     uncovered: (months = 3) =>
       http.get<UncoveredPayoutEntry[]>("/payouts/uncovered", { params: { months } }).then((r) => r.data),
