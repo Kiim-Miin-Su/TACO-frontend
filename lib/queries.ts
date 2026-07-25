@@ -32,7 +32,7 @@ import { logger } from "@/lib/log";
 // [TBO-54 C2 대표 지시 콘솔 로깅] 머니 액션 관측 — id·금액·결과만(PII 0).
 const moneyLog = logger("money");
 import type { Instructor, InstructorAttendanceStatus, SessionReport } from "@/types";
-import { pushScheduleUndo } from "@/lib/schedule-undo"; // [TBO-63] 캘린더 undo 스택
+import { pushScheduleUndo, sanitizeInversePatch } from '@/lib/schedule-undo'; // [TBO-63] 캘린더 undo 스택
 import { useState } from "react";
 
 // Query scope와 enabled는 AppShell의 권위 `/auth/me` 검증을 통과한 currentAccount 한 곳에서 파생한다.
@@ -134,6 +134,9 @@ export const usePayoutWorksheet = (instructorId: number | null, from: string, to
     queryKey: qk.payouts.worksheet(instructorId ?? 0, from, to),
     queryFn: () => api.payouts.worksheet(instructorId as number, from, to),
     enabled: can("admin.area") && instructorId != null && !!from && !!to,
+    // [TBO-66 F3] 금전 화면 한정 신선도 상향 — 타 매니저의 출결 기록(서버 자동 전이)이 포커스 복귀 시 반영
+    refetchOnWindowFocus: true,
+    staleTime: 15_000,
   });
 };
 export const useSetSessionPayAmount = () =>
@@ -149,6 +152,8 @@ const usePayReadiness = () => {
     queryKey: qk.payouts.readiness(scope),
     queryFn: () => api.payouts.readiness(),
     enabled: can("admin.area"),
+    refetchOnWindowFocus: true, // [TBO-66 F3] 금전 화면 신선도
+    staleTime: 15_000,
   });
 };
 // [TBO-16 #9] 수업 요청 — 승인센터·배지(tasks)·캘린더가 **같은 queryKey를 구독**(단일 이벤트 객체).
@@ -192,7 +197,7 @@ export const useFinanceSummary = (range: { from?: string | null; to?: string | n
     enabled: can("finance.access"),
   });
 };
-// [TBO-60 2026-07-24] 대표 대시보드 — qk.revenue 하위 키라 수납/지출/정산 mutation 무효화가 자동 도달.
+// [TBO-60→66 F1 정정] 대표 대시보드 — revenue 무효화는 수납·지출 승인·정산 전이 훅에 **명시**돼 있다(하위 키 자동 아님).
 export const useCeoDashboard = (range: { from?: string | null; to?: string | null } = {}) => {
   const { can } = useAccountAccess();
   return useQuery({
@@ -687,7 +692,8 @@ export const useRefundPayment = () => {
 
 // 지출(승인 워크플로우)
 export const useCreateExpense = () => useMutation({ mutationFn: api.expenses.create, onSuccess: useInvalidator([qk.expenses.all]) });
-export const useApproveExpense = () => useMutation({ mutationFn: api.expenses.approve, onSuccess: useInvalidator([qk.expenses.all, qk.transactions.all]) });
+// [TBO-66 F1] 지출 승인 = financeSummary·대표 대시보드 입력(expenses.approved) — revenue까지 무효화
+export const useApproveExpense = () => useMutation({ mutationFn: api.expenses.approve, onSuccess: useInvalidator([qk.expenses.all, qk.transactions.all, qk.revenue.all]) });
 export const useRejectExpense = () =>
   useMutation({
     // 반려 사유 **필수**(Q2 — 서버 DTO @IsNotEmpty와 정합)
@@ -815,7 +821,13 @@ export const useUpdateSchedule = () => {
         if (Object.keys(inverse).length)
           pushScheduleUndo({
             label: "수업 변경 되돌리기",
-            run: () => api.schedule.update(v.id, { ...inverse, force: true, acknowledgeAccountingImpact: true } as Variables["body"]),
+            // [TBO-66 F2] 실행 직전 서버 fresh 재조회 — 캡처 후 자동 held 전이가 있었으면 status 복원 생략
+            run: async () => {
+              const fresh = await api.schedule.get(v.id).catch(() => null);
+              const safe = sanitizeInversePatch(inverse, (fresh as { status?: string } | null)?.status);
+              if (!Object.keys(safe).length) return; // 전부 생략되면 no-op(전이 존중)
+              return api.schedule.update(v.id, { ...safe, force: true, acknowledgeAccountingImpact: true } as Variables["body"]);
+            },
           });
       }
       return invalidate(); // [C4] 단일 무효화 — 시수·정산 미리보기 동시 재계산
@@ -914,10 +926,10 @@ export const useUpdateScheduleRequest = () => {
 };
 // 출결(강사 마킹) — session×student upsert
 // [TBO-62 ⑤ 2026-07-24] 출결 기록 시 서버가 scheduled→held 자동 전이 — 캘린더·세션 상세 캐시도 무효화.
-export const useUpsertAttendance = () => useMutation({ mutationFn: api.attendance.upsert, onSuccess: useInvalidator([qk.attendance.all, qk.schedule.all, qk.payouts.all]) });
+export const useUpsertAttendance = () => useMutation({ mutationFn: api.attendance.upsert, onSuccess: useInvalidator([qk.attendance.all, qk.schedule.all, qk.payouts.all, ["audit"] as const]) }); // [TBO-66 F4] 이력 패널
 // [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크(최초 1회) — 수정·초기화는 매니저 PATCH.
 export const useMarkMyInstructorAttendance = () =>
-  useMutation({ mutationFn: (v: { id: number; status: InstructorAttendanceStatus }) => api.schedule.markInstructorAttendance(v.id, v.status), onSuccess: useInvalidator([qk.schedule.all, qk.payouts.all]) });
+  useMutation({ mutationFn: (v: { id: number; status: InstructorAttendanceStatus }) => api.schedule.markInstructorAttendance(v.id, v.status), onSuccess: useInvalidator([qk.schedule.all, qk.payouts.all, ["audit"] as const]) }); // [TBO-66 F4]
 
 // 리포트(작성·제출·승인/반려) — 승인은 시수/정산 적격 변동
 export const useCreateReport = () => useMutation({ mutationFn: api.reports.create, onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });
@@ -933,15 +945,16 @@ export const useRejectReport = () =>
 
 // 정산(강사 페이) — 생성/확정/지급/반려/조정
 export const useGeneratePayout = () =>
-  useMutation({ mutationFn: (v: { instructorId: number; from: string; to: string }) => api.payouts.generate(v.instructorId, v.from, v.to), onSuccess: useInvalidator([qk.payouts.all]) });
-export const useConfirmPayout = () => useMutation({ mutationFn: api.payouts.confirm, onSuccess: useInvalidator([qk.payouts.all]) });
-export const usePayPayout = () => useMutation({ mutationFn: api.payouts.pay, onSuccess: useInvalidator([qk.payouts.all, qk.transactions.all]) });
+  useMutation({ mutationFn: (v: { instructorId: number; from: string; to: string }) => api.payouts.generate(v.instructorId, v.from, v.to), onSuccess: useInvalidator([qk.payouts.all, qk.schedule.all]) }); // [TBO-66 F4] 세션 payoutId — bulk와 대칭
+// [TBO-66 F1] 확정·지급·회수·반려·취소 = CEO courseProfit(confirmed·paid)·financeSummary 입력 — revenue 무효화
+export const useConfirmPayout = () => useMutation({ mutationFn: api.payouts.confirm, onSuccess: useInvalidator([qk.payouts.all, qk.revenue.all]) });
+export const usePayPayout = () => useMutation({ mutationFn: api.payouts.pay, onSuccess: useInvalidator([qk.payouts.all, qk.transactions.all, qk.revenue.all, qk.schedule.all]) }); // [TBO-66 F1·F4] revenue + 세션 isPaid(비대칭 정리)
 export const useRejectPayout = () =>
-  useMutation({ mutationFn: (v: { id: number; reason?: string }) => api.payouts.reject(v.id, v.reason), onSuccess: useInvalidator([qk.payouts.all, qk.schedule.all]) });
+  useMutation({ mutationFn: (v: { id: number; reason?: string }) => api.payouts.reject(v.id, v.reason), onSuccess: useInvalidator([qk.payouts.all, qk.schedule.all, qk.revenue.all]) }); // [TBO-66 F1]
 // [B9 E5 2026-07-16] 지급 회수(paid → rejected+reversedAt) — 원장 반대 분개(transactions) 반영 +
 //  세션 잠금 해제가 캘린더 편집 가능성에 반영(useRejectPayout과 동일 근거로 schedule도 무효화).
 export const useReversePayout = () =>
-  useMutation({ mutationFn: (v: { id: number; reason: string }) => api.payouts.reverse(v.id, v.reason), onSuccess: useInvalidator([qk.payouts.all, qk.transactions.all, qk.schedule.all]) });
+  useMutation({ mutationFn: (v: { id: number; reason: string }) => api.payouts.reverse(v.id, v.reason), onSuccess: useInvalidator([qk.payouts.all, qk.transactions.all, qk.schedule.all, qk.revenue.all]) }); // [TBO-66 F1]
 export const useAdjustPayout = () =>
   useMutation({ mutationFn: (v: { id: number; amount: number; reason?: string }) => api.payouts.adjust(v.id, v.amount, v.reason), onSuccess: useInvalidator([qk.payouts.all]) });
 // [TBO-32 C4 2026-07-22] 단건 상세(B7 규약 — DetailStates 소비, 강사=본인만·타인 403)·미정산 감지·
@@ -954,7 +967,7 @@ export const usePayout = (id: number | null) => {
 };
 export const useUncoveredPayouts = (months = 3) => {
   const { can } = useAccountAccess();
-  return useQuery({ queryKey: qk.payouts.uncovered(months), queryFn: () => api.payouts.uncovered(months), enabled: can("finance.access") });
+  return useQuery({ queryKey: qk.payouts.uncovered(months), queryFn: () => api.payouts.uncovered(months), enabled: can("finance.access"), refetchOnWindowFocus: true, staleTime: 15_000 }); // [TBO-66 F3]
 };
 export const useGenerateBulkPayouts = () =>
   useMutation({
@@ -962,7 +975,7 @@ export const useGenerateBulkPayouts = () =>
     onSuccess: useInvalidator([qk.payouts.all, qk.schedule.all]),
   });
 export const useUnconfirmPayout = () =>
-  useMutation({ mutationFn: (v: { id: number; reason: string }) => api.payouts.unconfirm(v.id, v.reason), onSuccess: useInvalidator([qk.payouts.all]) });
+  useMutation({ mutationFn: (v: { id: number; reason: string }) => api.payouts.unconfirm(v.id, v.reason), onSuccess: useInvalidator([qk.payouts.all, qk.revenue.all]) }); // [TBO-66 F1]
 
 // [E0.5 ①] 대표(super_admin)는 서버가 같은 tx에서 즉시 적용(approved 응답) — 프로필 쿼리도 무효화.
 export const useCreateProfileChangeRequest = () =>

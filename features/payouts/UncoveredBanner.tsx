@@ -12,6 +12,7 @@ export function UncoveredBanner({ onBulkGenerate }: { onBulkGenerate?: () => voi
   const [open, setOpen] = useState(false);
   if (isLoading || entries.length === 0) return null;
   const total = entries.reduce((acc, e) => acc + e.computedAmount, 0);
+  const execMissing = entries.reduce((acc, e) => acc + (e.executionMissingCount ?? 0), 0); // [TBO-66 T2]
 
   return (
     <div className="card card-pad border-attention/40 bg-attention/5 space-y-2" role="status">
@@ -19,6 +20,7 @@ export function UncoveredBanner({ onBulkGenerate }: { onBulkGenerate?: () => voi
         <Badge tone="attention">미정산 감지</Badge>
         <span className="text-body">
           최근 3개월에 <b>{entries.length}건</b>(강사×월)의 미정산 적격 시수가 있습니다 — 합계 <b className="mono">{won(total)}</b>
+          {execMissing > 0 && <> · <b className="text-attention">실행 미확정 {execMissing}회</b>(출결·리포트 미기록 — 워크시트에서 확정 필요)</>}
         </span>
         <span className="ml-auto flex gap-1.5">
           <button type="button" className="btn btn-sm" onClick={() => setOpen((v) => !v)}>{open ? '접기' : '자세히'}</button>

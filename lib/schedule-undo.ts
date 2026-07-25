@@ -28,3 +28,18 @@ export function scheduleUndoSize(): number {
 export function clearScheduleUndo(): void {
   stack.length = 0;
 }
+
+// [TBO-66 F2 2026-07-25] 역패치 안전화 — 캡처 이후 서버에서 **자동 held 전이**(출결·리포트 기록)가
+//  일어났으면 status 복원은 생략한다(다른 필드만 되돌림). 종전엔 스테일 캐시의 scheduled를 force로
+//  재기록해 서버의 정당한 전이를 cmd+Z가 덮을 수 있었다. 순수 함수 — 실행 직전 fresh status로 판정.
+export function sanitizeInversePatch(
+  inverse: Record<string, unknown>,
+  freshStatus: string | undefined,
+): Record<string, unknown> {
+  if (!('status' in inverse)) return inverse;
+  if (freshStatus === 'held' && inverse.status === 'scheduled') {
+    const { status: _dropped, ...rest } = inverse;
+    return rest; // 자동 전이 존중 — held는 사실 기록의 결과라 undo 대상이 아니다
+  }
+  return inverse;
+}

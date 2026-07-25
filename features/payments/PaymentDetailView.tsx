@@ -43,6 +43,7 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
       setSaveError(null);
       void queryClient.invalidateQueries({ queryKey: qk.payments.all });
       void queryClient.invalidateQueries({ queryKey: qk.transactions.all });
+      void queryClient.invalidateQueries({ queryKey: qk.revenue.all }); // [TBO-66 F4] 중앙 훅과 동일 세트(누락 정렬)
     } else {
       setNotice(null);
       setSaveError(apiErrorMessage(caught, fallback));

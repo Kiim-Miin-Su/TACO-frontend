@@ -187,6 +187,8 @@ export function ApprovalsView() {
         void queryClient.invalidateQueries({ queryKey: qk.reports.all });
         void queryClient.invalidateQueries({ queryKey: qk.expenses.all });
         void queryClient.invalidateQueries({ queryKey: qk.payouts.all });
+        void queryClient.invalidateQueries({ queryKey: qk.transactions.all }); // [TBO-66 F4] 승인=원장 기록 — 누락 정렬
+        void queryClient.invalidateQueries({ queryKey: qk.revenue.all }); // [TBO-66 F1]
       }
       setSectionMsg((m) => ({
         ...m,

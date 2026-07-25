@@ -278,6 +278,7 @@ export type FinanceSummary = { from: string | null; to: string | null; revenue: 
 export type UncoveredPayoutEntry = {
   instructorId: number; instructorName: string; instructorStatus: string; month: string;
   periodStart: string; periodEnd: string; sessionCount: number; totalMinutes: number; computedAmount: number;
+  executionMissingCount: number; // [TBO-66 T2] 실행 미확정(종료 경과 scheduled)
 };
 export type BulkGenerateResult = {
   generated: Array<{ instructorId: number; payoutId: number; amount: number; sessionCount: number }>;
