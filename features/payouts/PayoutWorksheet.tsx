@@ -22,6 +22,7 @@ import { AccountingImpactModal } from '@/components/AccountingImpactModal';
 
 const MANUAL_REASON_LABEL: Record<string, string> = {
   late: '지각',
+  attendance_missing: '학생 출결 미기록', // [기간설정 ① 2026-07-24] 출결 이상도 직접 입력 대상
   report_incomplete: '리포트 미작성/미승인',
   roster_missing: '수강생 확인 불가',
   rate_missing: '시급 미설정',

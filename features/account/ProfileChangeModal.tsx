@@ -6,6 +6,7 @@
 //   verify: 코드 확인(만료 카운트다운·재전송 cooldown·실패 잠금) → verified 후 요청 등록(챌린지 일회 소비)
 //  상태 분리: 형식 오류 / 발송 중 / cooldown / 만료 / 잘못된 코드 / 잠김 / 인증 완료(요청 등록).
 import { useEffect, useRef, useState } from "react";
+import { isOtpLockedError } from "@/lib/domain/otp-challenge"; // [TBO-65 5-C] 잠금 판정 단일 진실원
 import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 단일 진실원
 import { Field, ModalShell } from "@/components/ui";
 import type { MyProfile, ProfileChangeRequest, ProfileVerification } from "@/lib/api";
@@ -33,7 +34,7 @@ import { WEB_ID_MIN, isValidOtpCode } from "@/lib/validation"; // [B6 C2] 검증
 import { ProfileDetailsFields } from "./ProfileDetailsFields";
 
 // 서버가 "초과"(시도/재전송 한도)로 응답하면 이 챌린지는 회복 불가 — 처음부터 다시.
-const isLockedMessage = (message: string) => message.includes("초과");
+// [TBO-65 5-C] 잠금 판정 사본 제거 — lib/domain/otp-challenge(code 우선) 단일 진실원 소비
 
 type VerifyContext = {
   challenge: ProfileVerification;
@@ -241,7 +242,7 @@ export default function ProfileChangeModal({
         },
         onError: (caught) => {
           const message = apiErrorMessage(caught, "인증 코드를 확인하지 못했습니다.");
-          if (isLockedMessage(message)) {
+          if (isOtpLockedError(caught, message)) {
             setVerify((current) => (current ? { ...current, locked: true } : current));
             setError(message);
             return;
@@ -269,7 +270,7 @@ export default function ProfileChangeModal({
       },
       onError: (caught) => {
         const message = apiErrorMessage(caught, "인증 코드를 재전송하지 못했습니다.");
-        if (isLockedMessage(message)) setVerify((current) => (current ? { ...current, locked: true } : current));
+        if (isOtpLockedError(caught, message)) setVerify((current) => (current ? { ...current, locked: true } : current));
         setError(message);
       },
     });

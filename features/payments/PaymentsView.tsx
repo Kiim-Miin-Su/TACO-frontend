@@ -3,7 +3,7 @@
 // [B6 C3 2026-07-16] 행 전체 클릭 = 결제 상세(ClickableTableRow href) — 셀 '상세' Link는 유지(중첩 제외).
 import Link from 'next/link';
 import { Badge, ClickableTableRow, SectionCard, MonthCalendar, PageHeader, EmptyState, LoadingState, TableWrap } from '@/components/ui';
-import { usePayments, useStudents } from '@/lib/queries';
+import { usePayments, useStudents, useRevenueReport } from '@/lib/queries';
 import { usePersistedState } from '@/lib/usePersistedState';
 import { enumPreferenceCodec, preferenceKeys } from '@/lib/storage/preferences';
 import { useAccountAccess } from '@/lib/useAccountAccess';
@@ -21,13 +21,15 @@ export function PaymentsView() {
     enumPreferenceCodec(['list', 'calendar'] as const),
   );
 
+  const revenue = useRevenueReport().data; // [TBO-65 P1] 서버 파생 합계(전기간)
   const nameOf = (id: number) => students.find((s) => s.id === id)?.name ?? '—';
   // 캘린더 표시 기준: 수납 완료=수납일, 미수=등록일(청구 생성일).
   // [E0.6 M] ISO 타임스탬프가 오면 날짜 비교가 영원히 불일치 — dateOnly로 정규화 후 셀 매칭.
   const dateOf = (p: (typeof payments)[number]) => dateOnly(p.paidAt ?? p.createdAt ?? p.dueAt);
 
-  const totalPaid = payments.filter((p) => p.status === 'paid').reduce((a, p) => a + p.amount, 0);
-  const totalDue = payments.filter((p) => p.status === 'pending').reduce((a, p) => a + p.amount, 0);
+  // [TBO-65 P1 2026-07-24] 헤더 요약 = 서버 파생(revenueReport — 전 화면과 같은 정의) 소비.
+  //  종전 클라 재합산은 ① 미수에 overdue 전량 누락 ② 부분 수납(paidAmount) 미반영으로
+  //  경영지표·학생 상세와 다른 수치를 보여줬다(감사 FE-2). 실현 수납/미수 잔액 정의 단일화.
 
   if (!finance) {
     return (
@@ -42,7 +44,7 @@ export function PaymentsView() {
     <div className="p-6 max-w-page mx-auto space-y-6">
       <PageHeader
         title="결제 · 수납"
-        sub={`완납 ${won(totalPaid)} · 미수 ${won(totalDue)}`}
+        sub={revenue ? `실현 수납 ${won(revenue.realizedTotal)} · 미수 ${won(revenue.unpaidTotal)} (${revenue.unpaidCount}건)` : '수납 합계 불러오는 중…'}
         actions={
           <div className="flex items-center gap-2">
             <div className="flex rounded-md overflow-hidden border">

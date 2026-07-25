@@ -953,7 +953,7 @@ export const api = {
 // ── [TBO-64] 시수 워크시트 타입(BE payout-worksheet.policy 미러) ──
 export type WorksheetPricing = {
   kind: 'auto' | 'manual' | 'excluded';
-  manualReasons: Array<'late' | 'report_incomplete' | 'roster_missing' | 'rate_missing'>;
+  manualReasons: Array<'late' | 'attendance_missing' | 'report_incomplete' | 'roster_missing' | 'rate_missing'>; // [기간설정 ①] attendance_missing 추가
   excludedReason?: 'not_held' | 'instructor_absent' | 'payout_linked';
   autoAmount: number | null;
   overrideAmount: number | null;

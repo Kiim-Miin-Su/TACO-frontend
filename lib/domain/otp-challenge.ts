@@ -2,7 +2,15 @@
 //  순수 함수로 추출해 이메일·휴대전화 스테퍼(OtpChallengeField)가 같은 규칙을 재사용한다
 //  (대표 지시 "컴포넌트 및 함수 재사용" — UI 계약을 단위 테스트로 고정).
 
-/** 서버 잠금 응답("초과") 감지 — 이 챌린지는 회복 불가, 재전송으로 새 코드를 받아야 한다. */
+/** [TBO-65 5-B 2026-07-24] 서버 잠금 감지 = **code 기반**(OTP_LOCKED — BE 3서비스가 승격).
+ *  문구("초과") 결합은 구버전 응답 fallback으로만 유지 — 서버 문구 리팩터링에도 깨지지 않는다. */
+export const isOtpLockedError = (caught: unknown, message: string): boolean => {
+  const code = (caught as { response?: { data?: { code?: string } } })?.response?.data?.code;
+  if (code === "OTP_LOCKED") return true;
+  return isOtpLockedMessage(message); // 구버전 서버 호환 fallback
+};
+
+/** @deprecated 문구 결합 — isOtpLockedError(code 기반)를 사용. fallback 전용으로만 남긴다. */
 export const isOtpLockedMessage = (message: string): boolean => message.includes("초과");
 
 export type OtpSendLabelInput = {

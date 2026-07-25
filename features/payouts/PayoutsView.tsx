@@ -10,7 +10,6 @@ import { Fragment, useCallback, useState } from 'react';
 import { PayoutWorksheet } from './PayoutWorksheet';
 import { Badge, ClickableTableRow, EmptyState, Field, LoadingState, PageHeader, PromptModal, SectionCard, TableWrap } from '@/components/ui';
 import {
-  useSchedule, useCourses, useSubjects, useEnrollments, useStudents,
   useInstructors, usePayouts, usePayoutPreview, useMyPayouts,
   useGeneratePayout, useConfirmPayout, usePayPayout, useAdjustPayout, useRejectPayout,
   useReversePayout, // [B9 E5 2026-07-16] 지급 회수
@@ -18,7 +17,7 @@ import {
 } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { won } from '@/lib/format';
-import type { PayoutRow, PayoutLine } from '@/lib/api';
+import type { PayoutRow } from '@/lib/api';
 import { ReasonModal } from '@/components/ReasonModal';
 import { isReversedPayout as isReversed, payoutHours as hours, monthPeriod } from '@/features/payouts/payout-shared';
 import { PayoutStatusBadge } from '@/features/payouts/PayoutStatusBadge';
@@ -30,22 +29,7 @@ export function PayoutsView() {
   const finance = access.can('finance.access');
   const adminArea = access.can('admin.area'); // [감사 1-A 2026-07-24] 매니저 시수 표면(BE ADMIN 허용인데 UI 부재로 사장)
   const instructorSelf = access.can('instructor.self');
-  // 정산 근거를 사람이 읽을 수 있게 — 세션→시각, 코스→과목, 코스→수강 학생 조인(Query 훅).
-  const { data: classSessions = [] } = useSchedule();
-  const { data: courses = [] } = useCourses();
-  const { data: subjects = [] } = useSubjects();
-  const { data: enrollments = [] } = useEnrollments();
-  const { data: students = [] } = useStudents();
-  const lineDetail = useCallback((line: PayoutLine) => {
-    const ses = classSessions.find((s) => s.id === line.sessionId);
-    const course = courses.find((c) => c.id === line.courseId);
-    const subjectName = subjects.find((su) => su.id === course?.subjectId)?.name ?? '—';
-    const studentNames = enrollments
-      .filter((e) => e.courseId === line.courseId)
-      .map((e) => students.find((s) => s.id === e.studentId)?.name)
-      .filter(Boolean).join(', ') || '—';
-    return { startTime: ses?.startTime ?? '', subjectName, studentNames };
-  }, [classSessions, courses, subjects, enrollments, students]);
+  // [TBO-65 P1] 정산 근거 표시는 시수 워크시트(서버 판정)가 담당 — 4중 클라 조인(lineDetail) 제거.
   const [expanded, setExpanded] = useState<number | null>(null);
 
   // [상태 무결성 2026-07-06] 서버 데이터는 TanStack Query 단일 소스 — 로컬 useState 복사 제거.
@@ -68,10 +52,9 @@ export function PayoutsView() {
   const previewQ = usePayoutPreview(instructorId ? Number(instructorId) : null, start, end);
   const preview = previewQ.data ?? null;
 
-  // 필터 — 정산 목록(강사·상태) / 적격 수업 내역(수업)
+  // 필터 — 정산 목록(강사·상태)
   const [fInstructor, setFInstructor] = useState('');
   const [fStatus, setFStatus] = useState('');
-  const [fCourse, setFCourse] = useState('');
 
   const instructorName = useCallback(
     (id: number) => instructors.find((i) => i.id === id)?.name ?? `강사 ${id}`,
@@ -169,15 +152,16 @@ export function PayoutsView() {
               <table className="table">
                 <thead><tr><th>기간</th><th>상태</th><th className="text-right">시수</th><th className="text-right">금액</th><th>지급일</th></tr></thead>
                 <tbody>
-                  {/* [TBO-32 C4] 행 클릭 = 정산서 단건 상세(서버가 본인만 허용 — findOneScoped) */}
+                  {/* [기간설정 ② 2026-07-24] 강사는 지급 **요약만** — 단건 상세(회차 내역) 불가(서버 403과
+                      동일 조건 렌더: 행 클릭 링크 제거, 정적 행). 종전 상세 링크는 관리자 표면에만 남는다. */}
                   {payouts.map((p) => (
-                    <ClickableTableRow key={p.id} href={`/payouts/detail/${p.id}`} label={`정산서 ${p.periodStart}~${p.periodEnd} 상세`}>
+                    <tr key={p.id}>
                       <td className="mono text-fg-muted">{p.periodStart} ~ {p.periodEnd}</td>
                       <td><PayoutStatusBadge p={p} /></td>{/* [B9 E5 2026-07-16] 회수됨 구분 표기 */}
                       <td className="text-right mono">{hours(p.totalMinutes)}</td>
                       <td className="text-right mono">{won(p.amount)}</td>
                       <td className="mono text-fg-muted">{p.paidAt ?? '—'}</td>
-                    </ClickableTableRow>
+                    </tr>
                   ))}
                 </tbody>
               </table>
@@ -228,51 +212,9 @@ export function PayoutsView() {
       {/* [TBO-64] 시수 워크시트 — 회차별 출결·리포트·금액 확정(강사·기간은 위 폼과 공유) */}
       <PayoutWorksheet instructorId={instructorId ? Number(instructorId) : null} from={start} to={end} />
 
-      {preview && preview.sessionCount > 0 && (() => {
-        const courseOpts = Array.from(new Map(preview.lines.map((l) => [l.courseId, l.courseName])).entries());
-        const lines = fCourse ? preview.lines.filter((l) => String(l.courseId) === fCourse) : preview.lines;
-        const subTotal = lines.reduce((a, l) => a + l.amount, 0);
-        return (
-        <SectionCard
-          title={`적격 수업 내역 (${lines.length}건)`}
-          action={
-            <select aria-label="수업 필터" className="input h-8 w-40" value={fCourse} onChange={(e) => setFCourse(e.target.value)}>
-              <option value="">전체 수업</option>
-              {courseOpts.map(([id, name]) => (<option key={id} value={id}>{name}</option>))}
-            </select>
-          }
-        >
-          <TableWrap minWidth={640}>
-          <table className="table">
-            <thead>
-              <tr><th>일시</th><th>과목</th><th>수업</th><th>학생</th><th className="text-right">시수</th><th className="text-right">페이</th></tr>
-            </thead>
-            <tbody>
-              {lines.map((r) => {
-                const d = lineDetail(r);
-                return (
-                  <tr key={r.sessionId}>
-                    <td className="mono whitespace-nowrap">{r.sessionDate}{d.startTime ? ` ${d.startTime}` : ''}</td>
-                    <td className="text-fg-muted">{d.subjectName}</td>
-                    <td className="font-medium">{r.courseName}</td>
-                    <td className="text-fg-muted">{d.studentNames}</td>
-                    <td className="text-right mono">{(r.durationMinutes / 60).toFixed(1)}h</td>
-                    <td className="text-right mono">{won(r.amount)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={5} className="text-right text-caption text-fg-muted">소계{fCourse ? ' (필터)' : ''}</td>
-                <td className="text-right mono font-semibold">{won(subTotal)}</td>
-              </tr>
-            </tfoot>
-          </table>
-          </TableWrap>
-        </SectionCard>
-        );
-      })()}
+      {/* [TBO-65 P1 2026-07-24] 종전 '적격 수업 내역' 표 제거 — 시수 워크시트(위)가 회차·참가자·
+          출결·리포트·금액까지 서버 판정으로 완전 대체(감사 FE-11). 표의 학생 표기가 '코스 현재
+          수강생 전원' 클라 조인이라 회차 실참가자와 어긋날 수 있던 문제(FE-6)도 함께 소멸. */}
 
       {(() => {
         const filtered = payouts.filter((p) =>
@@ -373,26 +315,24 @@ export function PayoutsView() {
                 <tr>
                   <td colSpan={6} className="bg-canvas-subtle">
                     <div className="p-2">
-                      <div className="text-caption text-fg-muted mb-1">정산 근거 — 언제·과목·학생별 내역 ({p.lines.length}건)</div>
+                      {/* [TBO-65 P1] 근거 표 = 정산서 line 스냅샷(생성 시점 확정값)만 — 클라 조인 제거.
+                          참가자·출결 상세는 회차 링크(세션 상세 — 서버 판정)에서 확인(감사 FE-6). */}
+                      <div className="text-caption text-fg-muted mb-1">정산 근거 — 회차별 확정 스냅샷 ({p.lines.length}건)</div>
                       {p.lines.length === 0 ? (
                         <EmptyState compact message="연결된 수업 내역이 없습니다." />
                       ) : (
                         <table className="table">
-                          <thead><tr><th>일시</th><th>과목</th><th>수업</th><th>학생</th><th className="text-right">시수</th><th className="text-right">페이</th></tr></thead>
+                          <thead><tr><th>일자</th><th>수업</th><th className="text-right">시수</th><th className="text-right">페이</th><th></th></tr></thead>
                           <tbody>
-                            {p.lines.map((l) => {
-                              const d = lineDetail(l);
-                              return (
-                                <tr key={l.sessionId}>
-                                  <td className="mono whitespace-nowrap">{l.sessionDate}{d.startTime ? ` ${d.startTime}` : ''}</td>
-                                  <td className="text-fg-muted">{d.subjectName}</td>
-                                  <td className="font-medium">{l.courseName}</td>
-                                  <td className="text-fg-muted">{d.studentNames}</td>
-                                  <td className="text-right mono">{(l.durationMinutes / 60).toFixed(1)}h</td>
-                                  <td className="text-right mono">{won(l.amount)}</td>
-                                </tr>
-                              );
-                            })}
+                            {p.lines.map((l) => (
+                              <tr key={l.sessionId}>
+                                <td className="mono whitespace-nowrap">{l.sessionDate}</td>
+                                <td className="font-medium">{l.courseName}</td>
+                                <td className="text-right mono">{hours(l.durationMinutes)}</td>
+                                <td className="text-right mono">{won(l.amount)}</td>
+                                <td className="text-right"><Link href={`/sessions/${l.sessionId}`} className="text-caption hover:underline" onClick={(e) => e.stopPropagation()}>회차 상세 →</Link></td>
+                              </tr>
+                            ))}
                           </tbody>
                         </table>
                       )}

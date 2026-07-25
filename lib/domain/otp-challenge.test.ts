@@ -1,7 +1,7 @@
 // [TBO-57] OTP 필드 UI 계약 단위 테스트 — 이메일·휴대전화 스테퍼가 공유하는 표시 판정
 //  (대표 지시 "인증 성공 혹은 실패 UI/UX" 규칙을 순수 함수로 고정).
 import { describe, expect, it } from "vitest";
-import { isOtpLockedMessage, otpActiveError, otpSendDisabled, otpSendLabel } from "./otp-challenge";
+import { isOtpLockedError, isOtpLockedMessage, otpActiveError, otpSendDisabled, otpSendLabel } from '@/lib/domain/otp-challenge';
 
 describe("OTP 발송 버튼 라벨", () => {
   it("상태 우선순위: 인증 완료 > 발송 중 > 쿨다운 > 재전송 > 최초 발송", () => {
@@ -37,5 +37,20 @@ describe("OTP 발송 비활성 판정", () => {
     expect(otpSendDisabled({ ...base, hasTarget: false })).toBe(true);
     expect(otpSendDisabled({ ...base, hasChallenge: true, cooldownSeconds: 10 })).toBe(true);
     expect(otpSendDisabled({ ...base, hasChallenge: true, cooldownSeconds: 0 })).toBe(false); // 쿨다운 종료 → 재전송 가능
+  });
+});
+
+describe('isOtpLockedError — code 우선(5-B), 문구 fallback', () => {
+  const errWith = (data: Record<string, unknown>) => ({ response: { data } });
+  it('code=OTP_LOCKED면 메시지와 무관하게 잠금', () => {
+    expect(isOtpLockedError(errWith({ code: 'OTP_LOCKED', message: '아무 문구' }), '아무 문구')).toBe(true);
+  });
+  it('code 없으면 구버전 문구("초과") fallback', () => {
+    expect(isOtpLockedError(errWith({ message: '인증 시도 횟수를 초과했습니다.' }), '인증 시도 횟수를 초과했습니다.')).toBe(true);
+    expect(isOtpLockedError(errWith({ message: '코드가 올바르지 않습니다.' }), '코드가 올바르지 않습니다.')).toBe(false);
+  });
+  it('비정형 오류 객체도 안전(잠금 아님)', () => {
+    expect(isOtpLockedError(new Error('network'), '네트워크 오류')).toBe(false);
+    expect(isOtpLockedError(undefined, '')).toBe(false);
   });
 });

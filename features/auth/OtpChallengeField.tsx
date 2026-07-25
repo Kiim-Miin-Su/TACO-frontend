@@ -15,7 +15,7 @@ import { FormFeedback } from "@/components/ui/FormFeedback";
 import type { OtpChallenge } from "@/lib/api";
 import { formatClock, useCountdownSeconds } from "@/lib/hooks/useCountdownSeconds";
 import { logger } from "@/lib/log";
-import { isOtpLockedMessage, otpActiveError, otpSendDisabled, otpSendLabel } from "@/lib/domain/otp-challenge";
+import { isOtpLockedError, otpActiveError, otpSendDisabled, otpSendLabel } from "@/lib/domain/otp-challenge";
 import { isValidOtpCode } from "@/lib/validation";
 
 const apiStatus = (caught: unknown): number | null =>
@@ -164,7 +164,7 @@ export function OtpChallengeField({
         },
         onError: (caught) => {
           const message = apiErrorMessage(caught, "인증 코드를 확인하지 못했습니다.");
-          const nextLocked = isOtpLockedMessage(message);
+          const nextLocked = isOtpLockedError(caught, message); // [TBO-65 5-B] code 우선
           if (nextLocked) setLocked(true);
           setError(message);
           log.warn("challenge_confirm_failed", { status: apiStatus(caught), locked: nextLocked });
