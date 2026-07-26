@@ -88,74 +88,16 @@ import type { RecurrenceScope } from "@kms545487/contracts";
 import { useAutoClear, useElementWidth, useMounted, useWindowKeydown } from "@/lib/hooks/browser-sync";
 import { EventForm } from "@/features/admin/EventsView"; // [B5] 학원 일정 인라인 발행 — 단일 폼 재사용
 
-// ── 그리드 상수 (애플/구글 캘린더 스타일: 넓고 시간 단위가 또렷하게) ──
-const START_H = 0,
-  END_H = 24,
-  HOUR_H = 46, // 시간당 높이(px) — 세로로 너무 길지 않게 압축(한눈에 들어오도록)
-  SNAP = 15;
-const HEADER_H = 52; // 요일/강의실 헤더 높이
-const GUTTER_W = 64; // 시간 거터 너비
-const GRID_MIN = START_H * 60;
-// WD/toMin/fromMin/pad는 lib/domain/schedule, PALETTE/STATUS_LABEL은 lib/domain/lantiv에서 import(단일 소스).
-// 시수 미측정·충돌 제외·회색 표시 대상(결강/취소)
-const CANCELED_GRAY = "#8c959f";
-const INSTRUCTOR_RESOURCE_FILTER_DIMS: "room"[] = ["room"];
-const INSTRUCTOR_SPLIT_DIMS: SplitDim[] = ["room", "subject"];
-const INSTRUCTOR_RESOURCE_PANEL_TYPES: "room"[] = ["room"];
-const isCanceledStatus = (s?: string) => s === "canceled" || s === "no_show";
-// [TBO-19] 강사 결석(instructorAttendance='absent')도 '결강'처럼 시각화(회색·취소선) — status는 바꾸지 않고 표시만.
-//  (결석 시수 제외는 백엔드 payouts.measure가 담당. 여기선 캘린더 렌더만.)
-const isSessionCanceled = (r: { status?: string; instructorAttendance?: string | null }) =>
-  isCanceledStatus(r.status) || r.instructorAttendance === "absent";
-
-const snap = (mm: number) => Math.round(mm / SNAP) * SNAP;
-
-// [R-1b 2026-07-06] F3: kstPatchTimes는 lib/domain/tz로 이동(순수 함수·vitest 회귀) —
-//  자정 크로스 클램프 endTime('24:00')·무효값('24:05')이 저장 패치로 새지 않도록 방어 추가.
-
-// [이슈2] 시차 그리드 셀 좌표(현지 날짜 + 현지 분) → KST {date, startMin}. 드래그·리사이즈·붙여넣기가
-//  시차 뷰에서도 올바른 KST로 저장되도록 변환. tz 없으면(KST 컬럼) 그대로.
-function tzCellToKst(dateLocal: string, localMin: number, tz?: string | null): { date: string; startMin: number } {
-  if (!tz || tz === KST_TZ) return { date: dateLocal, startMin: localMin };
-  const k = tzLocalToKst(dateLocal, fromMin(localMin), tz);
-  return { date: k.date, startMin: toMin(k.time) };
-}
-// 축 경계로 분 클램프(단일 소스 — KST 8~22 / 시차 0~24 등 축마다 min·max만 다름). [최적화: 중복 클램프 통일]
-const clampToAxis = (mm: number, min: number, max: number) => Math.max(min, Math.min(max, mm));
-const clampMin = (mm: number) => clampToAxis(mm, GRID_MIN, END_H * 60); // KST 기본 축
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const addDaysISO = (iso: string, n: number) => {
-  const d = new Date(iso + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-};
-// 해당 날짜가 속한 주의 월요일
-const mondayOf = (iso: string) => addDaysISO(iso, weekdayOf(iso) === 0 ? -6 : 1 - weekdayOf(iso));
-const hashColor = (s: string) => PALETTE[[...s].reduce((a, c) => a + c.charCodeAt(0), 0) % PALETTE.length];
-
-const startMinOf = (r: ScheduleRow) => toMin(r.startTime ?? "09:00");
-// [R-9] 자정 크로스(endTime 미저장·durationMinutes 파생) 대응 — 1440 초과 가능(단일 소스: sessionEndMin)
-const endMinOf = (r: ScheduleRow) => sessionEndMin({ startTime: r.startTime ?? "09:00", endTime: r.endTime, durationMinutes: r.durationMinutes });
-
-type View = "month" | "week" | "day";
-type ColorBy = "subject" | "instructor" | "room" | "student";
-type ManualPaneState = { uid: number; dim: SplitDim; ids: number[] };
-type Resizing = { id: number; edge: "top" | "bottom"; startClientY: number; origStart: number; origEnd: number;
-  gm: number; gmax: number; tz?: string; dateLocal: string }; // [이슈2] 시차 뷰 리사이즈: 축 경계·tz·현지날짜
-type Pending = { row: ScheduleRow; patch: SchedulePatchBody; label: string };
-type AccountingImpact = {
-  payoutId?: number | null;
-  before: { teachingMinutes: number; payoutEligibleMinutes: number; computedAmount: number };
-  after: { teachingMinutes: number; payoutEligibleMinutes: number; computedAmount: number };
-  delta: { teachingMinutes: number; payoutEligibleMinutes: number; computedAmount: number };
-};
-type AccountingAck = { id: number; patch: SchedulePatchBody; impact: AccountingImpact; payoutLocked: boolean };
-// 승인 요청 드래프트 타입은 modals/ApprovalRequestModals(모달과의 계약)에서 import — 여기선 seed만 정의.
-// [B6 C1] window.confirm 대체 — 확인 요청을 상태로 보관하고 ConfirmModal 하나로 렌더(충돌 강행·삭제 확인).
-type ConfirmRequest = { title: string; message: ReactNode; confirmLabel?: string; danger?: boolean; onConfirm: () => void | Promise<void> };
-type AvailabilityApprovalSeed =
-  | { action: "upsert"; body: AvailabilityUpsertBody; summary: string }
-  | { action: "delete"; targetAvailabilityId: number; summary: string };
+// [TBO-69 C4] 그리드 상수·순수 헬퍼·상호작용 타입은 calendar-grid.ts로 분리(본문 이동 — 값 무변).
+import {
+  START_H, END_H, HOUR_H, SNAP, HEADER_H, GUTTER_W, GRID_MIN, CANCELED_GRAY,
+  INSTRUCTOR_RESOURCE_FILTER_DIMS, INSTRUCTOR_SPLIT_DIMS, INSTRUCTOR_RESOURCE_PANEL_TYPES,
+  isCanceledStatus, isSessionCanceled, snap, tzCellToKst, clampToAxis, clampMin, todayISO,
+  mondayOf, hashColor, startMinOf, endMinOf,
+  type View, type ColorBy, type ManualPaneState, type Resizing, type Pending,
+  type AccountingImpact, type AccountingAck, type ConfirmRequest, type AvailabilityApprovalSeed,
+} from "./calendar-grid";
+import { addDaysISO } from "@/lib/format"; // [TBO-69 C4] 정본 소비(사본 제거)
 
 export function ScheduleCalendar() {
   // [C-2 2026-07-06] 뷰 프리셋(월/주/일·색 기준·열 좁게)만 typed preference로 복원 — 새로고침에도 유지.

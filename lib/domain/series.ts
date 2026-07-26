@@ -3,6 +3,7 @@
 //  변환 규칙: 같은 시각 반복은 KST로 일정한 (일수, 요일) 델타를 가진다(Asia/Seoul 무DST 기준 —
 //  DST 있는 시간대는 첫 발생일의 오프셋을 기간 전체에 적용: 기존 availability 반복과 동일한 근사).
 import { weekdayOf } from "./schedule";
+import { addDaysISO } from "@/lib/format"; // [TBO-69 C4]
 
 type SeriesRepeatKind = "weekly" | "custom";
 
@@ -29,11 +30,7 @@ export type SeriesRuleKst = {
   endTime: string;
 };
 
-const addDaysISO = (iso: string, n: number): string => {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-};
+// [TBO-69 C4] addDaysISO — lib/format 정본 소비(사본 제거)
 
 /** 현지 반복 규칙 → KST 규칙. 요일/기간은 (KST 변환의 일수 델타)만큼 균일 이동한다. */
 export function seriesRuleToKst(input: SeriesRuleInput): SeriesRuleKst {

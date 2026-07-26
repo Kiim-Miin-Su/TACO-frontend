@@ -3,6 +3,7 @@
 // 백엔드 ScheduleService가 동일 규칙을 재현(1:1). 상세: docs/scheduling.md
 // ──────────────────────────────────────────────────────────────
 import type { ClassSession, AvailabilityBlock, Conflict, ID } from '@/types';
+import { addDaysISO } from '@/lib/format'; // [TBO-69 C4]
 
 const pad = (n: number) => String(n).padStart(2, '0');
 /** 2자리 패딩 — 뷰 유틸 공용(감사 D: 파일별 중복 pad 통일용 export). */
@@ -44,11 +45,7 @@ export const crossMidnightEnd = (r: { startTime?: string; endTime?: string; dura
   const e = sessionEndMin(r);
   return e > 1440 ? fromMin(e - 1440) : undefined;
 };
-const addDaysISO_ = (dateStr: string, days: number): string => {
-  const d = new Date(dateStr + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-};
+// [TBO-69 C4] 날짜 산술은 lib/format.addDaysISO 정본(사본 addDaysISO_ 제거)
 const dayDiffDays = (a: string, b: string): number =>
   Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86_400_000);
 
@@ -165,7 +162,7 @@ export function detectConflicts(cand: ConflictCandidate, ctx: ConflictCtx): Conf
   const segs = cE > 1440
     ? [
         { date: cand.sessionDate, s: cS, e: 1440 },
-        { date: addDaysISO_(cand.sessionDate, 1), s: 0, e: cE - 1440 },
+        { date: addDaysISO(cand.sessionDate, 1), s: 0, e: cE - 1440 },
       ]
     : [{ date: cand.sessionDate, s: cS, e: cE }];
   for (const seg of segs) {

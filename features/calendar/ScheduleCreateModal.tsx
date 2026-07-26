@@ -4,6 +4,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { addDaysISO } from "@/lib/format"; // [TBO-69 C4]
 import type { AvailabilityUpsertBody, ScheduleCreateBody, ScheduleSeriesCreateBody } from "@/lib/api";
 import type { Room, ScheduleResource, ScheduleResources } from "@/types";
 import { courseRosterFromScheduleResources, scheduleResourceName } from "@/lib/domain/schedule-resources";
@@ -26,12 +27,7 @@ import { availabilityKindOf, type ScheduleEntryType } from "@/lib/domain/schedul
 import { ScheduleRepeatFields, type ScheduleRepeat } from "./inputs/ScheduleRepeatFields";
 import { ScheduleTimeRangeFields } from "./inputs/ScheduleTimeRangeFields";
 
-const addDaysISO = (iso: string, n: number) => {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-};
-
+// [TBO-69 C4] addDaysISO — lib/format 정본 소비(사본 제거)
 // ── 관리자: 스케줄 추가 모달 ──
 export function ScheduleCreateModal({
   resources,

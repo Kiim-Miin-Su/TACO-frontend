@@ -7,8 +7,9 @@ import { useCreateExpense } from '@/lib/queries';
 import type { ExpenseCategory } from '@/types';
 import { CATEGORIES, categoryLabel } from './labels';
 import { useAccountAccess } from '@/lib/useAccountAccess';
+import { todayKst } from '@/lib/format'; // [TBO-69 C4]
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = () => todayKst(); // [TBO-69 C4] KST 진실원 — UTC 사본 소탕(M2 잔여: 자정~09시 어긋남)
 
 export function ExpenseFormView() {
   const router = useRouter();

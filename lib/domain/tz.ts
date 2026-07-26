@@ -10,12 +10,9 @@
 import type { ScheduleRow } from '@/types';
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 M5 — 파일별 중복 pad/fromMin/weekday 금지 규칙과 통일)
 import { fromMin, toMin, weekdayOf } from './schedule';
+import { addDaysISO } from '@/lib/format'; // [TBO-69 C4]
 
-const addDaysISO = (iso: string, n: number): string => {
-  const d = new Date(iso + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-};
+// [TBO-69 C4] addDaysISO — lib/format 정본 소비(사본 제거)
 
 export type CountryInfo = { code: string; name: string; en: string; tz: string; flag: string };
 

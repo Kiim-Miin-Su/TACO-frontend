@@ -7,14 +7,14 @@
 import { useState } from 'react';
 import { Chart, EmptyState, LoadingState, SectionCard } from '@/components/ui';
 import { useRevenueReport } from '@/lib/queries';
-import { won } from '@/lib/format';
+import { won, todayKst } from '@/lib/format';
 import type { ChartConfiguration } from 'chart.js';
 
 const PALETTE = ['#0f766e', '#2563eb', '#e08a00', '#8250df', '#0f9d6b', '#cf222e', '#1c7293'];
 const wonTick = (v: number | string) => `₩${Number(v).toLocaleString('ko-KR')}`;
 
 export function RevenueCharts() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayKst(); // [TBO-69 C4] KST 진실원 — UTC 사본 소탕(M2 잔여)
   const [start, setStart] = useState('2026-05-01');
   const [end, setEnd] = useState('2026-06-30');
   const { data: report, isPending, isError } = useRevenueReport({ from: start, to: end });

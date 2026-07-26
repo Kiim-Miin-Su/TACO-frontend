@@ -25,3 +25,11 @@ export const todayKst = (now = new Date()): string => {
   const value = (type: 'year' | 'month' | 'day') => parts.find((p) => p.type === type)?.value ?? '';
   return `${value('year')}-${value('month')}-${value('day')}`;
 };
+
+// [TBO-69 C4 2026-07-26] ISO 날짜 문자열 산술 — FE 5곳 사본 수렴(domain/schedule·series·tz·
+//  ScheduleCalendar·ScheduleCreateModal). 'YYYY-MM-DD' 문자열 위 UTC 산술이라 타임존 무관(순수).
+export const addDaysISO = (iso: string, n: number): string => {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};

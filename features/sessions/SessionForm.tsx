@@ -18,12 +18,10 @@ import {
 import type { ScheduleRepeat } from '@/features/calendar/inputs/ScheduleRepeatFields';
 import { ClassOpeningCatalogFields } from './ClassOpeningCatalogFields';
 import { ClassOpeningScheduleFields } from './ClassOpeningScheduleFields';
+import { addDaysISO } from "@/lib/format"; // [TBO-69 C4]
 
-const addDays = (iso: string, days: number): string => {
-  const date = new Date(`${iso}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-};
+// [TBO-69 C4] 날짜 산술 = lib/format.addDaysISO 정본(사본 제거)
+const addDays = addDaysISO;
 
 const initialDraft = (): ClassOpeningDraft => ({
   subjectName: '',
