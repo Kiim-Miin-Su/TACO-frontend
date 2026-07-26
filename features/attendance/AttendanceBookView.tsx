@@ -8,7 +8,7 @@ import Link from "next/link";
 import type { AttendanceStatus, InstructorAttendanceStatus, ScheduleRow } from "@/types";
 import { useSchedule, useAttendance, useUpsertAttendance, useStudents, useCourses, useUpdateSchedule, useInstructorContracts } from "@/lib/queries";
 import { buildAttendanceBook, hoursLabel, nextAttendanceStatus } from "@/lib/domain/attendanceBook";
-import { paidTeachingHours } from "@/lib/domain/schedule";
+import { instructorAttendanceStats } from "@/lib/domain/schedule"; // [TBO-68 C1] 통계 헬퍼 단일화
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS } from "./AttMarker";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { EmptyState, HelpPopover, LoadingState, PageHeader, SectionCard, TableWrap } from "@/components/ui";
@@ -99,23 +99,15 @@ export function AttendanceBookView() {
     });
     return [...byInst.entries()].map(([id, list]) => {
       const name = list[0]?.instructorName ?? `강사 ${id}`;
-      // [TBO-19] 진행 회차 표시는 held·makeup 모두(출결 마킹 대상), 시수는 정산 규칙(countsForPay=held·비결석)만.
+      // [TBO-68 C1] 카운트·출석률·인정 시수 = instructorAttendanceStats 헬퍼(BE summary 동형) 하나로.
+      //  종전 인라인 산식(counts/denom/rate + paidTeachingHours)은 출결 상세와 2중 사본이었다.
       const heldList = list.filter((r) => r.status === "held" || r.status === "makeup");
-      const hrs = paidTeachingHours(list as never, { instructorId: id });
-      // [TBO-19 Sprint2] 강사별 출결 요약 — 카운트·출석률(출석+지각)/(출석+지각+결석).
-      const counts = { present: 0, late: 0, absent: 0, makeup: 0, unmarked: 0 };
-      heldList.forEach((s) => {
-        const a = s.instructorAttendance;
-        if (a === "present" || a === "late" || a === "absent" || a === "makeup") counts[a]++;
-        else counts.unmarked++;
-      });
-      const denom = counts.present + counts.late + counts.absent;
-      const rate = denom ? Math.round(((counts.present + counts.late) / denom) * 100) : null;
+      const stats = instructorAttendanceStats(list);
       // [TBO-19 Sprint4] 계약 대비 실제 시수(매니저) — 계약 월 시수 대비 이번 달 인정 시수.
       const contract = contracts.find((c) => c.instructorId === id);
       const contractHours = contract?.monthlyHours ?? null;
-      const contractPct = contractHours ? Math.round((hrs.hours / contractHours) * 100) : null;
-      return { id, name, sessions: [...heldList].sort((a, b) => a.sessionDate.localeCompare(b.sessionDate)), hours: hrs.hours, counts, rate, contractHours, contractPct };
+      const contractPct = contractHours ? Math.round((stats.hours / contractHours) * 100) : null;
+      return { id, name, sessions: [...heldList].sort((a, b) => a.sessionDate.localeCompare(b.sessionDate)), hours: stats.hours, counts: stats.counts, rate: stats.rate, contractHours, contractPct };
     });
   }, [rows, ym, manager, myInstId, contracts]);
 

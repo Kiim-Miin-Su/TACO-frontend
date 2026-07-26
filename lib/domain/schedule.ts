@@ -213,28 +213,51 @@ export function teachingHours(
   return { sessions: rows.length, minutes, hours: Math.round((minutes / 60) * 100) / 100 };
 }
 
-// ── [TBO-19 시수 정책 · 2026-07-07 — ⚠ 잠정 비즈니스 로직, 추후 변경] ──────────────────────────
+// ── [TBO-19 시수 정책 · TBO-68 C1 2026-07-26 수렴] ─────────────────────────────────────────
 //  강사 **정산 시수(급여 인정)** 규칙 = 실제 진행(held) AND 강사 결석 아님.
 //  제외: 미진행(예정·취소·노쇼)·보강(makeup)·강사 결석(absent). 지각=인정(감산 없음).
-//  ⚠ 이 규칙은 백엔드 payouts.service.measure()의 게이트와 **한 쌍**(단일 규칙). 변경 시 양쪽 동시 수정.
-//  정책 배경·변경 이력 = docs/TODO.md TBO-19. (generic teachingHours는 '뷰/계획 시수'로 별개 — 이건 급여용)
+//  ⚠ FE **의도 잔존 사본 1곳**(BE 정본 = session-accounting.policy.countsForTeachingHours).
+//   단건 배지(세션 상세·출결 상세 행)용만 — 집계는 서버 summary/아래 stats 헬퍼로 수렴(TBO-68 C1).
+//   동형 계약은 schedule.test.ts 진리표가 고정. contracts minor 게시 때 ScheduleRow 서버 파생
+//   필드로 대체 예정(TBO-68 §3 — 그때 이 술어 삭제).
 export const countsForPay = (s: Pick<ClassSession, 'status' | 'instructorAttendance'>): boolean =>
   s.status === 'held' && s.instructorAttendance !== 'absent';
 
-/** 강사 정산 시수(급여 인정분) 집계 — countsForPay 규칙. AttendanceBook 강사 시수·정산 표기 단일 소스. */
-export function paidTeachingHours(
-  sessions: ClassSession[],
-  opts: { from?: string; to?: string; instructorId?: ID } = {},
-): TeachingHours {
-  const rows = sessions.filter(
-    (s) =>
-      (opts.from ? s.sessionDate >= opts.from : true) &&
-      (opts.to ? s.sessionDate <= opts.to : true) &&
-      (opts.instructorId != null ? s.instructorId === opts.instructorId : true) &&
-      countsForPay(s),
-  );
-  const minutes = rows.reduce((a, s) => a + (s.durationMinutes || 0), 0);
-  return { sessions: rows.length, minutes, hours: Math.round((minutes / 60) * 100) / 100 };
+export type InstructorAttendanceStats = {
+  held: number; // 진행 회차(held·makeup) = 마킹 대상
+  counts: { present: number; late: number; absent: number; makeup: number; unmarked: number };
+  rate: number | null; // (출석+지각)/(출석+지각+결석) — 분모 0이면 null
+  minutes: number; // 인정 시수(countsForPay — held·비결석만, 보강 제외)
+  hours: number;
+};
+
+/** [TBO-68 C1] 강사 출결·시수 통계 — BE schedule.service.instructorAttendanceSummary와 **동형**
+ *  (진리표 vitest 고정). 서버 summary를 못 쓰는 표면 전용(출석부 강사 북 — 강사 본인도 열람하는데
+ *  summary 라우트는 관리 지표 ADMIN_ROLES·시수 은닉 정책). 관리자 표면(출결 상세·대시보드)은
+ *  서버 summary를 직접 소비한다(로컬 재계산 금지 — 종전 2곳 사본을 이 규약으로 소거). */
+export function instructorAttendanceStats(
+  sessions: ReadonlyArray<Pick<ClassSession, 'status' | 'instructorAttendance' | 'durationMinutes'>>,
+): InstructorAttendanceStats {
+  const counts = { present: 0, late: 0, absent: 0, makeup: 0, unmarked: 0 };
+  let held = 0;
+  let minutes = 0;
+  for (const s of sessions) {
+    if (s.status === 'held' || s.status === 'makeup') {
+      held += 1;
+      const a = s.instructorAttendance;
+      if (a === 'present' || a === 'late' || a === 'absent' || a === 'makeup') counts[a] += 1;
+      else counts.unmarked += 1;
+    }
+    if (countsForPay(s)) minutes += s.durationMinutes || 0;
+  }
+  const denom = counts.present + counts.late + counts.absent;
+  return {
+    held,
+    counts,
+    rate: denom ? Math.round(((counts.present + counts.late) / denom) * 100) : null,
+    minutes,
+    hours: Math.round((minutes / 60) * 100) / 100,
+  };
 }
 
 // ── 이동(드래그)·리사이즈 → 충돌검사용 후보 + PATCH 페이로드 ──

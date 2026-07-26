@@ -3,16 +3,17 @@
 //  참조 무결성 원칙:
 //   · 데이터 단일 소스 = 권위 엔드포인트 /schedule(서버가 instructorId로 필터) — 세션 복제·별도 store 없음.
 //   · instructorId 유효성 검증(강사 목록에 없으면 '찾을 수 없음') — 유령 참조 차단.
-//   · 카운트/시수는 정산과 동일 규칙(countsForPay/paidTeachingHours) — 이중 기준 없음.
+//   · [TBO-68 C1] 카운트·출석률·인정 시수 = **서버 summary 정본 소비**(instructor-attendance-summary,
+//     instructorId 필터) — 종전 로컬 재계산(counts/rate/paidTeachingHours) 사본 제거. 행 배지만 술어.
 //   · 읽기 전용(진실원은 세션·출석부) — 편집은 출석부/캘린더에서.
 import { Fragment, useMemo, useState } from 'react';
 import { payoutHours as hoursLabel } from '@/features/payouts/payout-shared'; // [감사 3] 시수 표기 단일화
 import Link from 'next/link';
 import type { AttendanceStatus, InstructorAttendanceStatus } from '@/types';
 import { EmptyState, LoadingState, PageHeader, SectionCard, StatCard, TableWrap } from '@/components/ui';
-import { useInstructors, useInstructorSessions, useUpdateSchedule, useAttendance, useUpsertAttendance } from '@/lib/queries';
+import { useInstructors, useInstructorSessions, useInstructorAttendanceSummary, useUpdateSchedule, useAttendance, useUpsertAttendance } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
-import { paidTeachingHours, countsForPay, WEEKDAYS_KO as WD } from '@/lib/domain/schedule';
+import { countsForPay, WEEKDAYS_KO as WD } from '@/lib/domain/schedule';
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from './AttMarker';
 import { AccountingImpactModal } from '@/components/AccountingImpactModal';
 
@@ -42,27 +43,22 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
   const range = mode === 'month' ? monthRange(ym) : custom;
 
   const { data: sessions = [], isLoading } = useInstructorSessions(admin ? instructorId : null, range.from, range.to);
+  // [TBO-68 C1] 통계는 서버 summary 정본(qk.schedule 하위 — 아래 출결 마킹 mutation이 자동 무효화).
+  const { data: summary } = useInstructorAttendanceSummary(range.from, range.to, instructorId);
 
   // 참조 무결성: 유효한 강사인지 검증(목록 로딩 후에만 판정).
   const instructor = instructors.find((i) => Number(i.id) === instructorId);
 
-  // 진행 회차(held·makeup) = 마킹 대상 · 카운트/시수는 정산 규칙.
+  // 진행 회차(held·makeup) = 마킹 대상(행 목록은 세션 데이터 그대로 — 통계만 서버).
   const held = useMemo(
     () => sessions.filter((s) => s.status === 'held' || s.status === 'makeup').sort((a, b) => (a.sessionDate + (a.startTime ?? '')).localeCompare(b.sessionDate + (b.startTime ?? ''))),
     [sessions],
   );
-  const counts = useMemo(() => {
-    const c = { present: 0, late: 0, absent: 0, makeup: 0, unmarked: 0 };
-    held.forEach((s) => {
-      const a = s.instructorAttendance;
-      if (a === 'present' || a === 'late' || a === 'absent' || a === 'makeup') c[a]++;
-      else c.unmarked++;
-    });
-    return c;
-  }, [held]);
-  const denom = counts.present + counts.late + counts.absent;
-  const rate = denom ? Math.round(((counts.present + counts.late) / denom) * 100) : null;
-  const hrs = paidTeachingHours(sessions, { instructorId });
+  // 기간 내 회차가 없으면 서버 rows에 해당 강사 행이 없다 → 0/—로 표기(사본 재계산 금지).
+  const stat = summary?.rows.find((r) => Number(r.instructorId) === instructorId);
+  const counts = { present: stat?.present ?? 0, late: stat?.late ?? 0, absent: stat?.absent ?? 0 };
+  const rate = stat?.attendanceRate ?? null;
+  const hours = stat?.teachingHours ?? 0;
 
   const navMonth = (d: number) => { const [y, m] = ym.split('-').map(Number); setYm(new Date(Date.UTC(y, m - 1 + d, 1)).toISOString().slice(0, 7)); };
 
@@ -118,12 +114,12 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-        <StatCard label="진행 회차" value={`${held.length}회`} />
+        <StatCard label="진행 회차" value={`${stat?.held ?? held.length}회`} />
         <StatCard label="출석" value={`${counts.present}`} tone="success" />
         <StatCard label="지각" value={`${counts.late}`} tone="attention" />
         <StatCard label="결석" value={`${counts.absent}`} tone="danger" />
         <StatCard label="출석률" value={rate == null ? '—' : `${rate}%`} />
-        <StatCard label="인정 시수" value={`${hrs.hours}h`} tone="accent" />
+        <StatCard label="인정 시수" value={`${hours}h`} tone="accent" />
       </div>
 
       <SectionCard title={`회차 상세 (${held.length})`}>

@@ -34,6 +34,9 @@ export type BookRow = {
   counts: Record<AttendanceStatus, number> & { unchecked: number };
   attendedMinutes: number; // 누적 인정 시수(분)
   totalMinutes: number; // 분모: 진행된 본인 회차 시수 합
+  // [TBO-68 C2] **학생** 출석률 — 분모 = 진행된 본인 코호트 회차 전체(미표시 포함). 강사 출석률
+  //  (BE instructor-attendance-summary·FE instructorAttendanceStats: 분모 = 마킹된 출결만)과
+  //  분모 의미가 다른 **별개 지표** 판정 — 사본 아님(통일 금지, 각자 정본 유지).
   rate: number | null; // 출석률 %(present+late / 진행 본인 회차) — 진행 회차 0이면 null
 };
 

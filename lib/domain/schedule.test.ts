@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ClassSession, AvailabilityBlock } from '@/types';
-import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, recommendInstructorsForStudent, ownerWindows, blocksOnDate, sessionEndMin, crossMidnightEnd, durationMinutesBetween, blockRestrictsSession, ownerAvailabilityForSlot } from './schedule';
+import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, recommendInstructorsForStudent, ownerWindows, blocksOnDate, sessionEndMin, crossMidnightEnd, durationMinutesBetween, blockRestrictsSession, ownerAvailabilityForSlot, countsForPay, instructorAttendanceStats } from './schedule';
 
 const ablock = (p: Partial<AvailabilityBlock>): AvailabilityBlock => ({
   id: 1, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '09:00', endTime: '12:00', ...p,
@@ -507,5 +507,45 @@ describe('[R-9] detectConflicts — 자정 크로스 이틀 겹침(BE conflict.u
     const c = detectConflicts({ sessionDate: '2026-06-29', startTime: '23:00', durationMinutes: 120, instructorId: 1 }, { sessions: [], blocks });
     expect(c).toContainEqual({ type: 'unavailable', resource: 'instructor', resourceId: 1 });
     // 시작일(월) 요일만 보던 구 규칙이면 미검출 — 회귀 방지
+  });
+});
+
+// ── [TBO-68 C1 2026-07-26] 시수 인정·강사 출결 통계 — BE **동형 계약 진리표** ──────────────────
+//  BE 정본: session-accounting.policy.countsForTeachingHours / schedule.service.instructorAttendanceSummary.
+//  이 진리표는 BE 산식과 1:1 — 어느 한쪽 규칙을 바꾸면 이 표(와 BE e2e)가 함께 바뀌어야 한다.
+describe('countsForPay — BE countsForTeachingHours 동형 진리표', () => {
+  const CASES: Array<[string, ClassSession['status'], ClassSession['instructorAttendance'] | undefined, boolean]> = [
+    ['진행+출석 = 인정', 'held', 'present', true],
+    ['진행+지각 = 인정(감산 없음)', 'held', 'late', true],
+    ['진행+미표시 = 인정', 'held', undefined, true],
+    ['진행+보강표시 = 인정', 'held', 'makeup', true],
+    ['진행+결석 = 제외', 'held', 'absent', false],
+    ['보강(makeup) = 제외(상태 자체)', 'makeup', 'present', false],
+    ['예정 = 제외', 'scheduled', 'present', false],
+    ['취소 = 제외', 'canceled', undefined, false],
+    ['노쇼 = 제외', 'no_show', undefined, false],
+  ];
+  for (const [label, status, att, expected] of CASES) {
+    it(label, () => expect(countsForPay({ status, instructorAttendance: att })).toBe(expected));
+  }
+});
+
+describe('instructorAttendanceStats — BE instructorAttendanceSummary 동형', () => {
+  const S = (status: ClassSession['status'], att?: ClassSession['instructorAttendance'], min = 60) =>
+    ({ status, instructorAttendance: att, durationMinutes: min });
+  it('카운트 모집단=진행(held·makeup)·시수=countsForPay·출석률 분모=마킹된 출결', () => {
+    const stats = instructorAttendanceStats([
+      S('held', 'present'), S('held', 'late', 90), S('held', 'absent'), S('held', undefined, 30),
+      S('makeup', 'makeup'), S('scheduled', 'present'), S('canceled'),
+    ]);
+    expect(stats.held).toBe(5); // held 4 + makeup 1 (scheduled·canceled 제외)
+    expect(stats.counts).toEqual({ present: 1, late: 1, absent: 1, makeup: 1, unmarked: 1 });
+    expect(stats.rate).toBe(67); // (1+1)/(1+1+1) — unmarked·makeup은 분모 제외
+    expect(stats.minutes).toBe(180); // present 60 + late 90 + 미표시 30 (absent·makeup·scheduled 제외)
+    expect(stats.hours).toBe(3);
+  });
+  it('마킹된 출결 0이면 출석률 null(0% 오표기 금지) · 빈 목록 0/null', () => {
+    expect(instructorAttendanceStats([S('held', undefined)]).rate).toBeNull();
+    expect(instructorAttendanceStats([])).toEqual({ held: 0, counts: { present: 0, late: 0, absent: 0, makeup: 0, unmarked: 0 }, rate: null, minutes: 0, hours: 0 });
   });
 });
