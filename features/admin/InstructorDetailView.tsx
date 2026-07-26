@@ -1,5 +1,6 @@
 'use client';
 
+import { isSuperAdmin } from '@/lib/access-control'; // [P2 FE-8]
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Badge, ConfirmModal, DetailStates, SectionCard } from '@/components/ui';
@@ -22,7 +23,7 @@ export function InstructorDetailView({ instructorId }: { instructorId: number })
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const isSuper = role === 'super_admin';
+  const isSuper = isSuperAdmin(role); // [P2 FE-8] 진실원(access-control)
 
   return (
     <DetailStates query={query} notFoundMessage="강사를 찾을 수 없습니다." backHref="/admin/instructors">

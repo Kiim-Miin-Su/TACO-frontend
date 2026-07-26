@@ -2,10 +2,11 @@
 //  셀 더블클릭=일정 추가, 날짜 클릭=일간 보기, 이벤트 클릭=상세. 데이터·핸들러는 전부 부모 소유.
 "use client";
 import { useMemo } from "react";
+import { todayKst } from '@/lib/format'; // [P2]
 import type { ScheduleRow } from "@/types";
 import { weekdayOf, pad2 as pad, WEEKDAYS_KO as WD } from "@/lib/domain/schedule";
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => todayKst(); // [P2] KST 진실원(lib/format)
 
 export function MonthGrid({
   anchor,

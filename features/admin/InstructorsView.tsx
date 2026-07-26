@@ -1,5 +1,6 @@
 'use client';
 
+import { isSuperAdmin } from '@/lib/access-control'; // [P2 FE-8]
 import { useMemo, useState } from 'react';
 import { Badge, ClickableTableRow, EmptyState, LoadingState, SectionCard, TableWrap } from '@/components/ui';
 import { useAccountAccess } from '@/lib/useAccountAccess';
@@ -12,7 +13,7 @@ export function InstructorsView() {
   const rows = useMemo(() => [...(query.data ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'ko')), [query.data]);
   const [createOpen, setCreateOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const isSuper = role === 'super_admin';
+  const isSuper = isSuperAdmin(role); // [P2 FE-8] 진실원(access-control)
 
   return (
     <SectionCard title={`강사 (${rows.length})`} action={isSuper ? <button type="button" className="btn btn-sm btn-primary" onClick={() => setCreateOpen(true)}>+ 강사 등록</button> : undefined}>

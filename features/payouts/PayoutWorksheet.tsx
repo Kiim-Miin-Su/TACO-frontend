@@ -6,6 +6,7 @@
 //  excluded=사유) · 합계(총 시수·자동 합·책정 합·총액·미책정 N). 판정은 전부 서버(단일 진실원 —
 //  payout-worksheet.policy)이고 이 컴포넌트는 표시·명령만 한다.
 import { useState } from 'react';
+import { reportApprovalBadge } from '@/lib/domain/reports'; // [P2 FE-4]
 import Link from 'next/link';
 import { Badge, EmptyState, LoadingState, SectionCard, TableWrap, type Tone } from '@/components/ui';
 import { usePayoutWorksheet, useSetSessionPayAmount, useUpdateSchedule, useUpsertAttendance } from '@/lib/queries';
@@ -32,12 +33,7 @@ const EXCLUDED_LABEL: Record<string, string> = {
   instructor_absent: '강사 결석(시수 제외)',
   payout_linked: '정산 연결됨',
 };
-const REPORT_LABEL: Record<string, { label: string; tone: Tone }> = {
-  approved: { label: '승인', tone: 'success' },
-  submitted: { label: '제출', tone: 'accent' },
-  rejected: { label: '반려', tone: 'danger' },
-  draft: { label: '임시', tone: 'neutral' },
-};
+// [P2 FE-4] 리포트 승인 라벨 = lib/domain/reports 진실원(사본 제거 — 표기 3곳 3안 종결)
 
 function AmountCell({ row }: { row: PayoutWorksheetRow }) {
   const setAmount = useSetSessionPayAmount();
@@ -145,7 +141,7 @@ export function PayoutWorksheet({ instructorId, from, to }: { instructorId: numb
                       {row.participants.length === 0 ? (
                         <span className="text-caption text-fg-subtle">수강생 없음</span>
                       ) : row.participants.map((participant) => {
-                        const report = participant.reportApproval ? REPORT_LABEL[participant.reportApproval] : null;
+                        const report = participant.reportApproval ? reportApprovalBadge(participant.reportApproval) : null;
                         return (
                           <div key={participant.studentId} className="flex items-center gap-2 py-0.5 flex-wrap">
                             <span className="min-w-[64px]">{participant.name}</span>

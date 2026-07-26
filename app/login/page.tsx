@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useTacoStore } from "@/lib/store";
 import { AuthShell, AuthField } from "@/components/auth/AuthShell";
+import { hasCapability } from "@/lib/access-control";
 import type { AccountRole } from "@/types";
 
 function LoginForm() {
@@ -33,7 +34,8 @@ function LoginForm() {
       // [2026-07-15 대표 지시 ①] 관리자 계열(승인 권한 보유)은 로그인 직후 승인센터로 —
       //  시범운영에서 대기 결재(가입·수업 변경·프로필)를 놓치지 않게 기본 랜딩을 승인 큐로 둔다.
       //  명시적 redirect 파라미터가 있으면 그 목적지를 우선한다(딥링크 보존). 강사는 홈(캘린더 동선).
-      const isApprover = ["super_admin", "admin", "manager"].includes(accountRole);
+      // [TBO-65 P2 FE-8 2026-07-26] 역할 배열 사본 제거 — 승인 권한 판정은 capability 진실원으로.
+      const isApprover = hasCapability(accountRole, "approval.manage");
       const landing = params.get("redirect") || (isApprover ? "/admin/approvals" : "/");
       router.replace(res.account.mustChangePassword ? "/account/security" : landing);
     } catch (e) {

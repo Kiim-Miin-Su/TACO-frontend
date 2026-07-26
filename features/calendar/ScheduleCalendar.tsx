@@ -5,7 +5,7 @@ import type { ScheduleRow, Conflict, ScheduleResource, AvailabilityBlock, Attend
 import type { SchedulePatchBody, ScheduleCreateBody, ScheduleSeriesCreateBody, AvailabilityUpsertBody, CreateScheduleRequestBody } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/queryKeys";
-import { invalidateScheduleLifecycle } from "@/lib/query-cache";
+import { invalidateScheduleLifecycle, invalidateAvailability } from '@/lib/query-cache';
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 D — 파일별 중복 toMin/fromMin/pad/WD 제거)
 import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, sessionEndMin, crossMidnightEnd, durationMinutesBetween } from "@/lib/domain/schedule";
 import { useAcademyEvents } from "@/lib/queries"; // [TBO-29D ⑤] 학원 공통 일정(전 직원 공통 표시)
@@ -843,7 +843,7 @@ export function ScheduleCalendar() {
   // ── 가용/불가(Block) — 밴드 표시 + 클릭 삭제. 생성은 "스케줄 추가" 모달의 '가용·불가' 탭에서. ──
   // [TBO-14 C2b] 밴드 편집 후 가용/불가 쿼리 무효화 → allBlocks refetch → selBlocks 파생 자동 재계산.
   const reloadSelBlocks = useCallback(async () => {
-    await qc.invalidateQueries({ queryKey: qk.availability.all });
+    await invalidateAvailability(qc); // [P2 FE-9] 중앙 헬퍼(query-cache) — 인라인 queryKey 지식 제거
   }, [qc]);
 
   const hasAvailabilityLegend = useMemo(() => {

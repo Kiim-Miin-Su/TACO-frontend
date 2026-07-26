@@ -4,6 +4,7 @@
 //  재사용처: ReportWriteView(인라인 목록)·FeedbackFormView(전용 페이지)·세션 상세 허브(20-3).
 'use client';
 import { useState } from 'react';
+import { reportApprovalBadge } from '@/lib/domain/reports'; // [P2 FE-4]
 import { Badge, ModalShell, PromptModal, type Tone } from '@/components/ui';
 import { useReports, useReportTemplates, useCreateReportTemplate, useRemoveReportTemplate, useCreateReport, useSubmitReport, useUpdateReport } from '@/lib/queries';
 import type { ClassSession, ReportStatus, Student } from '@/types';
@@ -90,7 +91,7 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
         <span className="font-medium">{student.name}</span>
         {student.englishName && <span className="text-caption text-fg-subtle">{student.englishName}</span>}
         <Badge tone={reportTone[status]}>{reportLabel[status]}</Badge>
-        {report?.approvalStatus === 'approved' && <Badge tone="success">승인됨 · 시수 반영</Badge>}
+        {report?.approvalStatus === 'approved' && <Badge tone={reportApprovalBadge('approved').tone}>{reportApprovalBadge('approved').label}</Badge>}
         {report?.approvalStatus === 'rejected' && <Badge tone="danger">반려</Badge>}
         {savedAt && <span className="text-micro text-fg-subtle ml-auto">저장됨 {savedAt}</span>}
       </div>

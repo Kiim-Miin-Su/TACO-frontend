@@ -4,6 +4,8 @@
 //  인증 메일 재발송까지. 재사용: DetailStates(단건 404/403 표준)·ModalShell 계열(ReasonModal)·
 //  validation.ts(전화 형식)·중앙 훅(useUser/useAdminUpdateUser — CLAUDE §18). sudo 상태는
 //  lib/sudo 단일 소스(5분 TTL·저장소 미사용), 검증 권위는 서버 POST /auth/reauth.
+import { ACCOUNT_STATUS_LABEL } from '@/lib/domain/accounts'; // [P2 FE-7]
+import { isSuperAdmin } from '@/lib/access-control'; // [P2 FE-8]
 import { useState } from 'react';
 import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 단일 진실원
 import { useRouter } from 'next/navigation';
@@ -20,7 +22,7 @@ import { isValidKrPhone } from '@/lib/validation';
 import { dateOnly } from '@/lib/format';
 import type { AccountRole } from '@/types';
 
-const STATUS_LABEL: Record<string, string> = { active: '활성', pending: '승인 대기', rejected: '반려됨' };
+const STATUS_LABEL = ACCOUNT_STATUS_LABEL; // [P2 FE-7] 진실원(lib/domain/accounts)
 const STATUS_TONE: Record<string, Tone> = { active: 'success', pending: 'attention', rejected: 'danger' };
 const EDITABLE_ROLES = ['instructor', 'manager', 'admin'] as const;
 
@@ -60,7 +62,7 @@ function SudoGate({ onVerified }: { onVerified: () => void }) {
 function DetailBody({ userId }: { userId: number }) {
   const router = useRouter();
   const { role } = useAccountAccess();
-  const isSuper = role === 'super_admin';
+  const isSuper = isSuperAdmin(role); // [P2 FE-8] 진실원(access-control)
   const query = useUser(userId);
   const update = useAdminUpdateUser();
   const resend = useResendPendingVerification();

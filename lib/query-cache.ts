@@ -232,3 +232,9 @@ export async function refreshScheduleRequestLifecycle(
   }
   await invalidateCalendarCommand(queryClient);
 }
+
+// [TBO-65 P2 FE-9 2026-07-26] 가용/불가 무효화 공용 헬퍼 — ScheduleCalendar 인라인 호출 수렴
+//  (중앙 규약: 뷰는 헬퍼만 호출, queryKey 지식은 여기 한 곳).
+export async function invalidateAvailability(queryClient: QueryClient): Promise<void> {
+  await queryClient.invalidateQueries({ queryKey: qk.availability.all, refetchType: 'active' });
+}

@@ -4,6 +4,7 @@
 //  단일 소스: 읽기=useReport(서버 단건 — 강사는 본인 것만 403), 학생·세션 표기는 기존 훅 재사용.
 //  승인/반려 = 기존 중앙 훅(useApproveReport/useRejectReport — 시수 캐시 fan-out 동일).
 import { useState } from 'react';
+import { reportApprovalBadge } from '@/lib/domain/reports'; // [P2 FE-4]
 import Link from 'next/link';
 import { Badge, DetailStates, SectionCard, type Tone } from '@/components/ui';
 import { useReport, useStudents, useScheduleSession, useApproveReport, useRejectReport } from '@/lib/queries';
@@ -11,12 +12,7 @@ import { useAccountAccess } from '@/lib/useAccountAccess';
 import { ReasonModal } from '@/components/ReasonModal';
 import { shortDate } from '@/lib/format';
 
-const APPROVAL_LABEL: Record<string, { label: string; tone: Tone }> = {
-  approved: { label: '승인됨 · 시수 반영', tone: 'success' },
-  submitted: { label: '승인 대기', tone: 'accent' },
-  rejected: { label: '반려', tone: 'danger' },
-  draft: { label: '작성중', tone: 'neutral' },
-};
+// [P2 FE-4] 라벨 진실원 = lib/domain/reports(사본 제거)
 
 export function ReportDetailView({ reportId }: { reportId: number }) {
   const access = useAccountAccess();
@@ -35,7 +31,7 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
         {(report) => {
           const student = students.find((s) => s.id === report.studentId);
           const session = sessionQuery.data;
-          const approval = APPROVAL_LABEL[report.approvalStatus ?? 'draft'] ?? APPROVAL_LABEL.draft;
+          const approval = reportApprovalBadge(report.approvalStatus);
           return (
             <>
               <div>

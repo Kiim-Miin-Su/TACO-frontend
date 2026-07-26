@@ -4,6 +4,7 @@
 //  - buildTasks/navBadges/lib.reports 등 "여러 도메인 slice"가 필요한 로직은 useAppData()로 조립해 넘긴다.
 "use client";
 import { useQuery, useMutation, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { todayKst } from '@/lib/format'; // [P2]
 import { clearSudo, isSudoRequiredError } from '@/lib/sudo'; // [TBO-34 C2-C]
 import { api, type SessionReport as ApiReport } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
@@ -476,7 +477,7 @@ export function useTaskData() {
   // [TBO-34 C4 2026-07-23] 배지의 classSessions 소비는 sessionDate >= 오늘(다가오는 수업)뿐 —
   //  전체 이력 대신 미래분만 구독(useCalendarSchedule 재사용, schedule prefix 키라 무효화 자동 포함).
   //  실측: 전 페이지 첫 로드가 이 훅으로 전 도메인 14목록을 받고 schedule이 페이로드 1위(12.5KB).
-  const upcomingFrom = new Date().toISOString().slice(0, 10); // buildTasks todayISO와 동일 규칙
+  const upcomingFrom = todayKst(); // [P2] buildTasks와 동일 — KST 진실원
   const upcomingSessions = useCalendarSchedule({ from: upcomingFrom }).data ?? [];
   return {
     instructors: useInstructors().data ?? [],

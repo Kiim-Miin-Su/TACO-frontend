@@ -7,6 +7,7 @@ import type {
   StudentStatus,
 } from '@/types';
 import { isKinderAge } from '@/lib/domain/students';
+import { guardianKey } from '@/lib/domain/identity'; // [P2 4-B]
 
 export type StudentProfileFormValue = {
   name: string;
@@ -117,7 +118,7 @@ export function validateStudentForm(profile: StudentProfileFormValue, interests:
   if (interestKeys.some(Boolean) && new Set(interestKeys).size !== interestKeys.length) errors.interests = '중복된 희망 수업이 있습니다.';
   if (guardians.some((guardian) => !guardian.name.trim())) errors.guardians = '추가한 보호자의 이름을 입력해 주세요.';
   if (guardians.filter((guardian) => guardian.isPrimary).length > 1) errors.guardians = '주보호자는 한 명만 선택할 수 있습니다.';
-  const guardianKeys = guardians.map((guardian) => `${guardian.name.trim().toLowerCase()}:${guardian.phone.replace(/\D/g, '')}`);
+  const guardianKeys = guardians.map((guardian) => guardianKey(guardian.name, guardian.phone)); // [P2 4-B] BE와 동형 진실원(lib/domain/identity)
   if (guardianKeys.some(Boolean) && new Set(guardianKeys).size !== guardianKeys.length) errors.guardians = '중복된 보호자 입력이 있습니다.';
   return errors;
 }

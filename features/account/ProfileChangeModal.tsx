@@ -6,6 +6,7 @@
 //   verify: 코드 확인(만료 카운트다운·재전송 cooldown·실패 잠금) → verified 후 요청 등록(챌린지 일회 소비)
 //  상태 분리: 형식 오류 / 발송 중 / cooldown / 만료 / 잘못된 코드 / 잠김 / 인증 완료(요청 등록).
 import { useEffect, useRef, useState } from "react";
+import { isSuperAdmin } from "@/lib/access-control"; // [P2 FE-8]
 import { isOtpLockedError } from "@/lib/domain/otp-challenge"; // [TBO-65 5-C] 잠금 판정 단일 진실원
 import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 단일 진실원
 import { Field, ModalShell } from "@/components/ui";
@@ -290,7 +291,7 @@ export default function ProfileChangeModal({
   //  동치지만, MyProfile.role은 서버 string(AccountRole 미보장)이고 hasCapability는
   //  ROLE_CAPABILITIES[role]을 직접 인덱싱해 도메인 밖 문자열이면 false가 아니라 런타임 오류가
   //  된다(캐스팅도 비건전). 안전한 raw 비교를 의도적으로 유지한다.
-  const instantApply = profile.role === "super_admin";
+  const instantApply = isSuperAdmin(profile.role); // [P2 FE-8]
   // [TBO-31 C2/C3 2026-07-16] 대표 아이디 변경 라이브 중복 체크 — STAFF 전용 /users/exists를 500ms
   //  디바운스로 조회(dead API 첫 소비자). 판정 불가(스로틀 등)는 조용히 생략 — 권위는 서버 재검사.
   const webIdDraft = draft.webId.trim();

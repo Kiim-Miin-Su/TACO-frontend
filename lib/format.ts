@@ -17,3 +17,11 @@ export const shortDate = (iso: string) => {
 // [E0.6 M 2026-07-16] 날짜 표기 통일 — timestamptz ISO(시각 포함)를 'YYYY-MM-DD'로.
 //  Payments/Expenses가 raw ISO를 그대로 노출하던 문제의 공용 해소(빈 값은 em dash).
 export const dateOnly = (iso?: string | null) => (iso ? iso.slice(0, 10) : '—');
+
+// [TBO-65 P2 2026-07-26] KST '오늘' — BE time.util.todayKst와 동명·동형 규약.
+//  tasks·MonthGrid의 UTC toISOString 사본 수렴(자정~09시 하루 어긋남 해소).
+export const todayKst = (now = new Date()): string => {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+  const value = (type: 'year' | 'month' | 'day') => parts.find((p) => p.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+};
