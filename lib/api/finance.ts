@@ -1,0 +1,209 @@
+// 결제·지출·원장·매출(GraphQL)·수업 보고서·정산 도메인 API — lib/api.ts에서 분할(순수 이동).
+import { http } from "./client";
+import type { CounselAnalyticsRange } from "./students";
+import type {
+  Payment,
+  Expense,
+  Transaction,
+  CreatePaymentInput,
+  UpdatePaymentInput,
+  CreateExpenseInput,
+  ReportApprovalStatus,
+  ReportStatus,
+  PayReadiness,
+} from "@kms545487/contracts";
+
+// ── TBO-05 시수·페이 정산 타입(백엔드 reports/payouts 모듈 응답) ──
+export type SessionReport = {
+  id: number; sessionId: number; studentId: number; instructorId: number; subjectId?: number;
+  content: string; homework?: string; status: ReportStatus; approvalStatus?: ReportApprovalStatus;
+  submittedAt?: string; approvedAt?: string; approvedBy?: number; rejectedReason?: string;
+  createdAt: string; updatedAt: string;
+};
+// 정산 라인(세션 1건 산정 스냅샷)
+export type PayoutLine = {
+  sessionId: number; courseId: number; courseName: string; sessionDate: string;
+  durationMinutes: number; hourlyRate: number; amount: number;
+};
+// 산정 미리보기(읽기전용)
+export type MeasureResult = {
+  instructorId: number; periodStart: string; periodEnd: string;
+  sessionCount: number; totalMinutes: number; computedAmount: number; lines: PayoutLine[];
+};
+export type PayoutRowStatus = "pending" | "confirmed" | "paid" | "rejected";
+
+// [TBO-46 G2 2026-07-23] GraphQL 매출 게이트웨이 응답 미러(BE revenue-analytics.ts 단일 진실원).
+export type RevenueKeyAmount = { key: string; amount: number; count: number };
+export type RevenueReport = {
+  from: string | null; to: string | null;
+  realizedTotal: number; unpaidTotal: number; unpaidCount: number;
+  byMonth: RevenueKeyAmount[]; bySubject: RevenueKeyAmount[]; byCourse: RevenueKeyAmount[]; byStudent: RevenueKeyAmount[];
+};
+export type FinanceSummary = { from: string | null; to: string | null; revenue: number; expenses: number; payouts: number; net: number };
+
+// [TBO-32 C4] 미정산 감지·일괄 산정 응답 — BE C1/C2 계약.
+export type UncoveredPayoutEntry = {
+  instructorId: number; instructorName: string; instructorStatus: string; month: string;
+  periodStart: string; periodEnd: string; sessionCount: number; totalMinutes: number; computedAmount: number;
+  executionMissingCount: number; // [TBO-66 T2] 실행 미확정(종료 경과 scheduled)
+};
+export type BulkGenerateResult = {
+  generated: Array<{ instructorId: number; payoutId: number; amount: number; sessionCount: number }>;
+  skipped: Array<{ instructorId: number; reason: string }>;
+  failed: Array<{ instructorId: number; error: string }>;
+};
+export type PayoutRow = {
+  id: number; instructorId: number; periodStart: string; periodEnd: string;
+  sessionCount: number; totalMinutes: number; computedAmount: number;
+  adjustedAmount?: number; adjustReason?: string; amount: number;
+  status: PayoutRowStatus; lines: PayoutLine[]; rejectedReason?: string;
+  paidAt?: string; confirmedAt?: string; createdAt: string; updatedAt: string;
+  reversedReason?: string; // [TBO-32 C2] 회수 사유 전용(반려 사유와 분리 영속 — 상세 타임라인 표시)
+  // [B9 E5 2026-07-16] 지급 회수 — 회수된 정산은 status='rejected' + reversedAt(ISO) 세트(반려와 구분 표기)
+  reversedAt?: string;
+};
+export type LedgerTx = {
+  id: number; direction: "in" | "out"; category: string; label: string;
+  amount: number; occurredAt: string; payoutId?: number;
+};
+
+export const financeApi = {
+  payments: {
+    list: () => http.get<Payment[]>("/payments").then((r) => r.data),
+    get: (id: number) => http.get<Payment>(`/payments/${id}`).then((r) => r.data), // [B7 E3] 상세 단건
+    create: (input: CreatePaymentInput) => http.post<Payment>("/payments", input).then((r) => r.data),
+    update: (id: number, patch: UpdatePaymentInput) => http.patch<Payment>(`/payments/${id}`, patch).then((r) => r.data),
+    markPaid: (id: number) => http.post<Payment>(`/payments/${id}/pay`, {}).then((r) => r.data),
+    // 환불(원장 완결성 2026-07-03): paid → refunded + 원장 출금 1줄(paymentId 역참조). 멱등은 백엔드 400.
+    refund: (id: number) => http.post<Payment>(`/payments/${id}/refund`, {}).then((r) => r.data),
+  },
+  expenses: {
+    list: () => http.get<Expense[]>("/expenses").then((r) => r.data),
+    get: (id: number) => http.get<Expense>(`/expenses/${id}`).then((r) => r.data), // [B7 E3] 상세 단건
+    create: (input: CreateExpenseInput) => http.post<Expense>("/expenses", input).then((r) => r.data),
+    // [TBO-58 P2] 오기입 정정(requested만 — 승인 후엔 서버 400, 원장 정합) + 철회(soft delete)
+    update: (id: number, patch: Partial<CreateExpenseInput>) => http.patch<Expense>(`/expenses/${id}`, patch).then((r) => r.data),
+    remove: (id: number) => http.delete<{ id: number; deleted: true }>(`/expenses/${id}`).then((r) => r.data),
+    approve: (id: number) => http.post<Expense>(`/expenses/${id}/approve`, {}).then((r) => r.data),
+    // 반려 사유 **필수**(Q2 2026-07-06 — 반려류 패턴 통일). 서버 저장(Expense.rejectedReason).
+    reject: (id: number, reason: string) => http.post<Expense>(`/expenses/${id}/reject`, { reason }).then((r) => r.data),
+  },
+  // [TBO-46 G2] GraphQL 게이트웨이(읽기 전용·대표 전용) — 매출·재무는 서버 파생 1쿼리로 소비
+  graphql: {
+    revenueReport: (range: CounselAnalyticsRange = {}) =>
+      http.post<{ data: { revenueReport: RevenueReport } }>("/graphql", {
+        query: `query Revenue($from: String, $to: String) { revenueReport(from: $from, to: $to) {
+          from to realizedTotal unpaidTotal unpaidCount
+          byMonth { key amount count } bySubject { key amount count }
+          byCourse { key amount count } byStudent { key amount count } } }`,
+        variables: { from: range.from ?? null, to: range.to ?? null },
+      }).then((r) => r.data.data.revenueReport),
+    // [TBO-60 2026-07-24] 대표 대시보드 — 한 쿼리로 D1 재무+D2 aging+D3 증감+D6 수익성(서버 파생).
+    ceoDashboard: (range: CounselAnalyticsRange = {}) =>
+      http.post<{ data: { ceoDashboard: CeoDashboard } }>("/graphql", {
+        query: `query Ceo($from: String, $to: String) { ceoDashboard(from: $from, to: $to) {
+          from to finance { revenue expenses payouts net }
+          receivables { bucket amount count }
+          enrollmentTrend { month started ended net }
+          courseProfit { courseId courseName revenue cost profit } } }`,
+        variables: range,
+      }).then((r) => r.data.data.ceoDashboard),
+    financeSummary: (range: CounselAnalyticsRange = {}) =>
+      http.post<{ data: { financeSummary: FinanceSummary } }>("/graphql", {
+        query: `query Finance($from: String, $to: String) { financeSummary(from: $from, to: $to) { from to revenue expenses payouts net } }`,
+        variables: { from: range.from ?? null, to: range.to ?? null },
+      }).then((r) => r.data.data.financeSummary),
+  },
+  transactions: {
+    list: () => http.get<Transaction[]>("/transactions").then((r) => r.data),
+  },
+  // ── 수업 보고서(TBO-05) — 강사 제출 → 관리자 승인/반려 ──
+  reports: {
+    list: (sessionId?: number) =>
+      http.get<SessionReport[]>("/reports", { params: sessionId ? { sessionId } : undefined }).then((r) => r.data),
+    get: (id: number) => http.get<SessionReport>(`/reports/${id}`).then((r) => r.data), // [TBO-58 P2] 상세 딥링크
+    create: (body: { sessionId: number; studentId: number; instructorId?: number; content: string; homework?: string; status?: "draft" | "submitted" }) =>
+      http.post<SessionReport>("/reports", body).then((r) => r.data),
+    // [E0.6 H1] 기존 보고서 본문/숙제 수정(임시 저장) — 승인 전까지, 본인 보고서만.
+    update: (id: number, body: { content?: string; homework?: string }) =>
+      http.patch<SessionReport>(`/reports/${id}`, body).then((r) => r.data),
+    submit: (id: number) => http.post<SessionReport>(`/reports/${id}/submit`, {}).then((r) => r.data),
+    approve: (id: number, approvedBy?: number) =>
+      http.post<SessionReport>(`/reports/${id}/approve`, { approvedBy }).then((r) => r.data),
+    reject: (id: number, reason?: string) =>
+      http.post<SessionReport>(`/reports/${id}/reject`, { reason }).then((r) => r.data),
+  },
+  // ── 강사 페이 정산(TBO-05) — 시수×시급 산정 → 승인 → 지급 ──
+  payouts: {
+    list: () => http.get<PayoutRow[]>("/payouts").then((r) => r.data),
+    mine: () => http.get<PayoutRow[]>("/payouts/me").then((r) => r.data),
+    get: (id: number) => http.get<PayoutRow>(`/payouts/${id}`).then((r) => r.data),
+    // 읽기전용 산정 미리보기(정산서 생성 없음). 적격: held + 승인 보고서.
+    preview: (instructorId: number, from: string, to: string) =>
+      http.get<MeasureResult>("/payouts/preview", { params: { instructorId, from, to } }).then((r) => r.data),
+    // [TBO-62 ⑥ 2026-07-24] 강사용 preview/readiness 제거 — 강사는 지급 완료(paid) 내역만(서버 라우트 삭제).
+    readiness: (params: { instructorId?: number; from?: string; to?: string } = {}) =>
+      http.get<PayReadiness>("/payouts/readiness", { params }).then((r) => r.data),
+    // [TBO-64 2026-07-24] 시수 워크시트 — 회차별 출결·리포트·가격 분류·합계(매니저 이상).
+    worksheet: (instructorId: number, from: string, to: string) =>
+      http.get<PayoutWorksheet>("/payouts/worksheet", { params: { instructorId, from, to } }).then((r) => r.data),
+    // [TBO-32 C4 2026-07-22] 미정산 감지·일괄 산정·확정 취소 — BE C1/C2 라우트 소비.
+    uncovered: (months = 3) =>
+      http.get<UncoveredPayoutEntry[]>("/payouts/uncovered", { params: { months } }).then((r) => r.data),
+    generateBulk: (periodStart: string, periodEnd: string, instructorIds?: number[]) =>
+      http.post<BulkGenerateResult>("/payouts/generate-bulk", { periodStart, periodEnd, ...(instructorIds?.length ? { instructorIds } : {}) }).then((r) => r.data),
+    unconfirm: (id: number, reason: string) =>
+      http.post<PayoutRow>(`/payouts/${id}/unconfirm`, { reason }).then((r) => r.data),
+    // 정산서 생성(pending) + 세션 연결(이중 계상 방지)
+    generate: (instructorId: number, from: string, to: string) =>
+      http.post<PayoutRow>("/payouts/generate", { instructorId, from, to }).then((r) => r.data),
+    confirm: (id: number) => http.post<PayoutRow>(`/payouts/${id}/confirm`, {}).then((r) => r.data),
+    // 관리자 급여 수정(실효 지급액 덮어쓰기, 자동 산정액 보존)
+    adjust: (id: number, amount: number, reason?: string) =>
+      http.post<PayoutRow>(`/payouts/${id}/adjust`, { amount, reason }).then((r) => r.data),
+    reject: (id: number, reason?: string) =>
+      http.post<PayoutRow>(`/payouts/${id}/reject`, { reason }).then((r) => r.data),
+    // 지급 완료(confirmed → paid) + 통합 원장 출금 기록
+    pay: (id: number) =>
+      http.post<{ payout: PayoutRow; transaction: LedgerTx }>(`/payouts/${id}/pay`, {}).then((r) => r.data),
+    // [B9 E5 2026-07-16] 지급 회수(paid → rejected+reversedAt) + 원장 반대 분개 — 대표 전용.
+    //  사유 필수(서버 DTO MinLength 5 — 미달 시 400).
+    reverse: (id: number, reason: string) =>
+      http.post<{ payout: PayoutRow; transaction: LedgerTx }>(`/payouts/${id}/reverse`, { reason }).then((r) => r.data),
+  },
+};
+
+// ── [TBO-64] 시수 워크시트 타입(BE payout-worksheet.policy 미러) ──
+export type WorksheetPricing = {
+  kind: 'auto' | 'manual' | 'excluded';
+  manualReasons: Array<'late' | 'attendance_missing' | 'report_incomplete' | 'roster_missing' | 'rate_missing'>; // [기간설정 ①] attendance_missing 추가
+  excludedReason?: 'not_held' | 'instructor_absent' | 'payout_linked';
+  autoAmount: number | null;
+  overrideAmount: number | null;
+  effectiveAmount: number | null;
+};
+export type PayoutWorksheetRow = {
+  sessionId: number; sessionDate: string; startTime: string | null; durationMinutes: number;
+  courseId: number; courseName: string; hourlyRate: number | null; status: string;
+  instructorAttendance: string | null; payoutId: number | null;
+  participants: Array<{ studentId: number; name: string; attendance: string | null; reportApproval: string | null }>;
+  pricing: WorksheetPricing;
+};
+export type PayoutWorksheet = {
+  instructorId: number; periodStart: string; periodEnd: string;
+  rows: PayoutWorksheetRow[];
+  totals: {
+    sessionCount: number; includedCount: number; totalMinutes: number;
+    autoAmount: number; manualAmount: number; totalAmount: number;
+    unpricedCount: number; excludedCount: number;
+  };
+};
+
+// ── [TBO-60] 대표 대시보드 타입(GraphQL CeoDashboard 미러) ──
+export type CeoDashboard = {
+  from: string | null; to: string | null;
+  finance: FinanceSummary;
+  receivables: Array<{ bucket: string; amount: number; count: number }>;
+  enrollmentTrend: Array<{ month: string; started: number; ended: number; net: number }>;
+  courseProfit: Array<{ courseId: number; courseName: string; revenue: number; cost: number; profit: number }>;
+};
