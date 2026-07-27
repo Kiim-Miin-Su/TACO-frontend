@@ -237,6 +237,7 @@ export function ScheduleCalendar() {
             instructors: fInstructors,
             students: fStudents,
             rooms: fRooms,
+            visibleInstructorIds: [...new Set(filtered.map((row) => Number(row.instructorId)))].slice(0, MAX_SPLIT),
             fallbackInstructorId: myInstructorId,
           });
       const seeds = isInstructor

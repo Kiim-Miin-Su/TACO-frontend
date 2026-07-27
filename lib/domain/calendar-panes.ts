@@ -6,6 +6,7 @@ export type ResourceFilterSeedInput = {
   instructors: Iterable<number>;
   students: Iterable<number>;
   rooms: Iterable<number>;
+  visibleInstructorIds?: Iterable<number>;
   fallbackInstructorId?: number;
 };
 
@@ -18,6 +19,8 @@ export function primaryPaneSeed(input: ResourceFilterSeedInput): CalendarPaneSee
   if (students.length) return { dim: "student", ids: students };
   const rooms = copy(input.rooms);
   if (rooms.length) return { dim: "room", ids: rooms };
+  const visibleInstructors = [...new Set(copy(input.visibleInstructorIds ?? []))];
+  if (visibleInstructors.length) return { dim: "instructor", ids: visibleInstructors };
   if (input.fallbackInstructorId != null) return { dim: "instructor", ids: [input.fallbackInstructorId] };
   return { dim: "instructor", ids: [] };
 }

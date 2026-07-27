@@ -24,6 +24,21 @@ describe("calendar pane seed helpers", () => {
     });
   });
 
+  it("preserves an unfiltered calendar by seeding the instructors visible on screen", () => {
+    expect(currentPaneSeeds({
+      instructors: [],
+      students: [],
+      rooms: [],
+      visibleInstructorIds: [2, 2, 4],
+    })).toEqual([{ dim: "instructor", ids: [2, 4] }]);
+    expect(currentPaneSeeds({
+      instructors: [],
+      students: [10],
+      rooms: [],
+      visibleInstructorIds: [2, 4],
+    })).toEqual([{ dim: "student", ids: [10] }]);
+  });
+
   it("adds a usable companion pane", () => {
     expect(companionPaneSeed({ dim: "instructor", ids: [1] })).toEqual({ dim: "instructor", ids: [1] });
     expect(companionPaneSeed({ dim: "instructor", ids: [] })).toEqual({ dim: "student", ids: [] });
