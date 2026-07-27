@@ -80,13 +80,6 @@ export function ExpenseDetailView({ expenseId }: { expenseId: number }) {
                     </div>
                   ))}
                 </div>
-                {expense.receiptUrl && (
-                  <div className="p-4 border-t">
-                    <div className="text-caption text-fg-muted mb-2">영수증</div>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={expense.receiptUrl} alt="영수증" className="max-h-72 rounded border" />
-                  </div>
-                )}
               </SectionCard>
 
               {modal === 'reject' && (

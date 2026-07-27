@@ -114,13 +114,6 @@ export function ApprovalItemDetailModal({
           <MetaRow label="거래처">{item.row.vendor ?? '—'}</MetaRow>
           <MetaRow label="메모">{item.row.memo ?? '—'}</MetaRow>
           {item.row.rejectedReason && <MetaRow label="반려 사유">{item.row.rejectedReason}</MetaRow>}
-          {item.row.receiptUrl && (
-            <div className="pt-2">
-              <div className="text-caption text-fg-muted mb-2">영수증</div>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={item.row.receiptUrl} alt="영수증" className="max-h-72 rounded border" />
-            </div>
-          )}
         </section>
       )}
 
