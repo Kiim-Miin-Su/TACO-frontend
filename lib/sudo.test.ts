@@ -29,6 +29,7 @@ describe('isSudoRequiredError — 서버 403 SUDO_REQUIRED 판정(단일 소스)
   it('403 + SUDO_REQUIRED 본문만 참', () => {
     expect(isSudoRequiredError({ response: { status: 403, data: { code: 'SUDO_REQUIRED', message: 'x' } } })).toBe(true);
     expect(isSudoRequiredError({ response: { status: 403, data: { message: '권한 없음' } } })).toBe(false);
+    expect(isSudoRequiredError({ response: { status: 403, data: { message: 'SUDO_REQUIRED' } } })).toBe(false);
     expect(isSudoRequiredError({ response: { status: 401, data: { code: 'SUDO_REQUIRED' } } })).toBe(false);
     expect(isSudoRequiredError(new Error('network'))).toBe(false);
   });
