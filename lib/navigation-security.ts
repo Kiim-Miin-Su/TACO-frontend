@@ -138,6 +138,7 @@ const RESTRICTED_ROUTE_POLICIES: ReadonlyArray<{
   { prefix: "/expenses", capability: "finance.access" },
   { prefix: "/insights", capability: "finance.access" },
   { prefix: "/payments", capability: "finance.access" },
+  { prefix: "/payouts", capability: "payout.worksheet" },
 ];
 
 const routeMatches = (pathname: string, prefix: string): boolean =>

@@ -1,162 +1,198 @@
 'use client';
-// [TBO-20 20-B] 정산 상세 — 강사별 시수·페이 회차 내역 + 이번 달 산정 미리보기. 대표 전용.
-//  참조 무결성: 읽기=usePayouts(정산서)·usePayoutPreview(적격 산정, held+승인보고서). 편집은 정산 화면에서.
-//  시수/적격 규칙은 정산 서비스와 동일(중복 기준 없음). 출결 상세와 상호 링크.
-import { Fragment, useMemo, useState } from 'react';
+
 import Link from 'next/link';
-import { ClickableTableRow, EmptyState, PageHeader, SectionCard, StatCard, TableWrap } from '@/components/ui';
-import { useInstructors, usePayouts, usePayoutPreview } from '@/lib/queries';
+import { Fragment, useMemo, useState } from 'react';
+import { Badge, EmptyState, LoadingState, PageHeader, SectionCard, StatCard, TableWrap } from '@/components/ui';
+import { reportApprovalBadge } from '@/lib/domain/reports';
+import { useInstructors, usePayouts, usePayoutWorksheet } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
-import { won, dateOnly } from '@/lib/format'; // [B9 E5 2026-07-16] dateOnly — 회수 일시 표기
-// [TBO-32 C4 2026-07-22] 사설 정의(statusLabel·statusTone·isReversed·hrs·monthRange) 제거 →
-//  payout-shared + PayoutStatusBadge(단일 진실원) 소비. 정산서 행 클릭 = 단건 상세(/payouts/detail/[id]).
-import { isReversedPayout as isReversed, payoutHours as hrs, monthPeriod } from '@/features/payouts/payout-shared';
-import { PayoutStatusBadge } from '@/features/payouts/PayoutStatusBadge';
+import { won } from '@/lib/format';
 import { internalRoute } from '@/lib/navigation-security';
+import { payoutHours as hours, monthPeriod } from '@/features/payouts/payout-shared';
+import { PayoutStatusBadge } from '@/features/payouts/PayoutStatusBadge';
+import { PayoutWorksheetAmountCell } from '@/features/payouts/PayoutWorksheet';
+import { groupPayoutWorksheetRows } from '@/features/payouts/payout-worksheet-groups';
 
 const thisYm = () => new Date().toISOString().slice(0, 7);
 
+const attendanceLabel = (value: string | null) => {
+  if (value === 'present') return '출석';
+  if (value === 'late') return '지각';
+  if (value === 'absent') return '결석';
+  if (value === 'excused') return '인정';
+  return '미기록';
+};
+
 export function PayoutDetailView({ instructorId }: { instructorId: number }) {
-  const finance = useAccountAccess().can('finance.access');
-  const { data: instructors = [], isLoading: loadingInst } = useInstructors();
+  const access = useAccountAccess();
+  if (!access.can('payout.worksheet')) {
+    return (
+      <div className="p-6 max-w-page-form mx-auto">
+        <PageHeader title="강사 시수 상세" sub="매니저 이상만 열람할 수 있습니다." />
+        <EmptyState message="이 계정에는 강사 시수 상세 권한이 없습니다." />
+      </div>
+    );
+  }
+  return <AuthorizedPayoutDetail instructorId={instructorId} />;
+}
+
+function AuthorizedPayoutDetail({ instructorId }: { instructorId: number }) {
+  const access = useAccountAccess();
+  const finance = access.can('finance.access');
+  const { data: instructors = [], isPending: loadingInstructors } = useInstructors();
   const { data: allPayouts = [] } = usePayouts();
   const [ym, setYm] = useState(thisYm());
-  const range = monthPeriod(ym); // 1일~말일 — payout-shared(단일 진실원)
-  const { data: preview } = usePayoutPreview(finance ? instructorId : null, range.from, range.to);
-
-  const instructor = instructors.find((i) => i.id === instructorId);
+  const range = monthPeriod(ym);
+  const worksheet = usePayoutWorksheet(instructorId, range.from, range.to);
+  const groups = useMemo(
+    () => groupPayoutWorksheetRows(worksheet.data?.rows ?? []),
+    [worksheet.data?.rows],
+  );
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const instructor = instructors.find((item) => item.id === instructorId);
   const myPayouts = useMemo(
-    () => allPayouts.filter((p) => p.instructorId === instructorId).sort((a, b) => b.periodStart.localeCompare(a.periodStart)),
+    () => allPayouts
+      .filter((payout) => payout.instructorId === instructorId)
+      .sort((a, b) => b.periodStart.localeCompare(a.periodStart)),
     [allPayouts, instructorId],
   );
-  const paidTotal = myPayouts.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0);
-  const navMonth = (d: number) => { const [y, m] = ym.split('-').map(Number); setYm(new Date(Date.UTC(y, m - 1 + d, 1)).toISOString().slice(0, 7)); };
-  const [open, setOpen] = useState<Set<number>>(new Set());
-  const toggle = (id: number) => setOpen((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  if (!finance) {
+  const navMonth = (delta: number) => {
+    const [year, month] = ym.split('-').map(Number);
+    setYm(new Date(Date.UTC(year, month - 1 + delta, 1)).toISOString().slice(0, 7));
+  };
+  const toggle = (key: string) => setOpen((current) => {
+    const next = new Set(current);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
+
+  if (!loadingInstructors && !instructor) {
     return (
       <div className="p-6 max-w-page-form mx-auto">
-        <PageHeader title="정산 상세" sub="대표(CEO)만 열람할 수 있습니다." />
-        <Link href="/" className="btn btn-primary">대시보드로</Link>
+        <Link href="/payouts" className="text-caption text-fg-muted hover:underline">강사 시수로</Link>
+        <PageHeader title="강사 시수 상세" sub={`강사(id ${instructorId})를 찾을 수 없습니다.`} />
       </div>
     );
   }
-  if (!loadingInst && !instructor) {
-    return (
-      <div className="p-6 max-w-page-form mx-auto">
-        <Link href="/payouts" className="text-caption text-fg-muted hover:underline">← 강사 페이</Link>
-        <PageHeader title="정산 상세" sub={`강사(id ${instructorId})를 찾을 수 없습니다.`} />
-      </div>
-    );
-  }
 
+  const totals = worksheet.data?.totals;
   return (
     <div className="p-6 max-w-page mx-auto space-y-6">
       <div>
-        <Link href="/payouts" className="text-caption text-fg-muted hover:underline">← 강사 페이</Link>
+        <Link href="/payouts" className="text-caption text-fg-muted hover:underline">강사 시수로</Link>
         <PageHeader
-          title={`${instructor?.name ?? `강사 #${instructorId}`} — 정산 상세`}
-          sub="회차 시수·페이 내역 · 이번 달 산정 미리보기 (적격 = 진행·승인 보고서)"
-          actions={<Link href={internalRoute.attendanceInstructor(instructorId)} className="btn btn-sm">출결 상세 →</Link>}
+          title={`${instructor?.name ?? `강사 #${instructorId}`} 시수 상세`}
+          sub="과목과 수업별 회차, 출결, 리포트, 책정 금액을 DB 기준으로 확인합니다."
+          actions={
+            <div className="flex items-center gap-1.5">
+              <button type="button" className="btn btn-sm" onClick={() => navMonth(-1)} aria-label="이전 달">◀</button>
+              <span className="mono text-body w-[70px] text-center">{ym}</span>
+              <button type="button" className="btn btn-sm" onClick={() => navMonth(1)} aria-label="다음 달">▶</button>
+            </div>
+          }
         />
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="정산서" value={`${myPayouts.length}건`} />
-        <StatCard label="지급 완료 누적" value={won(paidTotal)} tone="success" />
-        <StatCard label="이번 달 산정액" value={preview ? won(preview.computedAmount) : '—'} tone="accent" />
-        <StatCard label="이번 달 시수" value={preview ? hrs(preview.totalMinutes) : '—'} />
+        <StatCard label="수업" value={`${groups.length}개`} />
+        <StatCard label="전체 회차" value={`${totals?.sessionCount ?? 0}회`} />
+        <StatCard label="산정 시수" value={hours(totals?.totalMinutes ?? 0)} />
+        <StatCard label="산정 금액" value={won(totals?.totalAmount ?? 0)} tone="accent" />
       </div>
 
-      <SectionCard
-        title="이번 달 산정 미리보기"
-        action={
-          <div className="flex items-center gap-1.5">
-            <button className="btn btn-sm" onClick={() => navMonth(-1)}>◀</button>
-            <span className="mono text-body w-[70px] text-center">{ym}</span>
-            <button className="btn btn-sm" onClick={() => navMonth(1)}>▶</button>
-          </div>
-        }
-      >
-        {!preview || !preview.lines.length ? (
-          <EmptyState message="해당 기간에 적격(진행·승인 보고서) 회차가 없습니다." />
+      <SectionCard title={`과목 · 수업별 내역 (${groups.length})`}>
+        {worksheet.isPending || loadingInstructors ? (
+          <LoadingState />
+        ) : groups.length === 0 ? (
+          <EmptyState message="선택한 기간에 수업 회차가 없습니다." />
         ) : (
-          <TableWrap minWidth={640}>
+          <TableWrap minWidth={760}>
             <table className="table">
-              <thead><tr><th>날짜</th><th>코스</th><th>시수</th><th>시급</th><th className="text-right">금액</th></tr></thead>
-              <tbody>
-                {preview.lines.map((l) => (
-                  <tr key={l.sessionId}>
-                    <td className="mono">{l.sessionDate}</td>
-                    <td>{l.courseName}</td>
-                    <td className="mono text-fg-muted">{hrs(l.durationMinutes)}</td>
-                    <td className="mono text-fg-muted">{won(l.hourlyRate)}</td>
-                    <td className="text-right mono font-medium">{won(l.amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t font-semibold">
-                  <td colSpan={2}>합계 ({preview.sessionCount}회)</td>
-                  <td className="mono">{hrs(preview.totalMinutes)}</td>
-                  <td></td>
-                  <td className="text-right mono">{won(preview.computedAmount)}</td>
+              <thead>
+                <tr>
+                  <th>과목</th><th>수업</th><th className="text-right">회차</th>
+                  <th className="text-right">시수</th><th className="text-right">금액</th><th></th>
                 </tr>
-              </tfoot>
-            </table>
-          </TableWrap>
-        )}
-        <p className="text-caption text-fg-subtle mt-2">미리보기는 정산서 생성 없이 산정만 — 확정은 강사 페이 화면에서. 시수 적격 = 진행(held)·강사 결석 아님·승인 보고서.</p>
-      </SectionCard>
-
-      <SectionCard title={`정산서 내역 (${myPayouts.length})`}>
-        {!myPayouts.length ? (
-          <EmptyState message="생성된 정산서가 없습니다." />
-        ) : (
-          <TableWrap minWidth={720}>
-            <table className="table">
-              <thead><tr><th></th><th>기간</th><th>회차</th><th>시수</th><th>산정액</th><th>실지급</th><th>상태</th></tr></thead>
+              </thead>
               <tbody>
-                {myPayouts.map((p) => {
-                  const isOpen = open.has(p.id);
+                {groups.map((group) => {
+                  const isOpen = open.has(group.key);
                   return (
-                    <Fragment key={p.id}>
-                      {/* [TBO-32 C4] 행 클릭 = 정산서 단건 상세 — 확장 토글 버튼은 중첩 제외 */}
-                      <ClickableTableRow href={internalRoute.payoutRecord(p.id)} label={`정산서 ${p.periodStart}~${p.periodEnd} 상세`}>
-                        <td><button type="button" className="text-fg-subtle hover:text-accent" onClick={() => toggle(p.id)}>{isOpen ? '▾' : '▸'}</button></td>
-                        <td className="mono">{p.periodStart} ~ {p.periodEnd}</td>
-                        <td className="mono text-fg-muted">{p.sessionCount}회</td>
-                        <td className="mono text-fg-muted">{hrs(p.totalMinutes)}</td>
-                        <td className="mono">{won(p.computedAmount)}</td>
-                        <td className="mono font-medium">{won(p.amount)}{p.adjustedAmount != null && p.adjustedAmount !== p.computedAmount ? ' *' : ''}</td>
-                        {/* [B9 E5 → TBO-32 C4] 회수됨 구분 배지 — 공용 PayoutStatusBadge(단일 진실원) */}
-                        <td><PayoutStatusBadge p={p} /></td>
-                      </ClickableTableRow>
+                    <Fragment key={group.key}>
+                      <tr>
+                        <td>{group.subjectName}</td>
+                        <td className="font-medium">{group.courseName}</td>
+                        <td className="text-right mono">{group.rows.length}회</td>
+                        <td className="text-right mono">{hours(group.totalMinutes)}</td>
+                        <td className="text-right mono">
+                          {won(group.effectiveAmount)}
+                          {group.unpricedCount > 0 && (
+                            <span className="block text-caption text-warning">미책정 {group.unpricedCount}건</span>
+                          )}
+                        </td>
+                        <td className="text-right">
+                          <button type="button" className="btn btn-sm" onClick={() => toggle(group.key)}>
+                            {isOpen ? '접기' : '회차 보기'}
+                          </button>
+                        </td>
+                      </tr>
                       {isOpen && (
                         <tr>
-                          <td colSpan={7} className="bg-canvas-subtle">
-                            <div className="p-2 space-y-1">
-                              {p.adjustReason && <div className="text-caption text-attention">조정 사유: {p.adjustReason}</div>}
-                              {/* [B9 E5 2026-07-16] 회수 일시 + 사유 라벨 구분(회수 vs 반려) */}
-                              {isReversed(p) && <div className="text-caption text-danger">지급 회수됨 — {dateOnly(p.reversedAt)}</div>}
-                              {/* [TBO-32 C2] reversedReason 우선(회수 사유 전용 컬럼) — 구 데이터는 rejectedReason 폴백 */}
-                              {(p.reversedReason ?? p.rejectedReason) && <div className="text-caption text-danger">{isReversed(p) ? '회수 사유' : '반려 사유'}: {p.reversedReason ?? p.rejectedReason}</div>}
+                          <td colSpan={6} className="bg-canvas-subtle p-0">
+                            <TableWrap minWidth={820}>
                               <table className="table text-caption">
-                                <thead><tr><th>날짜</th><th>코스</th><th>시수</th><th>시급</th><th className="text-right">금액</th></tr></thead>
+                                <thead>
+                                  <tr>
+                                    <th>수업 일시</th><th>강사 출결</th><th>학생 출결</th>
+                                    <th>리포트</th><th className="text-right">회차 금액</th>
+                                  </tr>
+                                </thead>
                                 <tbody>
-                                  {p.lines.map((l) => (
-                                    <tr key={l.sessionId}>
-                                      <td className="mono">{l.sessionDate}</td>
-                                      <td>{l.courseName}</td>
-                                      <td className="mono text-fg-muted">{hrs(l.durationMinutes)}</td>
-                                      <td className="mono text-fg-muted">{won(l.hourlyRate)}</td>
-                                      <td className="text-right mono">{won(l.amount)}</td>
+                                  {group.rows.map((row) => (
+                                    <tr key={row.sessionId}>
+                                      <td className="mono whitespace-nowrap">
+                                        <Link href={internalRoute.session(row.sessionId)} className="hover:underline">
+                                          {row.sessionDate}{row.startTime ? ` ${row.startTime}` : ''}
+                                        </Link>
+                                      </td>
+                                      <td><Badge tone="neutral">{attendanceLabel(row.instructorAttendance)}</Badge></td>
+                                      <td>
+                                        {row.participants.length === 0 ? (
+                                          <span className="text-fg-subtle">수강생 없음</span>
+                                        ) : row.participants.map((participant) => (
+                                          <div key={participant.studentId}>
+                                            {participant.name} · {attendanceLabel(participant.attendance)}
+                                          </div>
+                                        ))}
+                                      </td>
+                                      <td>
+                                        {row.participants.length === 0 ? (
+                                          <span className="text-fg-subtle">해당 없음</span>
+                                        ) : row.participants.map((participant) => {
+                                          const report = participant.reportApproval
+                                            ? reportApprovalBadge(participant.reportApproval)
+                                            : null;
+                                          return (
+                                            <div key={participant.studentId}>
+                                              {participant.reportId != null ? (
+                                                <Link href={internalRoute.report(participant.reportId)} className="hover:underline">
+                                                  {participant.name} · {report?.label ?? '상세'}
+                                                </Link>
+                                              ) : (
+                                                <span className="text-fg-subtle">{participant.name} · 미작성</span>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </td>
+                                      <td className="text-right"><PayoutWorksheetAmountCell row={row} /></td>
                                     </tr>
                                   ))}
                                 </tbody>
                               </table>
-                            </div>
+                            </TableWrap>
                           </td>
                         </tr>
                       )}
@@ -168,6 +204,31 @@ export function PayoutDetailView({ instructorId }: { instructorId: number }) {
           </TableWrap>
         )}
       </SectionCard>
+
+      {finance && (
+        <SectionCard title={`정산서 이력 (${myPayouts.length})`}>
+          {myPayouts.length === 0 ? (
+            <EmptyState message="생성된 정산서가 없습니다." />
+          ) : (
+            <TableWrap minWidth={640}>
+              <table className="table">
+                <thead><tr><th>기간</th><th>회차</th><th>산정액</th><th>최종액</th><th>상태</th></tr></thead>
+                <tbody>
+                  {myPayouts.map((payout) => (
+                    <tr key={payout.id}>
+                      <td><Link href={internalRoute.payoutRecord(payout.id)} className="mono hover:underline">{payout.periodStart} ~ {payout.periodEnd}</Link></td>
+                      <td className="mono">{payout.sessionCount}회</td>
+                      <td className="mono">{won(payout.computedAmount)}</td>
+                      <td className="mono">{won(payout.amount)}</td>
+                      <td><PayoutStatusBadge p={payout} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+          )}
+        </SectionCard>
+      )}
     </div>
   );
 }

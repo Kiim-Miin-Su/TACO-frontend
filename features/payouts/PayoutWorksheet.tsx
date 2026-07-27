@@ -5,7 +5,7 @@
 //  동일 적용) · 리포트 상태 · 금액(auto=시급×시간 기본값 / 지각·리포트 미작성=빈칸 입력 → 책정 /
 //  excluded=사유) · 합계(총 시수·자동 합·책정 합·총액·미책정 N). 판정은 전부 서버(단일 진실원 —
 //  payout-worksheet.policy)이고 이 컴포넌트는 표시·명령만 한다.
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { reportApprovalBadge } from '@/lib/domain/reports'; // [P2 FE-4]
 import Link from 'next/link';
 import { Badge, EmptyState, LoadingState, SectionCard, TableWrap, type Tone } from '@/components/ui';
@@ -17,6 +17,7 @@ import type { AttendanceStatus, InstructorAttendanceStatus } from '@/types';
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from '@/features/attendance/AttMarker';
 import { AccountingImpactModal } from '@/components/AccountingImpactModal';
 import { internalRoute } from '@/lib/navigation-security';
+import { useSudoAction } from '@/lib/hooks/useSudoAction';
 
 // [감사 3·5 해소 2026-07-24] 지역 won(toLocaleString — SSR 하이드레이션 금지 규약 위반)·hoursOf
 //  (2자리 반올림 — payoutHours 1자리와 화면 간 불일치) 사본 제거 → format.won·payout-shared 소비.
@@ -36,22 +37,26 @@ const EXCLUDED_LABEL: Record<string, string> = {
 };
 // [P2 FE-4] 리포트 승인 라벨 = lib/domain/reports 진실원(사본 제거 — 표기 3곳 3안 종결)
 
-function AmountCell({ row }: { row: PayoutWorksheetRow }) {
+export function PayoutWorksheetAmountCell({ row }: { row: PayoutWorksheetRow }) {
   const setAmount = useSetSessionPayAmount();
+  const sudoAction = useSudoAction();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
   const p = row.pricing;
 
-  if (p.kind === 'excluded') {
-    return <span className="text-caption text-fg-subtle">{EXCLUDED_LABEL[p.excludedReason ?? ''] ?? '제외'}</span>;
-  }
   const save = () => {
     const amount = value.trim() === '' ? null : Number(value);
     if (amount != null && (!Number.isInteger(amount) || amount < 0)) return;
-    setAmount.mutate({ id: row.sessionId, amount }, { onSuccess: () => setEditing(false) });
+    void sudoAction.run(
+      () => setAmount.mutateAsync({ id: row.sessionId, amount }),
+      { onSuccess: () => setEditing(false) },
+    );
   };
-  if (editing) {
-    return (
+  let content: ReactNode;
+  if (p.kind === 'excluded') {
+    content = <span className="text-caption text-fg-subtle">{EXCLUDED_LABEL[p.excludedReason ?? ''] ?? '제외'}</span>;
+  } else if (editing) {
+    content = (
       <span className="inline-flex items-center gap-1">
         <input
           type="number" min={0} step={1000} autoFocus
@@ -61,29 +66,31 @@ function AmountCell({ row }: { row: PayoutWorksheetRow }) {
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
         />
-        <button type="button" className="btn btn-sm btn-primary" onClick={save} disabled={setAmount.isPending}>저장</button>
+        <button type="button" className="btn btn-sm btn-primary" onClick={save} disabled={setAmount.isPending || sudoAction.isPending}>저장</button>
         <button type="button" className="btn btn-sm" onClick={() => setEditing(false)}>취소</button>
       </span>
     );
-  }
-  if (p.effectiveAmount == null) {
+  } else if (p.effectiveAmount == null) {
     // 빈칸(대표 지시 ⑧) — 지각·리포트 미작성 등은 매니저/대표가 금액 책정
-    return (
+    content = (
       <button type="button" className="btn btn-sm" onClick={() => { setValue(''); setEditing(true); }}>
         금액 책정
       </button>
     );
+  } else {
+    content = (
+      <button
+        type="button"
+        className="mono hover:underline"
+        title={p.overrideAmount != null ? '책정가(클릭해 수정 — 비우면 해제)' : '자동 기본값(클릭해 수동 책정)'}
+        onClick={() => { setValue(p.overrideAmount != null ? String(p.overrideAmount) : ''); setEditing(true); }}
+      >
+        {won(p.effectiveAmount)}{p.overrideAmount != null && <span className="text-caption text-accent ml-1">책정</span>}
+      </button>
+    );
   }
-  return (
-    <button
-      type="button"
-      className="mono hover:underline"
-      title={p.overrideAmount != null ? '책정가(클릭해 수정 — 비우면 해제)' : '자동 기본값(클릭해 수동 책정)'}
-      onClick={() => { setValue(p.overrideAmount != null ? String(p.overrideAmount) : ''); setEditing(true); }}
-    >
-      {won(p.effectiveAmount)}{p.overrideAmount != null && <span className="text-caption text-accent ml-1">책정</span>}
-    </button>
-  );
+
+  return <>{content}{sudoAction.modal}</>;
 }
 
 export function PayoutWorksheet({ instructorId, from, to }: { instructorId: number | null; from: string; to: string }) {
@@ -153,12 +160,18 @@ export function PayoutWorksheet({ instructorId, from, to }: { instructorId: numb
                               pending={upsert.isPending}
                               onMark={(st) => upsert.mutate({ sessionId: row.sessionId, studentId: participant.studentId, status: st })}
                             />
-                            <Badge tone={report?.tone ?? 'neutral'}>{report ? `리포트 ${report.label}` : '리포트 미작성'}</Badge>
+                            {participant.reportId != null ? (
+                              <Link href={internalRoute.report(participant.reportId)}>
+                                <Badge tone={report?.tone ?? 'neutral'}>{report ? `리포트 ${report.label}` : '리포트 보기'}</Badge>
+                              </Link>
+                            ) : (
+                              <Badge tone="neutral">리포트 미작성</Badge>
+                            )}
                           </div>
                         );
                       })}
                     </td>
-                    <td className="text-right"><AmountCell row={row} /></td>
+                    <td className="text-right"><PayoutWorksheetAmountCell row={row} /></td>
                   </tr>
                 ))}
               </tbody>

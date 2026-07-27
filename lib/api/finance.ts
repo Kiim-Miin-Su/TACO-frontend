@@ -159,7 +159,7 @@ export const financeApi = {
       http.post<PayoutRow>("/payouts/generate", { instructorId, from, to }).then((r) => r.data),
     confirm: (id: number) => http.post<PayoutRow>(`/payouts/${id}/confirm`, {}).then((r) => r.data),
     // 관리자 급여 수정(실효 지급액 덮어쓰기, 자동 산정액 보존)
-    adjust: (id: number, amount: number, reason?: string) =>
+    adjust: (id: number, amount: number, reason: string) =>
       http.post<PayoutRow>(`/payouts/${id}/adjust`, { amount, reason }).then((r) => r.data),
     reject: (id: number, reason?: string) =>
       http.post<PayoutRow>(`/payouts/${id}/reject`, { reason }).then((r) => r.data),
@@ -184,9 +184,16 @@ export type WorksheetPricing = {
 };
 export type PayoutWorksheetRow = {
   sessionId: number; sessionDate: string; startTime: string | null; durationMinutes: number;
-  courseId: number; courseName: string; hourlyRate: number | null; status: string;
+  courseId: number; courseName: string; subjectId: number | null; subjectName: string;
+  hourlyRate: number | null; status: string;
   instructorAttendance: string | null; payoutId: number | null;
-  participants: Array<{ studentId: number; name: string; attendance: string | null; reportApproval: string | null }>;
+  participants: Array<{
+    studentId: number;
+    name: string;
+    attendance: string | null;
+    reportId: number | null;
+    reportApproval: string | null;
+  }>;
   pricing: WorksheetPricing;
 };
 export type PayoutWorksheet = {

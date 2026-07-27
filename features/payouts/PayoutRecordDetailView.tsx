@@ -6,7 +6,7 @@
 //  구성: 요약(상태·기간·금액 computed vs adjusted)·사유 타임라인(확정/지급/조정/반려/회수)·
 //  산정 명세 lines 표·연결 원장 거래.
 import Link from 'next/link';
-import { Badge, DetailStates, SectionCard, TableWrap } from '@/components/ui';
+import { Badge, DetailStates, EmptyState, PageHeader, SectionCard, TableWrap } from '@/components/ui';
 import { usePayout, useTransactions, useInstructors } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { won, dateOnly } from '@/lib/format';
@@ -29,12 +29,22 @@ function timelineOf(p: PayoutRow): Array<{ at?: string; label: string; detail?: 
 
 export function PayoutRecordDetailView({ payoutId }: { payoutId: number }) {
   const access = useAccountAccess();
-  const finance = access.can('finance.access');
+  if (!access.can('finance.access')) {
+    return (
+      <div className="p-6 max-w-page-form mx-auto">
+        <PageHeader title="정산서 상세" sub="대표(CEO)만 열람할 수 있습니다." />
+        <EmptyState message="이 계정에는 정산 금액 상세 권한이 없습니다." />
+      </div>
+    );
+  }
+  return <AuthorizedPayoutRecordDetail payoutId={payoutId} />;
+}
+
+function AuthorizedPayoutRecordDetail({ payoutId }: { payoutId: number }) {
   const query = usePayout(payoutId);
   const { data: instructors = [] } = useInstructors();
-  // 원장 연결 — 재무 권한만 구독(강사 상세에는 원장 비표시).
   const txQuery = useTransactions();
-  const transactions = finance ? (txQuery.data ?? []).filter((t) => (t as { payoutId?: number | null }).payoutId === payoutId) : [];
+  const transactions = (txQuery.data ?? []).filter((t) => (t as { payoutId?: number | null }).payoutId === payoutId);
 
   return (
     <DetailStates
@@ -99,8 +109,7 @@ export function PayoutRecordDetailView({ payoutId }: { payoutId: number }) {
               </TableWrap>
             </SectionCard>
 
-            {finance && (
-              <SectionCard title={`연결 원장 거래 (${transactions.length})`}>
+            <SectionCard title={`연결 원장 거래 (${transactions.length})`}>
                 {transactions.length === 0 ? (
                   <p className="p-4 text-body text-fg-muted">연결된 원장 거래가 없습니다(지급 전).</p>
                 ) : (
@@ -116,12 +125,11 @@ export function PayoutRecordDetailView({ payoutId }: { payoutId: number }) {
                   </ul>
                 )}
                 <p className="px-4 pb-3 text-caption text-fg-subtle">원장은 append-only — 회수는 원 출금을 남기고 보상 입금을 추가합니다.</p>
-              </SectionCard>
-            )}
+            </SectionCard>
 
             <div className="flex justify-between">
               <Link href="/payouts" className="btn btn-sm">← 정산 목록</Link>
-              {finance && <Link href={internalRoute.payoutInstructor(p.instructorId)} className="btn btn-sm">강사별 요약 →</Link>}
+              <Link href={internalRoute.payoutInstructor(p.instructorId)} className="btn btn-sm">강사별 요약 →</Link>
             </div>
           </div>
         );

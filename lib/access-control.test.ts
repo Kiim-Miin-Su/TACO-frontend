@@ -13,6 +13,10 @@ describe("access-control", () => {
     expect(hasCapability("admin", "finance.access")).toBe(false);
     expect(hasCapability("admin", "signup.decide")).toBe(true);
     expect(hasCapability("manager", "signup.decide")).toBe(true);
+    expect(hasCapability("super_admin", "payout.worksheet")).toBe(true);
+    expect(hasCapability("admin", "payout.worksheet")).toBe(true);
+    expect(hasCapability("manager", "payout.worksheet")).toBe(true);
+    expect(hasCapability("instructor", "payout.worksheet")).toBe(false);
   });
 
   it("allows managers to manage calendars while instructors remain self-scoped", () => {

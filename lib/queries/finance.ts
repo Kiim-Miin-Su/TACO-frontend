@@ -64,7 +64,7 @@ export const usePayoutWorksheet = (instructorId: number | null, from: string, to
   return useQuery({
     queryKey: qk.payouts.worksheet(instructorId ?? 0, from, to),
     queryFn: () => api.payouts.worksheet(instructorId as number, from, to),
-    enabled: can("admin.area") && instructorId != null && !!from && !!to,
+    enabled: can("payout.worksheet") && instructorId != null && !!from && !!to,
     // [TBO-66 F3] 금전 화면 한정 신선도 상향 — 타 매니저의 출결 기록(서버 자동 전이)이 포커스 복귀 시 반영
     refetchOnWindowFocus: true,
     staleTime: 15_000,
@@ -190,14 +190,13 @@ export const useRejectPayout = () =>
 export const useReversePayout = () =>
   useMutation({ mutationFn: (v: { id: number; reason: string }) => api.payouts.reverse(v.id, v.reason), onSuccess: useInvalidator([qk.payouts.all, qk.transactions.all, qk.schedule.all, qk.revenue.all]) }); // [TBO-66 F1]
 export const useAdjustPayout = () =>
-  useMutation({ mutationFn: (v: { id: number; amount: number; reason?: string }) => api.payouts.adjust(v.id, v.amount, v.reason), onSuccess: useInvalidator([qk.payouts.all]) });
+  useMutation({ mutationFn: (v: { id: number; amount: number; reason: string }) => api.payouts.adjust(v.id, v.amount, v.reason), onSuccess: useInvalidator([qk.payouts.all]) });
 // [TBO-32 C4 2026-07-22] 단건 상세(B7 규약 — DetailStates 소비, 강사=본인만·타인 403)·미정산 감지·
 //  일괄 산정·확정 취소 — 전 화면이 이 중앙 훅만 소비(§18-2 단일 진실원).
 export const usePayout = (id: number | null) => {
   const { can } = useAccountAccess();
   const finance = can("finance.access");
-  const self = can("instructor.self");
-  return useQuery({ queryKey: qk.payouts.detail(id ?? 0), queryFn: () => api.payouts.get(id as number), enabled: id != null && (finance || self) });
+  return useQuery({ queryKey: qk.payouts.detail(id ?? 0), queryFn: () => api.payouts.get(id as number), enabled: id != null && finance });
 };
 export const useUncoveredPayouts = (months = 3) => {
   const { can } = useAccountAccess();

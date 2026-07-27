@@ -8,6 +8,7 @@ import { roleLabel } from "@/lib/roles";
 import { navBadges } from "@/lib/tasks";
 import { usePersistedState } from "@/lib/usePersistedState";
 import { useAccountAccess } from "@/lib/useAccountAccess";
+import type { AppCapability } from "@/lib/access-control";
 import type { InternalHref } from "@/lib/navigation-security";
 import {
   IconHome,
@@ -23,7 +24,7 @@ import {
   IconCalendar,
 } from "../ui/icons";
 
-type Item = { label: string; icon: React.FC<any>; href: InternalHref; adminOnly?: boolean; counselOnly?: boolean; financeOnly?: boolean; instructorVisible?: boolean; adminVisible?: boolean };
+type Item = { label: string; icon: React.FC<any>; href: InternalHref; capability?: AppCapability; adminOnly?: boolean; counselOnly?: boolean; financeOnly?: boolean; instructorVisible?: boolean; adminVisible?: boolean };
 
 const groups: { title: string; items: Item[] }[] = [
   {
@@ -43,7 +44,7 @@ const groups: { title: string; items: Item[] }[] = [
   {
     title: "출금",
     items: [
-      { label: "강사 페이", icon: IconWallet, href: "/payouts", financeOnly: true, instructorVisible: true, adminVisible: true }, // [감사 1-A] 매니저=시수 워크시트
+      { label: "강사 시수", icon: IconWallet, href: "/payouts", capability: "payout.worksheet" },
       { label: "지출 · 비품", icon: IconReceipt, href: "/expenses", financeOnly: true },
     ],
   },
@@ -109,7 +110,7 @@ export default function Sidebar() {
       )}
 
       <nav className="flex-1 overflow-y-auto py-3">
-        {(access.can("signup.decide")
+        {(access.can("finance.access")
           ? [...groups, { title: "경영", items: [{ label: "경영 지표", icon: IconReceipt, href: "/insights" as InternalHref }] }]
           : groups
         )
@@ -119,6 +120,7 @@ export default function Sidebar() {
             items: g.items.filter((it: Item) =>
               (!it.adminOnly || access.can("admin.area")) &&
               (!it.counselOnly || access.can("counsel.manage")) &&
+              (!it.capability || access.can(it.capability)) &&
               (!it.financeOnly || access.can("finance.access") || (it.instructorVisible && access.can("instructor.self")) || (it.adminVisible && access.can("admin.area"))),
             ),
           }))

@@ -6,11 +6,11 @@
 //  미정산 감지 배너(UncoveredBanner) + 월 일괄 산정(BulkGenerateModal) + confirmed '확정 취소'(unconfirm).
 import Link from 'next/link';
 import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3]
-import { Fragment, useCallback, useState } from 'react';
+import { Fragment, useCallback, useMemo, useState } from 'react';
 import { PayoutWorksheet } from './PayoutWorksheet';
-import { Badge, ClickableTableRow, EmptyState, Field, LoadingState, PageHeader, PromptModal, SectionCard, TableWrap } from '@/components/ui';
+import { Badge, ClickableTableRow, EmptyState, Field, PageHeader, PromptModal, SectionCard, TableWrap } from '@/components/ui';
 import {
-  useInstructors, usePayouts, usePayoutPreview, useMyPayouts,
+  useInstructors, usePayouts, usePayoutPreview,
   useGeneratePayout, useConfirmPayout, usePayPayout, useAdjustPayout, useRejectPayout,
   useReversePayout, // [B9 E5 2026-07-16] 지급 회수
   useUnconfirmPayout, // [TBO-32 C2/C4] 확정 취소(confirmed → pending)
@@ -28,22 +28,33 @@ import { useSudoAction } from '@/lib/hooks/useSudoAction';
 
 export function PayoutsView() {
   const access = useAccountAccess();
+  if (!access.can('payout.worksheet')) {
+    return (
+      <div className="p-6 max-w-page mx-auto">
+        <PageHeader title="강사 시수" />
+        <EmptyState message="강사 시수는 매니저 이상만 조회할 수 있습니다." />
+      </div>
+    );
+  }
+  return <AuthorizedPayoutsView />;
+}
+
+function AuthorizedPayoutsView() {
+  const access = useAccountAccess();
   const finance = access.can('finance.access');
   const adminArea = access.can('admin.area'); // [감사 1-A 2026-07-24] 매니저 시수 표면(BE ADMIN 허용인데 UI 부재로 사장)
-  const instructorSelf = access.can('instructor.self');
   // [TBO-65 P1] 정산 근거 표시는 시수 워크시트(서버 판정)가 담당 — 4중 클라 조인(lineDetail) 제거.
   const [expanded, setExpanded] = useState<number | null>(null);
 
   // [상태 무결성 2026-07-06] 서버 데이터는 TanStack Query 단일 소스 — 로컬 useState 복사 제거.
   //  usePayouts는 관리자 게이트(비관리자 fetch 생략), mutation 성공 시 qk.payouts.all 무효화로 자동 최신화.
   const payoutsQ = usePayouts();
-  const myPayoutsQ = useMyPayouts();
   const instructorsQ = useInstructors();
-  const payouts = finance ? (payoutsQ.data ?? []) : instructorSelf ? (myPayoutsQ.data ?? []) : [];
-  const instructors = instructorsQ.data ?? [];
+  const payouts = finance ? (payoutsQ.data ?? []) : [];
+  const instructors = useMemo(() => instructorsQ.data ?? [], [instructorsQ.data]);
   const conn: 'checking' | 'online' | 'offline' =
-    (finance && payoutsQ.isError) || (instructorSelf && myPayoutsQ.isError) || instructorsQ.isError ? 'offline'
-    : (finance && payoutsQ.isSuccess) || (instructorSelf && myPayoutsQ.isSuccess) ? 'online' : 'checking';
+    (finance && payoutsQ.isError) || instructorsQ.isError ? 'offline'
+    : (finance && payoutsQ.isSuccess) || instructorsQ.isSuccess ? 'online' : 'checking';
 
   const [instructorId, setInstructorId] = useState('');
   // 기본 산정 기간 = 이번 달 1일~말일 — payout-shared.monthPeriod(단일 진실원, 하드코딩 금지 DESIGN §8)
@@ -89,15 +100,6 @@ export function PayoutsView() {
   // [TBO-32 C4] 월 일괄 산정 모달 — UncoveredBanner·상단 버튼 양쪽에서 연다.
   const [bulkOpen, setBulkOpen] = useState(false);
 
-  if (!finance && !adminArea && !instructorSelf) {
-    return (
-      <div className="p-6 max-w-page mx-auto">
-        <PageHeader title="강사 페이" />
-        <EmptyState message="강사 페이는 매니저 이상과 본인 강사만 조회할 수 있습니다." />
-      </div>
-    );
-  }
-
   // [감사 1-A 해소 2026-07-24] 매니저·admin = 시수 워크시트 표면(대표 지시 TBO-62 ⑥ "매니저 이상만
   //  시수 조회" — 종전엔 BE(worksheet·pay-amount ADMIN)만 열려 있고 UI 경로가 없어 사장됐던 실갭).
   //  회차별 출결 CRUD·금액 책정까지 가능(BE 권한 그대로). 정산서 생성·확정·지급·원장은 대표 전용 유지.
@@ -121,6 +123,13 @@ export function PayoutsView() {
           </div>
         </SectionCard>
         <PayoutWorksheet instructorId={instructorId ? Number(instructorId) : null} from={start} to={end} />
+        {instructorId && (
+          <div className="flex justify-end">
+            <Link href={internalRoute.payoutInstructor(Number(instructorId))} className="btn btn-primary">
+              과목별 상세
+            </Link>
+          </div>
+        )}
       </div>
     );
   }
@@ -130,47 +139,6 @@ export function PayoutsView() {
       <div className="p-6 max-w-page mx-auto">
         <PageHeader title="강사 페이" />
         <EmptyState message="정산 정보를 불러오지 못했습니다." />
-      </div>
-    );
-  }
-
-  if (instructorSelf && !finance) {
-    // [TBO-62 ⑥ 2026-07-24] 강사 표면 = 지급 완료(paid) 내역만(서버 필터) — 시수 산정 미리보기·
-    //  누락(readiness)·예상 페이는 관리자 전용으로 이동(대표 지시: "받은 내용만").
-    return (
-      <div className="p-6 max-w-page mx-auto space-y-6">
-        <PageHeader
-          title="내 페이"
-          sub="지급 완료된 정산 내역입니다. 시수 산정과 정산 생성·확정은 관리자가 진행합니다."
-          actions={<Badge tone={conn === 'online' ? 'success' : 'neutral'}>{conn === 'online' ? '조회 가능' : '확인 중'}</Badge>}
-        />
-        <SectionCard title={`받은 정산 (${payouts.length})`}>
-          {/* [E0.6 H2] 로드 중 빈 상태 깜빡임 방지 — EmptyState는 로드 완료 후에만 */}
-          {myPayoutsQ.isPending ? (
-            <LoadingState />
-          ) : payouts.length === 0 ? (
-            <EmptyState message="아직 지급 완료된 정산이 없습니다." />
-          ) : (
-            <TableWrap minWidth={720}>
-              <table className="table">
-                <thead><tr><th>기간</th><th>상태</th><th className="text-right">시수</th><th className="text-right">금액</th><th>지급일</th></tr></thead>
-                <tbody>
-                  {/* [기간설정 ② 2026-07-24] 강사는 지급 **요약만** — 단건 상세(회차 내역) 불가(서버 403과
-                      동일 조건 렌더: 행 클릭 링크 제거, 정적 행). 종전 상세 링크는 관리자 표면에만 남는다. */}
-                  {payouts.map((p) => (
-                    <tr key={p.id}>
-                      <td className="mono text-fg-muted">{p.periodStart} ~ {p.periodEnd}</td>
-                      <td><PayoutStatusBadge p={p} /></td>{/* [B9 E5 2026-07-16] 회수됨 구분 표기 */}
-                      <td className="text-right mono">{hours(p.totalMinutes)}</td>
-                      <td className="text-right mono">{won(p.amount)}</td>
-                      <td className="mono text-fg-muted">{p.paidAt ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableWrap>
-          )}
-        </SectionCard>
       </div>
     );
   }
@@ -381,7 +349,12 @@ export function PayoutsView() {
             const m = reasonModal;
             setReasonModal(null);
             // action 분기 — 지급 회수/확정 취소/반려(전부 중앙 훅, 인라인 useMutation 금지)
-            if (m.action === 'reverse') reverseM.mutate({ id: m.payout.id, reason }, { onError: onErr });
+            if (m.action === 'reverse') {
+              void sudoAction.run(
+                () => reverseM.mutateAsync({ id: m.payout.id, reason }),
+                { onError: onErr },
+              );
+            }
             else if (m.action === 'unconfirm') unconfirmM.mutate({ id: m.payout.id, reason }, { onError: onErr });
             else rejectM.mutate({ id: m.payout.id, reason }, { onError: onErr });
           }}
@@ -398,7 +371,7 @@ export function PayoutsView() {
           title={`급여 수정 — ${instructorName(adjustModal.instructorId)} (자동 산정 ${won(adjustModal.computedAmount)})`}
           fields={[
             { name: 'amount', label: '실효 지급액(원)', type: 'number', required: true, initial: String(adjustModal.amount) },
-            { name: 'reason', label: '수정 사유(선택)', initial: adjustModal.adjustReason ?? '', hint: '강사에게 표시됩니다' },
+            { name: 'reason', label: '수정 사유', required: true, initial: adjustModal.adjustReason ?? '', hint: '감사 이력에 남습니다. 5자 이상 입력해 주세요.' },
           ]}
           submitLabel="수정"
           onClose={() => setAdjustModal(null)}
@@ -406,8 +379,13 @@ export function PayoutsView() {
             const p = adjustModal;
             const amount = Number(v.amount);
             if (!Number.isFinite(amount) || amount < 0) { setToast('금액이 올바르지 않습니다'); return; }
+            const reason = v.reason.trim();
+            if (reason.length < 5) { setToast('수정 사유를 5자 이상 입력해 주세요'); return; }
             setAdjustModal(null);
-            adjustM.mutate({ id: p.id, amount, reason: v.reason || undefined }, { onError: onErr });
+            void sudoAction.run(
+              () => adjustM.mutateAsync({ id: p.id, amount, reason }),
+              { onError: onErr },
+            );
           }}
         />
       )}

@@ -132,6 +132,10 @@ describe("resolvePostLoginDestination", () => {
       "/admin/approvals",
     );
     expect(resolvePostLoginDestination("/counsel/3", "instructor", false)).toBe("/");
+    expect(resolvePostLoginDestination("/payouts", "instructor", false)).toBe("/");
+    expect(resolvePostLoginDestination("/payouts/9", "manager", false)).toBe(
+      "/payouts/9",
+    );
   });
 
   it("does not redirect an authenticated user back to a public auth route", () => {

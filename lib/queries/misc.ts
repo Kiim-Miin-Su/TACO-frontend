@@ -10,7 +10,7 @@ import { CATALOG_STALE, useInvalidator } from "./shared";
 import { useStudents, useParents, useParentStudents, useEnrollments, useCounselForms, useCounselRounds } from "./students";
 import { useSubjects, useCourses } from "./academics";
 import { useSchedule, useCalendarSchedule, useAttendance, useAcademyEvents, useInstructors, useScheduleRequests } from "./schedule";
-import { usePayments, useTransactions, useExpenses, usePayouts, useMyPayouts, useReports } from "./finance";
+import { usePayments, useTransactions, useExpenses, usePayouts, useReports } from "./finance";
 import { usePendingAccounts, useProfileChangeRequests, useMyProfileChangeRequests } from "./admin";
 
 // [TBO-62 ⑥ 2026-07-24] useMyPayoutPreview 제거 — 강사 시수 미리보기는 관리자 전용(서버 라우트 삭제).
@@ -49,8 +49,7 @@ export function useAppData() {
   const transactions = useTransactions().data ?? [];
   const expenses = useExpenses().data ?? [];
   const financePayouts = usePayouts().data ?? [];
-  const myPayouts = useMyPayouts().data ?? [];
-  const instructorPayouts = canAccessFinance(role) ? financePayouts : role === "instructor" ? myPayouts : [];
+  const instructorPayouts = canAccessFinance(role) ? financePayouts : [];
   const counselForms = useCounselForms().data ?? [];
   const counselRounds = useCounselRounds().data ?? [];
   const academyEvents = useAcademyEvents().data ?? [];
@@ -74,7 +73,6 @@ export function useAppData() {
 export function useTaskData() {
   const { role } = useAccountAccess();
   const financePayouts = usePayouts().data ?? [];
-  const myPayouts = useMyPayouts().data ?? [];
   const payReadiness = usePayReadiness().data;
   // [TBO-34 C4 2026-07-23] 배지의 classSessions 소비는 sessionDate >= 오늘(다가오는 수업)뿐 —
   //  전체 이력 대신 미래분만 구독(useCalendarSchedule 재사용, schedule prefix 키라 무효화 자동 포함).
@@ -89,7 +87,7 @@ export function useTaskData() {
     classSessions: upcomingSessions,
     sessionReports: useReports().data ?? [],
     expenses: useExpenses().data ?? [],
-    instructorPayouts: canAccessFinance(role) ? financePayouts : role === "instructor" ? myPayouts : [],
+    instructorPayouts: canAccessFinance(role) ? financePayouts : [],
     counselForms: useCounselForms().data ?? [],
     payments: usePayments().data ?? [],
     scheduleRequests: useScheduleRequests().data ?? [],
