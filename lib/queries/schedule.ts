@@ -164,12 +164,26 @@ export const useOpenClassSeries = () => {
 };
 export type AccountingImpactPrompt = {
   payoutLocked: boolean;
+  impactHash?: string;
   impact: {
     before: { teachingMinutes: number; computedAmount: number };
     after: { teachingMinutes: number; computedAmount: number };
     delta: { teachingMinutes: number; computedAmount: number };
   };
 };
+
+function accountingPromptFromError(error: unknown): AccountingImpactPrompt | null {
+  const data = (error as {
+    response?: { data?: { code?: string; impact?: AccountingImpactPrompt['impact']; impactHash?: string } };
+  }).response?.data;
+  if (!data?.impact || (data.code !== 'ACCOUNTING_IMPACT_ACK_REQUIRED' && data.code !== 'PAYOUT_REVERSAL_REQUIRED'))
+    return null;
+  return {
+    impact: data.impact,
+    impactHash: data.impactHash,
+    payoutLocked: data.code === 'PAYOUT_REVERSAL_REQUIRED',
+  };
+}
 
 export const useUpdateSchedule = () => {
   type Variables = { id: number; body: Parameters<typeof api.schedule.update>[1] };
@@ -213,9 +227,9 @@ export const useUpdateSchedule = () => {
   const mutate: typeof mutation.mutate = (variables, options) => mutation.mutate(variables, {
     ...options,
     onError: (error, vars, onMutateResult, context) => {
-      const data = (error as { response?: { data?: { code?: string; impact?: AccountingImpactPrompt['impact'] } } }).response?.data;
-      if (data?.impact && (data.code === 'ACCOUNTING_IMPACT_ACK_REQUIRED' || data.code === 'PAYOUT_REVERSAL_REQUIRED')) {
-        setPending({ variables, prompt: { impact: data.impact, payoutLocked: data.code === 'PAYOUT_REVERSAL_REQUIRED' } });
+      const prompt = accountingPromptFromError(error);
+      if (prompt) {
+        setPending({ variables, prompt });
         return;
       }
       options?.onError?.(error, vars, onMutateResult, context);
@@ -231,23 +245,76 @@ export const useUpdateSchedule = () => {
       const { variables, prompt } = pending;
       setPending(null);
       if (!prompt.payoutLocked)
-        mutation.mutate({ ...variables, body: { ...variables.body, acknowledgeAccountingImpact: true } });
+        mutate({ ...variables, body: { ...variables.body, acknowledgeAccountingImpact: true } });
     },
   };
 };
 export const useRemoveSchedule = () => {
+  type Variables = {
+    id: number;
+    scope?: "this" | "this_and_following" | "all";
+    expectedSeriesVersion?: number;
+    acknowledgeAccountingImpact?: boolean;
+    expectedAccountingImpactHash?: string;
+  };
+  type Result = Awaited<ReturnType<typeof api.schedule.remove>>;
+  const [pending, setPending] = useState<{ variables: Variables; prompt: AccountingImpactPrompt } | null>(null);
   const invalidate = useCalendarCommandInvalidator();
-  return useMutation({
+  const mutation = useMutation({
     // [TBO-29C C3] scope/CAS 인자와 TanStack context 인자 충돌 방지 — 명시 래핑
-    mutationFn: (vars: { id: number; scope?: "this" | "this_and_following" | "all"; expectedSeriesVersion?: number }) =>
-      api.schedule.remove(vars.id, vars.scope || vars.expectedSeriesVersion != null ? { scope: vars.scope, expectedSeriesVersion: vars.expectedSeriesVersion } : undefined),
-    onSuccess: (_data, vars) => {
-      // [TBO-63] 삭제의 역연산 = 복구(soft delete 해제 — BE restore). 시리즈 scope 삭제는 스택 제외.
-      if (vars.scope == null || vars.scope === "this")
-        pushScheduleUndo({ label: "수업 삭제 되돌리기(복구)", run: () => api.schedule.restore(vars.id) });
-      return invalidate(); // [C4] 단일 무효화
+    mutationFn: (vars: Variables) =>
+      api.schedule.remove(vars.id, {
+        scope: vars.scope,
+        expectedSeriesVersion: vars.expectedSeriesVersion,
+        acknowledgeAccountingImpact: vars.acknowledgeAccountingImpact,
+        expectedAccountingImpactHash: vars.expectedAccountingImpactHash,
+      }),
+    // 삭제는 출결·보고서·반복 시리즈 메타까지 함께 전이한다. aggregate 스냅샷 없는
+    // 단일 세션 restore는 종속 행을 누락하므로 undo 스택에 등록하지 않는다.
+    onSuccess: () => invalidate(), // [C4] 단일 무효화
+  });
+  const rememberPrompt = (error: unknown, variables: Variables): boolean => {
+    const prompt = accountingPromptFromError(error);
+    if (!prompt) return false;
+    setPending({ variables, prompt });
+    return true;
+  };
+  const mutate: typeof mutation.mutate = (variables, options) => mutation.mutate(variables, {
+    ...options,
+    onError: (error, vars, onMutateResult, context) => {
+      if (rememberPrompt(error, vars)) return;
+      options?.onError?.(error, vars, onMutateResult, context);
     },
   });
+  const mutateAsync: typeof mutation.mutateAsync = async (variables, options) => {
+    try {
+      return await mutation.mutateAsync(variables, options);
+    } catch (error) {
+      rememberPrompt(error, variables);
+      throw error;
+    }
+  };
+  return {
+    ...mutation,
+    mutate,
+    mutateAsync,
+    accountingPrompt: pending?.prompt ?? null,
+    dismissAccountingPrompt: () => setPending(null),
+    confirmAccountingImpact: (options?: { onSuccess?: (result: Result) => void; onError?: (error: unknown) => void }) => {
+      if (!pending) return;
+      const { variables, prompt } = pending;
+      setPending(null);
+      if (prompt.payoutLocked) return;
+      mutate(
+        {
+          ...variables,
+          acknowledgeAccountingImpact: true,
+          expectedAccountingImpactHash: prompt.impactHash,
+        },
+        { onSuccess: (result) => options?.onSuccess?.(result), onError: (error) => options?.onError?.(error) },
+      );
+    },
+  };
 };
 
 // 수업 요청(TBO-16 #9) — 승인 시 세션이 생기므로 schedule도 무효화(참조 무결성 — 캘린더·배지 동시 갱신)
@@ -266,7 +333,12 @@ export const useApproveScheduleRequest = () => {
   const qc = useQueryClient();
   const { scope } = useAccountAccess();
   return useMutation({
-    mutationFn: (v: { id: number; force?: boolean }) => api.scheduleRequests.approve(v.id, v.force),
+    mutationFn: (v: {
+      id: number;
+      forceConflicts?: boolean;
+      acknowledgeAccountingImpact?: boolean;
+      expectedAccountingImpactHash?: string;
+    }) => api.scheduleRequests.approve(v.id, v),
     // [C2C-b] audit 프리픽스 무효화 — 상세 모달 '처리 이력'이 승인 직후 즉시 갱신
     onSuccess: async (data) => {
       upsertScheduleRequestCache(qc, scope, data.request);

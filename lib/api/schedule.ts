@@ -116,6 +116,11 @@ export type SchedulePatchBody = {
   expectedSeriesVersion?: number; // [TBO-29C C3] series edit CAS — 불일치 시 409 SERIES_VERSION_STALE
   acknowledgeAccountingImpact?: boolean;
 };
+export type ScheduleRequestApprovalOptions = {
+  forceConflicts?: boolean;
+  acknowledgeAccountingImpact?: boolean;
+  expectedAccountingImpactHash?: string;
+};
 // [TBO-19] 강사 출결 현황 집계 응답
 type InstructorAttendanceRow = {
   instructorId: number; instructorName: string;
@@ -182,7 +187,12 @@ export const scheduleApi = {
     conflicts: (body: ConflictCheckBody) =>
       http.post<Conflict[]>("/schedule/conflicts", body).then((r) => r.data),
     // 세션 삭제(soft delete — v9). [TBO-29C C3] scope(this/this_and_following/all) + series CAS 지원.
-    remove: (id: number, opts?: { scope?: "this" | "this_and_following" | "all"; expectedSeriesVersion?: number }) =>
+    remove: (id: number, opts?: {
+      scope?: "this" | "this_and_following" | "all";
+      expectedSeriesVersion?: number;
+      acknowledgeAccountingImpact?: boolean;
+      expectedAccountingImpactHash?: string;
+    }) =>
       http.delete<{ id: number; deleted: boolean; removedIds: number[] }>(`/schedule/${id}`, { params: opts }).then((r) => r.data),
   },
   // 강사 수업 요청 → 매니저 승인/반려(TBO-16 #9). 승인=서버가 createSession 재사용(409+force 동일 규약).
@@ -191,8 +201,12 @@ export const scheduleApi = {
       http.get<ScheduleRequestEx[]>("/schedule-requests", { ...options, params: status ? { status } : {} }).then((r) => r.data),
     create: (input: CreateScheduleRequestBody) =>
       http.post<{ row: ScheduleRequestEx; conflicts: Conflict[] }>("/schedule-requests", input).then((r) => r.data),
-    approve: (id: number, force?: boolean) =>
-      http.post<{ request: ScheduleRequestEx; conflicts: Conflict[] }>(`/schedule-requests/${id}/approve`, {}, { params: force ? { force: "true" } : {} }).then((r) => r.data),
+    approve: (id: number, options: ScheduleRequestApprovalOptions = {}) =>
+      http.post<{ request: ScheduleRequestEx; conflicts: Conflict[] }>(
+        `/schedule-requests/${id}/approve`,
+        {},
+        { params: options },
+      ).then((r) => r.data),
     reject: (id: number, reason: string) => // 사유 필수(Q2)
       http.post<ScheduleRequestEx>(`/schedule-requests/${id}/reject`, { reason }).then((r) => r.data),
     update: (id: number, body: UpdateScheduleRequestBody) => // [C2C-b] pending 수정(관리자)

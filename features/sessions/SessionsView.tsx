@@ -10,6 +10,7 @@ import { shortDate } from "@/lib/format";
 import { SessionForm } from "./SessionForm";
 import { SESSION_STATUS_LABEL as label, SESSION_STATUS_TONE as tone } from "./session-shared";
 import { internalRoute } from "@/lib/navigation-security";
+import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 
 // [TBO-34 C3] 상태 표기 = session-shared 단일 진실원(사본 제거 — no_show 표기 '노쇼'로 정규화)
 
@@ -18,7 +19,7 @@ export function SessionsView() {
   //  강사는 캘린더의 수업요청(schedule-requests) 경로로 개설.
   const admin = useAccountAccess().can("calendar.manage");
   const { data: classSessions = [], isPending: loading } = useSchedule(); // [E0.6 H2]
-  const removeSchedule = useRemoveSchedule(); // [TBO-58 P2] 목록에서 바로 삭제(soft·undo 스택 편입)
+  const removeSchedule = useRemoveSchedule();
   const [removing, setRemoving] = useState<{ id: number; label: string } | null>(null);
 
   const [q, setQ] = useState("");
@@ -108,13 +109,18 @@ export function SessionsView() {
       {removing && (
         <ConfirmModal
           title="수업 삭제"
-          message={`${removing.label} 회차를 삭제할까요? (소프트 삭제 — cmd/ctrl+Z 복구 가능)`}
+          message={`${removing.label} 회차를 삭제할까요? 출결·보고서도 함께 삭제됩니다.`}
           confirmLabel="삭제"
           danger
           onClose={() => setRemoving(null)}
           onConfirm={() => { removeSchedule.mutate({ id: removing.id }); setRemoving(null); }}
         />
       )}
+      <AccountingImpactModal
+        prompt={removeSchedule.accountingPrompt}
+        onClose={removeSchedule.dismissAccountingPrompt}
+        onConfirm={() => removeSchedule.confirmAccountingImpact()}
+      />
     </div>
   );
 }

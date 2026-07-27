@@ -2711,6 +2711,18 @@ export function ScheduleCalendar() {
         />
       )}
 
+      <AccountingImpactModal
+        prompt={removeScheduleM.accountingPrompt}
+        onClose={removeScheduleM.dismissAccountingPrompt}
+        onConfirm={() => removeScheduleM.confirmAccountingImpact({
+          onSuccess: (res) => {
+            setRows((current) => current.filter((row) => !res.removedIds.includes(row.id)));
+            setMsg(res.removedIds.length > 1 ? `반복 일정 ${res.removedIds.length}건을 삭제했습니다.` : "스케줄을 삭제했습니다.");
+          },
+          onError: () => setMsg("삭제 실패"),
+        })}
+      />
+
       {creating && resources && (
         <ScheduleCreateModal
           resources={resources}

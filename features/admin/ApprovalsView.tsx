@@ -42,6 +42,8 @@ import { ApprovalItemDetailModal, type ApprovalDetailItem } from './ApprovalItem
 import type { AccountRole } from '@/types';
 import { ProfileChangeRequestsSection } from './ProfileChangeRequestsSection';
 import { useAccountAccess } from '@/lib/useAccountAccess';
+import { AccountingImpactModal } from '@/components/AccountingImpactModal';
+import type { AccountingImpactPrompt } from '@/lib/queries';
 
 // 가입 승인 대기 — 서버가 actor 역할에 맞는 행만 반환하며 요청 역할은 승인 시 변경하지 않는다.
 function MemberApprovals({ canManagePendingAccount }: { canManagePendingAccount: boolean }) {
@@ -206,14 +208,19 @@ export function ApprovalsView() {
   const [requestReject, setRequestReject] = useState<number | null>(null);
   const [requestMsg, setRequestMsg] = useState<string | null>(null);
   // [DESIGN §5.5] 충돌 강제 승인 확인 — window.confirm 대신 ConfirmModal
-  const [forceApprove, setForceApprove] = useState<number | null>(null);
+  const [forceApprove, setForceApprove] = useState<ScheduleRequestEx | null>(null);
+  const [accountingApprove, setAccountingApprove] = useState<{
+    request: ScheduleRequestEx;
+    prompt: AccountingImpactPrompt;
+    forceConflicts: boolean;
+  } | null>(null);
   // [C2C-b] 행 클릭 상세 모달(대표 지시) — 승인/반려는 아래 기존 핸들러를 그대로 전달(단일 구현)
   const [detailReq, setDetailReq] = useState<ScheduleRequestEx | null>(null);
   const pendingRequests = scheduleRequests.filter((r) => r.status === 'pending');
   const pendingProfileRequests = profileChangeRequests.filter((r) => r.status === 'pending');
   // 승인 — 충돌 409면 force 재시도 확인(세션 생성과 동일 규약: 서버 createSession 재검사)
-  const onApproveRequest = (r: ScheduleRequestEx) => {
-    approveRequest.mutate({ id: r.id }, {
+  const onApproveRequest = (r: ScheduleRequestEx, options: { forceConflicts?: boolean; acknowledgeAccountingImpact?: boolean; expectedAccountingImpactHash?: string } = {}) => {
+    approveRequest.mutate({ id: r.id, ...options }, {
       onSuccess: () => setRequestMsg(
         r.requestKind === 'availability_upsert' || r.requestKind === 'availability_delete'
           ? '승인 — 가용시간 변경이 반영되었습니다.'
@@ -224,9 +231,29 @@ export function ApprovalsView() {
               : '승인 — 캘린더에 세션이 생성되었습니다.',
       ),
       onError: (e) => {
-        const err = e as { response?: { status?: number } };
-        if (err.response?.status === 409 && (!r.requestKind || r.requestKind === 'session_create')) setForceApprove(r.id);
-        else setRequestMsg('승인 보류 — 충돌을 확인하세요.');
+        const err = e as {
+          response?: {
+            status?: number;
+            data?: { code?: string; impact?: AccountingImpactPrompt['impact']; message?: string };
+          };
+        };
+        if (err.response?.data?.impact && (
+          err.response.data.code === 'ACCOUNTING_IMPACT_ACK_REQUIRED'
+          || err.response.data.code === 'PAYOUT_REVERSAL_REQUIRED'
+        )) {
+          setAccountingApprove({
+            request: r,
+            forceConflicts: options.forceConflicts ?? false,
+            prompt: {
+              impact: err.response.data.impact,
+              impactHash: (err.response.data as { impactHash?: string }).impactHash,
+              payoutLocked: err.response.data.code === 'PAYOUT_REVERSAL_REQUIRED',
+            },
+          });
+          return;
+        }
+        if (err.response?.status === 409 && (!r.requestKind || r.requestKind === 'session_create')) setForceApprove(r);
+        else setRequestMsg(err.response?.data?.message ?? '승인 보류 — 충돌을 확인하세요.');
       },
     });
   };
@@ -339,12 +366,29 @@ export function ApprovalsView() {
           danger
           onClose={() => { setForceApprove(null); setRequestMsg('승인 보류 — 충돌을 확인하세요.'); }}
           onConfirm={() => {
-            const id = forceApprove;
+            const request = forceApprove;
             setForceApprove(null);
-            approveRequest.mutate({ id, force: true }, { onSuccess: () => setRequestMsg('강제 승인 — 세션 생성됨(충돌 무시).') });
+            onApproveRequest(request, { forceConflicts: true });
           }}
         />
       )}
+      <AccountingImpactModal
+        prompt={accountingApprove?.prompt ?? null}
+        onClose={() => setAccountingApprove(null)}
+        onConfirm={() => {
+          const pending = accountingApprove;
+          setAccountingApprove(null);
+          if (!pending || pending.prompt.payoutLocked) {
+            setRequestMsg('정산 회수 또는 보정 거래 후 다시 승인해 주세요.');
+            return;
+          }
+          onApproveRequest(pending.request, {
+            forceConflicts: pending.forceConflicts,
+            acknowledgeAccountingImpact: true,
+            expectedAccountingImpactHash: pending.prompt.impactHash,
+          });
+        }}
+      />
       {/* [C2C-b] 행 클릭 상세 — 승인/반려는 리스트 버튼과 동일 핸들러 재사용(force 분기·사유 모달 포함) */}
       {detailReq && (
         <RequestDetailModal
@@ -487,7 +531,7 @@ export function ApprovalsView() {
   // [E0.6 M] 보고서·지출·페이도 마지막 건 처리 직후 피드백 메시지가 보이도록 msg 있는 동안 유지.
   const activeSections = sections.filter((s) =>
     s.count > 0
-    || (s.key === 'requests' && (requestReject != null || forceApprove != null || requestMsg != null))
+    || (s.key === 'requests' && (requestReject != null || forceApprove != null || accountingApprove != null || requestMsg != null))
     || sectionMsg[s.key as 'reports' | 'expenses' | 'payouts'] != null,
   );
   const idleSections = sections.filter((s) => !activeSections.includes(s));

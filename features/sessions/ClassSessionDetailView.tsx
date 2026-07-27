@@ -36,7 +36,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   const { data: attendance = [] } = useAttendance();
   const router = useRouter();
   const updateSchedule = useUpdateSchedule();
-  const removeSchedule = useRemoveSchedule(); // [TBO-58 P2] 상세에서 삭제(soft delete·undo 스택 편입)
+  const removeSchedule = useRemoveSchedule();
   const markMine = useMarkMyInstructorAttendance(); // [TBO-62 ④] 강사 본인 최초 체크 전용
   const upsert = useUpsertAttendance();
   const [manageModal, setManageModal] = useState<'edit' | 'remove' | null>(null); // [TBO-58 P2]
@@ -82,8 +82,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                 </p>
               </div>
 
-              {/* [TBO-58 P2] 세션 편집·삭제 — 종전엔 캘린더로만 우회 가능(검증①). BE PATCH/DELETE 재사용:
-                  회계 영향 ack 모달·자동 전이·undo 스택(TBO-63)까지 캘린더와 동일 규약. 매니저 이상만. */}
+              {/* 세션 편집·삭제 — BE PATCH/DELETE와 회계 영향 ack 모달을 재사용. 매니저 이상만. */}
               {admin && (
                 <div className="flex gap-2">
                   <button type="button" className="btn btn-sm" onClick={() => setManageModal('edit')}>수업 정보 수정</button>
@@ -94,7 +93,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
               {manageModal === 'remove' && (
                 <ConfirmModal
                   title="수업 삭제"
-                  message={`${shortDate(session.sessionDate)} ${session.courseName || '수업'} 회차를 삭제할까요? (소프트 삭제 — cmd/ctrl+Z 복구 가능)`}
+                  message={`${shortDate(session.sessionDate)} ${session.courseName || '수업'} 회차를 삭제할까요? 출결·보고서도 함께 삭제됩니다.`}
                   confirmLabel="삭제"
                   danger
                   onClose={() => setManageModal(null)}
@@ -161,12 +160,17 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
         }}
       </DetailStates>
       <AccountingImpactModal prompt={updateSchedule.accountingPrompt} onClose={updateSchedule.dismissAccountingPrompt} onConfirm={updateSchedule.confirmAccountingImpact} />
+      <AccountingImpactModal
+        prompt={removeSchedule.accountingPrompt}
+        onClose={removeSchedule.dismissAccountingPrompt}
+        onConfirm={() => removeSchedule.confirmAccountingImpact({ onSuccess: () => router.push('/sessions') })}
+      />
     </div>
   );
 }
 
 // [TBO-58 P2] 수업 정보 수정 모달 — 시간·강의실·상태·주제(요구 명시 필드). useUpdateSchedule 재사용이라
-//  회계 영향 ack(409→모달)·undo 캡처·캐시 무효화가 캘린더 편집과 완전 동일하게 적용된다.
+//  회계 영향 ack(409→모달)·캐시 무효화가 캘린더 편집과 동일하게 적용된다.
 function SessionEditModal({ session, onClose }: {
   session: { id: number; sessionDate: string; startTime?: string | null; durationMinutes: number; roomId?: number | null; status: string; topic?: string | null };
   onClose: () => void;
