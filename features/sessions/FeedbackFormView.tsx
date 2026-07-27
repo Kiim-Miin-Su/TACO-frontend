@@ -7,6 +7,7 @@ import { Badge, SectionCard, type Tone } from "@/components/ui";
 import { useSchedule, useStudents, useReports, useParentStudents, useParents, useCourses } from "@/lib/queries";
 import { SessionFeedbackForm } from "@/features/reports/SessionFeedbackForm";
 import type { ReportStatus } from "@/types";
+import { internalRoute } from "@/lib/navigation-security";
 
 const reportTone: Record<ReportStatus, Tone> = { draft: "neutral", submitted: "accent", sent: "success" };
 const reportLabel: Record<ReportStatus, string> = { draft: "작성중", submitted: "작성완료", sent: "발송됨" };
@@ -37,7 +38,7 @@ export function FeedbackFormView({ sessionId, studentId }: { sessionId: number; 
   return (
     <div className="p-6 max-w-[760px] mx-auto space-y-5">
       <div>
-        <Link href={`/sessions/${sessionId}`} className="text-caption text-fg-muted hover:underline">
+        <Link href={internalRoute.session(sessionId)} className="text-caption text-fg-muted hover:underline">
           ← 수업 상세
         </Link>
         <div className="flex items-center gap-2 mt-1">

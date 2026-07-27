@@ -10,6 +10,7 @@ import { CounselCalendar } from './CounselCalendar';
 import { recentCounselForms } from '@/lib/domain/counsel';
 import { statusLabel, statusTone, sourceLabel } from './labels';
 import { useCounselStudentLookup } from './useCounselStudentLookup';
+import { internalRoute } from '@/lib/navigation-security';
 
 type Tab = 'list' | 'calendar';
 
@@ -99,11 +100,11 @@ export function CounselView() {
                     return (
                     <ClickableTableRow
                       key={f.id}
-                      href={`/counsel/${f.id}`}
+                      href={internalRoute.counsel(f.id)}
                       label={`${studentName} 상담 상세 보기`}
                     >
                       <td>
-                        <Link href={`/counsel/${f.id}`} className="font-medium text-accent hover:underline">{studentName}</Link>
+                        <Link href={internalRoute.counsel(f.id)} className="font-medium text-accent hover:underline">{studentName}</Link>
                         <div className="text-caption text-fg-subtle">{student?.phone ?? ''}</div>
                       </td>
                       <td className="text-fg-muted">{sourceLabel[f.source]}</td>
@@ -112,7 +113,7 @@ export function CounselView() {
                       <td className="mono text-fg-muted">{f.nextContactAt ?? '—'}</td>
                       <td className="mono text-fg-muted">{f.createdAt}</td>
                       <td className="text-right">
-                        <Link href={`/counsel/${f.id}`} className="btn btn-sm">상세 보기</Link>
+                        <Link href={internalRoute.counsel(f.id)} className="btn btn-sm">상세 보기</Link>
                       </td>
                     </ClickableTableRow>
                     );

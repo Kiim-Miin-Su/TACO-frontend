@@ -23,6 +23,7 @@ import { isReversedPayout as isReversed, payoutHours as hours, monthPeriod } fro
 import { PayoutStatusBadge } from '@/features/payouts/PayoutStatusBadge';
 import { UncoveredBanner } from '@/features/payouts/UncoveredBanner';
 import { BulkGenerateModal } from '@/features/payouts/BulkGenerateModal';
+import { internalRoute } from '@/lib/navigation-security';
 
 export function PayoutsView() {
   const access = useAccountAccess();
@@ -254,13 +255,13 @@ export function PayoutsView() {
             {filtered.map((p) => (
               <Fragment key={p.id}>
               {/* [TBO-32 C4] 행 클릭 = 정산서 **단건** 상세(/payouts/detail/[id]) — 확장 토글/승인·지급 버튼은 중첩 제외가 담당 */}
-              <ClickableTableRow href={`/payouts/detail/${p.id}`} label={`정산서 #${p.id} — ${instructorName(p.instructorId)} 상세`}>
+              <ClickableTableRow href={internalRoute.payoutRecord(p.id)} label={`정산서 #${p.id} — ${instructorName(p.instructorId)} 상세`}>
                 <td className="font-medium">
                   <button className="hover:underline" onClick={() => setExpanded(expanded === p.id ? null : p.id)} title="정산 근거 보기">
                     {expanded === p.id ? '▾' : '▸'} {instructorName(p.instructorId)}
                   </button>
                   {/* [TBO-20 20-B] 강사별 정산 요약(회차 내역·이번 달 미리보기) */}
-                  <Link href={`/payouts/${p.instructorId}`} className="ml-1.5 text-caption text-accent hover:underline" title="이 강사 정산 요약">강사별</Link>
+                  <Link href={internalRoute.payoutInstructor(p.instructorId)} className="ml-1.5 text-caption text-accent hover:underline" title="이 강사 정산 요약">강사별</Link>
                 </td>
                 <td className="mono text-fg-muted">{p.periodStart} ~ {p.periodEnd}</td>
                 <td className="text-right mono">{hours(p.totalMinutes)} · {p.sessionCount}회</td>
@@ -330,7 +331,7 @@ export function PayoutsView() {
                                 <td className="font-medium">{l.courseName}</td>
                                 <td className="text-right mono">{hours(l.durationMinutes)}</td>
                                 <td className="text-right mono">{won(l.amount)}</td>
-                                <td className="text-right"><Link href={`/sessions/${l.sessionId}`} className="text-caption hover:underline" onClick={(e) => e.stopPropagation()}>회차 상세 →</Link></td>
+                                <td className="text-right"><Link href={internalRoute.session(l.sessionId)} className="text-caption hover:underline" onClick={(e) => e.stopPropagation()}>회차 상세 →</Link></td>
                               </tr>
                             ))}
                           </tbody>

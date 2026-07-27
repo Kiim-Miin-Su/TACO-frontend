@@ -17,6 +17,7 @@ import { roleLabel } from '@/lib/roles';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { useDeletePendingAccount, useResendPendingVerification, useUsers } from '@/lib/queries';
 import { dateOnly } from '@/lib/format';
+import { internalRoute } from '@/lib/navigation-security';
 import type { AccountRole } from '@/types';
 
 const STATUS_LABEL = ACCOUNT_STATUS_LABEL; // [P2 FE-7] 진실원(lib/domain/accounts)
@@ -81,7 +82,7 @@ export function UsersView() {
                 const resendable = isSuper && u.status === 'pending' && u.emailVerified !== true;
                 return (
                   // [07-20] 행 클릭 → 상세(/admin/users/[id]) — 진입 시 비밀번호 재확인(sudo)은 상세가 강제.
-                  <ClickableTableRow key={u.id} href={`/admin/users/${u.id}`} label={`${u.name} 상세`}>
+                  <ClickableTableRow key={u.id} href={internalRoute.adminUser(u.id)} label={`${u.name} 상세`}>
                     <td className="font-medium mono">{u.webId}</td>
                     <td>{u.name}</td>
                     <td className="text-fg-muted">{u.email ?? '—'}</td>

@@ -10,6 +10,7 @@ import { weekdayOf, WEEKDAYS_KO as WD } from "@/lib/domain/schedule";
 import { STATUS_LABEL } from "@/lib/domain/lantiv";
 import { KST_TZ, type CountryInfo } from "@/lib/domain/tz";
 import { SessionEditFields } from "../SessionEditFields";
+import { internalRoute } from "@/lib/navigation-security";
 
 function Dt({ children }: { children: React.ReactNode }) {
   return <dt className="text-fg-muted">{children}</dt>;
@@ -85,7 +86,7 @@ export function SessionDetailModal({
             <dd className="whitespace-pre-wrap">{row.memo ? row.memo : <span className="text-fg-subtle">—</span>}</dd>
           </dl>
           <div className="flex justify-between gap-2 pt-1">
-            <Link href={`/sessions/${row.id}`} className="btn btn-sm">
+            <Link href={internalRoute.session(row.id)} className="btn btn-sm">
               강의 상세 페이지 →
             </Link>
             <div className="flex gap-2">

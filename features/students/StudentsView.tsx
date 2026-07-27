@@ -13,6 +13,7 @@ import type { Student } from "@/types";
 import { StudentForm } from "./StudentForm";
 import { StudentStatusChangeModal } from "./StudentStatusChangeModal";
 import { useState } from "react";
+import { internalRoute } from "@/lib/navigation-security";
 
 
 export function StudentsView() {
@@ -112,10 +113,10 @@ export function StudentsView() {
               {filtered.map((s) => {
                 const cs = coursesOf(s.id);
                 return (
-                  <ClickableTableRow key={s.id} href={`/students/${s.id}`} label={`${s.name} 학생 상세`}>
+                  <ClickableTableRow key={s.id} href={internalRoute.student(s.id)} label={`${s.name} 학생 상세`}>
                     <td>
                       {/* [TBO-20 20-A] 이름 클릭 → 학생 상세(프로필 허브) */}
-                      <Link href={`/students/${s.id}`} className="font-medium text-accent hover:underline">{s.name}</Link>
+                      <Link href={internalRoute.student(s.id)} className="font-medium text-accent hover:underline">{s.name}</Link>
                       <div className="text-caption text-fg-subtle">{s.englishName ?? ""}</div>
                     </td>
                     <td className="mono">{studentGradeLabel(s.grade)}</td>

@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { Badge, ClickableTableRow, EmptyState, LoadingState, SectionCard, TableWrap } from '@/components/ui';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { useInstructorAdminList } from '@/lib/queries';
+import { internalRoute } from '@/lib/navigation-security';
 import { CreateInstructorModal } from './instructors/CreateInstructorModal';
 
 export function InstructorsView() {
@@ -24,7 +25,7 @@ export function InstructorsView() {
             <thead><tr><th>이름</th><th>아이디</th><th>연락처</th><th>학력</th><th>기본 시급</th><th>Kinder</th></tr></thead>
             <tbody>
               {rows.map((instructor) => (
-                <ClickableTableRow key={instructor.id} href={`/admin/instructors/${instructor.id}`} label={`${instructor.name} 강사 상세`}>
+                <ClickableTableRow key={instructor.id} href={internalRoute.adminInstructor(instructor.id)} label={`${instructor.name} 강사 상세`}>
                   <td className="font-medium">{instructor.name}</td>
                   <td className="mono text-fg-muted">{instructor.webId}</td>
                   <td>{instructor.phone ?? instructor.email ?? '—'}</td>

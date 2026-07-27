@@ -20,6 +20,7 @@ import { STUDENT_STATUS_LABEL, STUDENT_STATUS_TONE } from '@/lib/domain/students
 import { statusLabel as counselStatusLabel, statusTone as counselStatusTone } from '@/features/counsel/labels';
 import { familyMemberSub, familyRelationLabel, hasSharedGuardian } from './family-shared';
 import { StudentSearchSelect } from './StudentSearchSelect';
+import { internalRoute } from '@/lib/navigation-security';
 
 export function StudentFamilyRelationsSection({
   studentId,
@@ -82,7 +83,7 @@ export function StudentFamilyRelationsSection({
         {!relations.length ? <EmptyState message="연결된 가족 학생이 없습니다." /> : <div className="divide-y border-line-muted">
           {members.map((member) => <div key={member.relationId} className="p-3 space-y-1.5">
             <div className="flex items-center gap-2 flex-wrap">
-              <Link href={`/students/${member.student.id}`} className="font-medium text-accent hover:underline">{member.student.name}</Link>
+              <Link href={internalRoute.student(member.student.id)} className="font-medium text-accent hover:underline">{member.student.name}</Link>
               {editing?.relationId === member.relationId ? <>
                 <select className="input w-auto" value={relationType} onChange={(event) => setRelationType(event.target.value as 'sibling' | 'other')}><option value="sibling">형제·자매</option><option value="other">기타</option></select>
                 {relationType === 'other' && <input className="input w-40" value={relationLabel} onChange={(event) => setRelationLabel(event.target.value)} />}
@@ -104,7 +105,7 @@ export function StudentFamilyRelationsSection({
                 <span className="flex items-center gap-1.5 flex-wrap">
                   상담
                   {member.counselForms.map((counsel) => (
-                    <Link key={counsel.id} href={`/counsel/${counsel.id}`} className="inline-flex items-center gap-1 hover:underline">
+                    <Link key={counsel.id} href={internalRoute.counsel(counsel.id)} className="inline-flex items-center gap-1 hover:underline">
                       <Badge tone={counselStatusTone[counsel.status]}>{counselStatusLabel[counsel.status]}</Badge>
                     </Link>
                   ))}

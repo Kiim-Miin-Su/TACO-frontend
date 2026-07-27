@@ -12,6 +12,7 @@ import { useCourses, useCreateRoadmap, useRemoveRoadmap, useRoadmaps } from '@/l
 import { apiErrorMessage } from '@/lib/api-error';
 import { STUDENT_GRADE_OPTIONS } from '@/lib/domain/students';
 import { roadmapDurationLabel, roadmapSequenceLabel, roadmapTargetLabel } from '@/lib/domain/roadmaps';
+import { internalRoute } from '@/lib/navigation-security';
 import { AdminGuard, AdminHeader } from './AdminShell';
 
 export function RoadmapsView() {
@@ -40,9 +41,9 @@ export function RoadmapsView() {
                 <thead><tr><th>로드맵</th><th>대상</th><th>기간</th><th>코스 구성 (순서)</th><th>상태</th><th className="text-right">관리</th></tr></thead>
                 <tbody>
                   {roadmaps.map((roadmap) => (
-                    <ClickableTableRow key={roadmap.id} href={`/admin/roadmaps/${roadmap.id}`} label={`${roadmap.title} 로드맵 상세`}>
+                    <ClickableTableRow key={roadmap.id} href={internalRoute.adminRoadmap(roadmap.id)} label={`${roadmap.title} 로드맵 상세`}>
                       <td className="font-medium">
-                        <Link href={`/admin/roadmaps/${roadmap.id}`} className="text-accent hover:underline">{roadmap.title}</Link>
+                        <Link href={internalRoute.adminRoadmap(roadmap.id)} className="text-accent hover:underline">{roadmap.title}</Link>
                         {roadmap.description && <div className="text-micro text-fg-subtle truncate max-w-[320px]">{roadmap.description}</div>}
                       </td>
                       <td className="text-fg-muted">{roadmapTargetLabel(roadmap.targetGrade)}</td>

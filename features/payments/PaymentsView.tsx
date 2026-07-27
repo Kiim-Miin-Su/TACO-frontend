@@ -9,6 +9,7 @@ import { enumPreferenceCodec, preferenceKeys } from '@/lib/storage/preferences';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { dateOnly, won } from '@/lib/format';
 import { statusLabel, statusTone, methodLabel } from './labels';
+import { internalRoute } from '@/lib/navigation-security';
 
 export function PaymentsView() {
   const finance = useAccountAccess().can('finance.access');
@@ -78,7 +79,7 @@ export function PaymentsView() {
             </thead>
             <tbody>
               {payments.map((p) => (
-                <ClickableTableRow key={p.id} href={`/payments/${p.id}`} label={`${nameOf(p.studentId)} 결제 상세`}>
+                <ClickableTableRow key={p.id} href={internalRoute.payment(p.id)} label={`${nameOf(p.studentId)} 결제 상세`}>
                   <td className="font-medium">{nameOf(p.studentId)}</td>
                   <td className="text-right mono">{won(p.amount)}</td>
                   <td className="text-fg-muted">{p.paymentMethod ? methodLabel[p.paymentMethod] : '—'}</td>
@@ -86,7 +87,7 @@ export function PaymentsView() {
                   {/* [E0.6 M] 날짜 표기 통일 — raw ISO(시각·타임존 포함) 노출 대신 공용 dateOnly */}
                   <td className="text-right mono text-fg-muted">{dateOnly(p.createdAt)}</td>
                   <td className="text-right mono text-fg-muted">{dateOnly(p.paidAt)}</td>
-                  <td className="text-right"><Link href={`/payments/${p.id}`} className="btn btn-sm">상세</Link></td>
+                  <td className="text-right"><Link href={internalRoute.payment(p.id)} className="btn btn-sm">상세</Link></td>
                 </ClickableTableRow>
               ))}
             </tbody>
@@ -103,7 +104,7 @@ export function PaymentsView() {
               .map((p) => (
                 <Link
                   key={p.id}
-                  href={`/payments/${p.id}`}
+                  href={internalRoute.payment(p.id)}
                   className="block rounded px-1.5 py-1 text-micro font-medium truncate"
                   style={{
                     backgroundColor: p.status === 'paid' ? 'var(--color-success-subtle)' : 'var(--color-attention-subtle)',

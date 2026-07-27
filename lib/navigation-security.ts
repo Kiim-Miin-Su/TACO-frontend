@@ -5,7 +5,9 @@ import type { Route } from "next";
 
 const INTERNAL_ORIGIN = "https://taco.internal";
 const MAX_REDIRECT_LENGTH = 2048;
+const MAX_POSTGRES_INTEGER = 2_147_483_647;
 const UNSAFE_CHARACTER = /[\u0000-\u001f\u007f\\]/;
+const CANONICAL_POSITIVE_INTEGER = /^[1-9]\d*$/;
 
 export type InternalHref =
   | "/"
@@ -55,6 +57,59 @@ export type InternalHref =
   | `/students/${number}`
   | "/timetable"
   | "/verify-email";
+
+export function positiveRouteId(candidate: unknown): number | null {
+  if (typeof candidate === "number") {
+    return Number.isInteger(candidate) &&
+      candidate >= 1 &&
+      candidate <= MAX_POSTGRES_INTEGER
+      ? candidate
+      : null;
+  }
+
+  if (
+    typeof candidate !== "string" ||
+    !CANONICAL_POSITIVE_INTEGER.test(candidate)
+  ) {
+    return null;
+  }
+
+  const parsed = Number(candidate);
+  return parsed <= MAX_POSTGRES_INTEGER ? parsed : null;
+}
+
+function routeIdSegment(candidate: unknown): number {
+  const id = positiveRouteId(candidate);
+  if (id == null) {
+    throw new RangeError("Route id must be a positive PostgreSQL integer");
+  }
+  return id;
+}
+
+export const internalRoute = {
+  adminCourse: (id: number): InternalHref =>
+    `/admin/courses/${routeIdSegment(id)}`,
+  adminInstructor: (id: number): InternalHref =>
+    `/admin/instructors/${routeIdSegment(id)}`,
+  adminRoadmap: (id: number): InternalHref =>
+    `/admin/roadmaps/${routeIdSegment(id)}`,
+  adminUser: (id: number): InternalHref =>
+    `/admin/users/${routeIdSegment(id)}`,
+  attendanceInstructor: (id: number): InternalHref =>
+    `/attendance/instructor/${routeIdSegment(id)}`,
+  counsel: (id: number): InternalHref => `/counsel/${routeIdSegment(id)}`,
+  expense: (id: number): InternalHref => `/expenses/${routeIdSegment(id)}`,
+  payment: (id: number): InternalHref => `/payments/${routeIdSegment(id)}`,
+  payoutInstructor: (id: number): InternalHref =>
+    `/payouts/${routeIdSegment(id)}`,
+  payoutRecord: (id: number): InternalHref =>
+    `/payouts/detail/${routeIdSegment(id)}`,
+  report: (id: number): InternalHref => `/reports/${routeIdSegment(id)}`,
+  session: (id: number): InternalHref => `/sessions/${routeIdSegment(id)}`,
+  sessionFeedback: (sessionId: number, studentId: number): InternalHref =>
+    `/sessions/${routeIdSegment(sessionId)}/feedback/${routeIdSegment(studentId)}`,
+  student: (id: number): InternalHref => `/students/${routeIdSegment(id)}`,
+} as const;
 
 const APP_ROUTE_PREFIXES = [
   "/account",

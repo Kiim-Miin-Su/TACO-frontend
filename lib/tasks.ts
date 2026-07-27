@@ -24,7 +24,7 @@ import { makeupNeeds, MAKEUP_REASON_LABEL } from '@/lib/makeup';
 // [핫픽스 2026-07-20 ②] 승인센터 모집단 단일 소스 — 대시보드·배지·승인센터가 같은 술어를 공유.
 import { approvalCenterCounts, expenseApprovalRows, payoutApprovalRows, profileChangeApprovalRows, reportApprovalRows, scheduleRequestApprovalRows } from '@/lib/approvals';
 import type { PendingAccount, ProfileChangeRequest } from '@/lib/api';
-import type { InternalHref } from '@/lib/navigation-security';
+import { internalRoute, type InternalHref } from '@/lib/navigation-security';
 
 // 회계상 분리: pay(강사 페이=출금) / expense(지출=출금) / payment(결제·수납=입금) / counsel(상담) / report·class(강사)
 type TaskGroup = 'pay' | 'expense' | 'payment' | 'counsel' | 'report' | 'class' | 'schedule' | 'account'; // [핫픽스 07-20 ②] account=가입·계정 승인
@@ -84,7 +84,7 @@ function readinessTask(s: StoreSlice, row: PayReadinessIssue, forInstructor: boo
     case 'report_rejected':
       return { ...base, group: 'report', tone: 'danger', title: `리포트 반려 — ${student?.name ?? '학생'}`, detail: `${context} · 사유: ${row.rejectedReason ?? '사유 미기재'} · 수정 후 재제출`, href: '/reports/write' };
     case 'rate_missing':
-      return { ...base, group: 'pay', tone: 'danger', title: `강사 페이 단가 미설정 — ${instructor?.name ?? `강사 ${row.instructorId}`}`, detail: context, href: forInstructor ? '/payouts' : `/admin/instructors/${row.instructorId}` };
+      return { ...base, group: 'pay', tone: 'danger', title: `강사 페이 단가 미설정 — ${instructor?.name ?? `강사 ${row.instructorId}`}`, detail: context, href: forInstructor ? '/payouts' : internalRoute.adminInstructor(row.instructorId) };
     case 'session_roster_missing':
       return { ...base, group: 'class', tone: 'danger', title: `수업 대상 학생 미지정 — ${row.topic ?? '수업'}`, detail: context, href: '/calendar' };
     default:

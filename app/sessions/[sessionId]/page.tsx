@@ -1,4 +1,5 @@
 import { ClassSessionDetailView } from '@/features/sessions/ClassSessionDetailView';
+import { requirePageRouteId } from '@/lib/page-route-id';
 
 // Next 15: params는 Promise. 서버에서 풀어 클라이언트 뷰에 number로 전달.
 export default async function Page({
@@ -7,5 +8,5 @@ export default async function Page({
   params: Promise<{ sessionId: string }>;
 }) {
   const { sessionId } = await params;
-  return <ClassSessionDetailView sessionId={Number(sessionId)} />;
+  return <ClassSessionDetailView sessionId={requirePageRouteId(sessionId)} />;
 }

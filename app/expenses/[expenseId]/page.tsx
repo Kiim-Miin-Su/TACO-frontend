@@ -1,4 +1,5 @@
 import { ExpenseDetailView } from '@/features/expenses/ExpenseDetailView';
+import { requirePageRouteId } from '@/lib/page-route-id';
 
 export default async function Page({
   params,
@@ -6,5 +7,5 @@ export default async function Page({
   params: Promise<{ expenseId: string }>;
 }) {
   const { expenseId } = await params;
-  return <ExpenseDetailView expenseId={Number(expenseId)} />;
+  return <ExpenseDetailView expenseId={requirePageRouteId(expenseId)} />;
 }

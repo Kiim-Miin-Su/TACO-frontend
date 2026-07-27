@@ -22,6 +22,7 @@ import { StudentProfileEditModal } from './StudentProfileEditModal';
 import { StudentGuardiansSection } from './StudentGuardiansSection';
 import { StudentFamilyRelationsSection } from './StudentFamilyRelationsSection';
 import { StudentAcademicHistoriesSection } from './StudentAcademicHistoriesSection';
+import { internalRoute } from '@/lib/navigation-security';
 
 // [TBO-34 C3] 수강 상태 표기 = lib/domain/enrollments 단일 진실원(사본 제거)
 import { ENROLLMENT_STATUS_LABEL as enrollLabel, ENROLLMENT_STATUS_TONE as enrollTone } from '@/lib/domain/enrollments';
@@ -136,7 +137,7 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                   <div className="divide-y border-line-muted">
                     {myCounsel.map((c) => (
                       <div key={c.id} className="p-3 flex items-center gap-x-3 flex-wrap">
-                        <Link href={`/counsel/${c.id}`} className="text-accent hover:underline font-medium">{student.name}</Link>
+                        <Link href={internalRoute.counsel(c.id)} className="text-accent hover:underline font-medium">{student.name}</Link>
                         <Badge tone={counselTone[c.status]}>{counselLabel[c.status]}</Badge>
                       </div>
                     ))}
@@ -161,7 +162,7 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                             <td><Badge tone={payTone[p.status]}>{payLabel[p.status]}</Badge></td>
                             <td className="text-fg-muted">{p.paymentMethod ?? '—'}</td>
                             <td className="mono text-fg-muted">{p.paidAt ? shortDate(p.paidAt) : p.dueAt ? `~${shortDate(p.dueAt)}` : '—'}</td>
-                            <td className="text-right"><Link href={`/payments/${p.id}`} className="btn btn-sm">상세</Link></td>
+                            <td className="text-right"><Link href={internalRoute.payment(p.id)} className="btn btn-sm">상세</Link></td>
                           </tr>
                         ))}
                       </tbody>

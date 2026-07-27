@@ -11,6 +11,7 @@ import {
   useSchedule,
 } from '@/lib/queries';
 import { won, shortDate } from '@/lib/format';
+import { internalRoute } from '@/lib/navigation-security';
 import type { EnrollmentStatus } from '@/types';
 import { AdminGuard } from './AdminShell';
 
@@ -68,7 +69,7 @@ export function CourseDetailView({ courseId }: { courseId: number }) {
                       <tbody>
                         {roster.map((e) => (
                           <tr key={e.id}>
-                            <td className="font-medium"><Link href={`/students/${e.studentId}`} className="text-accent hover:underline">{studentName(e.studentId)}</Link></td>
+                            <td className="font-medium"><Link href={internalRoute.student(e.studentId)} className="text-accent hover:underline">{studentName(e.studentId)}</Link></td>
                             <td><Badge tone={enrollTone[e.status]}>{enrollLabel[e.status]}</Badge></td>
                             <td className="mono text-fg-muted">{e.completedSessions ?? 0}/{e.totalSessions ?? '—'}</td>
                             <td className="mono text-fg-muted">{shortDate(e.enrolledAt)}</td>
@@ -84,7 +85,7 @@ export function CourseDetailView({ courseId }: { courseId: number }) {
                 {!courseSessions.length ? <EmptyState message="세션이 없습니다." /> : (
                   <div className="divide-y border-line-muted max-h-[360px] overflow-y-auto">
                     {courseSessions.map((s) => (
-                      <Link key={s.id} href={`/sessions/${s.id}`} className="flex items-center gap-x-3 p-2.5 hover:bg-canvas-subtle">
+                      <Link key={s.id} href={internalRoute.session(s.id)} className="flex items-center gap-x-3 p-2.5 hover:bg-canvas-subtle">
                         <span className="mono text-caption">{s.sessionDate}</span>
                         <span className="text-caption text-fg-muted">{s.startTime ?? '—'}</span>
                         <Badge tone={sessionStatusTone(s.status) ?? 'neutral'}>{sessionStatusLabel(s.status) ?? s.status}</Badge>

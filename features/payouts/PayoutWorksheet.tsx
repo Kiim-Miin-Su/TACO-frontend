@@ -16,6 +16,7 @@ import type { PayoutWorksheetRow } from '@/lib/api';
 import type { AttendanceStatus, InstructorAttendanceStatus } from '@/types';
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from '@/features/attendance/AttMarker';
 import { AccountingImpactModal } from '@/components/AccountingImpactModal';
+import { internalRoute } from '@/lib/navigation-security';
 
 // [감사 3·5 해소 2026-07-24] 지역 won(toLocaleString — SSR 하이드레이션 금지 규약 위반)·hoursOf
 //  (2자리 반올림 — payoutHours 1자리와 화면 간 불일치) 사본 제거 → format.won·payout-shared 소비.
@@ -112,7 +113,7 @@ export function PayoutWorksheet({ instructorId, from, to }: { instructorId: numb
                 {data.rows.map((row) => (
                   <tr key={row.sessionId} className={row.pricing.kind === 'excluded' ? 'opacity-60' : undefined}>
                     <td className="mono whitespace-nowrap">
-                      <Link href={`/sessions/${row.sessionId}`} className="hover:underline">
+                      <Link href={internalRoute.session(row.sessionId)} className="hover:underline">
                         {row.sessionDate}{row.startTime ? ` ${row.startTime}` : ''}
                       </Link>
                     </td>

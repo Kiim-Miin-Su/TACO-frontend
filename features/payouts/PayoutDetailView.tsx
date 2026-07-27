@@ -12,6 +12,7 @@ import { won, dateOnly } from '@/lib/format'; // [B9 E5 2026-07-16] dateOnly —
 //  payout-shared + PayoutStatusBadge(단일 진실원) 소비. 정산서 행 클릭 = 단건 상세(/payouts/detail/[id]).
 import { isReversedPayout as isReversed, payoutHours as hrs, monthPeriod } from '@/features/payouts/payout-shared';
 import { PayoutStatusBadge } from '@/features/payouts/PayoutStatusBadge';
+import { internalRoute } from '@/lib/navigation-security';
 
 const thisYm = () => new Date().toISOString().slice(0, 7);
 
@@ -57,7 +58,7 @@ export function PayoutDetailView({ instructorId }: { instructorId: number }) {
         <PageHeader
           title={`${instructor?.name ?? `강사 #${instructorId}`} — 정산 상세`}
           sub="회차 시수·페이 내역 · 이번 달 산정 미리보기 (적격 = 진행·승인 보고서)"
-          actions={<Link href={`/attendance/instructor/${instructorId}`} className="btn btn-sm">출결 상세 →</Link>}
+          actions={<Link href={internalRoute.attendanceInstructor(instructorId)} className="btn btn-sm">출결 상세 →</Link>}
         />
       </div>
 
@@ -122,7 +123,7 @@ export function PayoutDetailView({ instructorId }: { instructorId: number }) {
                   return (
                     <Fragment key={p.id}>
                       {/* [TBO-32 C4] 행 클릭 = 정산서 단건 상세 — 확장 토글 버튼은 중첩 제외 */}
-                      <ClickableTableRow href={`/payouts/detail/${p.id}`} label={`정산서 ${p.periodStart}~${p.periodEnd} 상세`}>
+                      <ClickableTableRow href={internalRoute.payoutRecord(p.id)} label={`정산서 ${p.periodStart}~${p.periodEnd} 상세`}>
                         <td><button type="button" className="text-fg-subtle hover:text-accent" onClick={() => toggle(p.id)}>{isOpen ? '▾' : '▸'}</button></td>
                         <td className="mono">{p.periodStart} ~ {p.periodEnd}</td>
                         <td className="mono text-fg-muted">{p.sessionCount}회</td>

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultPostLoginLanding,
+  internalRoute,
+  positiveRouteId,
   resolvePostLoginDestination,
   safeInternalRedirect,
   type InternalHref,
@@ -11,6 +13,70 @@ const knownInternalHref = "/calendar" satisfies InternalHref;
 const externalHref: InternalHref = "https://evil.example";
 void knownInternalHref;
 void externalHref;
+
+describe("positiveRouteId", () => {
+  it.each([
+    ["1", 1],
+    ["42", 42],
+    ["2147483647", 2_147_483_647],
+    [1, 1],
+    [2_147_483_647, 2_147_483_647],
+  ])("accepts a canonical PostgreSQL int id: %s", (candidate, expected) => {
+    expect(positiveRouteId(candidate)).toBe(expected);
+  });
+
+  it.each([
+    "",
+    " ",
+    "NaN",
+    "Infinity",
+    "0",
+    "-1",
+    "+1",
+    "01",
+    "1.0",
+    "1.5",
+    "1e3",
+    "１２",
+    "2147483648",
+    0,
+    -1,
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    2_147_483_648,
+    null,
+    undefined,
+  ])("rejects a non-canonical or out-of-range id: %s", (candidate) => {
+    expect(positiveRouteId(candidate)).toBeNull();
+  });
+});
+
+describe("internalRoute", () => {
+  it("builds every dynamic application route through one boundary", () => {
+    expect(internalRoute.adminCourse(1)).toBe("/admin/courses/1");
+    expect(internalRoute.adminInstructor(2)).toBe("/admin/instructors/2");
+    expect(internalRoute.adminRoadmap(3)).toBe("/admin/roadmaps/3");
+    expect(internalRoute.adminUser(4)).toBe("/admin/users/4");
+    expect(internalRoute.attendanceInstructor(5)).toBe("/attendance/instructor/5");
+    expect(internalRoute.counsel(6)).toBe("/counsel/6");
+    expect(internalRoute.expense(7)).toBe("/expenses/7");
+    expect(internalRoute.payment(8)).toBe("/payments/8");
+    expect(internalRoute.payoutInstructor(9)).toBe("/payouts/9");
+    expect(internalRoute.payoutRecord(10)).toBe("/payouts/detail/10");
+    expect(internalRoute.report(11)).toBe("/reports/11");
+    expect(internalRoute.session(12)).toBe("/sessions/12");
+    expect(internalRoute.sessionFeedback(12, 13)).toBe("/sessions/12/feedback/13");
+    expect(internalRoute.student(14)).toBe("/students/14");
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, 2_147_483_648])(
+    "refuses to build a route with an invalid id: %s",
+    (candidate) => {
+      expect(() => internalRoute.student(candidate)).toThrow(RangeError);
+    },
+  );
+});
 
 describe("safeInternalRedirect", () => {
   it("keeps known same-origin paths with query and hash", () => {

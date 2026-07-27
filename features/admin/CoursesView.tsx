@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 import { ClickableTableRow, ConfirmModal, SectionCard, EmptyState, LoadingState, TableWrap } from '@/components/ui';
 import { useCourses, useSubjects, useInstructorAdminList, useCreateCourse, useCreateSubject, useRemoveCourse, useRemoveSubject } from '@/lib/queries';
 import { won } from '@/lib/format';
+import { internalRoute } from '@/lib/navigation-security';
 import { AdminGuard, AdminHeader } from './AdminShell';
 import { Field } from '@/components/ui';
 // [B4 2026-07-16 대표 결정 ②] 강의실 관리 — 수업 추가 모달과 같은 공용 컴포넌트 재사용(사설 사본 금지)
@@ -49,11 +50,11 @@ export function CoursesView() {
             <thead><tr><th>코스</th><th>과목</th><th>강사</th><th>수업 시급</th><th>Kinder</th><th className="text-right">정가</th><th className="text-right">관리</th></tr></thead>
             <tbody>
               {courses.map((c) => (
-                <ClickableTableRow key={c.id} href={`/admin/courses/${c.id}`} label={`${c.name} 코스 상세`}>
+                <ClickableTableRow key={c.id} href={internalRoute.adminCourse(c.id)} label={`${c.name} 코스 상세`}>
                   <td className="font-medium">
                     {c.color && <span className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" style={{ background: c.color }} />}
                     {/* [TBO-20 20-C] 코스명 클릭 → 코스 상세(수강생·세션·로드맵) */}
-                    <Link href={`/admin/courses/${c.id}`} className="text-accent hover:underline">{c.name}</Link>
+                    <Link href={internalRoute.adminCourse(c.id)} className="text-accent hover:underline">{c.name}</Link>
                   </td>
                   <td className="text-fg-muted">{subjectNames.get(c.subjectId) ?? '—'}</td>
                   <td className="text-fg-muted">{instructorNames.get(c.instructorId) ?? '—'}</td>

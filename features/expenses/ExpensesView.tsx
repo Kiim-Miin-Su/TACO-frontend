@@ -8,6 +8,7 @@ import { dateOnly, won } from '@/lib/format';
 import { categoryLabel, categoryTone, approvalLabel, approvalTone } from './labels';
 import { ReasonModal } from '@/components/ReasonModal';
 import { useAccountAccess } from '@/lib/useAccountAccess';
+import { internalRoute } from '@/lib/navigation-security';
 
 export function ExpensesView() {
   // 지출 목록은 TanStack Query에서 가져오고, 반려 사유는 클라이언트 전용 store에 유지.
@@ -65,7 +66,7 @@ export function ExpensesView() {
             </thead>
             <tbody>
               {expenses.map((e) => (
-                <ClickableTableRow key={e.id} href={`/expenses/${e.id}`} label={`${e.title} 지출 상세`}>
+                <ClickableTableRow key={e.id} href={internalRoute.expense(e.id)} label={`${e.title} 지출 상세`}>
                   <td className="font-medium">{e.title}</td>
                   <td><Badge tone={categoryTone[e.category]}>{categoryLabel[e.category]}</Badge></td>
                   <td className="text-fg-muted">{e.vendor ?? '—'}</td>
@@ -78,7 +79,7 @@ export function ExpensesView() {
                   </td>
                   {/* [E0.6 M] 날짜 표기 통일 — 공용 dateOnly(ISO가 들어와도 날짜만) */}
                   <td className="text-right mono text-fg-muted">{dateOnly(e.spentAt)}</td>
-                  <td className="text-right"><Link href={`/expenses/${e.id}`} className="btn btn-sm">상세</Link></td>
+                  <td className="text-right"><Link href={internalRoute.expense(e.id)} className="btn btn-sm">상세</Link></td>
                 </ClickableTableRow>
               ))}
             </tbody>

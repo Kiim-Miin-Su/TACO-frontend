@@ -13,6 +13,7 @@ import { AttMarker, INSTRUCTOR_ATT_OPTIONS } from "./AttMarker";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { EmptyState, HelpPopover, LoadingState, PageHeader, SectionCard, TableWrap } from "@/components/ui";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
+import { internalRoute } from "@/lib/navigation-security";
 
 // 상태 배지(셀) — LMS 관례: P/L/A/E 원형 + 색
 const CELL: Record<AttendanceStatus, { label: string; bg: string }> = {
@@ -328,7 +329,7 @@ export function AttendanceBookView() {
                     <tr key={r.id}>
                       <td className="font-medium">
                         {canEditInstructorAtt ? (
-                          <Link href={`/attendance/instructor/${r.id}`} className="text-accent hover:underline" title="출결 상세 보기">{r.name}</Link>
+                          <Link href={internalRoute.attendanceInstructor(r.id)} className="text-accent hover:underline" title="출결 상세 보기">{r.name}</Link>
                         ) : (
                           r.name
                         )}

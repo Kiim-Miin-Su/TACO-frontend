@@ -7,6 +7,7 @@ import { useCounselForms, useCounselRounds } from '@/lib/queries';
 import { statusLabel, statusTone } from './labels';
 import { counselReservationsOnDate } from '@/lib/domain/counsel';
 import { useCounselStudentLookup } from './useCounselStudentLookup';
+import { internalRoute } from '@/lib/navigation-security';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -62,7 +63,7 @@ export function CounselCalendar() {
                 {reservations.map((f) => {
                   const tone = statusTone[f.status];
                   return (
-                    <Link key={`r${f.id}`} href={`/counsel/${f.id}`}
+                    <Link key={`r${f.id}`} href={internalRoute.counsel(f.id)}
                       className="block rounded px-1.5 py-1 text-micro font-medium truncate"
                       style={{ backgroundColor: toneBg[tone], color: toneFg[tone] }}
                       title={`상담 예약 · ${statusLabel[f.status]}`}>
@@ -74,7 +75,7 @@ export function CounselCalendar() {
                   const form = forms.find((f) => f.id === r.counselFormId);
                   const tone = form ? statusTone[form.status] : 'neutral';
                   return (
-                    <Link key={`h${r.id}`} href={`/counsel/${r.counselFormId}`}
+                    <Link key={`h${r.id}`} href={internalRoute.counsel(r.counselFormId)}
                       className="block rounded px-1.5 py-1 text-micro font-medium truncate"
                       style={{ backgroundColor: toneBg[tone], color: toneFg[tone] }}
                       title={`상담 내역 · ${form ? statusLabel[form.status] : ''}`}>

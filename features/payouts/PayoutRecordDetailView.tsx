@@ -12,6 +12,7 @@ import { useAccountAccess } from '@/lib/useAccountAccess';
 import { won, dateOnly } from '@/lib/format';
 import { isReversedPayout, payoutDisplayStatus, payoutHours } from '@/features/payouts/payout-shared';
 import type { PayoutRow } from '@/lib/api';
+import { internalRoute } from '@/lib/navigation-security';
 
 // 상태 이력 타임라인 — 정산 행 자체의 스탬프·사유만으로 구성(단일 소스: PayoutRow).
 function timelineOf(p: PayoutRow): Array<{ at?: string; label: string; detail?: string }> {
@@ -120,7 +121,7 @@ export function PayoutRecordDetailView({ payoutId }: { payoutId: number }) {
 
             <div className="flex justify-between">
               <Link href="/payouts" className="btn btn-sm">← 정산 목록</Link>
-              {finance && <Link href={`/payouts/${p.instructorId}`} className="btn btn-sm">강사별 요약 →</Link>}
+              {finance && <Link href={internalRoute.payoutInstructor(p.instructorId)} className="btn btn-sm">강사별 요약 →</Link>}
             </div>
           </div>
         );

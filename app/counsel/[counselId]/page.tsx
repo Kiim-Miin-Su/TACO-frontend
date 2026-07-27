@@ -1,4 +1,5 @@
 import { CounselDetailView } from '@/features/counsel/CounselDetailView';
+import { requirePageRouteId } from '@/lib/page-route-id';
 
 export default async function Page({
   params,
@@ -6,5 +7,5 @@ export default async function Page({
   params: Promise<{ counselId: string }>;
 }) {
   const { counselId } = await params;
-  return <CounselDetailView counselId={Number(counselId)} />;
+  return <CounselDetailView counselId={requirePageRouteId(counselId)} />;
 }

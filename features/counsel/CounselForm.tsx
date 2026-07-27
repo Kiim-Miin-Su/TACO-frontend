@@ -9,6 +9,7 @@ import { StudentSearchSelect } from '@/features/students/StudentSearchSelect';
 // [TBO-30G] 가족 조인 단일 진실원 — 학생 상세·상담 상세와 같은 훅·같은 파생 헬퍼 소비(사본 정의 금지)
 import Link from 'next/link';
 import { familyCounselCount, familyMemberSub, familyRelationLabel } from '@/features/students/family-shared';
+import { internalRoute } from '@/lib/navigation-security';
 
 type Author = 'parent' | 'student' | 'staff';
 
@@ -81,10 +82,10 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
             </div>
             {familyMembers.map((member) => (
               <div key={member.relationId} className="flex items-center gap-2 flex-wrap">
-                <Link href={`/students/${member.student.id}`} className="font-medium text-accent hover:underline">{member.student.name}</Link>
+                <Link href={internalRoute.student(member.student.id)} className="font-medium text-accent hover:underline">{member.student.name}</Link>
                 <span className="text-caption text-fg-muted">{familyRelationLabel(member)}{familyMemberSub(member) ? ` · ${familyMemberSub(member)}` : ''}</span>
                 {member.counselForms.slice(0, 3).map((counsel) => (
-                  <Link key={counsel.id} href={`/counsel/${counsel.id}`} className="text-caption text-accent hover:underline">상담 #{counsel.id}</Link>
+                  <Link key={counsel.id} href={internalRoute.counsel(counsel.id)} className="text-caption text-accent hover:underline">상담 #{counsel.id}</Link>
                 ))}
               </div>
             ))}

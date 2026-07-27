@@ -16,6 +16,7 @@ import { useStudents, useInstructors } from "@/lib/queries";
 import { CountryBadge } from "./CountryInput";
 import { studentGradeLabel, STUDENT_STATUS_LABEL } from "@/lib/domain/students";
 import { ChangeHistory } from "./ChangeHistory"; // [R-6] 변경 이력(audit) — 관리자
+import { internalRoute } from "@/lib/navigation-security";
 
 export function SessionDetailPanel({
   row, rooms, instructors, canEdit, colorOf, onPatch, onDelete, onOpenModal, onPickStudent, onPickInstructor,
@@ -53,7 +54,7 @@ export function SessionDetailPanel({
         <span className="inline-block w-3 h-3 rounded-sm shrink-0" style={{ background: colorOf(row) }} />
         {/* 제목 클릭 = 수업 상세 페이지(학생 출결 관리) — 피드백 2026-07-02 */}
         <Link
-          href={`/sessions/${row.id}`}
+          href={internalRoute.session(row.id)}
           className="text-body font-semibold truncate flex-1 hover:underline text-accent"
           title="수업 상세 페이지로 — 학생 출결 관리"
         >

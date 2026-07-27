@@ -22,6 +22,7 @@ import type {
 import { CounselPageFields } from './CounselPageFields';
 import { snapshotFromForm } from './snapshot';
 import { resultLabel, resultTone, RESULTS, sourceLabel, statusLabel, statusTone } from './labels';
+import { internalRoute } from '@/lib/navigation-security';
 import { StudentProfileEditModal } from '@/features/students/StudentProfileEditModal';
 import { StudentGuardiansSection } from '@/features/students/StudentGuardiansSection';
 import { StudentFamilyRelationsSection } from '@/features/students/StudentFamilyRelationsSection';
@@ -91,7 +92,7 @@ function CounselDetailContent({
       />
 
       {studentAggregate && <>
-        <SectionCard title="연결 학생 원부" action={<span className="flex gap-2"><Link href={`/students/${studentAggregate.student.id}`} className="btn btn-sm">학생 상세</Link><button className="btn btn-sm" onClick={() => setEditingStudent(true)}>학생 정보 수정</button></span>}>
+        <SectionCard title="연결 학생 원부" action={<span className="flex gap-2"><Link href={internalRoute.student(studentAggregate.student.id)} className="btn btn-sm">학생 상세</Link><button className="btn btn-sm" onClick={() => setEditingStudent(true)}>학생 정보 수정</button></span>}>
           <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-body">
             <Field label="학생 이름"><div>{studentAggregate.student.name}</div></Field>
             <Field label="본인 연락처"><div>{studentAggregate.student.phone ?? '—'}</div></Field>

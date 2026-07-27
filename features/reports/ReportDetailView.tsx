@@ -11,6 +11,7 @@ import { useReport, useStudents, useScheduleSession, useApproveReport, useReject
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { ReasonModal } from '@/components/ReasonModal';
 import { shortDate } from '@/lib/format';
+import { internalRoute } from '@/lib/navigation-security';
 
 // [P2 FE-4] 라벨 진실원 = lib/domain/reports(사본 제거)
 
@@ -43,7 +44,7 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
                 <p className="text-body text-fg-muted mt-0.5">
                   {session ? (
                     <>
-                      <Link href={`/sessions/${session.id}`} className="hover:underline">
+                      <Link href={internalRoute.session(session.id)} className="hover:underline">
                         {session.courseName || '수업'} · {shortDate(session.sessionDate)}{session.startTime ? ` ${session.startTime}` : ''}
                       </Link>
                       {session.instructorName ? ` · 강사 ${session.instructorName}` : ''}
@@ -75,7 +76,7 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
                 </div>
               )}
               <p className="text-caption text-fg-subtle">
-                수정은 <Link href={`/sessions/${report.sessionId}`} className="underline">세션 상세의 피드백 폼</Link>에서 —
+                수정은 <Link href={internalRoute.session(report.sessionId)} className="underline">세션 상세의 피드백 폼</Link>에서 —
                 이 페이지와 같은 데이터(단일 소스)입니다.
               </p>
 

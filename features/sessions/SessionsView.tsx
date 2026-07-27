@@ -9,6 +9,7 @@ import type { SessionStatus } from "@/types";
 import { shortDate } from "@/lib/format";
 import { SessionForm } from "./SessionForm";
 import { SESSION_STATUS_LABEL as label, SESSION_STATUS_TONE as tone } from "./session-shared";
+import { internalRoute } from "@/lib/navigation-security";
 
 // [TBO-34 C3] 상태 표기 = session-shared 단일 진실원(사본 제거 — no_show 표기 '노쇼'로 정규화)
 
@@ -71,7 +72,7 @@ export function SessionsView() {
               return (
                 <ClickableTableRow
                   key={cs.id}
-                  href={`/sessions/${cs.id}`}
+                  href={internalRoute.session(cs.id)}
                   label={`${shortDate(cs.sessionDate)} ${cs.courseName || "수업"} 상세 · 출석`}
                 >
                   <td className="mono">{shortDate(cs.sessionDate)}</td>
@@ -82,7 +83,7 @@ export function SessionsView() {
                     <Badge tone={tone[cs.status]}>{label[cs.status]}</Badge>
                   </td>
                   <td className="text-right whitespace-nowrap">
-                    <Link href={`/sessions/${cs.id}`} className="btn btn-sm">
+                    <Link href={internalRoute.session(cs.id)} className="btn btn-sm">
                       상세 · 출석
                     </Link>
                     {/* [TBO-58 P2] 매니저 이상 — 목록에서 즉시 삭제(행 클릭 내비와 분리: stopPropagation) */}

@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { SectionCard, EmptyState, LoadingState, TableWrap } from '@/components/ui';
 import { useInstructors, useInstructorAttendanceSummary } from '@/lib/queries';
+import { internalRoute } from '@/lib/navigation-security';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const thisYm = () => new Date().toISOString().slice(0, 7);
@@ -103,7 +104,7 @@ export function InstructorAttendanceSummary() {
                   <td className="font-medium">
                     <span className="inline-flex items-center gap-1">
                       {/* 클릭 → 강사 출결 상세(회차별) */}
-                      <Link href={`/attendance/instructor/${r.instructorId}`} className="text-accent hover:underline" title="출결 상세 보기">{r.instructorName}</Link>
+                      <Link href={internalRoute.attendanceInstructor(r.instructorId)} className="text-accent hover:underline" title="출결 상세 보기">{r.instructorName}</Link>
                       {/* 결석 있는 강사 강조 배지 — 계약·시수 관리 주의 대상 */}
                       {r.absent > 0 && <span className="badge text-micro" style={{ background: 'var(--color-danger)', color: '#fff' }} title="결석 발생">⚠ 결석 {r.absent}</span>}
                       {r.absent === 0 && r.late > 0 && <span className="badge text-micro" style={{ background: 'var(--color-attention)', color: '#fff' }} title="지각 발생">지각 {r.late}</span>}
