@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useTacoStore } from "@/lib/store";
 import { AuthShell, AuthField } from "@/components/auth/AuthShell";
-import { hasCapability } from "@/lib/access-control";
+import { resolvePostLoginDestination } from "@/lib/navigation-security";
 import type { AccountRole } from "@/types";
 
 function LoginForm() {
@@ -31,13 +31,11 @@ function LoginForm() {
       setCurrentRole(accountRole);
       setCurrentAccount({ id: res.account.id, name: res.account.name, role: accountRole, mustChangePassword: res.account.mustChangePassword });
       queryClient.clear(); // 로그인 계정/권한 변경 — 이전 역할의 서버 캐시 폐기
-      // [2026-07-15 대표 지시 ①] 관리자 계열(승인 권한 보유)은 로그인 직후 승인센터로 —
-      //  시범운영에서 대기 결재(가입·수업 변경·프로필)를 놓치지 않게 기본 랜딩을 승인 큐로 둔다.
-      //  명시적 redirect 파라미터가 있으면 그 목적지를 우선한다(딥링크 보존). 강사는 홈(캘린더 동선).
-      // [TBO-65 P2 FE-8 2026-07-26] 역할 배열 사본 제거 — 승인 권한 판정은 capability 진실원으로.
-      const isApprover = hasCapability(accountRole, "approval.manage");
-      const landing = params.get("redirect") || (isApprover ? "/admin/approvals" : "/");
-      router.replace(res.account.mustChangePassword ? "/account/security" : landing);
+      router.replace(resolvePostLoginDestination(
+        params.get("redirect"),
+        accountRole,
+        res.account.mustChangePassword,
+      ));
     } catch (e) {
       // [E0.6 L 2026-07-16] 서버 원문(영문 프레임워크 메시지·프록시 HTML 등) 노출 방지 —
       //  BE 로그인 메시지는 한글이므로 한글이면 그대로, 아니면 상태코드별 한글 안내로 매핑.

@@ -24,6 +24,7 @@ import { makeupNeeds, MAKEUP_REASON_LABEL } from '@/lib/makeup';
 // [핫픽스 2026-07-20 ②] 승인센터 모집단 단일 소스 — 대시보드·배지·승인센터가 같은 술어를 공유.
 import { approvalCenterCounts, expenseApprovalRows, payoutApprovalRows, profileChangeApprovalRows, reportApprovalRows, scheduleRequestApprovalRows } from '@/lib/approvals';
 import type { PendingAccount, ProfileChangeRequest } from '@/lib/api';
+import type { InternalHref } from '@/lib/navigation-security';
 
 // 회계상 분리: pay(강사 페이=출금) / expense(지출=출금) / payment(결제·수납=입금) / counsel(상담) / report·class(강사)
 type TaskGroup = 'pay' | 'expense' | 'payment' | 'counsel' | 'report' | 'class' | 'schedule' | 'account'; // [핫픽스 07-20 ②] account=가입·계정 승인
@@ -33,7 +34,7 @@ export type TaskItem = {
   group: TaskGroup;
   title: string;
   detail?: string;
-  href: string;
+  href: InternalHref;
   tone: Tone;
   /** 빨간 배지(미룰 수 없는 할 일)에 포함할지 — 정보성 항목(다가오는 수업)은 false */
   counts: boolean;

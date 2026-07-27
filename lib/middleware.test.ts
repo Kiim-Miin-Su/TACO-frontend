@@ -20,4 +20,15 @@ describe("middleware", () => {
       "http://localhost/login?redirect=%2Fstudents",
     );
   });
+
+  it("preserves a protected deep link inside the redirect value only", () => {
+    const response = middleware(
+      new NextRequest("http://localhost/calendar?from=2026-07-27&view=week"),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost/login?redirect=%2Fcalendar%3Ffrom%3D2026-07-27%26view%3Dweek",
+    );
+  });
 });

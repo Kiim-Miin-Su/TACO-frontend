@@ -8,6 +8,7 @@ import { roleLabel } from "@/lib/roles";
 import { navBadges } from "@/lib/tasks";
 import { usePersistedState } from "@/lib/usePersistedState";
 import { useAccountAccess } from "@/lib/useAccountAccess";
+import type { InternalHref } from "@/lib/navigation-security";
 import {
   IconHome,
   IconUsers,
@@ -22,7 +23,7 @@ import {
   IconCalendar,
 } from "../ui/icons";
 
-type Item = { label: string; icon: React.FC<any>; href: string; adminOnly?: boolean; counselOnly?: boolean; financeOnly?: boolean; instructorVisible?: boolean; adminVisible?: boolean };
+type Item = { label: string; icon: React.FC<any>; href: InternalHref; adminOnly?: boolean; counselOnly?: boolean; financeOnly?: boolean; instructorVisible?: boolean; adminVisible?: boolean };
 
 const groups: { title: string; items: Item[] }[] = [
   {
@@ -61,7 +62,7 @@ const SIDEBAR_PREFERENCE_OPTIONS = { legacyKeys: ["sidebarCollapsed"] } as const
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const isActive = (href: string) => href === "/" ? pathname === "/" : pathname.startsWith(href);
+  const isActive = (href: InternalHref) => href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   const access = useAccountAccess();
   const role = access.role;
@@ -109,7 +110,7 @@ export default function Sidebar() {
 
       <nav className="flex-1 overflow-y-auto py-3">
         {(access.can("signup.decide")
-          ? [...groups, { title: "경영", items: [{ label: "경영 지표", icon: IconReceipt, href: "/insights" }] }]
+          ? [...groups, { title: "경영", items: [{ label: "경영 지표", icon: IconReceipt, href: "/insights" as InternalHref }] }]
           : groups
         )
           // adminOnly 항목은 관리자 역할에게만 노출(M1). 항목이 비면 그룹째 숨김.

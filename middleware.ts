@@ -21,8 +21,10 @@ export function middleware(req: NextRequest) {
 
   if (!hasSession && !isPublic) {
     const url = req.nextUrl.clone();
+    const redirect = `${pathname}${req.nextUrl.search}`;
     url.pathname = "/login";
-    url.searchParams.set("redirect", pathname);
+    url.search = "";
+    url.searchParams.set("redirect", redirect);
     return NextResponse.redirect(url);
   }
   // 로그인 세션이 있으면 공개 인증 화면(로그인/가입/인증)을 다시 노출하지 않음.

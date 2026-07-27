@@ -6,6 +6,7 @@
 "use client";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import type { InternalHref } from "@/lib/navigation-security";
 import { EmptyState } from "./EmptyState";
 import { LoadingState } from "./LoadingState";
 
@@ -33,7 +34,7 @@ export function DetailStates<T>({
   notFoundMessage: string;
   forbiddenMessage?: string;
   /** 404/403 시 복귀 링크(목록 라우트). */
-  backHref?: string;
+  backHref?: InternalHref;
   backLabel?: string;
   children: (data: T) => ReactNode;
 }) {

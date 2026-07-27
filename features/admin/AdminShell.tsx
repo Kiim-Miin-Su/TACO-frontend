@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { roleLabel } from '@/lib/roles';
 import { useAccountAccess } from '@/lib/useAccountAccess';
+import type { InternalHref } from '@/lib/navigation-security';
 
 // 관리자 전용 가드 (매니저/관리자/대표만)
 export function AdminGuard({ children }: { children: React.ReactNode }) {
@@ -19,7 +20,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-const TABS: [string, string][] = [
+const TABS: [InternalHref, string][] = [
   ['/admin', '개요·캘린더'],
   ['/admin/courses', '코스·과목'],
   ['/admin/roadmaps', '로드맵'], // [TBO-47 07-23] 수강 로드맵(코스 묶음 카탈로그) — 마지막 dormant 도메인 실구현

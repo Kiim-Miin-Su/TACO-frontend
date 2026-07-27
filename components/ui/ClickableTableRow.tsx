@@ -3,6 +3,7 @@
 
 import { useRouter } from "next/navigation";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
+import type { InternalHref } from "@/lib/navigation-security";
 
 const interactiveSelector = "a,button,input,select,textarea,[role='button'],[role='link']";
 
@@ -18,7 +19,7 @@ type CommonProps = {
 
 // href = 상세 라우팅 행(role="link", prefetch) / onActivate = 모달 진입 행(role="button", prefetch 없음)
 type ClickableTableRowProps = CommonProps &
-  ({ href: string; onActivate?: never } | { href?: never; onActivate: () => void });
+  ({ href: InternalHref; onActivate?: never } | { href?: never; onActivate: () => void });
 
 export function ClickableTableRow({
   href,
