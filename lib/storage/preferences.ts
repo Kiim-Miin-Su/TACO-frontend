@@ -14,6 +14,7 @@ export const preferenceKeys = {
   recentCountries: "taco.calendar.recentCountries",
   paymentsView: "taco.payments.view",
   debugEnabled: "taco.debug.enabled",
+  colorPickerCustomColors: "taco.ui.customColors", // [TBO-70] 공용 ColorPicker 커스텀 색(LRU)
 } as const;
 
 export type ReadOptions = { legacyKeys?: readonly string[] };

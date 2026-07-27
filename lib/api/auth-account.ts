@@ -160,8 +160,7 @@ export const authAccountApi = {
     // [유저 관리 2026-07-20] 재인증 게이트 — 민감 화면 진입 전 비밀번호 재확인(5회/분 스로틀).
     reauth: (currentPassword: string) => http.post<{ ok: true }>("/auth/reauth", { currentPassword }).then((r) => r.data),
     // [TBO-29C C5] 비로그인 복구 — 응답은 계정 존재와 무관하게 동일(dev 환경만 devWebId/devResetUrl 노출)
-    recoverId: (email: string) =>
-      http.post<{ ok: boolean; message: string; devWebId?: string }>("/auth/recover-id", { email }).then((r) => r.data),
+    // [TBO-70] 구판 recoverId(즉발형) 삭제 — OTP판 recoverIdComplete로 대체 후 호출자 0(TBO-69 발견).
     recoverPassword: (webId: string, email: string) =>
       http.post<{ ok: boolean; message: string; devResetUrl?: string }>("/auth/recover-password", { webId, email }).then((r) => r.data),
     resetPassword: (token: string, newPassword: string) =>

@@ -8,7 +8,7 @@ import type {
 } from "@kms545487/contracts";
 
 export const miscApi = {
-  health: () => http.get<{ status: string; service: string; ts: string }>("/health").then((r) => r.data),
+  // [TBO-70] health 클라이언트 삭제 — FE 호출자 0(TBO-69 발견). 서버 /api/health 라우트는 모니터링용으로 유지.
   // 캘린더 뷰 프리셋(TBO-12 P1) — 직원 공용 자산(DB 컬렉션, localStorage 대체).
   viewPresets: {
     list: () => http.get<CalendarViewPreset[]>("/view-presets").then((r) => r.data),

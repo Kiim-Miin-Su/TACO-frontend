@@ -10,27 +10,15 @@ import { useState } from "react";
 import type { Room, ScheduleRow, RecurrenceScope } from "@/types";
 import type { SchedulePatchBody } from "@/lib/api";
 import { fromMin, toMin, WEEKDAYS_KO as WD } from "@/lib/domain/schedule";
-import { PALETTE, STATUS_LABEL, sessionEditPatch, KIND_FILTERS, KIND_FILTER_LABEL, MODE_FILTERS, MODE_FILTER_LABEL, type SessionDraft } from "@/lib/domain/lantiv";
+import { STATUS_LABEL, sessionEditPatch, KIND_FILTERS, KIND_FILTER_LABEL, MODE_FILTERS, MODE_FILTER_LABEL, type SessionDraft } from "@/lib/domain/lantiv";
 import { Field } from "@/components/ui";
 import { ScheduleDateField } from "./inputs/ScheduleDateField";
 import { ScheduleTimeRangeFields } from "./inputs/ScheduleTimeRangeFields";
 
-export function ColorPicker({ value, onChange }: { value?: string; onChange: (c: string) => void }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      {PALETTE.map((c) => (
-        <button
-          key={c}
-          type="button"
-          onClick={() => onChange(c)}
-          className="w-6 h-6 rounded-full transition"
-          style={{ background: c, outline: value === c ? "2px solid var(--color-fg)" : "1px solid var(--color-line)", outlineOffset: 1 }}
-          aria-label={c}
-        />
-      ))}
-    </div>
-  );
-}
+// [TBO-70] ColorPicker는 components/ui 공용 승격(프리셋 18 + RGB 커스텀 '+') — 로컬 6색 구현 제거.
+//  기존 소비처(스케줄 추가 모달·과목 개설 폼) import 경로 호환을 위해 재수출.
+import { ColorPicker } from "@/components/ui/ColorPicker";
+export { ColorPicker };
 
 const SCOPE_LABEL: Record<RecurrenceScope, string> = {
   this: "이 수업만",

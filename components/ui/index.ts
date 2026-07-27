@@ -11,6 +11,7 @@ export { ModalShell, PromptModal, ConfirmModal } from './Modal';
 export { HelpPopover } from './HelpPopover';
 export { StatusDot } from './StatusDot';
 export { StatCard } from './StatCard';
+export { ColorPicker } from './ColorPicker'; // [TBO-70] 공용 색상 선택기(프리셋+RGB 커스텀)
 export { SectionCard } from './SectionCard';
 export { MonthCalendar } from './MonthCalendar';
 export { Combobox } from './Combobox';
