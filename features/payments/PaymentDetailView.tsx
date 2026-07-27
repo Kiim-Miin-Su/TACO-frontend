@@ -11,9 +11,9 @@ import { usePayment, useStudents, useEnrollments, useCourses, useUpdatePayment, 
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { qk } from '@/lib/queryKeys';
 import { apiErrorMessage } from '@/lib/api-error';
-import type { PaymentMethod, PaymentStatus } from '@/types';
+import type { PaymentMethod } from '@/types';
 import { dateOnly, won } from '@/lib/format';
-import { statusLabel, statusTone, methodLabel, METHODS, STATUSES } from './labels';
+import { statusLabel, statusTone, methodLabel, METHODS } from './labels';
 import { useSudoAction } from '@/lib/hooks/useSudoAction';
 
 const isConflict = (caught: unknown): boolean =>
@@ -31,7 +31,7 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
   const refund = useRefundPayment();
   const sudoAction = useSudoAction();
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({ amount: '', paymentMethod: '', dueAt: '', status: '' as string });
+  const [draft, setDraft] = useState({ amount: '', paymentMethod: '', dueAt: '' });
   const [confirming, setConfirming] = useState<'pay' | 'refund' | null>(null);
   // [E0.6 M] 금전 데이터 저장 신뢰성 — 실패 시 편집 유지+에러 표시, 저장 중 비활성.
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -78,7 +78,6 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
               amount: String(payment.amount),
               paymentMethod: payment.paymentMethod ?? '',
               dueAt: payment.dueAt ?? '',
-              status: payment.status,
             });
             setNotice(null);
             setEditing(true);
@@ -97,10 +96,6 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
                   dueAt: draft.dueAt || undefined,
                 },
               });
-              // 상태를 '완납'으로 바꿨다면 전용 수납 처리(markPaid)로 원장 반영.
-              if ((draft.status as PaymentStatus) === 'paid' && payment.status !== 'paid') {
-                await markPaid.mutateAsync(payment.id);
-              }
               setEditing(false);
             } catch (caught) {
               if (isConflict(caught)) { setEditing(false); recoverFromConflict(caught, ''); return; }
@@ -157,11 +152,9 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
                     <Field label="납부 기한">
                       <input type="date" className="input" value={draft.dueAt} onChange={(e) => setDraft({ ...draft, dueAt: e.target.value })} />
                     </Field>
-                    <Field label="상태">
-                      <select className="input" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
-                        {STATUSES.map((s) => (<option key={s} value={s}>{statusLabel[s]}</option>))}
-                      </select>
-                    </Field>
+                    <p className="text-caption text-fg-subtle sm:col-span-2">
+                      수납 상태는 금액 정정과 분리됩니다. 저장 후 수납 처리 버튼에서 본인 확인을 거쳐 원장에 기록합니다.
+                    </p>
                   </div>
                 ) : (
                   <div className="divide-y border-line-muted">
@@ -196,7 +189,7 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
                   onClose={() => setConfirming(null)}
                   onConfirm={() => {
                     setConfirming(null);
-                    markPaid.mutate(payment.id, {
+                    void sudoAction.run(() => markPaid.mutateAsync(payment.id), {
                       onError: (caught) => recoverFromConflict(caught, '수납 처리에 실패했습니다. 다시 시도해 주세요.'),
                     });
                   }}

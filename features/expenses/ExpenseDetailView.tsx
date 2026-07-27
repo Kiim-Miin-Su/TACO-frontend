@@ -12,6 +12,8 @@ import { won } from '@/lib/format';
 import { ReasonModal } from '@/components/ReasonModal';
 import type { Expense, ExpenseCategory } from '@/types';
 import { CATEGORIES, categoryLabel, categoryTone, approvalLabel, approvalTone } from './labels';
+import { useSudoAction } from '@/lib/hooks/useSudoAction';
+import { apiErrorMessage } from '@/lib/api-error';
 
 export function ExpenseDetailView({ expenseId }: { expenseId: number }) {
   const router = useRouter();
@@ -22,7 +24,9 @@ export function ExpenseDetailView({ expenseId }: { expenseId: number }) {
   const approveExpense = useApproveExpense();
   const rejectExpense = useRejectExpense();
   const withdrawExpense = useWithdrawExpense();
-  const [modal, setModal] = useState<'reject' | 'viewReason' | 'edit' | 'withdraw' | null>(null);
+  const sudoAction = useSudoAction();
+  const [modal, setModal] = useState<'approve' | 'reject' | 'viewReason' | 'edit' | 'withdraw' | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // useExpense는 finance.access 게이트(enabled) — 비-finance는 isPending이 계속 true라
   // DetailStates보다 **앞에서** 차단(문구는 목록 뷰 ExpensesView의 권한 안내와 동일).
@@ -61,12 +65,14 @@ export function ExpenseDetailView({ expenseId }: { expenseId: number }) {
               {/* 관리자: 그 자리에서 승인/반려 + [TBO-58 P2] 수정·철회(requested만 — 서버 가드와 동일 조건 렌더) */}
               {admin && expense.status === 'requested' && (
                 <div className="flex gap-2">
-                  <button className="btn btn-primary" onClick={() => approveExpense.mutate(expense.id)}>승인</button>
+                  <button className="btn btn-primary" disabled={approveExpense.isPending || sudoAction.isPending}
+                    onClick={() => { setActionError(null); setModal('approve'); }}>승인</button>
                   <button className="btn btn-danger" onClick={() => setModal('reject')}>반려</button>
                   <button className="btn" onClick={() => setModal('edit')}>수정</button>
                   <button className="btn text-danger" onClick={() => setModal('withdraw')}>철회</button>
                 </div>
               )}
+              {actionError && <p className="text-body text-danger" role="alert">{actionError}</p>}
               {expense.status === 'rejected' && (
                 <button className="text-body text-danger hover:underline" onClick={() => setModal('viewReason')}>반려 사유 보기</button>
               )}
@@ -82,6 +88,20 @@ export function ExpenseDetailView({ expenseId }: { expenseId: number }) {
                 </div>
               </SectionCard>
 
+              {modal === 'approve' && (
+                <ConfirmModal
+                  title="지출 승인 (원장 출금 기록)"
+                  message={`"${expense.title}" ${won(expense.amount)}을 승인하고 원장에 출금 기록합니다. 진행할까요?`}
+                  confirmLabel={`${won(expense.amount)} 승인`}
+                  onClose={() => setModal(null)}
+                  onConfirm={() => {
+                    setModal(null);
+                    void sudoAction.run(() => approveExpense.mutateAsync(expense.id), {
+                      onError: (caught) => setActionError(apiErrorMessage(caught, '지출 승인에 실패했습니다. 다시 시도해 주세요.')),
+                    });
+                  }}
+                />
+              )}
               {modal === 'reject' && (
                 <ReasonModal mode="input" title="지출 반려" onClose={() => setModal(null)}
                   onSubmit={(reason) => { rejectExpense.mutate({ id: expense.id, reason }); setModal(null); }} />
@@ -100,6 +120,7 @@ export function ExpenseDetailView({ expenseId }: { expenseId: number }) {
                   onConfirm={() => withdrawExpense.mutate(expense.id, { onSuccess: () => router.push('/expenses') })}
                 />
               )}
+              {sudoAction.modal}
             </>
           );
         }}
