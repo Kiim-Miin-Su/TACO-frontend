@@ -30,7 +30,8 @@ import { ENROLLMENT_STATUS_LABEL as enrollLabel, ENROLLMENT_STATUS_TONE as enrol
 export function StudentDetailView({ studentId }: { studentId: number }) {
   const access = useAccountAccess();
   const finance = access.can('finance.access');
-  const canEdit = access.can('admin.area');
+  const adminArea = access.can('admin.area');
+  const canEdit = adminArea;
   const [editing, setEditing] = useState(false);
   const studentQuery = useStudentAggregate(studentId);
   const { data: enrollments = [] } = useEnrollments();
@@ -67,7 +68,7 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
               <Link href="/students" className="text-caption text-fg-muted hover:underline">← 학생 목록</Link>
               <PageHeader
                 title={`${student.name}${student.englishName ? ` (${student.englishName})` : ''}`}
-                sub={[studentGradeLabel(student.grade), student.schoolName, student.phone, student.webId ? `ID ${student.webId}` : '미가입']
+                sub={[studentGradeLabel(student.grade), student.schoolName, adminArea ? student.phone : null, adminArea ? (student.webId ? `ID ${student.webId}` : '미가입') : null]
                   .filter(Boolean).join(' · ')}
                 actions={
                   <span className="flex items-center gap-2 flex-wrap">
@@ -80,7 +81,7 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
               {editing && <StudentProfileEditModal aggregate={aggregate} onClose={() => setEditing(false)} />}
             </div>
 
-            <SectionCard title="학생 프로필">
+            {adminArea ? <SectionCard title="학생 프로필">
               <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-body">
                 <ProfileItem label="성별" value={genderLabel(student.gender)} />
                 <ProfileItem label="생년월일" value={dateOnly(student.birthDate)} />
@@ -92,7 +93,15 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                 <ProfileItem className="sm:col-span-2 lg:col-span-3" label="상담 주제" value={student.counselTopic ?? '—'} />
                 {student.memo && <ProfileItem className="sm:col-span-2 lg:col-span-3" label="내부 메모" value={student.memo} />}
               </dl>
-            </SectionCard>
+            </SectionCard> : (
+              <SectionCard title="수업 학생 정보">
+                <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-body">
+                  <ProfileItem label="학년" value={studentGradeLabel(student.grade)} />
+                  <ProfileItem label="재학 학교" value={student.schoolName ?? '—'} />
+                  <ProfileItem label="거주 국가" value={student.country ?? '—'} />
+                </dl>
+              </SectionCard>
+            )}
 
             <SectionCard title={`관심 희망 수업 (${aggregate.interests.length})`}>
               <ol className="space-y-2">
@@ -130,9 +139,9 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
             </SectionCard>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <StudentGuardiansSection studentId={studentId} guardians={aggregate.guardians} canEdit={canEdit} />
+              {adminArea && <StudentGuardiansSection studentId={studentId} guardians={aggregate.guardians} canEdit={canEdit} />}
 
-              <SectionCard title={`상담 이력 (${myCounsel.length})`} action={<Link href="/counsel" className="btn btn-sm">상담 전체 →</Link>}>
+              {adminArea && <SectionCard title={`상담 이력 (${myCounsel.length})`} action={<Link href="/counsel" className="btn btn-sm">상담 전체 →</Link>}>
                 {!myCounsel.length ? <EmptyState message="상담 이력이 없습니다." /> : (
                   <div className="divide-y border-line-muted">
                     {myCounsel.map((c) => (
@@ -143,11 +152,11 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                     ))}
                   </div>
                 )}
-              </SectionCard>
+              </SectionCard>}
             </div>
 
-            {aggregate.familyRelations && <StudentFamilyRelationsSection studentId={studentId} relations={aggregate.familyRelations} canEdit={canEdit} />}
-            {aggregate.academicHistories && <StudentAcademicHistoriesSection studentId={studentId} histories={aggregate.academicHistories} canEdit={canEdit} />}
+            {adminArea && aggregate.familyRelations && <StudentFamilyRelationsSection studentId={studentId} relations={aggregate.familyRelations} canEdit={canEdit} />}
+            {adminArea && aggregate.academicHistories && <StudentAcademicHistoriesSection studentId={studentId} histories={aggregate.academicHistories} canEdit={canEdit} />}
 
             {finance && (
               <SectionCard title={`결제 내역 (${myPayments.length})`} action={<Link href="/payments" className="btn btn-sm">결제 전체 →</Link>}>
