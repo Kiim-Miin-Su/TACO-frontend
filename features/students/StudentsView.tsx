@@ -14,6 +14,8 @@ import { StudentForm } from "./StudentForm";
 import { StudentStatusChangeModal } from "./StudentStatusChangeModal";
 import { useState } from "react";
 import { internalRoute } from "@/lib/navigation-security";
+import { apiErrorMessage } from "@/lib/api-error";
+import { useSudoAction } from "@/lib/hooks/useSudoAction";
 
 
 export function StudentsView() {
@@ -25,6 +27,7 @@ export function StudentsView() {
   const { data: parentStudents = [] } = useParentStudents();
   const { data: parents = [] } = useParents();
   const removeStudent = useRemoveStudent();
+  const sudoAction = useSudoAction();
   const [q, setQ] = useState("");
   const [showDropped, setShowDropped] = useState(false);
   const [showForm, setShowForm] = useState(false); // 등록 패널 — 기본 접힘
@@ -163,19 +166,27 @@ export function StudentsView() {
             </div>
           )}
           confirmLabel="원부 삭제"
-          pending={removeStudent.isPending}
+          pending={removeStudent.isPending || sudoAction.isPending}
           danger
           onClose={() => setDeleteTarget(null)}
           onConfirm={() => {
+            const target = deleteTarget;
             setDeleteError("");
-            removeStudent.mutate(deleteTarget.id, {
-              onSuccess: () => setDeleteTarget(null),
-              onError: () => setDeleteError("DB에서 삭제를 확정하지 못했습니다. 학생 목록을 원래 상태로 되돌렸습니다."),
+            setDeleteTarget(null);
+            void sudoAction.run(() => removeStudent.mutateAsync(target.id), {
+              onError: (error) => {
+                setDeleteTarget(target);
+                setDeleteError(apiErrorMessage(
+                  error,
+                  "DB에서 삭제를 확정하지 못했습니다. 학생 목록을 원래 상태로 되돌렸습니다.",
+                ));
+              },
             });
           }}
         />
       )}
       {statusTarget && <StudentStatusChangeModal student={statusTarget} onClose={() => setStatusTarget(null)} />}
+      {sudoAction.modal}
     </div>
   );
 }

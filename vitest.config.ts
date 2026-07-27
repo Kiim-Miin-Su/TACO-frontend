@@ -3,6 +3,7 @@ import path from 'path';
 
 export default defineConfig({
   resolve: { alias: { '@': path.resolve(__dirname) } },
+  oxc: { jsx: { runtime: 'automatic' } },
   test: {
     environment: 'node',
     include: ['lib/**/*.test.ts'],

@@ -8,6 +8,7 @@ export { DetailStates } from './DetailStates'; // [B7 E3] 상세 공통 상태 �
 export { TableWrap } from './TableWrap';
 export { ClickableTableRow } from './ClickableTableRow';
 export { ModalShell, PromptModal, ConfirmModal } from './Modal';
+export { SudoActionModal } from './SudoActionModal';
 export { HelpPopover } from './HelpPopover';
 export { StatusDot } from './StatusDot';
 export { StatCard } from './StatCard';

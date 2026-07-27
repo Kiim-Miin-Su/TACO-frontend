@@ -14,6 +14,7 @@ import { apiErrorMessage } from '@/lib/api-error';
 import type { PaymentMethod, PaymentStatus } from '@/types';
 import { dateOnly, won } from '@/lib/format';
 import { statusLabel, statusTone, methodLabel, METHODS, STATUSES } from './labels';
+import { useSudoAction } from '@/lib/hooks/useSudoAction';
 
 const isConflict = (caught: unknown): boolean =>
   (caught as { response?: { status?: number } })?.response?.status === 409;
@@ -28,13 +29,14 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
   const updatePayment = useUpdatePayment();
   const markPaid = useMarkPaymentPaid();
   const refund = useRefundPayment();
+  const sudoAction = useSudoAction();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ amount: '', paymentMethod: '', dueAt: '', status: '' as string });
   const [confirming, setConfirming] = useState<'pay' | 'refund' | null>(null);
   // [E0.6 M] 금전 데이터 저장 신뢰성 — 실패 시 편집 유지+에러 표시, 저장 중 비활성.
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null); // 409 등 비파괴 안내(자동 복구됨)
-  const saving = updatePayment.isPending || markPaid.isPending || refund.isPending;
+  const saving = updatePayment.isPending || markPaid.isPending || refund.isPending || sudoAction.isPending;
 
   // [TBO-54 C2] 409 = 다른 인스턴스/기기가 먼저 전이 — 오류가 아니라 "최신화 필요" 안내 + 자동 invalidate.
   const recoverFromConflict = (caught: unknown, fallback: string) => {
@@ -209,12 +211,13 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
                   onClose={() => setConfirming(null)}
                   onConfirm={() => {
                     setConfirming(null);
-                    refund.mutate(payment.id, {
+                    void sudoAction.run(() => refund.mutateAsync(payment.id), {
                       onError: (caught) => recoverFromConflict(caught, '환불 처리에 실패했습니다. 다시 시도해 주세요.'),
                     });
                   }}
                 />
               )}
+              {sudoAction.modal}
             </>
           );
         }}

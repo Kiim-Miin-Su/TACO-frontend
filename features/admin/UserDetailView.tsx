@@ -9,7 +9,7 @@ import { isSuperAdmin } from '@/lib/access-control'; // [P2 FE-8]
 import { useState } from 'react';
 import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 단일 진실원
 import { useRouter } from 'next/navigation';
-import { Badge, DetailStates, SectionCard, type Tone } from '@/components/ui';
+import { Badge, DetailStates, SectionCard, SudoActionModal, type Tone } from '@/components/ui';
 import { AuthField } from '@/components/auth/AuthShell';
 import { ReasonModal } from '@/components/ReasonModal';
 import { roleLabel } from '@/lib/roles';
@@ -26,36 +26,33 @@ const STATUS_LABEL = ACCOUNT_STATUS_LABEL; // [P2 FE-7] 진실원(lib/domain/acc
 const STATUS_TONE: Record<string, Tone> = { active: 'success', pending: 'attention', rejected: 'danger' };
 const EDITABLE_ROLES = ['instructor', 'manager', 'admin'] as const;
 
-// ── 비밀번호 재확인 게이트(서버 권위 /auth/reauth — 실패 문구 그대로 표출) ─────────
 function SudoGate({ onVerified }: { onVerified: () => void }) {
+  const router = useRouter();
   const reauth = useReauth();
-  const [password, setPassword] = useState('');
-  const [err, setErr] = useState<string | null>(null);
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!password || reauth.isPending) return;
-    setErr(null);
-    reauth.mutate(password, {
-      onSuccess: () => { markSudoVerified(); onVerified(); },
-      onError: (caught) => setErr(apiErrorMessage(caught, '확인에 실패했습니다. 잠시 후 다시 시도해 주세요.')),
-    });
-  }
+  const [error, setError] = useState<unknown | null>(null);
 
   return (
-    <SectionCard title="본인 확인">
-      <form onSubmit={submit} className="p-4 max-w-[420px] space-y-3">
-        <p className="text-body text-fg-muted">계정 상세는 민감 정보입니다. 현재 비밀번호를 다시 입력해 주세요. (5분간 유지)</p>
-        <AuthField label="현재 비밀번호">
-          <input className="input w-full" type="password" autoComplete="current-password" value={password}
-            onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoFocus required maxLength={72} />
-        </AuthField>
-        {err && <p className="text-caption text-danger" role="alert">{err}</p>}
-        <button className="btn btn-primary h-10 w-full" disabled={reauth.isPending || !password}>
-          {reauth.isPending ? '확인 중…' : '확인하고 계속'}
-        </button>
-      </form>
-    </SectionCard>
+    <>
+      <SectionCard title="계정 상세">
+        <div className="p-4 text-body text-fg-muted">본인 확인 후 계정 상세를 표시합니다.</div>
+      </SectionCard>
+      <SudoActionModal
+        pending={reauth.isPending}
+        error={error}
+        message="계정 상세는 민감 정보입니다. 현재 비밀번호를 입력해 주세요."
+        onClose={() => router.push('/admin/users')}
+        onSubmit={(password) => {
+          setError(null);
+          reauth.mutate(password, {
+            onSuccess: () => {
+              markSudoVerified();
+              onVerified();
+            },
+            onError: setError,
+          });
+        }}
+      />
+    </>
   );
 }
 

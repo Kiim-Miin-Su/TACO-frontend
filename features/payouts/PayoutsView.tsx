@@ -24,6 +24,7 @@ import { PayoutStatusBadge } from '@/features/payouts/PayoutStatusBadge';
 import { UncoveredBanner } from '@/features/payouts/UncoveredBanner';
 import { BulkGenerateModal } from '@/features/payouts/BulkGenerateModal';
 import { internalRoute } from '@/lib/navigation-security';
+import { useSudoAction } from '@/lib/hooks/useSudoAction';
 
 export function PayoutsView() {
   const access = useAccountAccess();
@@ -69,11 +70,12 @@ export function PayoutsView() {
   const generateM = useGeneratePayout();
   const confirmM = useConfirmPayout();
   const payM = usePayPayout();
+  const sudoAction = useSudoAction();
   const adjustM = useAdjustPayout();
   const rejectM = useRejectPayout();
   const reverseM = useReversePayout(); // [B9 E5 2026-07-16] 지급 회수(paid → rejected+reversedAt)
   const unconfirmM = useUnconfirmPayout(); // [TBO-32 C4] 확정 취소(confirmed → pending, 사유 필수)
-  const busy = generateM.isPending || confirmM.isPending || payM.isPending || adjustM.isPending || rejectM.isPending || reverseM.isPending || unconfirmM.isPending;
+  const busy = generateM.isPending || confirmM.isPending || payM.isPending || adjustM.isPending || rejectM.isPending || reverseM.isPending || unconfirmM.isPending || sudoAction.isPending;
 
   const generate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -290,7 +292,9 @@ export function PayoutsView() {
                       )}
                       {p.status === 'confirmed' && (
                         <>
-                          <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => payM.mutate(p.id, { onError: onErr })}>지급</button>
+                          <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => {
+                            void sudoAction.run(() => payM.mutateAsync(p.id), { onError: onErr });
+                          }}>지급</button>
                           {/* [TBO-32 C4] 확정 취소(confirmed → pending, 사유 필수) — 지급 전 되돌리기 */}
                           <button className="btn btn-sm" disabled={busy} onClick={() => setReasonModal({ mode: 'input', payout: p, action: 'unconfirm' })}>확정 취소</button>
                         </>
@@ -386,6 +390,7 @@ export function PayoutsView() {
 
       {/* [TBO-32 C4] 월 일괄 산정 — ModalShell 규격, 결과 요약(생성/건너뜀/실패) 즉시 표시 */}
       {bulkOpen && <BulkGenerateModal onClose={() => setBulkOpen(false)} />}
+      {sudoAction.modal}
 
       {/* [DESIGN §5.5] 급여 수정 — window.prompt 2연타 대체(금액+사유 한 화면) */}
       {adjustModal && (
