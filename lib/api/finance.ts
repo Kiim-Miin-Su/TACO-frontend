@@ -144,7 +144,7 @@ export const financeApi = {
     // [TBO-62 ⑥ 2026-07-24] 강사용 preview/readiness 제거 — 강사는 지급 완료(paid) 내역만(서버 라우트 삭제).
     readiness: (params: { instructorId?: number; from?: string; to?: string } = {}) =>
       http.get<PayReadiness>("/payouts/readiness", { params }).then((r) => r.data),
-    // [TBO-64 2026-07-24] 시수 워크시트 — 회차별 출결·리포트·가격 분류·합계(매니저 이상).
+    // [TBO-74 C1] 시수 워크시트 — 회차별 출결·리포트·가격 분류·합계(대표 전용).
     worksheet: (instructorId: number, from: string, to: string) =>
       http.get<PayoutWorksheet>("/payouts/worksheet", { params: { instructorId, from, to } }).then((r) => r.data),
     // [TBO-32 C4 2026-07-22] 미정산 감지·일괄 산정·확정 취소 — BE C1/C2 라우트 소비.

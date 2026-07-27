@@ -16,11 +16,11 @@ import { usePendingAccounts, useProfileChangeRequests, useMyProfileChangeRequest
 // [TBO-62 ⑥ 2026-07-24] useMyPayoutPreview 제거 — 강사 시수 미리보기는 관리자 전용(서버 라우트 삭제).
 const usePayReadiness = () => {
   const { scope, can } = useAccountAccess();
-  // [TBO-62 ⑥ 2026-07-24] 시수·페이 누락(readiness)은 관리자 전용 — 강사 분기 제거(강사는 지급 완료 내역만).
+  // 금액 없는 시수 누락 판정은 운영 관리자에게 허용하되 금액 워크시트와 분리한다.
   return useQuery({
     queryKey: qk.payouts.readiness(scope),
     queryFn: () => api.payouts.readiness(),
-    enabled: can("admin.area"),
+    enabled: can("payout.readiness"),
     refetchOnWindowFocus: true, // [TBO-66 F3] 금전 화면 신선도
     staleTime: 15_000,
   });

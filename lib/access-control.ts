@@ -5,7 +5,7 @@ export type AppCapability =
   | "approval.manage"
   | "signup.decide"
   | "finance.access"
-  | "payout.worksheet"
+  | "payout.readiness"
   | "calendar.manage"
   | "calendar.request-own"
   | "instructor.self"
@@ -18,10 +18,10 @@ const ROLE_PRIORITY: AccountRole[] = ["super_admin", "admin", "manager", "instru
 const ROLE_CAPABILITIES: Record<AccountRole, ReadonlySet<AppCapability>> = {
   super_admin: new Set([
     "admin.area", "approval.manage", "signup.decide", "finance.access",
-    "payout.worksheet", "calendar.manage", "calendar.request-own", "counsel.manage",
+    "payout.readiness", "calendar.manage", "calendar.request-own", "counsel.manage",
   ]),
-  admin: new Set(["admin.area", "approval.manage", "signup.decide", "payout.worksheet", "calendar.manage", "calendar.request-own", "counsel.manage"]),
-  manager: new Set(["admin.area", "approval.manage", "signup.decide", "payout.worksheet", "calendar.manage", "calendar.request-own", "counsel.manage"]),
+  admin: new Set(["admin.area", "approval.manage", "signup.decide", "payout.readiness", "calendar.manage", "calendar.request-own", "counsel.manage"]),
+  manager: new Set(["admin.area", "approval.manage", "signup.decide", "payout.readiness", "calendar.manage", "calendar.request-own", "counsel.manage"]),
   instructor: new Set(["calendar.request-own", "instructor.self"]),
   // 학생과 학부모는 도메인 역할 호환값일 뿐 백오피스 로그인 역할이 아니다.
   student: new Set(),

@@ -25,10 +25,10 @@ const attendanceLabel = (value: string | null) => {
 
 export function PayoutDetailView({ instructorId }: { instructorId: number }) {
   const access = useAccountAccess();
-  if (!access.can('payout.worksheet')) {
+  if (!access.can('finance.access')) {
     return (
       <div className="p-6 max-w-page-form mx-auto">
-        <PageHeader title="강사 시수 상세" sub="매니저 이상만 열람할 수 있습니다." />
+        <PageHeader title="강사 시수 상세" sub="대표만 열람할 수 있습니다." />
         <EmptyState message="이 계정에는 강사 시수 상세 권한이 없습니다." />
       </div>
     );
@@ -37,8 +37,6 @@ export function PayoutDetailView({ instructorId }: { instructorId: number }) {
 }
 
 function AuthorizedPayoutDetail({ instructorId }: { instructorId: number }) {
-  const access = useAccountAccess();
-  const finance = access.can('finance.access');
   const { data: instructors = [], isPending: loadingInstructors } = useInstructors();
   const { data: allPayouts = [] } = usePayouts();
   const [ym, setYm] = useState(thisYm());
@@ -205,8 +203,7 @@ function AuthorizedPayoutDetail({ instructorId }: { instructorId: number }) {
         )}
       </SectionCard>
 
-      {finance && (
-        <SectionCard title={`정산서 이력 (${myPayouts.length})`}>
+      <SectionCard title={`정산서 이력 (${myPayouts.length})`}>
           {myPayouts.length === 0 ? (
             <EmptyState message="생성된 정산서가 없습니다." />
           ) : (
@@ -227,8 +224,7 @@ function AuthorizedPayoutDetail({ instructorId }: { instructorId: number }) {
               </table>
             </TableWrap>
           )}
-        </SectionCard>
-      )}
+      </SectionCard>
     </div>
   );
 }

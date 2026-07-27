@@ -31,6 +31,7 @@ const thisYm = () => new Date().toISOString().slice(0, 7);
 export function AttendanceBookView() {
   const access = useAccountAccess();
   const manager = access.can("admin.area");
+  const finance = access.can("finance.access");
   // [B6 C3 2026-07-16] role 비교 → capability(instructor.self는 instructor 역할에만 부여 — 동치).
   const instructorSelf = access.can("instructor.self");
   // [B6 C3 2026-07-16] isPending 구독 — 로드 중 "…회차가 없습니다" 깜빡임 방지(E0.6 H2 규칙). 주 쿼리=schedule.
@@ -41,7 +42,7 @@ export function AttendanceBookView() {
   const upsert = useUpsertAttendance();
   // [TBO-19] 강사 출결 마킹(매니저 CRUD) — 세션 PATCH(manager+ 게이트)로 저장, 강사는 API상 read-only.
   const updateSchedule = useUpdateSchedule();
-  // [TBO-19 Sprint4] 강사 계약(매니저 전용) — 계약 대비 실제 시수. 비관리자는 훅이 비활성(빈 배열).
+  // 강사 계약은 금액 자산이므로 대표에게만 조회·표시한다.
   const { data: contracts = [] } = useInstructorContracts();
 
   const [tab, setTab] = useState<"student" | "instructor">("student");
@@ -104,7 +105,7 @@ export function AttendanceBookView() {
       //  종전 인라인 산식(counts/denom/rate + paidTeachingHours)은 출결 상세와 2중 사본이었다.
       const heldList = list.filter((r) => r.status === "held" || r.status === "makeup");
       const stats = instructorAttendanceStats(list);
-      // [TBO-19 Sprint4] 계약 대비 실제 시수(매니저) — 계약 월 시수 대비 이번 달 인정 시수.
+      // 계약 월 시수 대비 이번 달 인정 시수. 계약 쿼리 자체가 대표 전용이다.
       const contract = contracts.find((c) => c.instructorId === id);
       const contractHours = contract?.monthlyHours ?? null;
       const contractPct = contractHours ? Math.round((stats.hours / contractHours) * 100) : null;
@@ -321,7 +322,7 @@ export function AttendanceBookView() {
                     <th className="text-center min-w-[70px]">출석률</th>
                     <th className="text-center min-w-[70px]">진행 수</th>
                     <th className="text-center min-w-[100px]">인정 시수</th>
-                    {manager && <th className="text-center min-w-[140px]">계약 대비(월)</th>}
+                    {finance && <th className="text-center min-w-[140px]">계약 대비(월)</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -362,7 +363,7 @@ export function AttendanceBookView() {
                       <td className="text-center mono">{r.rate == null ? "—" : `${r.rate}%`}</td>
                       <td className="text-center mono">{r.sessions.length}회</td>
                       <td className="text-center mono font-semibold">{r.hours}h</td>
-                      {manager && (
+                      {finance && (
                         <td>
                           {r.contractHours == null ? (
                             <span className="text-fg-subtle text-caption">계약 없음</span>

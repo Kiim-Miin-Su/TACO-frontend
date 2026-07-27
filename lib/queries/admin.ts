@@ -9,10 +9,10 @@ import { useAccountAccess } from "@/lib/useAccountAccess";
 import { WEB_ID_MIN } from "@/lib/validation"; // [TBO-31 C2 2026-07-16] 아이디 라이브 체크 최소 길이
 import { CATALOG_STALE, detailRetry, useInvalidator } from "./shared";
 
-// [TBO-19 Sprint4] 강사 계약(매니저 전용 — 계약 대비 실제 시수). 백엔드 GET이 ADMIN 게이트라 비관리자는 비활성.
+// [TBO-74 C1] 강사 계약은 금액 자산이므로 대표 전용. 백엔드 finance.access와 같은 capability를 사용한다.
 export const useInstructorContracts = () => {
   const { can } = useAccountAccess();
-  return useQuery({ queryKey: ["instructor-contracts", "list"] as const, queryFn: () => api.instructorContracts.list(), enabled: can("admin.area"), staleTime: CATALOG_STALE });
+  return useQuery({ queryKey: ["instructor-contracts", "list"] as const, queryFn: () => api.instructorContracts.list(), enabled: can("finance.access"), staleTime: CATALOG_STALE });
 };
 // [R-6·C2C-b] 엔티티 변경 이력(audit_log) — ADMIN(토큰 게이트 동반). 세션 상세·승인센터 상세 모달 공용.
 //  entity = audit_log.entity 값('class_sessions'·'schedule_requests'·'availability_blocks' 등).

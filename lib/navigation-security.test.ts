@@ -134,6 +134,9 @@ describe("resolvePostLoginDestination", () => {
     expect(resolvePostLoginDestination("/counsel/3", "instructor", false)).toBe("/");
     expect(resolvePostLoginDestination("/payouts", "instructor", false)).toBe("/");
     expect(resolvePostLoginDestination("/payouts/9", "manager", false)).toBe(
+      "/admin/approvals",
+    );
+    expect(resolvePostLoginDestination("/payouts/9", "super_admin", false)).toBe(
       "/payouts/9",
     );
   });

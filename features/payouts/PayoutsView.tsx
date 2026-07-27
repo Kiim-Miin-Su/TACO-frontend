@@ -28,11 +28,11 @@ import { useSudoAction } from '@/lib/hooks/useSudoAction';
 
 export function PayoutsView() {
   const access = useAccountAccess();
-  if (!access.can('payout.worksheet')) {
+  if (!access.can('finance.access')) {
     return (
       <div className="p-6 max-w-page mx-auto">
         <PageHeader title="강사 시수" />
-        <EmptyState message="강사 시수는 매니저 이상만 조회할 수 있습니다." />
+        <EmptyState message="강사 시수와 정산 금액은 대표만 조회할 수 있습니다." />
       </div>
     );
   }
@@ -40,9 +40,6 @@ export function PayoutsView() {
 }
 
 function AuthorizedPayoutsView() {
-  const access = useAccountAccess();
-  const finance = access.can('finance.access');
-  const adminArea = access.can('admin.area'); // [감사 1-A 2026-07-24] 매니저 시수 표면(BE ADMIN 허용인데 UI 부재로 사장)
   // [TBO-65 P1] 정산 근거 표시는 시수 워크시트(서버 판정)가 담당 — 4중 클라 조인(lineDetail) 제거.
   const [expanded, setExpanded] = useState<number | null>(null);
 
@@ -50,11 +47,11 @@ function AuthorizedPayoutsView() {
   //  usePayouts는 관리자 게이트(비관리자 fetch 생략), mutation 성공 시 qk.payouts.all 무효화로 자동 최신화.
   const payoutsQ = usePayouts();
   const instructorsQ = useInstructors();
-  const payouts = finance ? (payoutsQ.data ?? []) : [];
+  const payouts = payoutsQ.data ?? [];
   const instructors = useMemo(() => instructorsQ.data ?? [], [instructorsQ.data]);
   const conn: 'checking' | 'online' | 'offline' =
-    (finance && payoutsQ.isError) || instructorsQ.isError ? 'offline'
-    : (finance && payoutsQ.isSuccess) || instructorsQ.isSuccess ? 'online' : 'checking';
+    payoutsQ.isError || instructorsQ.isError ? 'offline'
+    : payoutsQ.isSuccess || instructorsQ.isSuccess ? 'online' : 'checking';
 
   const [instructorId, setInstructorId] = useState('');
   // 기본 산정 기간 = 이번 달 1일~말일 — payout-shared.monthPeriod(단일 진실원, 하드코딩 금지 DESIGN §8)
@@ -99,40 +96,6 @@ function AuthorizedPayoutsView() {
   const [reasonModal, setReasonModal] = useState<{ mode: 'input' | 'view'; payout: PayoutRow; action?: 'reject' | 'reverse' | 'unconfirm' } | null>(null);
   // [TBO-32 C4] 월 일괄 산정 모달 — UncoveredBanner·상단 버튼 양쪽에서 연다.
   const [bulkOpen, setBulkOpen] = useState(false);
-
-  // [감사 1-A 해소 2026-07-24] 매니저·admin = 시수 워크시트 표면(대표 지시 TBO-62 ⑥ "매니저 이상만
-  //  시수 조회" — 종전엔 BE(worksheet·pay-amount ADMIN)만 열려 있고 UI 경로가 없어 사장됐던 실갭).
-  //  회차별 출결 CRUD·금액 책정까지 가능(BE 권한 그대로). 정산서 생성·확정·지급·원장은 대표 전용 유지.
-  if (adminArea && !finance) {
-    return (
-      <div className="p-6 max-w-page mx-auto space-y-6">
-        <PageHeader
-          title="시수 워크시트"
-          sub="회차별 출결·리포트·금액 확정(매니저) · 정산서 생성·확정·지급은 대표 전용"
-        />
-        <SectionCard title="강사 · 기간 선택">
-          <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-            <Field label="강사 *">
-              <select className="input" value={instructorId} onChange={(e) => setInstructorId(e.target.value)}>
-                <option value="">선택</option>
-                {instructors.map((i) => (<option key={i.id} value={i.id}>{i.name}</option>))}
-              </select>
-            </Field>
-            <Field label="시작일"><input type="date" className="input" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
-            <Field label="종료일"><input type="date" className="input" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
-          </div>
-        </SectionCard>
-        <PayoutWorksheet instructorId={instructorId ? Number(instructorId) : null} from={start} to={end} />
-        {instructorId && (
-          <div className="flex justify-end">
-            <Link href={internalRoute.payoutInstructor(Number(instructorId))} className="btn btn-primary">
-              과목별 상세
-            </Link>
-          </div>
-        )}
-      </div>
-    );
-  }
 
   if (conn === 'offline') {
     return (
@@ -251,10 +214,7 @@ function AuthorizedPayoutsView() {
                   )}
                 </td>
                 <td className="text-right">
-                  {!finance ? (
-                    <span className="text-caption text-fg-subtle">{p.status === 'pending' ? '대표 승인 대기' : '—'}</span>
-                  ) : (
-                    <div className="inline-flex gap-1.5 justify-end flex-wrap">
+                  <div className="inline-flex gap-1.5 justify-end flex-wrap">
                       {p.status === 'pending' && (
                         <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => confirmM.mutate(p.id, { onError: onErr })}>승인</button>
                       )}
@@ -280,8 +240,7 @@ function AuthorizedPayoutsView() {
                       {(p.status === 'paid' || p.status === 'rejected') && (
                         <span className="text-caption text-fg-subtle mono">{p.paidAt ? p.paidAt.slice(0, 10) : '—'}</span>
                       )}
-                    </div>
-                  )}
+                  </div>
                 </td>
               </ClickableTableRow>
               {expanded === p.id && (
@@ -324,7 +283,6 @@ function AuthorizedPayoutsView() {
       <p className="text-caption text-fg-subtle">
         시수는 <b>진행 완료(held) + 보고서 승인</b>분만 채워지며, 세션은 한 정산서에만 연결됩니다(이중 계상 방지).
         지급 시 출금 거래 원장과 대시보드에 반영됩니다.
-        {!finance && ' 승인·지급·수정은 대표(CEO) 역할에서 가능합니다.'}
       </p>
 
       {reasonModal && (

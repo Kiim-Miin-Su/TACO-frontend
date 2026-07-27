@@ -57,14 +57,14 @@ export const usePayoutPreview = (instructorId: number | null, from: string, to: 
     enabled: can("finance.access") && instructorId != null && !!from && !!to,
   });
 };
-// [TBO-64 2026-07-24] 시수 워크시트 — 회차·출결·가격 분류·합계(매니저 이상). 출결·가격 mutation이
+// [TBO-74 C1] 시수 워크시트 — 회차·출결·가격 분류·합계(대표 전용). 출결·가격 mutation이
 //  qk.payouts/qk.schedule을 무효화하므로 자동 재계산된다.
 export const usePayoutWorksheet = (instructorId: number | null, from: string, to: string) => {
   const { can } = useAccountAccess();
   return useQuery({
     queryKey: qk.payouts.worksheet(instructorId ?? 0, from, to),
     queryFn: () => api.payouts.worksheet(instructorId as number, from, to),
-    enabled: can("payout.worksheet") && instructorId != null && !!from && !!to,
+    enabled: can("finance.access") && instructorId != null && !!from && !!to,
     // [TBO-66 F3] 금전 화면 한정 신선도 상향 — 타 매니저의 출결 기록(서버 자동 전이)이 포커스 복귀 시 반영
     refetchOnWindowFocus: true,
     staleTime: 15_000,

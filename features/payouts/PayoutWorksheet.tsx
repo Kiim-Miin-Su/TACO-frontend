@@ -1,5 +1,5 @@
 'use client';
-// [TBO-64 2026-07-24] 시수 워크시트 — 대표 지시 10항목의 관리자 화면.
+// [TBO-74 C1] 시수·금액 워크시트 — 대표 전용 화면.
 //  강사·기간(부모 폼 공유) → 회차 테이블: 강사 출결(AttMarker — 기존 PATCH 재사용, 회계 영향
 //  ack 모달 동일 규약) · 참가자별 학생 출결(AttMarker — PUT attendance 재사용, 자동 held 전이
 //  동일 적용) · 리포트 상태 · 금액(auto=시급×시간 기본값 / 지각·리포트 미작성=빈칸 입력 → 책정 /
@@ -71,7 +71,7 @@ export function PayoutWorksheetAmountCell({ row }: { row: PayoutWorksheetRow }) 
       </span>
     );
   } else if (p.effectiveAmount == null) {
-    // 빈칸(대표 지시 ⑧) — 지각·리포트 미작성 등은 매니저/대표가 금액 책정
+    // 빈칸(대표 지시 ⑧) — 지각·리포트 미작성 등은 대표가 금액 책정
     content = (
       <button type="button" className="btn btn-sm" onClick={() => { setValue(''); setEditing(true); }}>
         금액 책정

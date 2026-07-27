@@ -44,7 +44,7 @@ const groups: { title: string; items: Item[] }[] = [
   {
     title: "출금",
     items: [
-      { label: "강사 시수", icon: IconWallet, href: "/payouts", capability: "payout.worksheet" },
+      { label: "강사 시수", icon: IconWallet, href: "/payouts", capability: "finance.access" },
       { label: "지출 · 비품", icon: IconReceipt, href: "/expenses", financeOnly: true },
     ],
   },
