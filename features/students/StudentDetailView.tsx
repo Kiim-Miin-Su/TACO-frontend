@@ -150,9 +150,9 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
               ) : (
                 <SectionCard title="수업 학생 정보">
                   <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-body">
-                    <ProfileItem label="학년" value={studentGradeLabel(student.grade)} />
-                    <ProfileItem label="재학 학교" value={student.schoolName ?? "—"} />
-                    <ProfileItem label="거주 국가" value={student.country ?? "—"} />
+                    <ProfileItem label="학년" value={studentGradeLabel(student.grade)} className="p-1.5" />
+                    <ProfileItem label="재학 학교" value={student.schoolName ?? "—"} className="p-1.5" />
+                    <ProfileItem label="거주 국가" value={student.country ?? "—"} className="p-1.5" />
                   </dl>
                 </SectionCard>
               )}
