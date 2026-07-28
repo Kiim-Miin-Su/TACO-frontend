@@ -10,7 +10,9 @@ import { Badge, DetailStates, EmptyState, PageHeader, SectionCard, StatCard, Tab
 import {
   useStudentAggregate, useEnrollments, useCourses,
   useAttendance, useReports, usePayments, useCounselForms,
+  useSchedule, // [75C] 리포트 정렬·표기의 세션 컨텍스트(날짜·코스) — 기존 캐시 공유
 } from '@/lib/queries';
+import { reportApprovalBadge } from '@/lib/domain/reports'; // [75C] 승인 라벨 단일 진실원
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { studentGradeLabel, STUDENT_STATUS_LABEL, STUDENT_STATUS_TONE } from '@/lib/domain/students';
 import { won, shortDate, dateOnly } from '@/lib/format';
@@ -48,6 +50,18 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
   const myCounsel = useMemo(() => counselForms.filter((c) => c.studentId === studentId), [counselForms, studentId]);
   const myAttendance = useMemo(() => attendance.filter((a) => a.studentId === studentId), [attendance, studentId]);
   const myReports = useMemo(() => reports.filter((r) => r.studentId === studentId), [reports, studentId]);
+  // [75C 대표 지시] 리포트(진도·숙제)는 수업일 기준 **내림차순(최신순)** — 세션 컨텍스트 조인.
+  const { data: sessions = [] } = useSchedule();
+  const sessionById = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions]);
+  const myReportsSorted = useMemo(() => [...myReports].sort((a, b) => {
+    const sa = sessionById.get(a.sessionId); const sb = sessionById.get(b.sessionId);
+    const da = sa ? `${sa.sessionDate} ${sa.startTime ?? ''}` : ''; // 세션 소실분은 뒤로
+    const db = sb ? `${sb.sessionDate} ${sb.startTime ?? ''}` : '';
+    return db.localeCompare(da) || b.id - a.id;
+  }), [myReports, sessionById]);
+  // [75C] 수강 이력도 최신순(등록일 내림차순) — 화면 정렬 규약 통일
+  const myEnrollmentsSorted = useMemo(() => [...myEnrollments].sort((a, b) =>
+    String(b.enrolledAt ?? '').localeCompare(String(a.enrolledAt ?? '')) || b.id - a.id), [myEnrollments]);
   const activeCount = myEnrollments.filter((e) => e.status === 'active').length;
   const paidTotal = myPayments.filter((p) => p.status === 'paid').reduce((s, p) => s + (p.paidAmount ?? p.amount), 0);
   const unpaidTotal = myPayments.filter((p) => p.status === 'pending' || p.status === 'overdue').reduce((s, p) => s + p.amount, 0);
@@ -122,9 +136,9 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
               {!myEnrollments.length ? <EmptyState message="수강 이력이 없습니다." /> : (
                 <TableWrap minWidth={640}>
                   <table className="table">
-                    <thead><tr><th>코스</th><th>상태</th><th>진도</th><th>등록일</th></tr></thead>
+                    <thead><tr><th>코스</th><th>상태</th><th title="진행완료(held) 회차 수 / 계약 회차 — 출결·수업 완료 처리에서 자동 계산">진도</th><th>등록일</th></tr></thead>
                     <tbody>
-                      {myEnrollments.map((e) => (
+                      {myEnrollmentsSorted.map((e) => (
                         <tr key={e.id}>
                           <td className="font-medium">{courseName(e.courseId)}</td>
                           <td><Badge tone={enrollTone[e.status]}>{enrollLabel[e.status]}</Badge></td>
@@ -136,6 +150,44 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                   </table>
                 </TableWrap>
               )}
+              {/* [75C] 진도는 수동 입력값이 아니라 자동 전이 파생값임을 명시(단일 진실원 = 세션 사실 기록) */}
+              <p className="px-4 pb-3 text-caption text-fg-subtle">진도는 진행완료(held) 회차 수로 자동 계산됩니다 — 출결·수업 완료 처리 시 즉시 반영. 회차별 진도 내용은 아래 수업 리포트에서 확인·수정합니다.</p>
+            </SectionCard>
+
+            {/* [75C 대표 지시] 수업 리포트(진도·숙제) — 수업일 내림차순(최신순), 상세/수정은 기존
+                화면 재사용(/reports/[id] 승인·반려, /sessions/[id]/feedback/[studentId] 폼 — 단일 소스) */}
+            <SectionCard
+              title={`수업 리포트 — 진도·숙제 (${myReportsSorted.length})`}
+              action={<Link href="/reports" className="btn btn-sm">리포트 전체 →</Link>}
+            >
+              {!myReportsSorted.length ? <EmptyState message="작성된 리포트가 없습니다." /> : (
+                <TableWrap minWidth={720}>
+                  <table className="table">
+                    <thead><tr><th>수업일</th><th>코스</th><th>진도(내용)</th><th>숙제</th><th>승인</th><th className="text-right"></th></tr></thead>
+                    <tbody>
+                      {myReportsSorted.map((r) => {
+                        const s = sessionById.get(r.sessionId);
+                        const approval = reportApprovalBadge(r.approvalStatus);
+                        const canFix = r.approvalStatus !== 'approved' && (adminArea || access.instructorId === r.instructorId);
+                        return (
+                          <tr key={r.id}>
+                            <td className="mono text-fg-muted whitespace-nowrap">{s ? `${shortDate(s.sessionDate)}${s.startTime ? ` ${s.startTime}` : ''}` : `세션 #${r.sessionId}`}</td>
+                            <td className="font-medium whitespace-nowrap">{s ? courseName(s.courseId) : '—'}</td>
+                            <td className="max-w-[280px] truncate text-fg-muted">{r.content || '—'}</td>
+                            <td className="max-w-[160px] truncate text-fg-muted">{r.homework || '—'}</td>
+                            <td><Badge tone={approval.tone as Tone}>{approval.label}</Badge></td>
+                            <td className="text-right whitespace-nowrap">
+                              <Link href={internalRoute.report(r.id)} className="btn btn-sm">상세</Link>
+                              {canFix && <Link href={internalRoute.sessionFeedback(r.sessionId, studentId)} className="btn btn-sm ml-1">수정</Link>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </TableWrap>
+              )}
+              <p className="px-4 pb-3 text-caption text-fg-subtle">승인된 리포트는 시수에 반영되어 수정할 수 없습니다(반려 후 재작성). 수정 폼은 세션 상세와 같은 데이터(단일 소스)입니다.</p>
             </SectionCard>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
