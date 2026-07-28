@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 // Notion식 라벨 입력: 기존 값 추천 + 없으면 새로 만들기
 export function Combobox({
@@ -23,6 +23,7 @@ export function Combobox({
   required?: boolean;
   autoFocus?: boolean;
 }) {
+  const listboxId = useId(); // [74A 잔여] aria-controls 대상
   const [open, setOpen] = useState(false);
   const q = value.trim().toLowerCase();
   const filtered = suggestions.filter((s) => s.toLowerCase().includes(q)).slice(0, 6);
@@ -49,10 +50,11 @@ export function Combobox({
         onFocus={() => setOpen(true)}
         aria-autocomplete="list"
         aria-expanded={open}
+        aria-controls={listboxId} // [74A 잔여] combobox 필수 ARIA — jsx-a11y 경고 해소
         aria-haspopup="listbox"
       />
       {open && (filtered.length > 0 || (!!q && !exact)) && (
-        <div className="absolute z-20 mt-1 w-full card overflow-hidden" role="listbox" style={{ boxShadow: 'var(--shadow-overlay)' }}>
+        <div id={listboxId} className="absolute z-20 mt-1 w-full card overflow-hidden" role="listbox" style={{ boxShadow: 'var(--shadow-overlay)' }}>
           {filtered.length > 0 && (
             <div className="px-3 py-1 text-micro text-fg-subtle">{suggestionLabel}</div>
           )}
