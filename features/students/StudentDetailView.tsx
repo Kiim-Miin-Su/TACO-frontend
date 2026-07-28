@@ -96,7 +96,7 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
             </div>
 
             {adminArea ? <SectionCard title="학생 프로필">
-              <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-body">
+              <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-body p2">
                 <ProfileItem label="성별" value={genderLabel(student.gender)} />
                 <ProfileItem label="생년월일" value={dateOnly(student.birthDate)} />
                 <ProfileItem label="학년" value={studentGradeLabel(student.grade)} />
