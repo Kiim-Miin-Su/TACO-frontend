@@ -217,7 +217,19 @@ export const useUpdateSchedule = () => {
               const fresh = await api.schedule.get(v.id).catch(() => null);
               const safe = sanitizeInversePatch(inverse, (fresh as { status?: string } | null)?.status);
               if (!Object.keys(safe).length) return; // 전부 생략되면 no-op(전이 존중)
-              return api.schedule.update(v.id, { ...safe, force: true, acknowledgeAccountingImpact: true } as Variables["body"]);
+              // [74D-0] 맹목 ack 금지 — 1차는 ack 없이 시도, 회계 영향 409면 서버가 준 impactHash로 1회만
+              //  결속 재시도(사용자의 명시적 undo = 직전 자신의 변경 복원이라 영향 재확인 모달은 생략).
+              try {
+                return await api.schedule.update(v.id, { ...safe, force: true } as Variables["body"]);
+              } catch (error) {
+                const prompt = accountingPromptFromError(error);
+                if (!prompt || prompt.payoutLocked || !prompt.impactHash) throw error;
+                return api.schedule.update(v.id, {
+                  ...safe, force: true,
+                  acknowledgeAccountingImpact: true,
+                  expectedAccountingImpactHash: prompt.impactHash,
+                } as Variables["body"]);
+              }
             },
           });
       }
@@ -245,7 +257,9 @@ export const useUpdateSchedule = () => {
       const { variables, prompt } = pending;
       setPending(null);
       if (!prompt.payoutLocked)
-        mutate({ ...variables, body: { ...variables.body, acknowledgeAccountingImpact: true } });
+        // [74D-0] ack는 본 영향의 지문과 함께 — 서버가 잠금 후 재계산한 hash와 다르면 새 409(fresh impact)로
+        //  이 프롬프트가 다시 열린다(mutate 래퍼의 rememberPrompt가 두 번째 409도 같은 parser로 처리).
+        mutate({ ...variables, body: { ...variables.body, acknowledgeAccountingImpact: true, expectedAccountingImpactHash: prompt.impactHash } });
     },
   };
 };

@@ -115,6 +115,7 @@ export type SchedulePatchBody = {
   scope?: "this" | "this_and_following" | "all"; force?: boolean;
   expectedSeriesVersion?: number; // [TBO-29C C3] series edit CAS — 불일치 시 409 SERIES_VERSION_STALE
   acknowledgeAccountingImpact?: boolean;
+  expectedAccountingImpactHash?: string; // [74D-0] 직전 409 impactHash — ack를 본 영향에 결속(삭제와 동일 계약)
 };
 export type ScheduleRequestApprovalOptions = {
   forceConflicts?: boolean;
