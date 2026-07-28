@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, Suspense } from "react";
+import { apiErrorMessage } from "@/lib/api-error";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
@@ -15,7 +16,7 @@ function Verify() {
     if (!token) { setState("error"); setMsg("인증 토큰이 없습니다."); return; }
     api.auth.verifyEmail(token)
       .then((r) => { setState("ok"); setMsg(r.message); })
-      .catch((e) => { setState("error"); setMsg(e?.response?.data?.message ?? "인증에 실패했습니다."); });
+      .catch((e) => { setState("error"); setMsg(apiErrorMessage(e, "인증에 실패했습니다.")); }); // [75A]
   }, [token]);
 
   return (

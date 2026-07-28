@@ -11,12 +11,9 @@ import { AuthShell, AuthField } from "@/components/auth/AuthShell";
 import { EmailOtpField } from "@/features/auth/EmailOtpField";
 import { useCompleteRecoverId, useResetPasswordOtp } from "@/lib/queries";
 import { WEB_ID_MIN, passwordLengthError } from "@/lib/validation";
+import { apiErrorMessage } from "@/lib/api-error";
 
-const apiErrorMessage = (caught: unknown, fallback: string): string => {
-  const apiError = caught as { response?: { data?: { message?: string | string[] } } };
-  const message = apiError.response?.data?.message;
-  return Array.isArray(message) ? message.join(" ") : message ?? fallback;
-};
+// [75A] 동명 로컬 재구현 제거 — lib/api-error 단일 진실원 import 사용
 
 // ── 아이디 찾기 — OTP 인증 후 완료 버튼 → webId 목록 화면 표시 ────────────────
 function RecoverIdTab() {

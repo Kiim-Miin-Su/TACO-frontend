@@ -1,15 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import { apiErrorMessage } from '@/lib/api-error';
 import { Field, ModalShell } from '@/components/ui';
 import { useCreateInstructor } from '@/lib/queries';
 import { WEB_ID_MIN, passwordLengthError } from '@/lib/validation';
 import { emptyInstructorProfileForm, InstructorProfileFields, type InstructorProfileForm } from './InstructorProfileFields';
 
-const messageOf = (error: unknown) => {
-  const value = (error as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
-  return Array.isArray(value) ? value.join(' ') : value ?? '강사를 등록하지 못했습니다.';
-};
+// [75A] lib/api-error 단일 진실원 위임(로컬 파싱 재구현 제거)
+const messageOf = (error: unknown) => apiErrorMessage(error, '강사를 등록하지 못했습니다.');
 
 export function CreateInstructorModal({ onClose, onCreated }: { onClose: () => void; onCreated: (name: string) => void }) {
   const create = useCreateInstructor();

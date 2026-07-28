@@ -4,6 +4,7 @@
 //  재사용처: ReportWriteView(인라인 목록)·FeedbackFormView(전용 페이지)·세션 상세 허브(20-3).
 'use client';
 import { useState } from 'react';
+import { apiErrorMessage } from '@/lib/api-error';
 import { reportApprovalBadge } from '@/lib/domain/reports'; // [P2 FE-4]
 import { Badge, ModalShell, PromptModal, type Tone } from '@/components/ui';
 import { useReports, useReportTemplates, useCreateReportTemplate, useRemoveReportTemplate, useCreateReport, useSubmitReport, useUpdateReport } from '@/lib/queries';
@@ -55,11 +56,8 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
     setSaveError(null);
     setSavedAt(new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }));
   };
-  const failMessage = (caught: unknown): string => {
-    const err = caught as { response?: { data?: { message?: string | string[] } } };
-    const message = err.response?.data?.message;
-    return Array.isArray(message) ? message.join(' ') : message ?? '저장하지 못했습니다. 다시 시도해 주세요.';
-  };
+  // [75A] lib/api-error 단일 진실원 위임(로컬 파싱 재구현 제거)
+  const failMessage = (caught: unknown): string => apiErrorMessage(caught, '저장하지 못했습니다. 다시 시도해 주세요.');
   const save = async (submit: boolean) => {
     setSaveError(null);
     try {

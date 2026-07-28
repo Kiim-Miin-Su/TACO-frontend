@@ -5,6 +5,7 @@ import type { ScheduleRow, Conflict, ScheduleResource, AvailabilityBlock, Attend
 import type { SchedulePatchBody, ScheduleCreateBody, ScheduleSeriesCreateBody, AvailabilityUpsertBody, CreateScheduleRequestBody } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/queryKeys";
+import { apiErrorMessage } from "@/lib/api-error";
 import { invalidateScheduleLifecycle, invalidateAvailability } from '@/lib/query-cache';
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 D — 파일별 중복 toMin/fromMin/pad/WD 제거)
 import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, sessionEndMin, crossMidnightEnd, durationMinutesBetween } from "@/lib/domain/schedule";
@@ -832,8 +833,7 @@ export function ScheduleCalendar() {
       reloadSelBlocks();
       setMsg("승인 요청을 보냈습니다 — 승인센터에서 처리됩니다.");
     } catch (e) {
-      const serverMsg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
-      const detail = Array.isArray(serverMsg) ? serverMsg[0] : serverMsg;
+      const detail = apiErrorMessage(e, ""); // [75A] SSOT 파싱 수렴
       alertAvailabilityError(`요청 실패${detail ? ` — ${detail}` : ""}`);
     }
   }
@@ -850,8 +850,7 @@ export function ScheduleCalendar() {
     } catch (e) {
       if (openAvailabilityApprovalFromError(e, { action: "upsert", body, summary: availabilitySummary(body) })) return { ok: false };
       // 겹침(409) 등 백엔드 메시지를 그대로 노출 — "이미 지정된 불가시간과 겹칩니다" 경고.
-      const err = e as { response?: { data?: { message?: string } } };
-      const message = err.response?.data?.message ?? "가용/불가 저장 실패";
+      const message = apiErrorMessage(e, "가용/불가 저장 실패"); // [75A]
       alertAvailabilityError(message);
       return { ok: false, message };
     }
@@ -904,8 +903,7 @@ export function ScheduleCalendar() {
               } as const);
         if (openAvailabilityApprovalFromError(e, fallback)) return;
       }
-      const err = e as { response?: { data?: { message?: string } } };
-      alertAvailabilityError(err.response?.data?.message ?? "삭제 실패"); reloadSelBlocks();
+      alertAvailabilityError(apiErrorMessage(e, "삭제 실패")); reloadSelBlocks(); // [75A]
     }
   }
   // 블록 이동 반복 범위 적용(주간 반복 규칙을 기간으로 분할). origDate=이번 주 원위치, newDate=드롭 위치.
@@ -939,8 +937,7 @@ export function ScheduleCalendar() {
         } as const;
         if (openAvailabilityApprovalFromError(e, fallback)) return;
       }
-      const err = e as { response?: { data?: { message?: string } } };
-      alertAvailabilityError(err.response?.data?.message ?? "적용 실패");
+      alertAvailabilityError(apiErrorMessage(e, "적용 실패")); // [75A]
       reloadSelBlocks();
     }
   }
@@ -1069,8 +1066,8 @@ export function ScheduleCalendar() {
       } else {
         setRows(snapshot); // 실패 → 롤백
         // [개방 2026-07-06] 서버 사유 표면화 — 예: 학생 재배정 시 "코스 수강생이 아님"(400) 원인 안내
-        const serverMsg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
-        setMsg(`수정 실패${serverMsg ? ` — ${Array.isArray(serverMsg) ? serverMsg[0] : serverMsg}` : ""}`);
+        const detail = apiErrorMessage(e, ""); // [75A]
+        setMsg(`수정 실패${detail ? ` — ${detail}` : ""}`);
       }
     }
   }
@@ -1108,8 +1105,7 @@ export function ScheduleCalendar() {
       setScheduleChangeApproval(null);
       setMsg("수업 변경 승인 요청을 보냈습니다 — 승인센터에서 처리됩니다.");
     } catch (e) {
-      const serverMsg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
-      const detail = Array.isArray(serverMsg) ? serverMsg[0] : serverMsg;
+      const detail = apiErrorMessage(e, ""); // [75A]
       setMsg(`요청 실패${detail ? ` — ${detail}` : ""}`);
     }
   }
@@ -1122,8 +1118,7 @@ export function ScheduleCalendar() {
       setSelEvent(null);
       setMsg("수업 삭제 승인 요청을 보냈습니다 — 승인센터에서 처리됩니다.");
     } catch (e) {
-      const serverMsg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
-      const detail = Array.isArray(serverMsg) ? serverMsg[0] : serverMsg;
+      const detail = apiErrorMessage(e, ""); // [75A]
       setMsg(`삭제 요청 실패${detail ? ` — ${detail}` : ""}`);
     }
   }
@@ -1160,8 +1155,7 @@ export function ScheduleCalendar() {
         setCreating(null);
         setMsg("승인 요청을 보냈습니다 — 매니저 승인 시 캘린더에 반영됩니다.");
       } catch (e) {
-        const err = e as { response?: { data?: { message?: string } } };
-        setMsg(err.response?.data?.message ?? "요청 실패 — 입력을 확인하세요");
+        setMsg(apiErrorMessage(e, "요청 실패 — 입력을 확인하세요")); // [75A]
       }
       return;
     }

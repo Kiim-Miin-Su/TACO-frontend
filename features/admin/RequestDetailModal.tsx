@@ -18,6 +18,7 @@ import {
   RECURRENCE_SCOPE_LABEL, WEEKDAY_LABEL, availabilityRequestDiff, fmtRequestAt,
 } from '@/lib/domain/approvals';
 import type { ScheduleRequestEx, UpdateScheduleRequestBody } from '@/lib/api';
+import { apiErrorMessage } from '@/lib/api-error';
 
 const SESSION_KIND_LABEL: Record<string, string> = { class: '수업', level_test: '진단고사', counsel: '상담' };
 
@@ -126,11 +127,7 @@ export function RequestDetailModal({
     if (!Object.keys(body).length) { setEditing(false); return; }
     updateRequest.mutate({ id: r.id, body }, {
       onSuccess: () => { setEditing(false); setErr(null); },
-      onError: (e) => {
-        const ex = e as { response?: { data?: { message?: string | string[] } } };
-        const m = ex.response?.data?.message;
-        setErr(Array.isArray(m) ? m.join(' · ') : m ?? '수정 실패 — 입력을 확인하세요');
-      },
+      onError: (e) => setErr(apiErrorMessage(e, '수정 실패 — 입력을 확인하세요')), // [75A] SSOT 파싱 수렴
     });
   };
 

@@ -154,11 +154,7 @@ function ExpenseEditModal({ expense, onClose }: { expense: Expense; onClose: () 
       },
     }, {
       onSuccess: onClose,
-      onError: (caught) => {
-        const err = caught as { response?: { data?: { message?: string | string[] } } };
-        const message = err.response?.data?.message;
-        setError(Array.isArray(message) ? message.join(' ') : message ?? '수정하지 못했습니다. 다시 시도해 주세요.');
-      },
+      onError: (caught) => setError(apiErrorMessage(caught, '수정하지 못했습니다. 다시 시도해 주세요.')), // [75A]
     });
   };
 

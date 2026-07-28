@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { apiErrorMessage } from '@/lib/api-error';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Field, SectionCard } from '@/components/ui';
@@ -39,11 +40,7 @@ export function ExpenseFormView() {
       memo: memo.trim() || undefined,
     }, {
       onSuccess: () => router.push('/expenses'),
-      onError: (caught) => {
-        const err = caught as { response?: { data?: { message?: string | string[] } } };
-        const message = err.response?.data?.message;
-        setFormError(Array.isArray(message) ? message.join(' ') : message ?? '지출을 등록하지 못했습니다. 다시 시도해 주세요.');
-      },
+      onError: (caught) => setFormError(apiErrorMessage(caught, '지출을 등록하지 못했습니다. 다시 시도해 주세요.')), // [75A]
     });
   };
 

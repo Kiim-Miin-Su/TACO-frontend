@@ -1,6 +1,7 @@
 // [TBO-29C C5] 비밀번호 재설정 확정 — 메일 링크(?token=)로 진입. 성공 시 기존 세션 전부 무효(auth_version+1).
 "use client";
 import { useState, Suspense } from "react";
+import { apiErrorMessage } from "@/lib/api-error";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
@@ -28,9 +29,7 @@ function ResetForm() {
       await api.auth.resetPassword(token, pw);
       setDone(true);
     } catch (e) {
-      const ax = e as { response?: { data?: { message?: string | string[] } } };
-      const m = ax.response?.data?.message;
-      setErr(Array.isArray(m) ? m[0] : m ?? "재설정에 실패했습니다. 링크를 다시 요청해 주세요.");
+      setErr(apiErrorMessage(e, "재설정에 실패했습니다. 링크를 다시 요청해 주세요.")); // [75A] SSOT 파싱 수렴
     } finally {
       setBusy(false);
     }

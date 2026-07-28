@@ -27,18 +27,17 @@ const ROLE_OPTIONS = [
   { value: "admin", label: "관리자" },
 ];
 
+import { apiErrorMessage } from "@/lib/api-error";
+
 const signupLog = logger("signup");
 
 type SignupFormError = { message: string; field: SignupField | null };
 
-const apiErrorDetails = (caught: unknown): { message: string; status: number | null } => {
-  const apiError = caught as { response?: { status?: number; data?: { message?: string | string[] } } };
-  const rawMessage = apiError.response?.data?.message;
-  return {
-    message: Array.isArray(rawMessage) ? rawMessage.join(" ") : rawMessage ?? "가입 신청에 실패했습니다.",
-    status: apiError.response?.status ?? null,
-  };
-};
+// [75A] message 파싱은 lib/api-error 단일 진실원 위임 — 이 함수는 status 동봉만 담당
+const apiErrorDetails = (caught: unknown): { message: string; status: number | null } => ({
+  message: apiErrorMessage(caught, "가입 신청에 실패했습니다."),
+  status: (caught as { response?: { status?: number } }).response?.status ?? null,
+});
 
 export default function SignupPage() {
   // [E0.5 ④b] 대표 기대 필드 확장 — 전화·대학·전공(승인 판단 근거, 2026-07-15 QA에서 부재 확인).

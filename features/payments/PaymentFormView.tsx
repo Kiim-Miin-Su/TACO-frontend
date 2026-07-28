@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { apiErrorMessage } from '@/lib/api-error';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Field, SectionCard } from '@/components/ui';
@@ -48,11 +49,7 @@ export function PaymentFormView() {
       dueAt: dueAt || undefined,
     }, {
       onSuccess: () => router.push('/payments'),
-      onError: (caught) => {
-        const err = caught as { response?: { data?: { message?: string | string[] } } };
-        const message = err.response?.data?.message;
-        setFormError(Array.isArray(message) ? message.join(' ') : message ?? '청구를 생성하지 못했습니다. 다시 시도해 주세요.');
-      },
+      onError: (caught) => setFormError(apiErrorMessage(caught, '청구를 생성하지 못했습니다. 다시 시도해 주세요.')), // [75A]
     });
   };
 

@@ -3,6 +3,7 @@
 //  이름으로 저장/적용/삭제. 저장소는 **백엔드 calendar_view_presets 컬렉션**(직원 공용 자산 —
 //  localStorage 아님, 실DB 이관 시 그대로 테이블). 직렬화 규칙은 lib/domain/presets 단일 소스.
 import { useState } from "react";
+import { apiErrorMessage } from "@/lib/api-error";
 import type { CalendarViewPreset } from "@/types";
 import { useViewPresets, useRemoveViewPreset } from "@/lib/queries";
 import { countryByCode } from "@/lib/domain/tz";
@@ -34,8 +35,7 @@ export function CalendarViewTabs({
       await onSaveCurrent(nm, updateId);
       onMsg(`${updateId ? "프리셋 수정됨" : "프리셋 저장됨"} — ${nm}`);
     } catch (e) {
-      const err = e as { response?: { data?: { message?: string } } };
-      onMsg(err.response?.data?.message ?? "프리셋 저장 실패");
+      onMsg(apiErrorMessage(e, "프리셋 저장 실패")); // [75A] SSOT 파싱(배열 message 미처리 결함도 해소)
     } finally {
       setBusy(false);
     }

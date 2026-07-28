@@ -8,6 +8,7 @@ import type {
 } from '@/types';
 import { isKinderAge } from '@/lib/domain/students';
 import { guardianKey } from '@/lib/domain/identity'; // [P2 4-B]
+import { apiErrorMessage } from '@/lib/api-error';
 
 export type StudentProfileFormValue = {
   name: string;
@@ -162,9 +163,8 @@ export function guardianInputsOf(guardians: GuardianFormValue[]): ParentLinkInpu
 }
 
 export function serverStudentErrors(error: unknown): { message: string; fields: StudentFormErrors } {
-  const response = (error as { response?: { status?: number; data?: { message?: string | string[] } } }).response;
-  const raw = response?.data?.message;
-  const message = (Array.isArray(raw) ? raw.join(' ') : raw) ?? '';
+  const response = (error as { response?: { status?: number } }).response;
+  const message = apiErrorMessage(error, ''); // [75A] SSOT 파싱(필드 매핑 입력)
   const fields: StudentFormErrors = {};
   const mappings: Array<[RegExp, keyof StudentFormErrors]> = [
     [/이름|name/i, 'name'], [/성별|gender/i, 'gender'], [/생년월일|birthDate/i, 'birthDate'], [/학년|grade/i, 'grade'],

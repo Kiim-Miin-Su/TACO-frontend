@@ -4,16 +4,15 @@
 //  캐시는 qk.rooms 단일 키: 생성/수정/삭제 성공 시 invalidate → 수업 추가 모달 select도 자동 갱신.
 "use client";
 import { useState } from "react";
+import { apiErrorMessage } from "@/lib/api-error";
 import type { Room } from "@/types";
 import { Badge, ConfirmModal, EmptyState, LoadingState, TableWrap } from "@/components/ui";
 import { useCreateRoom, useRemoveRoom, useRooms, useUpdateRoom } from "@/lib/queries";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 
 // 실패 사유 표면화 — CoursesView 폼 규약과 동일(서버 message 우선, 배열이면 join).
-const serverError = (caught: unknown, fallback: string) => {
-  const msg = (caught as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
-  return Array.isArray(msg) ? msg.join(" ") : msg ?? fallback;
-};
+// [75A] lib/api-error 단일 진실원 위임(로컬 파싱 재구현 제거)
+const serverError = (caught: unknown, fallback: string) => apiErrorMessage(caught, fallback);
 
 export function RoomManagerPanel({ compact }: { compact?: boolean }) {
   const { can } = useAccountAccess();

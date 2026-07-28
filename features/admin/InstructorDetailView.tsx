@@ -6,12 +6,11 @@ import { useRouter } from 'next/navigation';
 import { Badge, ConfirmModal, DetailStates, SectionCard } from '@/components/ui';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { useInstructorAdminDetail, useRemoveInstructor, useUpdateInstructor } from '@/lib/queries';
+import { apiErrorMessage } from '@/lib/api-error';
 import { InstructorProfileFields, type InstructorProfileForm } from './instructors/InstructorProfileFields';
 
-const messageOf = (error: unknown) => {
-  const value = (error as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
-  return Array.isArray(value) ? value.join(' ') : value ?? '요청을 처리하지 못했습니다.';
-};
+// [75A] lib/api-error 단일 진실원 위임(로컬 파싱 재구현 제거)
+const messageOf = (error: unknown) => apiErrorMessage(error, '요청을 처리하지 못했습니다.');
 
 export function InstructorDetailView({ instructorId }: { instructorId: number }) {
   const router = useRouter();

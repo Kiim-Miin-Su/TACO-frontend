@@ -30,6 +30,7 @@ import {
   useRejectPendingAccount,
 } from '@/lib/queries';
 import { dateOnly, won } from '@/lib/format';
+import { apiErrorMessage } from '@/lib/api-error';
 import { roleLabel } from '@/lib/roles';
 import { AdminHeader } from './AdminShell';
 import { categoryLabel } from '@/features/expenses/labels';
@@ -58,11 +59,11 @@ function MemberApprovals({ canManagePendingAccount }: { canManagePendingAccount:
 
   // [핫픽스 07-20] 실패 시 서버 메시지를 그대로 보여준다 — 종전 '처리 실패' 일반화가
   //  "왜 반려가 안 되지?"(대표 보고)의 원인 중 하나(원인 판별 불가).
+  // [75A] 409 안내만 이 화면 고유 — 파싱은 lib/api-error 단일 진실원 위임(재구현 제거)
   const serverMessage = (error: unknown, fallback: string): string => {
-    const ax = error as { response?: { status?: number; data?: { message?: string | string[] } } };
-    if (ax.response?.status === 409) return '이미 처리된 계정입니다(목록을 새로고침했습니다).';
-    const m = ax.response?.data?.message;
-    return (Array.isArray(m) ? m.join(' ') : m) ?? fallback;
+    const status = (error as { response?: { status?: number } }).response?.status;
+    if (status === 409) return '이미 처리된 계정입니다(목록을 새로고침했습니다).';
+    return apiErrorMessage(error, fallback);
   };
 
   function decide(id: number, action: 'approve' | 'reject', reason?: string) {
@@ -253,7 +254,7 @@ export function ApprovalsView() {
           return;
         }
         if (err.response?.status === 409 && (!r.requestKind || r.requestKind === 'session_create')) setForceApprove(r);
-        else setRequestMsg(err.response?.data?.message ?? '승인 보류 — 충돌을 확인하세요.');
+        else setRequestMsg(apiErrorMessage(err, '승인 보류 — 충돌을 확인하세요.')); // [75A] 배열 message도 SSOT 파싱
       },
     });
   };

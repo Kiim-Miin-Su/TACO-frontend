@@ -3,6 +3,7 @@
 // [B6 C3 2026-07-16] 수기 role/tabIndex/onKeyDown 복제 행 제거 — ClickableTableRow(onActivate)로 통일.
 import { useState } from "react";
 import { Badge, ClickableTableRow, EmptyState, ModalShell, SectionCard, TableWrap } from "@/components/ui";
+import { apiErrorMessage } from "@/lib/api-error";
 import { ReasonModal } from "@/components/ReasonModal";
 import type { ProfileChangeRequest, UserProfileSummary } from "@/lib/api";
 import {
@@ -18,11 +19,8 @@ import {
   useRejectProfileChangeRequest,
 } from "@/lib/queries";
 
-function errorMessage(caught: unknown, fallback: string) {
-  const error = caught as { response?: { data?: { message?: string | string[] } } };
-  const message = error.response?.data?.message;
-  return Array.isArray(message) ? message.join(" ") : message ?? fallback;
-}
+// [75A] lib/api-error 단일 진실원 위임(로컬 파싱 재구현 제거)
+const errorMessage = (caught: unknown, fallback: string) => apiErrorMessage(caught, fallback);
 
 function ProfileRequestDetailModal({
   initial,

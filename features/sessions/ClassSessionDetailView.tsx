@@ -7,6 +7,7 @@
 //  그 외 읽기 전용 — 강사의 타인 세션은 서버 403 → DetailStates 기본 문구.
 "use client";
 import { Fragment, useMemo, useState } from "react";
+import { apiErrorMessage } from "@/lib/api-error";
 import Link from "next/link";
 import { Badge, ConfirmModal, DetailStates, EmptyState, Field, ModalShell, SectionCard, StatCard, type Tone } from "@/components/ui";
 import { useRouter } from "next/navigation";
@@ -206,9 +207,7 @@ function SessionEditModal({ session, onClose }: {
       onError: (caught) => {
         // 회계 영향 ack(409 ACCOUNTING_IMPACT_ACK_REQUIRED)는 useUpdateSchedule 래퍼가 code 기반으로
         //  가로채 모달을 띄우므로 여기 도달하지 않는다(감사 5-A: 메시지 includes 분기는 죽은 코드라 제거).
-        const err = caught as { response?: { data?: { message?: string | string[] } } };
-        const message = err.response?.data?.message;
-        setError(Array.isArray(message) ? message.join(' ') : message ?? '수정하지 못했습니다(충돌·검증을 확인하세요).');
+        setError(apiErrorMessage(caught, '수정하지 못했습니다(충돌·검증을 확인하세요).')); // [75A] SSOT 파싱 수렴
       },
     });
   };

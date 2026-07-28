@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useTacoStore } from "@/lib/store";
+import { apiErrorMessage } from "@/lib/api-error";
 import { AuthShell, AuthField } from "@/components/auth/AuthShell";
 import { resolvePostLoginDestination } from "@/lib/navigation-security";
 import type { AccountRole } from "@/types";
@@ -39,10 +40,8 @@ function LoginForm() {
     } catch (e) {
       // [E0.6 L 2026-07-16] 서버 원문(영문 프레임워크 메시지·프록시 HTML 등) 노출 방지 —
       //  BE 로그인 메시지는 한글이므로 한글이면 그대로, 아니면 상태코드별 한글 안내로 매핑.
-      const ax = e as { response?: { status?: number; data?: { message?: string | string[] } } };
-      const raw = ax.response?.data?.message;
-      const serverMsg = Array.isArray(raw) ? raw[0] : raw;
-      const status = ax.response?.status;
+      const serverMsg = apiErrorMessage(e, ""); // [75A] SSOT 파싱(빈값=서버 message 없음)
+      const status = (e as { response?: { status?: number } }).response?.status;
       setErr(
         serverMsg && /[가-힣]/.test(serverMsg)
           ? serverMsg

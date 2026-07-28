@@ -18,6 +18,7 @@ import { useAccountAccess } from '@/lib/useAccountAccess';
 import { useDeletePendingAccount, useResendPendingVerification, useUsers } from '@/lib/queries';
 import { dateOnly } from '@/lib/format';
 import { internalRoute } from '@/lib/navigation-security';
+import { apiErrorMessage } from '@/lib/api-error';
 import type { AccountRole } from '@/types';
 
 const STATUS_LABEL = ACCOUNT_STATUS_LABEL; // [P2 FE-7] 진실원(lib/domain/accounts)
@@ -42,11 +43,8 @@ export function UsersView() {
     [users, filter],
   );
 
-  const serverMessage = (error: unknown, fallback: string): string => {
-    const ax = error as { response?: { data?: { message?: string | string[] } } };
-    const m = ax.response?.data?.message;
-    return (Array.isArray(m) ? m.join(' ') : m) ?? fallback;
-  };
+  // [75A] lib/api-error 단일 진실원 위임(로컬 파싱 재구현 제거)
+  const serverMessage = (error: unknown, fallback: string): string => apiErrorMessage(error, fallback);
 
   if (!can('admin.area')) return null;
 

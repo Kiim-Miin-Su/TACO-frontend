@@ -3,15 +3,13 @@
 import { useState } from 'react';
 import { Field, ModalShell } from '@/components/ui';
 import { useUpdateCourse, useUpdateSubject } from '@/lib/queries';
+import { apiErrorMessage } from '@/lib/api-error';
 import type { Course, Subject } from '@/types';
 import { CoursePayFields, type CoursePayForm } from './courses/CoursePayFields';
 
 type InstructorOption = { id: number; name: string; defaultHourlyRate: number; canTeachKinder: boolean };
 
-const messageOf = (caught: unknown, fallback: string): string => {
-  const message = (caught as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
-  return Array.isArray(message) ? message.join(' ') : message ?? fallback;
-};
+// [75A] 오류 메시지 파싱은 lib/api-error 단일 진실원으로 수렴(로컬 재구현 제거)
 
 export function CourseEditModal({
   course, subjects, instructors, onClose,
@@ -53,7 +51,7 @@ export function CourseEditModal({
       },
     }, {
       onSuccess: onClose,
-      onError: (caught) => setError(messageOf(caught, '코스를 수정하지 못했습니다.')),
+      onError: (caught) => setError(apiErrorMessage(caught, '코스를 수정하지 못했습니다.')),
     });
   };
 
@@ -99,7 +97,7 @@ export function SubjectEditModal({ subject, onClose }: { subject: Subject; onClo
     setError(null);
     update.mutate({ id: subject.id, patch: { code: code.trim(), name: name.trim() } }, {
       onSuccess: onClose,
-      onError: (caught) => setError(messageOf(caught, '과목을 수정하지 못했습니다.')),
+      onError: (caught) => setError(apiErrorMessage(caught, '과목을 수정하지 못했습니다.')),
     });
   };
 

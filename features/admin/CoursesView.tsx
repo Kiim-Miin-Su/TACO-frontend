@@ -9,6 +9,7 @@ import { ClickableTableRow, ConfirmModal, SectionCard, EmptyState, LoadingState,
 import { useCourses, useSubjects, useInstructorAdminList, useCreateCourse, useCreateSubject, useRemoveCourse, useRemoveSubject } from '@/lib/queries';
 import { won } from '@/lib/format';
 import { internalRoute } from '@/lib/navigation-security';
+import { apiErrorMessage } from '@/lib/api-error';
 import { AdminGuard, AdminHeader } from './AdminShell';
 import { Field } from '@/components/ui';
 // [B4 2026-07-16 대표 결정 ②] 강의실 관리 — 수업 추가 모달과 같은 공용 컴포넌트 재사용(사설 사본 금지)
@@ -109,8 +110,7 @@ export function CoursesView() {
               mutation.mutate(removing.id, {
                 onSuccess: () => setRemoving(null),
                 onError: (caught) => {
-                  const message = (caught as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
-                  setActionError(Array.isArray(message) ? message.join(' ') : message ?? '삭제하지 못했습니다.');
+                  setActionError(apiErrorMessage(caught, '삭제하지 못했습니다.')); // [75A] SSOT 파싱 수렴
                   setRemoving(null);
                 },
               });
@@ -153,10 +153,7 @@ function CourseForm() {
       },
       {
         onSuccess: () => { setName(''); setSubjectId(''); setInstructorId(''); setPrice(''); setPay({ hourlyRateOverride: '', isKinder: false }); setColor(COURSE_PALETTE[0]); },
-        onError: (caught) => {
-          const msg = (caught as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
-          setFormError(Array.isArray(msg) ? msg.join(' ') : msg ?? '코스를 추가하지 못했습니다. 다시 시도해 주세요.');
-        },
+        onError: (caught) => setFormError(apiErrorMessage(caught, '코스를 추가하지 못했습니다. 다시 시도해 주세요.')), // [75A]
       },
     );
   };
@@ -208,10 +205,7 @@ function SubjectForm() {
     if (!name.trim()) { setFormError('과목명을 입력해 주세요.'); return; }
     addSubject.mutate({ code: code.trim(), name: name.trim() }, {
       onSuccess: () => { setCode(''); setName(''); },
-      onError: (caught) => {
-        const msg = (caught as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
-        setFormError(Array.isArray(msg) ? msg.join(' ') : msg ?? '과목을 추가하지 못했습니다. 다시 시도해 주세요.');
-      },
+      onError: (caught) => setFormError(apiErrorMessage(caught, '과목을 추가하지 못했습니다. 다시 시도해 주세요.')), // [75A]
     });
   };
   return (
