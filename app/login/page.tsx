@@ -14,8 +14,7 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const queryClient = useQueryClient();
-  const setCurrentRole = useTacoStore((s) => s.setCurrentRole);
-  const setCurrentAccount = useTacoStore((s) => s.setCurrentAccount);
+  const setCurrentAccount = useTacoStore((s) => s.setCurrentAccount); // [75B] currentRole 레거시 제거 — account.role 단일 진실원
   const [webId, setWebId] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -29,7 +28,6 @@ function LoginForm() {
     try {
       const res = await api.auth.login({ webId: webId.trim(), password });
       const accountRole = res.account.role as AccountRole;
-      setCurrentRole(accountRole);
       setCurrentAccount({ id: res.account.id, name: res.account.name, role: accountRole, mustChangePassword: res.account.mustChangePassword });
       queryClient.clear(); // 로그인 계정/권한 변경 — 이전 역할의 서버 캐시 폐기
       router.replace(resolvePostLoginDestination(

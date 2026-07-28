@@ -15,8 +15,7 @@ type VerifiedClaims = Awaited<ReturnType<typeof api.auth.me>>;
  */
 export function useAuthoritativeAccess(pathname: string, publicRoute: boolean): AccessMode {
   const router = useRouter();
-  const setCurrentRole = useTacoStore((state) => state.setCurrentRole);
-  const setCurrentAccount = useTacoStore((state) => state.setCurrentAccount);
+  const setCurrentAccount = useTacoStore((state) => state.setCurrentAccount); // [75B] currentRole 레거시 제거
   const [mode, setMode] = useState<AccessMode>("loading");
   const verifiedClaims = useRef<VerifiedClaims | null>(null);
 
@@ -34,7 +33,6 @@ export function useAuthoritativeAccess(pathname: string, publicRoute: boolean): 
         setMode("error");
         return;
       }
-      setCurrentRole(role);
       setCurrentAccount({ id: claims.sub, name: claims.name, role, mustChangePassword: claims.mustChangePassword === true });
       const locked = claims.mustChangePassword === true;
       setMode(locked ? "locked" : "open");
@@ -59,7 +57,7 @@ export function useAuthoritativeAccess(pathname: string, publicRoute: boolean): 
         setMode("error");
       });
     return () => { alive = false; };
-  }, [pathname, publicRoute, router, setCurrentAccount, setCurrentRole]);
+  }, [pathname, publicRoute, router, setCurrentAccount]);
 
   return mode;
 }

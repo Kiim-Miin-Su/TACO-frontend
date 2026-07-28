@@ -2,6 +2,9 @@
 //  재확인 상태의 **단일 소스**. 검증 자체는 서버(POST /auth/reauth)가 권위이고, 이 모듈은
 //  "최근 5분 내 재확인 통과" 세션 상태만 메모리에 든다(저장소 미사용 — 새로고침 시 재확인,
 //  탈취 내성). SPA 클라 내비게이션 간에는 유지된다.
+// [75B] 의도적으로 서버 sudo cookie TTL(10분 — backend browser-session.SUDO_TTL_MS)보다 짧다:
+//  FE 게이트가 먼저 만료해야 "FE는 유효로 보는데 서버는 만료(403)"인 이중 모달 UX가 없다.
+//  서버가 항상 최종 권위이므로 이 값은 낙관적 게이트 전용이다.
 const SUDO_TTL_MS = 5 * 60 * 1000;
 
 let verifiedAtMs: number | null = null;
