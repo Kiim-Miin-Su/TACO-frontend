@@ -31,7 +31,19 @@ export const useParentStudents = () => {
   const { can } = useAccountAccess();
   return useQuery({ queryKey: qk.parents.relations(), queryFn: () => api.parents.relations(), staleTime: CATALOG_STALE, enabled: can("admin.area") });
 };
-export const useEnrollments = () => useQuery({ queryKey: qk.enrollments.list(), queryFn: () => api.enrollments.list(), staleTime: CATALOG_STALE });
+export const useEnrollments = (studentId?: number) =>
+  useQuery({
+    queryKey: qk.enrollments.list(studentId),
+    queryFn: () => api.enrollments.list(studentId),
+    staleTime: CATALOG_STALE,
+  });
+export const useCreateEnrollment = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.enrollments.create,
+    onSuccess: () => invalidateEnrollmentCommand(queryClient),
+  });
+};
 export const useUpdateEnrollment = () => {
   const queryClient = useQueryClient();
   return useMutation({

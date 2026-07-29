@@ -27,6 +27,7 @@ import {
   usePayments,
   useCounselForms,
   useRemoveStudent,
+  useRoadmaps,
 } from "@/lib/queries";
 import { reportApprovalBadge } from "@/lib/domain/reports"; // [75C] 승인 라벨 단일 진실원
 import { useAccountAccess } from "@/lib/useAccountAccess";
@@ -43,6 +44,7 @@ import { StudentAcademicHistoriesSection } from "./StudentAcademicHistoriesSecti
 import { internalRoute } from "@/lib/navigation-security";
 import { StudentStatusChangeModal } from "./StudentStatusChangeModal";
 import { EnrollmentStatusChangeModal } from "./EnrollmentStatusChangeModal";
+import { EnrollmentCreateModal } from "./EnrollmentCreateModal";
 import { useSudoAction } from "@/lib/hooks/useSudoAction";
 import { apiErrorMessage } from "@/lib/api-error";
 
@@ -61,17 +63,21 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | null>(null);
+  const [enrollmentCreateOpen, setEnrollmentCreateOpen] = useState(false);
   const removeStudent = useRemoveStudent();
   const sudoAction = useSudoAction();
   const studentQuery = useStudentAggregate(studentId);
-  const { data: enrollments = [] } = useEnrollments();
+  const { data: enrollments = [] } = useEnrollments(studentId);
   const { data: courses = [] } = useCourses();
+  const { data: roadmaps = [] } = useRoadmaps();
   const { data: attendance = [] } = useAttendance();
   const { data: reports = [] } = useReports();
   const { data: payments = [] } = usePayments();
   const { data: counselForms = [] } = useCounselForms();
 
   const courseName = (id: number) => courses.find((c) => c.id === id)?.name ?? `코스#${id}`;
+  const roadmapName = (id: number | null | undefined) =>
+    id == null ? "—" : roadmaps.find((roadmap) => roadmap.id === id)?.title ?? `로드맵#${id}`;
 
   const myEnrollments = useMemo(() => enrollments.filter((e) => e.studentId === studentId), [enrollments, studentId]);
   const myPayments = useMemo(() => payments.filter((p) => p.studentId === studentId), [payments, studentId]);
@@ -202,7 +208,14 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                 <StatCard label="상담 이력" value={`${myCounsel.length}건`} />
               </div>
 
-              <SectionCard title={`수강 코스 (${myEnrollments.length})`}>
+              <SectionCard
+                title={`수강 코스 (${myEnrollments.length})`}
+                action={canEdit ? (
+                  <button className="btn btn-sm btn-primary" onClick={() => setEnrollmentCreateOpen(true)}>
+                    수강 등록
+                  </button>
+                ) : undefined}
+              >
                 {!myEnrollments.length ? (
                   <EmptyState message="수강 이력이 없습니다." />
                 ) : (
@@ -211,6 +224,7 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                       <thead>
                         <tr>
                           <th>코스</th>
+                          <th>로드맵</th>
                           <th>상태</th>
                           <th title="진행완료(held) 회차 수 / 계약 회차 — 출결·수업 완료 처리에서 자동 계산">진도</th>
                           <th>등록일</th>
@@ -221,6 +235,7 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                         {myEnrollmentsSorted.map((e) => (
                           <tr key={e.id}>
                             <td className="font-medium">{courseName(e.courseId)}</td>
+                            <td className="text-fg-muted">{roadmapName(e.roadmapId)}</td>
                             <td>
                               <Badge tone={enrollTone[e.status]}>{enrollLabel[e.status]}</Badge>
                             </td>
@@ -250,6 +265,15 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                   enrollment={editingEnrollment}
                   courseName={courseName(editingEnrollment.courseId)}
                   onClose={() => setEditingEnrollment(null)}
+                />
+              )}
+              {enrollmentCreateOpen && (
+                <EnrollmentCreateModal
+                  studentId={studentId}
+                  courses={courses}
+                  enrollments={myEnrollments}
+                  roadmaps={roadmaps}
+                  onClose={() => setEnrollmentCreateOpen(false)}
                 />
               )}
 
