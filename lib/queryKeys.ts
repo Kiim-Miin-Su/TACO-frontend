@@ -61,6 +61,14 @@ export const qk = {
     list: () => ["instructors", "list"] as const,
     detail: (id: number) => ["instructors", "detail", id] as const,
   },
+  instructorContracts: {
+    all: ["instructor-contracts"] as const,
+    list: (instructorId?: number) => ["instructor-contracts", "list", instructorId ?? "all"] as const,
+  },
+  audit: {
+    all: ["audit"] as const,
+    entity: (entity: string, entityId: number) => ["audit", entity, entityId] as const,
+  },
   payments: { all: ["payments"] as const, list: () => ["payments", "list"] as const, detail: (id: number) => ["payments", "detail", id] as const }, // [B7 E3]
   expenses: { all: ["expenses"] as const, list: () => ["expenses", "list"] as const, detail: (id: number) => ["expenses", "detail", id] as const }, // [B7 E3]
   courses: { all: ["courses"] as const, list: () => ["courses", "list"] as const, detail: (id: number) => ["courses", "detail", id] as const }, // [B7 E3]

@@ -14,7 +14,7 @@ import type { AuthEventQuery } from '@kms545487/contracts';
 export const useInstructorContracts = (instructorId?: number) => {
   const { can } = useAccountAccess();
   return useQuery({
-    queryKey: ["instructor-contracts", "list", instructorId ?? "all"] as const,
+    queryKey: qk.instructorContracts.list(instructorId),
     queryFn: () => api.instructorContracts.list(instructorId),
     enabled: can("finance.access"),
     staleTime: CATALOG_STALE,
@@ -42,7 +42,7 @@ export const useUpdateInstructorContract = () => {
 export const useEntityAudit = (entity: string, entityId: number | null) => {
   const { can } = useAccountAccess();
   return useQuery({
-    queryKey: ["audit", entity, entityId ?? 0] as const,
+    queryKey: qk.audit.entity(entity, entityId ?? 0),
     queryFn: () => api.audit.list(entity, entityId as number),
     enabled: can("admin.area") && entityId != null,
   });

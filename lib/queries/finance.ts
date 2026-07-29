@@ -169,7 +169,7 @@ export const useRemoveReport = () => {
         queryClient.invalidateQueries({ queryKey: ["reports", "list"] }),
         queryClient.invalidateQueries({ queryKey: qk.payouts.all }),
         queryClient.invalidateQueries({ queryKey: qk.schedule.all }),
-        queryClient.invalidateQueries({ queryKey: ["audit"] }),
+        queryClient.invalidateQueries({ queryKey: qk.audit.all }),
       ]);
     },
   });

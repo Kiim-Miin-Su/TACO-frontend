@@ -29,7 +29,7 @@ export const CALENDAR_COMMAND_SCOPES = [
   qk.attendance.all,
   qk.reports.all,
   qk.payouts.all,
-  ["audit"] as const,
+  qk.audit.all,
 ] as const;
 
 export async function invalidateCalendarCommand(queryClient: QueryClient): Promise<void> {
@@ -61,7 +61,7 @@ export async function invalidateStudentAggregate(queryClient: QueryClient): Prom
 export async function invalidateEnrollmentCommand(queryClient: QueryClient): Promise<void> {
   await Promise.all([
     invalidateStudentAggregate(queryClient),
-    queryClient.invalidateQueries({ queryKey: ["audit"], refetchType: "active" }),
+    queryClient.invalidateQueries({ queryKey: qk.audit.all, refetchType: "active" }),
   ]);
 }
 
@@ -186,11 +186,11 @@ export async function invalidateInstructorAggregate(queryClient: QueryClient): P
 
 // 계약 변경은 계약 화면뿐 아니라 시급을 소비하는 출결·정산·강사 aggregate 및 감사 이력을 갱신한다.
 export const INSTRUCTOR_CONTRACT_COMMAND_SCOPES = [
-  ["instructor-contracts"] as const,
+  qk.instructorContracts.all,
   qk.instructors.all,
   qk.attendance.all,
   qk.payouts.all,
-  ["audit"] as const,
+  qk.audit.all,
 ] as const;
 
 export async function invalidateInstructorContractCommand(queryClient: QueryClient): Promise<void> {
@@ -240,7 +240,7 @@ export async function invalidateScheduleLifecycle(queryClient: QueryClient): Pro
 const AVAILABILITY_COMMAND_SCOPES = [
   qk.availability.all,
   qk.scheduleRequests.all,
-  ["audit"] as const,
+  qk.audit.all,
 ] as const;
 
 export async function refreshScheduleRequestLifecycle(
