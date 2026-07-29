@@ -45,6 +45,7 @@ import { ProfileChangeRequestsSection } from './ProfileChangeRequestsSection';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { AccountingImpactModal } from '@/components/AccountingImpactModal';
 import type { AccountingImpactPrompt } from '@/lib/queries';
+import { internalRoute } from '@/lib/navigation-security';
 
 // 가입 승인 대기 — 서버가 actor 역할에 맞는 행만 반환하며 요청 역할은 승인 시 변경하지 않는다.
 function MemberApprovals({ canManagePendingAccount }: { canManagePendingAccount: boolean }) {
@@ -94,7 +95,7 @@ function MemberApprovals({ canManagePendingAccount }: { canManagePendingAccount:
           <thead><tr><th>아이디</th><th>이름</th><th>이메일</th><th>연락처</th><th>대학 (전공)</th><th>출생연도</th><th>이메일 인증</th><th>신청 역할</th><th className="text-right"></th></tr></thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id}>
+              <ClickableTableRow key={r.id} href={internalRoute.adminUser(r.id)} label={`${r.name} 가입 신청 상세`}>
                 <td className="font-medium">{r.webId}</td>
                 <td>{r.name}</td>
                 <td className="text-fg-muted">{r.email}</td>
@@ -115,7 +116,7 @@ function MemberApprovals({ canManagePendingAccount }: { canManagePendingAccount:
                   {/* [핫픽스 07-20] 삭제 — 식별자 해제(같은 아이디·이메일 재가입 허용)+개인정보 파기 */}
                   {canManagePendingAccount && <button className="btn btn-sm" onClick={() => setMemberDelete(r.id)}>삭제</button>}
                 </td>
-              </tr>
+              </ClickableTableRow>
             ))}
           </tbody>
         </table>

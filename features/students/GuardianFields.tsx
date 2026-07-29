@@ -7,9 +7,10 @@ type GuardianFieldsProps = {
   value: GuardianFormValue;
   onChange: (patch: Partial<GuardianFormValue>) => void;
   onRemove?: () => void;
+  showKakaoAvailable?: boolean;
 };
 
-export function GuardianFields({ value, onChange, onRemove }: GuardianFieldsProps) {
+export function GuardianFields({ value, onChange, onRemove, showKakaoAvailable = false }: GuardianFieldsProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end border border-line-muted rounded-lg p-3">
       <Field label="보호자 이름 *"><input className="input" value={value.name} onChange={(event) => onChange({ name: event.target.value })} /></Field>
@@ -18,6 +19,7 @@ export function GuardianFields({ value, onChange, onRemove }: GuardianFieldsProp
       <div className="flex gap-3 pb-1 text-caption text-fg-muted">
         <label className="flex items-center gap-1"><input type="checkbox" checked={value.isPrimary} onChange={(event) => onChange({ isPrimary: event.target.checked })} />주보호자</label>
         <label className="flex items-center gap-1"><input type="checkbox" checked={value.isPayer} onChange={(event) => onChange({ isPayer: event.target.checked })} />납부자</label>
+        {showKakaoAvailable && <label className="flex items-center gap-1"><input type="checkbox" checked={value.kakaoAvailable === true} onChange={(event) => onChange({ kakaoAvailable: event.target.checked })} />카카오 수신</label>}
       </div>
       {onRemove && <button type="button" className="btn btn-sm btn-danger" onClick={onRemove}>보호자 제거</button>}
     </div>

@@ -41,6 +41,7 @@ export type GuardianFormValue = {
   relation: string;
   isPayer: boolean;
   isPrimary: boolean;
+  kakaoAvailable?: boolean;
 };
 
 export type StudentFormErrors = Partial<Record<keyof StudentProfileFormValue | 'interests' | 'guardians', string>>;

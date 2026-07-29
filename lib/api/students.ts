@@ -25,6 +25,7 @@ import type {
   CounselAggregate,
   UpdateCounselRoundInput,
   CreateParentInput,
+  LinkParentInput,
   CreateEnrollmentInput,
   UpdateEnrollmentInput,
   CreateStudentCounselIntakeInput,
@@ -174,6 +175,8 @@ export const studentsApi = {
     relations: () => http.get<ParentStudent[]>("/parents/relations").then((r) => r.data),
     create: (input: CreateParentInput) =>
       http.post<{ parent: Parent; relation: ParentStudent }>("/parents", input).then((r) => r.data),
+    link: (input: LinkParentInput) =>
+      http.post<ParentStudent>("/parents/link", input).then((r) => r.data),
     update: (id: number, input: { name?: string; phone?: string; kakaoAvailable?: boolean }) =>
       http.patch<Parent>(`/parents/${id}`, input).then((r) => r.data),
     updateRelation: (id: number, input: { relation?: string; isPayer?: boolean; isPrimary?: boolean }) =>

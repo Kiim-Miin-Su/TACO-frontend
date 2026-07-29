@@ -193,6 +193,7 @@ export const useRemoveStudentAcademicHistory = () => useMutation({
   onSuccess: useStudentAggregateMutationInvalidator(),
 });
 export const useCreateParent = () => useMutation({ mutationFn: api.parents.create, onSuccess: useStudentAggregateMutationInvalidator() });
+export const useLinkParent = () => useMutation({ mutationFn: api.parents.link, onSuccess: useStudentAggregateMutationInvalidator() });
 export const useUpdateParent = () => useMutation({
   mutationFn: (v: { id: number; patch: Parameters<typeof api.parents.update>[1] }) => api.parents.update(v.id, v.patch),
   onSuccess: useStudentAggregateMutationInvalidator(),
