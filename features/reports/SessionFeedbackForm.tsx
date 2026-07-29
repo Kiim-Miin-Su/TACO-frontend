@@ -7,8 +7,10 @@ import { useEffect, useState } from 'react';
 import { apiErrorMessage } from '@/lib/api-error';
 import { reportApprovalBadge } from '@/lib/domain/reports'; // [P2 FE-4]
 import { Badge, ModalShell, PromptModal, type Tone } from '@/components/ui';
-import { useReports, useReportTemplates, useCreateReportTemplate, useRemoveReportTemplate, useCreateReport, useSubmitReport, useUpdateReport } from '@/lib/queries';
+import { useReports, useReportTemplates, useCreateReportTemplate, useUpdateReportTemplate, useRemoveReportTemplate, useCreateReport, useSubmitReport, useUpdateReport } from '@/lib/queries';
 import type { ClassSession, ReportStatus, Student } from '@/types';
+import type { ReportTemplate } from '@kms545487/contracts';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 
 const reportTone: Record<ReportStatus, Tone> = { draft: 'neutral', submitted: 'accent', sent: 'success' };
 const reportLabel: Record<ReportStatus, string> = { draft: '작성중', submitted: '작성완료', sent: '발송됨' };
@@ -179,12 +181,48 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
   );
 }
 
-// [TBO-58 P2] 템플릿 관리(삭제) — 공용 자산이라 목록·삭제 모두 전 직원(soft delete — DB 이력 보존).
-//  2단계 확인: 행의 '삭제' 클릭 → 같은 행이 '정말 삭제' 확인 버튼으로 바뀐다(모달 위 모달 회피).
+// 공용 템플릿은 모두 적용할 수 있지만 수정/삭제는 작성자 또는 관리자만 가능하다.
+// 레거시·기본(createdBy 없음) 템플릿은 관리자만 변경한다.
 function TemplateManageModal({ onClose }: { onClose: () => void }) {
+  const access = useAccountAccess();
   const { data: templates = [] } = useReportTemplates();
+  const updateTemplate = useUpdateReportTemplate();
   const removeTemplate = useRemoveReportTemplate();
   const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [editing, setEditing] = useState<ReportTemplate | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const canMutate = (template: ReportTemplate) =>
+    access.can('approval.manage') || template.createdBy === access.account?.id;
+  if (editing) {
+    return (
+      <PromptModal
+        title="리포트 템플릿 수정"
+        fields={[
+          { name: 'name', label: '템플릿 이름', initial: editing.name, required: true },
+          { name: 'content', label: '수업 내용', type: 'textarea', initial: editing.content, required: true },
+          { name: 'homework', label: '숙제', type: 'textarea', initial: editing.homework ?? '' },
+        ]}
+        onClose={() => setEditing(null)}
+        onSubmit={(values) => {
+          setMutationError(null);
+          updateTemplate.mutate({
+            id: editing.id,
+            input: {
+              name: values.name,
+              content: values.content,
+              homework: values.homework || undefined,
+            },
+          }, {
+            onSuccess: () => setEditing(null),
+            onError: (error) => {
+              setMutationError(apiErrorMessage(error, '템플릿을 수정하지 못했습니다.'));
+              setEditing(null);
+            },
+          });
+        }}
+      />
+    );
+  }
   return (
     <ModalShell title="리포트 템플릿 관리" onClose={onClose}>
       <div className="p-2 max-h-80 overflow-y-auto">
@@ -196,21 +234,33 @@ function TemplateManageModal({ onClose }: { onClose: () => void }) {
               <div className="text-body font-medium truncate">{t.name}</div>
               <div className="text-caption text-fg-subtle truncate">{t.content}</div>
             </div>
-            {confirmId === t.id ? (
+            {!canMutate(t) ? (
+              <span className="text-micro text-fg-subtle">공용</span>
+            ) : confirmId === t.id ? (
               <>
                 <button type="button" className="btn btn-sm btn-danger" disabled={removeTemplate.isPending}
-                  onClick={() => removeTemplate.mutate(t.id, { onSuccess: () => setConfirmId(null) })}>
+                  onClick={() => {
+                    setMutationError(null);
+                    removeTemplate.mutate(t.id, {
+                      onSuccess: () => setConfirmId(null),
+                      onError: (error) => setMutationError(apiErrorMessage(error, '템플릿을 삭제하지 못했습니다.')),
+                    });
+                  }}>
                   정말 삭제
                 </button>
                 <button type="button" className="btn btn-sm" onClick={() => setConfirmId(null)}>취소</button>
               </>
             ) : (
-              <button type="button" className="btn btn-sm text-danger" onClick={() => setConfirmId(t.id)}>삭제</button>
+              <>
+                <button type="button" className="btn btn-sm" onClick={() => setEditing(t)}>수정</button>
+                <button type="button" className="btn btn-sm text-danger" onClick={() => setConfirmId(t.id)}>삭제</button>
+              </>
             )}
           </div>
         ))}
       </div>
-      <p className="px-4 pb-3 text-caption text-fg-subtle">템플릿은 강사 공용 자산입니다 — 삭제해도 이미 작성된 리포트에는 영향이 없습니다.</p>
+      {mutationError && <p className="px-4 pb-2 text-caption text-danger" role="alert">{mutationError}</p>}
+      <p className="px-4 pb-3 text-caption text-fg-subtle">모든 직원이 템플릿을 적용할 수 있습니다. 수정·삭제는 작성자 또는 관리자만 가능하며 이미 작성된 리포트에는 영향이 없습니다.</p>
     </ModalShell>
   );
 }

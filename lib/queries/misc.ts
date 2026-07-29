@@ -116,5 +116,11 @@ export const useUpdateViewPreset = () => useMutation({ mutationFn: (v: { id: num
 export const useRemoveViewPreset = () => useMutation({ mutationFn: api.viewPresets.remove, onSuccess: useInvalidator([qk.viewPresets.all]) });
 export const useReportTemplates = () => useQuery({ queryKey: qk.reportTemplates.list(), queryFn: () => api.reportTemplates.list(), staleTime: CATALOG_STALE });
 export const useCreateReportTemplate = () => useMutation({ mutationFn: api.reportTemplates.create, onSuccess: useInvalidator([qk.reportTemplates.all]) });
+export const useUpdateReportTemplate = () =>
+  useMutation({
+    mutationFn: (value: { id: number; input: Parameters<typeof api.reportTemplates.update>[1] }) =>
+      api.reportTemplates.update(value.id, value.input),
+    onSuccess: useInvalidator([qk.reportTemplates.all]),
+  });
 // [TBO-58 P2] 템플릿 삭제 — BE DELETE 기구현, FE 훅·버튼만 부재였던 갭(검증①)
 export const useRemoveReportTemplate = () => useMutation({ mutationFn: api.reportTemplates.remove, onSuccess: useInvalidator([qk.reportTemplates.all]) });

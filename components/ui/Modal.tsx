@@ -114,8 +114,8 @@ export function ModalShell({
 export type PromptField = {
   name: string;
   label: string;
-  /** text(기본) | number — number는 숫자 외 문자 제거 후 검증 */
-  type?: "text" | "number";
+  /** text(기본) | textarea | number — number는 숫자 외 문자 제거 후 검증 */
+  type?: "text" | "textarea" | "number";
   initial?: string;
   placeholder?: string;
   required?: boolean;
@@ -168,15 +168,25 @@ export function PromptModal({
         {fields.map((f, i) => (
           <label key={f.name} className="block">
             <span className="block text-caption font-medium text-fg-muted mb-1">{f.label}{f.required ? " *" : ""}</span>
-            <input
-              className="input"
-              data-modal-autofocus={i === 0 ? "true" : undefined}
-              inputMode={f.type === "number" ? "numeric" : undefined}
-              placeholder={f.placeholder}
-              value={values[f.name]}
-              onChange={(e) => setValues((s) => ({ ...s, [f.name]: e.target.value }))}
-              onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-            />
+            {f.type === "textarea" ? (
+              <textarea
+                className="input min-h-24 py-2"
+                data-modal-autofocus={i === 0 ? "true" : undefined}
+                placeholder={f.placeholder}
+                value={values[f.name]}
+                onChange={(e) => setValues((s) => ({ ...s, [f.name]: e.target.value }))}
+              />
+            ) : (
+              <input
+                className="input"
+                data-modal-autofocus={i === 0 ? "true" : undefined}
+                inputMode={f.type === "number" ? "numeric" : undefined}
+                placeholder={f.placeholder}
+                value={values[f.name]}
+                onChange={(e) => setValues((s) => ({ ...s, [f.name]: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+              />
+            )}
             {f.hint && <span className="block text-micro text-fg-subtle mt-1">{f.hint}</span>}
           </label>
         ))}
