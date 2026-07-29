@@ -16,8 +16,17 @@ import type {
   Conflict,
   ScheduleRequest,
   CreateScheduleRequestInput,
-  SessionKind,
-  RecurrenceScope,
+  UpdateScheduleRequestInput,
+  ScheduleRequestApprovalOptions as SharedScheduleRequestApprovalOptions,
+  ScheduleQuery as SharedScheduleQuery,
+  CreateClassSessionInput,
+  UpdateClassSessionInput,
+  ScheduleDeleteOptions,
+  CreateScheduleSeriesCommand,
+  ScheduleSeries,
+  UpsertAvailabilityInput,
+  ConflictCheckInput,
+  InstructorAttendanceSummary as SharedInstructorAttendanceSummary,
   InstructorAttendanceStatus,
   OpenClassInput,
   OpenClassSeriesInput,
@@ -25,120 +34,20 @@ import type {
   OpenClassSeriesResult,
 } from "@kms545487/contracts";
 
-export type ScheduleQuery = { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number };
-export type AvailabilityKindEx = AvailabilityKind | "online_only";
-type ScheduleRequestKindEx = "session_create" | "session_update" | "session_delete" | "availability_upsert" | "availability_delete";
-export type ScheduleRequestEx = ScheduleRequest & {
-  requestKind?: ScheduleRequestKindEx;
-  targetSessionId?: number;
-  targetAvailabilityId?: number;
-  availabilityOwnerType?: AvailabilityOwner;
-  availabilityOwnerId?: number;
-  availabilityKind?: AvailabilityKindEx;
-  availabilityWeekday?: number;
-  availabilityStartTime?: string;
-  availabilityEndTime?: string;
-  availabilityEffectiveFrom?: string;
-  availabilityEffectiveTo?: string;
-  impactSessionIds?: number[];
-  changeSummary?: string;
-  requestReason?: string;
-  memo?: string;
-  scope?: RecurrenceScope;
-  mode?: "in_person" | "online"; // [C2D] 요청 단계 수업방식 보존(contracts src 반영·게시 전 로컬 확장)
-  // [C2C-b] 상세 모달 표시용 — BE BaseRow가 항상 내려주는 시각(contracts 0.1.16엔 미표기, 로컬 확장)
-  createdAt?: string;
-  updatedAt?: string;
-};
-export type CreateScheduleRequestBody = Partial<CreateScheduleRequestInput> & {
-  requestKind?: ScheduleRequestKindEx;
-  targetSessionId?: number;
-  targetAvailabilityId?: number;
-  availabilityOwnerType?: AvailabilityOwner;
-  availabilityOwnerId?: number;
-  availabilityKind?: AvailabilityKindEx;
-  availabilityWeekday?: number;
-  availabilityStartTime?: string;
-  availabilityEndTime?: string;
-  availabilityEffectiveFrom?: string;
-  availabilityEffectiveTo?: string;
-  requestReason?: string;
-  memo?: string;
-  scope?: RecurrenceScope;
-  mode?: "in_person" | "online"; // [C2D] 요청 payload 수업방식(session_create)
-};
-// [C2C-b 청크2] pending 요청 수정(관리자) — 불변 필드(requestKind·target·owner) 제외 부분 패치
-export type UpdateScheduleRequestBody = {
-  courseId?: number; instructorId?: number; roomId?: number;
-  sessionDate?: string; startTime?: string; endTime?: string; durationMinutes?: number;
-  studentIds?: number[]; topic?: string; memo?: string; kind?: SessionKind; mode?: "in_person" | "online";
-  requestReason?: string; scope?: RecurrenceScope;
-  availabilityKind?: AvailabilityKindEx; availabilityWeekday?: number;
-  availabilityStartTime?: string; availabilityEndTime?: string;
-  availabilityEffectiveFrom?: string; availabilityEffectiveTo?: string;
-};
-export type ScheduleCreateBody = {
-  courseId: number; instructorId?: number; roomId?: number; sessionDate: string;
-  startTime: string; endTime?: string; durationMinutes?: number; topic?: string; memo?: string; color?: string;
-  studentIds?: number[]; // 명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원(단체=여러 명 선택)
-  seriesId?: number; status?: string; force?: boolean;
-  kind?: SessionKind; price?: number; // [v0.1.14] 종류(진단고사/상담)·세션 단건 가격
-  mode?: "in_person" | "online";
-  isPublic?: boolean;
-};
-// [TBO-29C C2] 반복 생성 bulk command — 단건 loop/클라이언트 seriesId(Date.now()) 폐기.
-//  서버가 series ID를 발급하고 날짜/요일/기간/시간/cohort/FK를 전체 정규화·원자 커밋.
-export type ScheduleSeriesCreateBody = {
-  courseId: number; instructorId?: number; roomId?: number; studentIds?: number[];
-  repeat: { kind: "weekly" | "custom"; weekdays: number[]; startsOn: string; endsOn: string };
-  startTime: string; endTime?: string; durationMinutes?: number; timeZone?: string;
-  topic?: string; memo?: string; color?: string; status?: string;
-  kind?: SessionKind; price?: number; mode?: "in_person" | "online"; isPublic?: boolean; force?: boolean;
-};
-export type ScheduleSeriesInfo = {
-  id: number; repeatKind: "weekly" | "custom"; weekdays: number[]; startsOn: string; endsOn: string;
-  startTime: string; durationMinutes: number; timeZone: string; version: number; createdBy?: number; updatedBy?: number;
-};
-
-export type AvailabilityUpsertBody = {
-  id?: number; ownerType: AvailabilityOwner; ownerId: number; kind?: AvailabilityKindEx;
-  weekday: number; startTime: string; endTime: string; effectiveFrom?: string; effectiveTo?: string;
-};
-export type SchedulePatchBody = {
-  sessionDate?: string; startTime?: string; endTime?: string; durationMinutes?: number;
-  roomId?: number; instructorId?: number; courseId?: number; status?: string; topic?: string; memo?: string; color?: string;
-  studentIds?: number[];
-  kind?: SessionKind; price?: number; // [v0.1.14] 종류·세션 단건 가격
-  instructorAttendance?: InstructorAttendanceStatus; // [TBO-19] 강사 출결(매니저 CRUD) — BE PATCH 수용, manager+ 게이트
-  clearInstructorAttendance?: boolean; // [TBO-19 Sprint2] 강사 출결 미표시로 초기화(clear)
-  mode?: "in_person" | "online";
-  isPublic?: boolean;
-  // 반복 편집 범위(this=이 일정만 · this_and_following=이후 전부 · all=시리즈 전체). seriesId가 있을 때만 의미.
-  scope?: "this" | "this_and_following" | "all"; force?: boolean;
-  expectedSeriesVersion?: number; // [TBO-29C C3] series edit CAS — 불일치 시 409 SERIES_VERSION_STALE
-  acknowledgeAccountingImpact?: boolean;
-  expectedAccountingImpactHash?: string; // [74D-0] 직전 409 impactHash — ack를 본 영향에 결속(삭제와 동일 계약)
-};
-export type ScheduleRequestApprovalOptions = {
-  forceConflicts?: boolean;
-  acknowledgeAccountingImpact?: boolean;
-  expectedAccountingImpactHash?: string;
-};
-// [TBO-19] 강사 출결 현황 집계 응답
-type InstructorAttendanceRow = {
-  instructorId: number; instructorName: string;
-  held: number; present: number; late: number; absent: number; makeup: number; unmarked: number;
-  attendanceRate: number | null; teachingMinutes: number; teachingHours: number;
-};
-export type InstructorAttendanceSummary = {
-  from?: string; to?: string;
-  rows: InstructorAttendanceRow[];
-  totals: { instructors: number; held: number; present: number; late: number; absent: number; makeup: number; unmarked: number; teachingHours: number };
-};
-export type ConflictCheckBody = {
-  sessionDate: string; startTime: string; endTime?: string; durationMinutes?: number;
-  instructorId?: number; roomId?: number; ignoreSessionId?: number;
-};
+// 기존 "@/lib/api" import 표면을 보존하되 wire 필드는 contracts 0.2.32만 소유한다.
+export type ScheduleQuery = SharedScheduleQuery;
+export type AvailabilityKindEx = AvailabilityKind;
+export type ScheduleRequestEx = ScheduleRequest;
+export type CreateScheduleRequestBody = CreateScheduleRequestInput;
+export type UpdateScheduleRequestBody = UpdateScheduleRequestInput;
+export type ScheduleCreateBody = CreateClassSessionInput;
+export type ScheduleSeriesCreateBody = CreateScheduleSeriesCommand;
+export type ScheduleSeriesInfo = ScheduleSeries;
+export type AvailabilityUpsertBody = UpsertAvailabilityInput;
+export type SchedulePatchBody = UpdateClassSessionInput;
+export type ScheduleRequestApprovalOptions = SharedScheduleRequestApprovalOptions;
+export type InstructorAttendanceSummary = SharedInstructorAttendanceSummary;
+export type ConflictCheckBody = ConflictCheckInput;
 
 export const scheduleApi = {
   events: {
@@ -195,12 +104,7 @@ export const scheduleApi = {
     conflicts: (body: ConflictCheckBody) =>
       http.post<Conflict[]>("/schedule/conflicts", body).then((r) => r.data),
     // 세션 삭제(soft delete — v9). [TBO-29C C3] scope(this/this_and_following/all) + series CAS 지원.
-    remove: (id: number, opts?: {
-      scope?: "this" | "this_and_following" | "all";
-      expectedSeriesVersion?: number;
-      acknowledgeAccountingImpact?: boolean;
-      expectedAccountingImpactHash?: string;
-    }) =>
+    remove: (id: number, opts?: ScheduleDeleteOptions) =>
       http.delete<{ id: number; deleted: boolean; removedIds: number[] }>(`/schedule/${id}`, { params: opts }).then((r) => r.data),
   },
   // 강사 수업 요청 → 매니저 승인/반려(TBO-16 #9). 승인=서버가 createSession 재사용(409+force 동일 규약).

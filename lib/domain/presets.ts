@@ -35,21 +35,6 @@ export type CalendarViewState = {
   manualPanes?: CalendarPaneState[];
 };
 
-type ViewPresetExtras = {
-  modeFilters?: SessionModeFilter[];
-  kstFixed?: boolean;
-  compactCols?: boolean;
-  manualPanes?: {
-    uid?: number;
-    dim: SplitDim;
-    ids: number[];
-    countryCode?: string;
-    modeFilters?: SessionModeFilter[];
-  }[];
-};
-
-type ViewPresetWithExtras = CalendarViewPreset & ViewPresetExtras;
-
 /** 현재 캘린더 상태 → 저장용 프리셋 본문. */
 export function serializeViewPreset(name: string, s: CalendarViewState): CreateViewPresetInput {
   const pane = (dim: SplitDim): string | undefined =>
@@ -81,12 +66,11 @@ export function serializeViewPreset(name: string, s: CalendarViewState): CreateV
       countryCode: p.country?.code,
       modeFilters: p.modes.size ? [...p.modes] : undefined,
     })),
-  } as CreateViewPresetInput & ViewPresetExtras;
+  };
 }
 
 /** 프리셋 → 적용용 상태(컴포넌트가 각 setter로 흘려보냄). 미지의 국가 코드는 무시(목록 변경 내성). */
 export function presetToState(p: CalendarViewPreset): CalendarViewState {
-  const extra = p as ViewPresetWithExtras;
   const pane: CalendarViewState['paneCountry'] = {};
   if (p.paneCountryInstructor) pane.instructor = countryByCode(p.paneCountryInstructor) ?? null;
   if (p.paneCountryStudent) pane.student = countryByCode(p.paneCountryStudent) ?? null;
@@ -100,14 +84,14 @@ export function presetToState(p: CalendarViewPreset): CalendarViewState {
     fRooms: new Set(p.roomIds.map(Number)),
     fSubjects: new Set(p.subjects),
     fStatuses: new Set(p.statuses as StatusFilter[]),
-    fModes: new Set((extra.modeFilters ?? []).filter((k): k is SessionModeFilter => k === 'in_person' || k === 'online')),
+    fModes: new Set((p.modeFilters ?? []).filter((k): k is SessionModeFilter => k === 'in_person' || k === 'online')),
     fKinds: new Set((p.kinds ?? []).filter((k): k is SessionKindFilter => k === 'class' || k === 'level_test' || k === 'counsel')), // 미지 값 내성
     groupOnly: p.groupOnly,
     country: p.countryCode ? (countryByCode(p.countryCode) ?? null) : null,
     paneCountry: pane,
-    kstFixed: extra.kstFixed,
-    compactCols: extra.compactCols,
-    manualPanes: extra.manualPanes?.map((mp) => ({
+    kstFixed: p.kstFixed,
+    compactCols: p.compactCols,
+    manualPanes: p.manualPanes?.map((mp) => ({
       uid: mp.uid == null ? undefined : Number(mp.uid),
       dim: mp.dim,
       ids: mp.ids.map(Number),

@@ -7,6 +7,7 @@ import { useCallback, useMemo, useState } from "react";
 import { addDaysISO } from "@/lib/format"; // [TBO-69 C4]
 import type { AvailabilityUpsertBody, ScheduleCreateBody, ScheduleSeriesCreateBody } from "@/lib/api";
 import type { Room, ScheduleResource, ScheduleResources } from "@/types";
+import type { SessionStatus } from "@kms545487/contracts";
 import { courseRosterFromScheduleResources, scheduleResourceName } from "@/lib/domain/schedule-resources";
 // [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
 import { Field, ModalShell, SearchableCheckList } from "@/components/ui";
@@ -90,7 +91,7 @@ export function ScheduleCreateModal({
   const [isPublic, setIsPublic] = useState(false);
   // 색상 라벨: 생성 시 기본값은 개설 때 고른 코스 색(미지정 시 비움 → 백엔드가 코스/과목 색 폴백)
   const [color, setColor] = useState<string | undefined>(myCourses[0]?.color);
-  const [status, setStatus] = useState<string>("scheduled");
+  const [status, setStatus] = useState<SessionStatus>("scheduled");
   // ── 반복(그날만/매주/커스텀) + 종료일 ──
   const [repeat, setRepeat] = useState<ScheduleRepeat>("none");
   const [untilDate, setUntilDate] = useState(addDaysISO(defaultDate, 28));
@@ -366,7 +367,7 @@ export function ScheduleCreateModal({
                 {requestMode ? (
                   <input className="input" value="예정 (승인 후 확정)" disabled readOnly />
                 ) : (
-                  <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
+                  <select className="input" value={status} onChange={(e) => setStatus(e.target.value as SessionStatus)}>
                     {Object.keys(STATUS_LABEL).map((s) => (
                       <option key={s} value={s}>
                         {STATUS_LABEL[s]}{s === "held" ? " (시수 측정)" : isCanceledStatus(s) ? " (시수 미측정)" : ""}
