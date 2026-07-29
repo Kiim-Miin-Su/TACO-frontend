@@ -3,7 +3,7 @@
 //  기존 ReportWriteView의 StudentReportRow·FeedbackFormView의 폼이 이원화 → 하나로 통합.
 //  재사용처: ReportWriteView(인라인 목록)·FeedbackFormView(전용 페이지)·세션 상세 허브(20-3).
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiErrorMessage } from '@/lib/api-error';
 import { reportApprovalBadge } from '@/lib/domain/reports'; // [P2 FE-4]
 import { Badge, ModalShell, PromptModal, type Tone } from '@/components/ui';
@@ -27,6 +27,7 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
   const submitReport = useSubmitReport();
   const report = sessionReports.find((r) => r.sessionId === session.id && r.studentId === student.id);
   const [content, setContent] = useState(report?.content ?? '');
+  const [progressPage, setProgressPage] = useState(report?.progressPage ?? '');
   const [homework, setHomework] = useState(report?.homework ?? '');
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -34,6 +35,16 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
   const saving = createReport.isPending || updateReport.isPending || submitReport.isPending;
   // 승인 후 불변(시수 반영) — 서버 400과 동일 규칙으로 편집 잠금.
   const lockedByApproval = report?.approvalStatus === 'approved';
+  const enrichedSession = session as ClassSession & { courseName?: string; subjectName?: string };
+  const context = report?.context;
+
+  // 서버 목록이 늦게 도착하거나 다른 화면에서 수정된 뒤 무효화되면 DB 값을 폼에 다시 투영한다.
+  useEffect(() => {
+    if (!report) return;
+    setContent(report.content ?? '');
+    setProgressPage(report.progressPage ?? '');
+    setHomework(report.homework ?? '');
+  }, [report]);
 
   const applyTemplate = (id: number) => {
     const t = templates.find((x) => x.id === id);
@@ -63,7 +74,7 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
     try {
       if (report) {
         // 편집 내용 저장(승인 전) → 제출이면 상태 전환까지. 어느 단계든 실패 시 에러 표시.
-        await updateReport.mutateAsync({ id: report.id, content, homework });
+        await updateReport.mutateAsync({ id: report.id, content, progressPage, homework });
         if (submit && report.approvalStatus !== 'submitted' && report.approvalStatus !== 'approved') {
           await submitReport.mutateAsync(report.id);
         }
@@ -73,6 +84,7 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
           studentId: student.id,
           instructorId: session.instructorId,
           content,
+          progressPage: progressPage || undefined,
           homework: homework || undefined,
           status: submit ? 'submitted' : 'draft',
         });
@@ -96,10 +108,17 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
       {report?.approvalStatus === 'rejected' && report.rejectedReason && (
         <div className="mb-2 text-caption text-danger">반려 사유: {report.rejectedReason}</div>
       )}
+      <div className="mb-3 grid gap-1 bg-bg-subtle px-3 py-2 text-caption sm:grid-cols-2">
+        <span>학년/학생: {context?.student.grade != null ? `G${context.student.grade} · ` : ''}{context?.student.name ?? student.name}</span>
+        <span>수업일자: {context?.session.sessionDate ?? session.sessionDate}</span>
+        <span>과목: {context?.subject?.name ?? context?.course.name ?? enrichedSession.subjectName ?? enrichedSession.courseName ?? `수업 #${session.courseId}`}</span>
+        <span>수업 시간: {context?.session.startTime ?? session.startTime ?? '-'} - {context?.session.endTime ?? session.endTime ?? '-'}</span>
+      </div>
       {!canEdit ? (
         // 읽기 전용(권한 없음) — 저장된 내용만 표시.
         <div className="space-y-1.5 text-body">
           <p className="whitespace-pre-wrap">{report?.content ? report.content : <span className="text-fg-subtle">작성된 피드백 없음</span>}</p>
+          {report?.progressPage && <p className="text-caption text-fg-muted">진도 페이지: {report.progressPage}</p>}
           {report?.homework && <p className="text-caption text-fg-muted">숙제: {report.homework}</p>}
         </div>
       ) : (
@@ -121,6 +140,13 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
             value={content}
             disabled={lockedByApproval}
             onChange={(e) => setContent(e.target.value)}
+          />
+          <input
+            className="input mt-2"
+            placeholder="진도 페이지"
+            value={progressPage}
+            disabled={lockedByApproval}
+            onChange={(e) => setProgressPage(e.target.value)}
           />
           <input
             className="input mt-2"

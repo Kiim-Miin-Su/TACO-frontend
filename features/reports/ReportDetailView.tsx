@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { reportApprovalBadge } from '@/lib/domain/reports'; // [P2 FE-4]
 import Link from 'next/link';
 import { Badge, DetailStates, SectionCard, type Tone } from '@/components/ui';
-import { useReport, useStudents, useScheduleSession, useApproveReport, useRejectReport } from '@/lib/queries';
+import { useReport, useApproveReport, useRejectReport } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { ReasonModal } from '@/components/ReasonModal';
 import { shortDate } from '@/lib/format';
@@ -19,39 +19,31 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
   const access = useAccountAccess();
   const admin = access.can('approval.manage');
   const reportQuery = useReport(reportId);
-  const { data: students = [] } = useStudents();
   const approveReport = useApproveReport();
   const rejectReport = useRejectReport();
   const [rejecting, setRejecting] = useState(false);
-  // 세션 컨텍스트(과목·날짜·강사) — enriched 단건 재사용(클라 조인 신설 없음)
-  const sessionQuery = useScheduleSession(reportQuery.data?.sessionId ?? null);
 
   return (
     <div className="p-6 max-w-[760px] mx-auto space-y-5">
       <DetailStates query={reportQuery} notFoundMessage={`보고서를 찾을 수 없습니다. (id: ${reportId})`} backHref="/reports">
         {(report) => {
-          const student = students.find((s) => s.id === report.studentId);
-          const session = sessionQuery.data;
+          const { context } = report;
           const approval = reportApprovalBadge(report.approvalStatus);
           return (
             <>
               <div>
                 <Link href="/reports" className="text-caption text-fg-muted hover:underline">← 보고서</Link>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <h1 className="text-title font-bold">{student?.name ?? `학생 #${report.studentId}`} 수업 리포트</h1>
+                  <h1 className="text-title font-bold">{context.student.name} 수업 리포트</h1>
                   <Badge tone={approval.tone}>{approval.label}</Badge>
                 </div>
                 <p className="text-body text-fg-muted mt-0.5">
-                  {session ? (
-                    <>
-                      <Link href={internalRoute.session(session.id)} className="hover:underline">
-                        {session.courseName || '수업'} · {shortDate(session.sessionDate)}{session.startTime ? ` ${session.startTime}` : ''}
-                      </Link>
-                      {session.instructorName ? ` · 강사 ${session.instructorName}` : ''}
-                    </>
-                  ) : (
-                    `세션 #${report.sessionId}`
-                  )}
+                  <Link href={internalRoute.session(context.session.id)} className="hover:underline">
+                    {context.subject?.name ?? context.course.name} · {shortDate(context.session.sessionDate)}
+                    {context.session.startTime ? ` ${context.session.startTime}` : ''}
+                    {context.session.endTime ? `-${context.session.endTime}` : ''}
+                  </Link>
+                  {` · ${context.student.grade != null ? `G${context.student.grade} · ` : ''}강사 ${context.instructor.name}`}
                 </p>
               </div>
 
@@ -62,6 +54,9 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
               <SectionCard title="리포트 내용">
                 <div className="p-4 space-y-3 text-body">
                   <p className="whitespace-pre-wrap">{report.content || <span className="text-fg-subtle">내용 없음</span>}</p>
+                  {report.progressPage && (
+                    <p className="text-caption text-fg-muted border-t border-line-muted pt-3">진도 페이지: {report.progressPage}</p>
+                  )}
                   {report.homework && (
                     <p className="text-caption text-fg-muted border-t border-line-muted pt-3">숙제: {report.homework}</p>
                   )}

@@ -11,15 +11,13 @@ import type {
   ReportApprovalStatus,
   ReportStatus,
   PayReadiness,
+  SessionReport as SessionReportContract,
+  SessionReportView as SessionReportViewContract,
 } from "@kms545487/contracts";
 
 // ── TBO-05 시수·페이 정산 타입(백엔드 reports/payouts 모듈 응답) ──
-export type SessionReport = {
-  id: number; sessionId: number; studentId: number; instructorId: number; subjectId?: number;
-  content: string; homework?: string; status: ReportStatus; approvalStatus?: ReportApprovalStatus;
-  submittedAt?: string; approvedAt?: string; approvedBy?: number; rejectedReason?: string;
-  createdAt: string; updatedAt: string;
-};
+type SessionReportRecord = SessionReportContract & { createdAt: string; updatedAt: string };
+export type SessionReport = SessionReportViewContract & { createdAt: string; updatedAt: string };
 // 정산 라인(세션 1건 산정 스냅샷)
 export type PayoutLine = {
   sessionId: number; courseId: number; courseName: string; sessionDate: string;
@@ -122,16 +120,16 @@ export const financeApi = {
     list: (sessionId?: number) =>
       http.get<SessionReport[]>("/reports", { params: sessionId ? { sessionId } : undefined }).then((r) => r.data),
     get: (id: number) => http.get<SessionReport>(`/reports/${id}`).then((r) => r.data), // [TBO-58 P2] 상세 딥링크
-    create: (body: { sessionId: number; studentId: number; instructorId?: number; content: string; homework?: string; status?: "draft" | "submitted" }) =>
-      http.post<SessionReport>("/reports", body).then((r) => r.data),
-    // [E0.6 H1] 기존 보고서 본문/숙제 수정(임시 저장) — 승인 전까지, 본인 보고서만.
-    update: (id: number, body: { content?: string; homework?: string }) =>
-      http.patch<SessionReport>(`/reports/${id}`, body).then((r) => r.data),
-    submit: (id: number) => http.post<SessionReport>(`/reports/${id}/submit`, {}).then((r) => r.data),
+    create: (body: { sessionId: number; studentId: number; instructorId?: number; content: string; progressPage?: string; homework?: string; status?: "draft" | "submitted" }) =>
+      http.post<SessionReportRecord>("/reports", body).then((r) => r.data),
+    // [TBO-76 76D] 기존 보고서 작성값 수정 — 조인 헤더는 입력받지 않는다.
+    update: (id: number, body: { content?: string; progressPage?: string; homework?: string }) =>
+      http.patch<SessionReportRecord>(`/reports/${id}`, body).then((r) => r.data),
+    submit: (id: number) => http.post<SessionReportRecord>(`/reports/${id}/submit`, {}).then((r) => r.data),
     approve: (id: number, approvedBy?: number) =>
-      http.post<SessionReport>(`/reports/${id}/approve`, { approvedBy }).then((r) => r.data),
+      http.post<SessionReportRecord>(`/reports/${id}/approve`, { approvedBy }).then((r) => r.data),
     reject: (id: number, reason?: string) =>
-      http.post<SessionReport>(`/reports/${id}/reject`, { reason }).then((r) => r.data),
+      http.post<SessionReportRecord>(`/reports/${id}/reject`, { reason }).then((r) => r.data),
   },
   // ── 강사 페이 정산(TBO-05) — 시수×시급 산정 → 승인 → 지급 ──
   payouts: {

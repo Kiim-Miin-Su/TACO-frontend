@@ -1,30 +1,15 @@
 "use client";
 // 결제·지출·원장·매출·수업 보고서·정산 도메인 훅 — lib/queries.ts에서 분할(순수 이동).
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { api, type SessionReport as ApiReport } from "@/lib/api";
+import { api } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { logger } from "@/lib/log";
-import type { SessionReport } from "@/types";
 import { detailRetry, useInvalidator } from "./shared";
+import { toStoreReport } from "@/lib/domain/report-view";
 
 // [TBO-54 C2 대표 지시 콘솔 로깅] 머니 액션 관측 — id·금액·결과만(PII 0).
 const moneyLog = logger("money");
-
-// 백엔드 보고서(status=draft|submitted|sent, approvalStatus=draft|submitted|approved|rejected)를 store 모델로 정규화.
-//  구형 응답 호환: approvalStatus가 없으면 status를 승인상태로 해석한다.
-function toStoreReport(r: ApiReport): SessionReport {
-  const approvalStatus = r.approvalStatus ?? (r.status === "sent" ? "approved" : r.status);
-  const status: SessionReport["status"] =
-    approvalStatus === "approved" ? "sent" : approvalStatus === "rejected" ? "draft" : r.status;
-  return {
-    id: r.id, sessionId: r.sessionId, studentId: r.studentId, instructorId: r.instructorId,
-    subjectId: r.subjectId, content: r.content, homework: r.homework,
-    status, approvalStatus,
-    submittedAt: r.submittedAt, approvedAt: r.approvedAt, approvedBy: r.approvedBy,
-    rejectedReason: r.rejectedReason,
-  };
-}
 
 export const usePayments = () => {
   const { can } = useAccountAccess();
@@ -166,16 +151,16 @@ export const useUpdateExpense = () =>
 export const useWithdrawExpense = () => useMutation({ mutationFn: api.expenses.remove, onSuccess: useInvalidator([qk.expenses.all]) });
 
 // 리포트(작성·제출·승인/반려) — 승인은 시수/정산 적격 변동
-export const useCreateReport = () => useMutation({ mutationFn: api.reports.create, onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });
+export const useCreateReport = () => useMutation({ mutationFn: api.reports.create, onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
 // [E0.6 H1] 기존 보고서 임시 저장(본문/숙제 수정) — 승인 전까지.
 // [TBO-62 ① 2026-07-24] body에 id가 섞여 서버 whitelist 400("property id should not exist") — 운영 콘솔 실측. patch만 전송.
 export const useUpdateReport = () =>
-  useMutation({ mutationFn: ({ id, ...patch }: { id: number; content?: string; homework?: string }) => api.reports.update(id, patch), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });
-export const useSubmitReport = () => useMutation({ mutationFn: api.reports.submit, onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });
+  useMutation({ mutationFn: ({ id, ...patch }: { id: number; content?: string; progressPage?: string; homework?: string }) => api.reports.update(id, patch), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
+export const useSubmitReport = () => useMutation({ mutationFn: api.reports.submit, onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
 export const useApproveReport = () =>
-  useMutation({ mutationFn: (v: { id: number; approvedBy?: number }) => api.reports.approve(v.id, v.approvedBy), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });
+  useMutation({ mutationFn: (v: { id: number; approvedBy?: number }) => api.reports.approve(v.id, v.approvedBy), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
 export const useRejectReport = () =>
-  useMutation({ mutationFn: (v: { id: number; reason?: string }) => api.reports.reject(v.id, v.reason), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all]) });
+  useMutation({ mutationFn: (v: { id: number; reason?: string }) => api.reports.reject(v.id, v.reason), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
 
 // 정산(강사 페이) — 생성/확정/지급/반려/조정
 export const useGeneratePayout = () =>
