@@ -15,7 +15,6 @@ import {
   useReports,
   usePayments,
   useCounselForms,
-  useSchedule, // [75C] 리포트 정렬·표기의 세션 컨텍스트(날짜·코스) — 기존 캐시 공유
 } from "@/lib/queries";
 import { reportApprovalBadge } from "@/lib/domain/reports"; // [75C] 승인 라벨 단일 진실원
 import { useAccountAccess } from "@/lib/useAccountAccess";
@@ -55,19 +54,15 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
   const myCounsel = useMemo(() => counselForms.filter((c) => c.studentId === studentId), [counselForms, studentId]);
   const myAttendance = useMemo(() => attendance.filter((a) => a.studentId === studentId), [attendance, studentId]);
   const myReports = useMemo(() => reports.filter((r) => r.studentId === studentId), [reports, studentId]);
-  // [75C 대표 지시] 리포트(진도·숙제)는 수업일 기준 **내림차순(최신순)** — 세션 컨텍스트 조인.
-  const { data: sessions = [] } = useSchedule();
-  const sessionById = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions]);
+  // [76D] 리포트 정렬/표시는 서버의 joined context가 권위다. 별도 schedule client join을 만들지 않는다.
   const myReportsSorted = useMemo(
     () =>
       [...myReports].sort((a, b) => {
-        const sa = sessionById.get(a.sessionId);
-        const sb = sessionById.get(b.sessionId);
-        const da = sa ? `${sa.sessionDate} ${sa.startTime ?? ""}` : ""; // 세션 소실분은 뒤로
-        const db = sb ? `${sb.sessionDate} ${sb.startTime ?? ""}` : "";
+        const da = `${a.context.session.sessionDate} ${a.context.session.startTime ?? ""}`;
+        const db = `${b.context.session.sessionDate} ${b.context.session.startTime ?? ""}`;
         return db.localeCompare(da) || b.id - a.id;
       }),
-    [myReports, sessionById],
+    [myReports],
   );
   // [75C] 수강 이력도 최신순(등록일 내림차순) — 화면 정렬 규약 통일
   const myEnrollmentsSorted = useMemo(
@@ -242,19 +237,16 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                       </thead>
                       <tbody>
                         {myReportsSorted.map((r) => {
-                          const s = sessionById.get(r.sessionId);
                           const approval = reportApprovalBadge(r.approvalStatus);
                           const canFix =
                             r.approvalStatus !== "approved" && (adminArea || access.instructorId === r.instructorId);
                           return (
                             <tr key={r.id}>
                               <td className="mono text-fg-muted whitespace-nowrap">
-                                {s
-                                  ? `${shortDate(s.sessionDate)}${s.startTime ? ` ${s.startTime}` : ""}`
-                                  : `세션 #${r.sessionId}`}
+                                {`${shortDate(r.context.session.sessionDate)}${r.context.session.startTime ? ` ${r.context.session.startTime}` : ""}`}
                               </td>
-                              <td className="font-medium whitespace-nowrap">{s ? courseName(s.courseId) : "—"}</td>
-                              <td className="max-w-[280px] truncate text-fg-muted">{r.content || "—"}</td>
+                              <td className="font-medium whitespace-nowrap">{r.context.subject?.name ?? r.context.course.name}</td>
+                              <td className="max-w-[280px] truncate text-fg-muted">{r.progressPage || r.content || "—"}</td>
                               <td className="max-w-[160px] truncate text-fg-muted">{r.homework || "—"}</td>
                               <td>
                                 <Badge tone={approval.tone as Tone}>{approval.label}</Badge>
