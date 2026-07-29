@@ -35,13 +35,14 @@ import { won, shortDate, dateOnly } from "@/lib/format";
 import { CountryBadge } from "@/features/calendar/CountryInput";
 import { statusLabel as payLabel, statusTone as payTone } from "@/features/payments/labels";
 import { statusLabel as counselLabel, statusTone as counselTone } from "@/features/counsel/labels";
-import type { EnrollmentStatus } from "@/types";
+import type { Enrollment, EnrollmentStatus } from "@/types";
 import { StudentProfileEditModal } from "./StudentProfileEditModal";
 import { StudentGuardiansSection } from "./StudentGuardiansSection";
 import { StudentFamilyRelationsSection } from "./StudentFamilyRelationsSection";
 import { StudentAcademicHistoriesSection } from "./StudentAcademicHistoriesSection";
 import { internalRoute } from "@/lib/navigation-security";
 import { StudentStatusChangeModal } from "./StudentStatusChangeModal";
+import { EnrollmentStatusChangeModal } from "./EnrollmentStatusChangeModal";
 import { useSudoAction } from "@/lib/hooks/useSudoAction";
 import { apiErrorMessage } from "@/lib/api-error";
 
@@ -59,6 +60,7 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
   const [statusOpen, setStatusOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | null>(null);
   const removeStudent = useRemoveStudent();
   const sudoAction = useSudoAction();
   const studentQuery = useStudentAggregate(studentId);
@@ -204,7 +206,7 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                 {!myEnrollments.length ? (
                   <EmptyState message="수강 이력이 없습니다." />
                 ) : (
-                  <TableWrap minWidth={640}>
+                  <TableWrap minWidth={720}>
                     <table className="table">
                       <thead>
                         <tr>
@@ -212,6 +214,7 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                           <th>상태</th>
                           <th title="진행완료(held) 회차 수 / 계약 회차 — 출결·수업 완료 처리에서 자동 계산">진도</th>
                           <th>등록일</th>
+                          {canEdit && <th className="text-right">관리</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -225,6 +228,11 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                               {e.completedSessions ?? 0}/{e.totalSessions ?? "—"}
                             </td>
                             <td className="mono text-fg-muted">{shortDate(e.enrolledAt)}</td>
+                            {canEdit && (
+                              <td className="text-right">
+                                <button className="btn btn-sm" onClick={() => setEditingEnrollment(e)}>상태 변경</button>
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
@@ -237,6 +245,13 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                   수업 리포트에서 확인·수정합니다.
                 </p>
               </SectionCard>
+              {editingEnrollment && (
+                <EnrollmentStatusChangeModal
+                  enrollment={editingEnrollment}
+                  courseName={courseName(editingEnrollment.courseId)}
+                  onClose={() => setEditingEnrollment(null)}
+                />
+              )}
 
               {/* [75C 대표 지시] 수업 리포트(진도·숙제) — 수업일 내림차순(최신순), 상세/수정은 기존
                 화면 재사용(/reports/[id] 승인·반려, /sessions/[id]/feedback/[studentId] 폼 — 단일 소스) */}

@@ -26,6 +26,7 @@ import type {
   UpdateCounselRoundInput,
   CreateParentInput,
   CreateEnrollmentInput,
+  UpdateEnrollmentInput,
   CreateStudentCounselIntakeInput,
 } from "@kms545487/contracts";
 
@@ -144,6 +145,8 @@ export const studentsApi = {
     list: (studentId?: number) =>
       http.get<Enrollment[]>("/enrollments", { params: studentId ? { studentId } : undefined }).then((r) => r.data),
     create: (body: CreateEnrollmentInput) => http.post<Enrollment>("/enrollments", body).then((r) => r.data),
+    update: (id: number, patch: UpdateEnrollmentInput) =>
+      http.patch<Enrollment>(`/enrollments/${id}`, patch).then((r) => r.data),
   },
   counsel: {
     forms: () => http.get<CounselForm[]>("/counsel").then((r) => r.data),

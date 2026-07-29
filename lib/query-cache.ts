@@ -57,6 +57,14 @@ export async function invalidateStudentAggregate(queryClient: QueryClient): Prom
   );
 }
 
+/** 수강 상태/기간 command는 학생·코호트·캘린더와 처리 이력을 함께 재조회한다. */
+export async function invalidateEnrollmentCommand(queryClient: QueryClient): Promise<void> {
+  await Promise.all([
+    invalidateStudentAggregate(queryClient),
+    queryClient.invalidateQueries({ queryKey: ["audit"], refetchType: "active" }),
+  ]);
+}
+
 // [TBO-44] 학생 profile/status/삭제 command의 UI cache 수명주기.
 // 낙관적 값은 화면 응답성만 위한 임시 표현이며, onSettled에서 항상 DB-backed GET을 다시 수행한다.
 // 특히 삭제는 이미 없어진 aggregate detail을 재조회하지 않아 정상 DELETE 뒤 404 console noise를 만들지 않는다.

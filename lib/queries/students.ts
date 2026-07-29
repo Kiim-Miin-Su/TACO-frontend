@@ -11,6 +11,7 @@ import {
   optimisticallyRemoveStudent,
   reconcileStudentCommand,
   rollbackStudentCache,
+  invalidateEnrollmentCommand,
 } from "@/lib/query-cache";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { CATALOG_STALE, detailRetry, useInvalidator } from "./shared";
@@ -31,6 +32,14 @@ export const useParentStudents = () => {
   return useQuery({ queryKey: qk.parents.relations(), queryFn: () => api.parents.relations(), staleTime: CATALOG_STALE, enabled: can("admin.area") });
 };
 export const useEnrollments = () => useQuery({ queryKey: qk.enrollments.list(), queryFn: () => api.enrollments.list(), staleTime: CATALOG_STALE });
+export const useUpdateEnrollment = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (value: { id: number; patch: Parameters<typeof api.enrollments.update>[1] }) =>
+      api.enrollments.update(value.id, value.patch),
+    onSuccess: () => invalidateEnrollmentCommand(queryClient),
+  });
+};
 
 export const useCounselForms = () => {
   const { scope, can } = useAccountAccess();

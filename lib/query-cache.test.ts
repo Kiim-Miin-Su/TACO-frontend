@@ -15,6 +15,7 @@ import {
   invalidateCourseAggregate,
   invalidateClassOpening,
   invalidateStudentAggregate,
+  invalidateEnrollmentCommand,
   optimisticallyPatchStudent,
   optimisticallyRemoveStudent,
   reconcileStudentCommand,
@@ -75,6 +76,19 @@ describe("invalidateStudentAggregate (TBO-35 35A)", () => {
     for (const [options] of spy.mock.calls) {
       expect(options).toMatchObject({ refetchType: "active" });
     }
+  });
+});
+
+describe("invalidateEnrollmentCommand (TBO-77 77B)", () => {
+  it("수강 상태 전이 후 학생·수강·상담·캘린더와 audit를 모두 await한다", async () => {
+    const { queryClient, spy } = spyInvalidate();
+    await invalidateEnrollmentCommand(queryClient);
+    const roots = calledRoots(spy);
+    expect(roots).toEqual(expect.arrayContaining(
+      [["students"], ["enrollments"], ["parents"], ["counsel"], ["schedule"], ["audit"]]
+        .map((root) => JSON.stringify(root)),
+    ));
+    for (const [options] of spy.mock.calls) expect(options).toMatchObject({ refetchType: "active" });
   });
 });
 
