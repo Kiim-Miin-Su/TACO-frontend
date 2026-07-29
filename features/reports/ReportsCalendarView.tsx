@@ -61,9 +61,9 @@ export function ReportsCalendarView() {
   const instructorName = (id: number) => instructors.find((i) => i.id === id)?.name ?? '—';
 
   const session = selected != null ? classSessions.find((s) => s.id === selected) : undefined;
-  // 로스터 = lib/reports.rosterStudentIds(활성 수강만) — 미작성 집계·배지와 동일 모집단(단일 소스).
+  // 로스터 = 명시 세션 코호트 우선, 없으면 활성 수강(contracts 순수 함수).
   const roster = session
-    ? rosterStudentIds({ enrollments }, session.courseId)
+    ? rosterStudentIds({ enrollments }, session)
         .map((id) => students.find((s) => s.id === id))
         .filter((s): s is NonNullable<typeof s> => Boolean(s))
     : [];
@@ -73,7 +73,9 @@ export function ReportsCalendarView() {
       <PageHeader
         title="수업 보고서"
         sub="캘린더·리스트에서 수업을 선택해 확인하거나, 한 페이지에서 바로 작성하세요."
-        actions={<Link href="/reports/write" className="btn btn-primary">리포트 작성하기</Link>}
+        actions={(access.can('instructor.self') || access.can('approval.manage'))
+          ? <Link href="/reports/write" className="btn btn-primary">리포트 작성하기</Link>
+          : undefined}
       />
 
       <SectionCard
@@ -163,7 +165,7 @@ export function ReportsCalendarView() {
                 <thead><tr><th>날짜</th><th>수업</th><th>강사</th><th className="text-right">리포트</th><th></th></tr></thead>
                 <tbody>
                   {monthSessions.map((s) => {
-                    const ids = rosterStudentIds({ enrollments }, s.courseId); // 활성 수강만(단일 소스)
+                    const ids = rosterStudentIds({ enrollments }, s);
                     const done = sessionReports.filter((r) => r.sessionId === s.id && ids.includes(r.studentId) && r.status !== 'draft').length;
                     return (
                       <tr key={s.id} className={s.id === selected ? 'bg-accent-subtle' : ''}>

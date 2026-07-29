@@ -8,6 +8,7 @@
 //   → 세션 목록/세션 수/보고서 건수/필요 여부 전부 이 함수 하나만 호출해서 파생(중복 로직 제거).
 // ─────────────────────────────────────────────────────────────
 import type { ClassSession, Enrollment, SessionReport } from "@/types";
+import { resolveSessionParticipantIds } from "@kms545487/contracts";
 
 export type ReportSlice = {
   classSessions: ClassSession[];
@@ -19,8 +20,14 @@ export type ReportSlice = {
 //  백엔드 스케줄 코호트(activeStudentIds)와 동일 규칙(감사 B): 취소/일시정지/완료 수강생은
 //  리포트 미작성 집계에서 제외(소프트삭제된 학생은 enrollment도 canceled로 정리됨 — students.remove).
 //  export: ReportWriteView/ReportsCalendarView가 자체 rosterOf 중복 대신 이 함수를 쓴다(단일 소스).
-export function rosterStudentIds(s: Pick<ReportSlice, 'enrollments'>, courseId: number): number[] {
-  return s.enrollments.filter((e) => e.courseId === courseId && e.status === 'active').map((e) => e.studentId);
+export function rosterStudentIds(
+  s: Pick<ReportSlice, 'enrollments'>,
+  session: Pick<ClassSession, 'courseId' | 'studentIds'>,
+): number[] {
+  const activeEnrollmentStudentIds = s.enrollments
+    .filter((e) => e.courseId === session.courseId && e.status === 'active')
+    .map((e) => e.studentId);
+  return resolveSessionParticipantIds(session.studentIds, activeEnrollmentStudentIds);
 }
 
 // 세션 종료 시각(ms). endTime 없으면 startTime + durationMinutes로 계산. (로컬 시각 기준)
@@ -48,7 +55,7 @@ export function missingReportStudentIds(
 ): number[] {
   if (session.status !== "held") return [];
   if (sessionEndMs(session) > nowMs) return [];
-  return rosterStudentIds(s, session.courseId).filter((stId) => {
+  return rosterStudentIds(s, session).filter((stId) => {
     const r = s.sessionReports.find((x) => x.sessionId === session.id && x.studentId === stId);
     return !r || r.status === "draft";
   });

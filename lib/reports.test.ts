@@ -42,6 +42,19 @@ describe('sessionNeedsReport (강건성: 실제 종료된 수업만)', () => {
     expect(missingReportStudentIds(s2, ses({ sessionDate: '2026-06-29' }), NOW)).toEqual([1]); // 4 제외
   });
 
+  it('명시 세션 코호트가 있으면 같은 코스의 다른 활성 수강생을 제외한다', () => {
+    const s2: ReportSlice = {
+      classSessions: [],
+      enrollments: [enr({ id: 1, studentId: 1 }), enr({ id: 2, studentId: 4 })],
+      sessionReports: [],
+    };
+    expect(missingReportStudentIds(
+      s2,
+      ses({ sessionDate: '2026-06-29', studentIds: [4] }),
+      NOW,
+    )).toEqual([4]);
+  });
+
   it('이미 작성(non-draft)된 학생만 있으면 → 대상 아님', () => {
     const reports: SessionReport[] = [{ id: 1, sessionId: 1, studentId: 1, instructorId: 1, content: 'x', status: 'submitted' } as SessionReport];
     const s2: ReportSlice = { classSessions: [], enrollments: [enr({})], sessionReports: reports };

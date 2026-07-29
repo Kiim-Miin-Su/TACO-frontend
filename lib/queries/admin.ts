@@ -265,7 +265,13 @@ export const useResendProfileVerification = () => useMutation({ mutationFn: api.
 //  (clearToken + queryClient.clear + resetPreferences)를 수행하므로 개별 무효화는 없음.
 export const useChangeCredentials = () => useMutation({ mutationFn: api.account.changeCredentials });
 
-const profileDecisionKeys = [qk.profileChangeRequests.all, qk.profile.all, qk.users.all, qk.schedule.all];
+const profileDecisionKeys = [
+  qk.profileChangeRequests.all,
+  qk.profile.all,
+  qk.users.all,
+  qk.instructors.all,
+  qk.schedule.all,
+];
 export const useApproveProfileChangeRequest = () =>
   useMutation({ mutationFn: api.profileChangeRequests.approve, onSuccess: useInvalidator(profileDecisionKeys) });
 export const useRejectProfileChangeRequest = () =>

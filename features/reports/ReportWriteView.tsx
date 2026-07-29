@@ -17,6 +17,22 @@ import { sessionStatusLabel, sessionStatusTone } from '@/features/sessions/sessi
 // 한 페이지 리포트 작성 — 강사의 진행중 모든 수업·학생을 좌(목록)/우(인라인 작성)로.
 export function ReportWriteView() {
   const access = useAccountAccess();
+  if (!access.can('instructor.self') && !access.can('approval.manage')) {
+    return (
+      <div className="p-6 max-w-page mx-auto">
+        <SectionCard title="리포트 작성">
+          <div className="p-4 text-body text-fg-muted">
+            리포트 작성 권한이 없습니다.
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+  return <InstructorReportWriteSurface />;
+}
+
+function InstructorReportWriteSurface() {
+  const access = useAccountAccess();
   const { data: instructors = [] } = useInstructors();
   const { data: courses = [] } = useCourses();
   const { data: classSessions = [] } = useSchedule();
@@ -28,7 +44,8 @@ export function ReportWriteView() {
     () => ({ classSessions, enrollments, sessionReports }),
     [classSessions, enrollments, sessionReports],
   );
-  const instructorId = access.instructorId;
+  const [proxyInstructorId, setProxyInstructorId] = useState<number | undefined>();
+  const instructorId = access.instructorId ?? proxyInstructorId ?? instructors[0]?.id;
   const instructorName = instructors.find((i) => i.id === instructorId)?.name ?? '강사';
   const courseName = (id: number) => courses.find((c) => c.id === id)?.name ?? '수업';
 
@@ -40,9 +57,9 @@ export function ReportWriteView() {
     [classSessions, instructorId],
   );
 
-  // 로스터 = lib/reports.rosterStudentIds(활성 수강만) — 배지·미작성 집계와 같은 모집단(단일 소스).
-  const rosterOf = (courseId: number): Student[] =>
-    rosterStudentIds({ enrollments }, courseId)
+  // 로스터 = 명시 세션 코호트 우선, 없으면 활성 수강(contracts 순수 함수).
+  const rosterOf = (session: Pick<ClassSession, 'courseId' | 'studentIds'>): Student[] =>
+    rosterStudentIds({ enrollments }, session)
       .map((id) => students.find((s) => s.id === id))
       .filter((s): s is Student => Boolean(s));
 
@@ -50,7 +67,7 @@ export function ReportWriteView() {
     sessionReports.find((r) => r.sessionId === sid && r.studentId === stid);
 
   const progressOf = (s: ClassSession) => {
-    const roster = rosterOf(s.courseId);
+    const roster = rosterOf(s);
     const done = roster.filter((st) => { const r = reportFor(s.id, st.id); return r && r.status !== 'draft'; }).length;
     return { done, total: roster.length };
   };
@@ -71,7 +88,7 @@ export function ReportWriteView() {
   const [selId, setSelId] = useState<number | undefined>();
   const effectiveSelId = selId ?? firstNeed?.id ?? sessions[0]?.id;
   const selected = sessions.find((s) => s.id === effectiveSelId);
-  const roster = selected ? rosterOf(selected.courseId) : [];
+  const roster = selected ? rosterOf(selected) : [];
 
   return (
     <div className="p-6 max-w-[1200px] mx-auto space-y-4">
@@ -82,6 +99,21 @@ export function ReportWriteView() {
         </div>
         <Link href="/reports" className="btn btn-sm">← 캘린더로</Link>
       </div>
+      {!access.can('instructor.self') && (
+        <div className="flex items-center gap-2">
+          <label htmlFor="report-instructor" className="text-caption font-medium text-fg-muted">담당 강사</label>
+          <select
+            id="report-instructor"
+            className="input w-full max-w-[280px]"
+            value={instructorId ?? ''}
+            onChange={(event) => setProxyInstructorId(Number(event.target.value) || undefined)}
+          >
+            {instructors.map((instructor) => (
+              <option key={instructor.id} value={instructor.id}>{instructor.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 items-start">
         {/* 좌: 내 수업 목록 — 기본은 배지와 동일 기준(작성 필요)만 */}
