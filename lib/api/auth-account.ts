@@ -6,12 +6,17 @@ import type {
   ProfileChangeRequest,
   AuthEventQuery,
   AuthEventRecord,
+  PendingStaffAccount,
+  StaffAccountSummary,
+  StaffLoginResult,
+  StaffProfile,
+  StaffSignupResult,
   WebIdCheckResult,
 } from "@kms545487/contracts";
 export type { ProfileChangeFields, ProfileChangeRequest } from "@kms545487/contracts";
 
 export type LoginBody = { webId: string; password?: string };
-export type LoginResult = { account: { id: number; name: string; role: string; mustChangePassword: boolean } };
+export type LoginResult = StaffLoginResult;
 // [E0.5 ⑥] name/email/phone은 첫 로그인 강제 변경(must_change_password)에서만 서버가 허용 —
 //  평시 프로필 변경은 마이 페이지 인증/승인 경로(29B-4)를 지난다.
 // [E0] newWebId도 강제 변경 흐름 전용(평시 아이디 변경 = 승인제). 평시 비밀번호 변경은
@@ -36,7 +41,7 @@ export type SignupBody = {
   phone?: string; university?: string; major?: string;
 };
 // [TBO-31 C2] devVerifyLink 제거 — OTP 가입은 emailVerified=true 생성이라 인증 링크 단계가 소멸.
-export type SignupResult = { ok: boolean; message: string; account: { id: number; webId: string; name: string; role: string; status: string } };
+export type SignupResult = StaffSignupResult;
 // [TBO-31 C2] 가입 전 이메일 OTP challenge(공개) — devOtpCode는 비production+SMTP 부재에서만
 //  응답에 실린다(기존 devVerifyLink 관례의 OTP판 — 개발 안내 표기용).
 export type SignupEmailChallenge = {
@@ -50,27 +55,8 @@ export type SignupEmailChallenge = {
 export type OtpChallenge = SignupEmailChallenge;
 // [TBO-57] 가입 폼 구성(공개) — 휴대전화 인증 필수 여부(BE required()와 같은 단일 진실원).
 export type SignupConfig = { phoneVerificationRequired: boolean };
-export type PendingAccount = {
-  id: number; webId: string; name: string; email: string; role: string; status: string; emailVerified: boolean; createdAt: string;
-  // [E0.5 ④b] 지원자 제공 정보 — 승인센터 상세 표시(승인 판단 근거).
-  phone?: string | null; university?: string | null; major?: string | null; birthYear?: number | null;
-};
-export type MyProfile = {
-  id: number;
-  webId: string;
-  name: string;
-  email?: string | null;
-  phone?: string | null;
-  role: string;
-  status: string;
-  countryCode?: string | null;
-  timeZone?: string | null;
-  profileVersion: number;
-  // [2026-07-16] SMS 인증 가용(BE provider env 완비) — phone 변경 스테퍼 동적 활성(env만으로 전환)
-  smsVerificationAvailable?: boolean;
-  // [TBO-31 C2/C3 2026-07-16] 이메일 인증 상태 — 마이 페이지 배지(미인증=주의 톤). 구서버 호환 optional.
-  emailVerified?: boolean;
-};
+export type PendingAccount = PendingStaffAccount;
+export type MyProfile = StaffProfile;
 // [E0.5 ④] 국가·시간대 카탈로그 행 — BE countries 표(참조 데이터)와 1:1.
 export type CatalogCountry = {
   id: number;
@@ -101,12 +87,7 @@ export type CreateProfileVerificationBody = {
   target: string;
 };
 // GET /users is the admin comparison source. New profile fields are optional while older servers roll forward.
-export type UserProfileSummary = Omit<MyProfile, "profileVersion"> & {
-  profileVersion?: number;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
-};
+export type UserProfileSummary = StaffAccountSummary;
 
 export const authAccountApi = {
   auth: {
