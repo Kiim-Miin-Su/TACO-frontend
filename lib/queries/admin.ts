@@ -172,6 +172,11 @@ export const useRejectPendingAccount = () =>
 // [E0.5 ①] 대표(super_admin)는 서버가 같은 tx에서 즉시 적용(approved 응답) — 프로필 쿼리도 무효화.
 export const useCreateProfileChangeRequest = () =>
   useMutation({ mutationFn: api.profileChangeRequests.create, onSuccess: useInvalidator([qk.profileChangeRequests.all, qk.profile.all]) });
+export const useWithdrawProfileChangeRequest = () =>
+  useMutation({
+    mutationFn: api.profileChangeRequests.withdraw,
+    onSuccess: useInvalidator([qk.profileChangeRequests.all]),
+  });
 
 // ── [TBO-31 C2/C3 2026-07-16] 가입·계정 보안 강화 훅 ──
 // 가입 신청(공개) — 성공 시 로그인 전이라 무효화 대상 캐시 없음(완료 화면 전환은 호출부).

@@ -123,7 +123,7 @@ export function profileRequestedSummary(request: ProfileChangeRequest): string {
   return labels.length ? labels.join(", ") : "변경 항목 없음";
 }
 
-export function formatProfileDate(value?: string): string {
+export function formatProfileDate(value?: string | null): string {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;

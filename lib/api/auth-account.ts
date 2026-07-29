@@ -1,6 +1,12 @@
 // 인증·계정·유저·프로필 변경/인증 도메인 API — lib/api.ts에서 분할(순수 이동).
 import { http } from "./client";
-import type { WebIdCheckResult } from "@kms545487/contracts";
+import type {
+  CreateProfileChangeRequestInput,
+  ProfileChangeFields,
+  ProfileChangeRequest,
+  WebIdCheckResult,
+} from "@kms545487/contracts";
+export type { ProfileChangeFields, ProfileChangeRequest } from "@kms545487/contracts";
 
 export type LoginBody = { webId: string; password?: string };
 export type LoginResult = { account: { id: number; name: string; role: string; mustChangePassword: boolean } };
@@ -63,14 +69,6 @@ export type MyProfile = {
   // [TBO-31 C2/C3 2026-07-16] 이메일 인증 상태 — 마이 페이지 배지(미인증=주의 톤). 구서버 호환 optional.
   emailVerified?: boolean;
 };
-export type ProfileChangeFields = {
-  name?: string;
-  webId?: string; // [E0] 아이디 변경 — 승인제(대표 결정). 승인 시 기존 세션 전부 무효(재로그인)
-  email?: string; // [TBO-29B-4] 이메일 변경 — 사전 인증(challenge) 필수, 비우기 불가
-  phone?: string | null;
-  countryCode?: string | null;
-  timeZone?: string | null;
-};
 // [E0.5 ④] 국가·시간대 카탈로그 행 — BE countries 표(참조 데이터)와 1:1.
 export type CatalogCountry = {
   id: number;
@@ -81,28 +79,9 @@ export type CatalogCountry = {
   flag?: string | null;
   sortOrder: number;
 };
-export type ProfileChangeRequest = {
-  id: number;
-  requesterId: number;
-  beforeValues: ProfileChangeFields;
-  requestedChanges: ProfileChangeFields;
-  reason: string;
-  baseProfileVersion: number;
-  status: "pending" | "approved" | "rejected";
-  decidedBy?: number;
-  decidedAt?: string;
-  rejectionReason?: string;
-  appliedProfileVersion?: number;
-  createdAt: string;
-  updatedAt: string;
-};
 // [TBO-29B-4] 모든 프로필 변경 요청은 현재 비밀번호 재확인 필수. 연락처(email/phone 채움) 변경은
 //  verified challenge id를 함께 보내 서버 tx 안에서 일회 소비된다.
-export type CreateProfileChangeRequestBody = ProfileChangeFields & {
-  reason: string;
-  currentPassword: string;
-  verificationChallengeId?: number;
-};
+export type CreateProfileChangeRequestBody = CreateProfileChangeRequestInput;
 // [TBO-29B-4] 연락처 인증 challenge — 응답은 masked target·상태·만료·재전송 시각만(§6).
 export type ProfileVerificationChannel = "email" | "sms";
 export type ProfileVerification = {
@@ -226,6 +205,8 @@ export const authAccountApi = {
       http.post<ProfileChangeRequest>(`/profile-change-requests/${id}/approve`, {}).then((r) => r.data),
     reject: (id: number, reason: string) =>
       http.post<ProfileChangeRequest>(`/profile-change-requests/${id}/reject`, { reason }).then((r) => r.data),
+    withdraw: (id: number) =>
+      http.delete<{ id: number; deleted: true }>(`/profile-change-requests/${id}`).then((r) => r.data),
   },
   // [TBO-29B-4] 연락처 재인증 challenge — 발송(현재 비밀번호 재확인)·코드 확인(5회 잠금)·재전송(60초 cooldown).
   profileVerifications: {

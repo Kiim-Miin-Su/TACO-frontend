@@ -12,7 +12,7 @@ import {
 } from "@/lib/domain/profile";
 import { roleLabel } from "@/lib/roles";
 // [TBO-31 C2/C3 2026-07-16] 비밀번호 재설정 메일 — 중앙 훅(useRequestPasswordReset, §18-2).
-import { useMyProfile, useMyProfileChangeRequests, useRequestPasswordReset } from "@/lib/queries";
+import { useMyProfile, useMyProfileChangeRequests, useRequestPasswordReset, useWithdrawProfileChangeRequest } from "@/lib/queries";
 // [TBO-29B-4 V3] 변경 요청 모달은 인증 stepper 포함 별도 컴포넌트로 분리(단일 책임).
 import ProfileChangeModal from "./ProfileChangeModal";
 
@@ -22,11 +22,13 @@ export default function MyPageView() {
   const profileQuery = useMyProfile();
   const requestsQuery = useMyProfileChangeRequests();
   const requestReset = useRequestPasswordReset(); // [TBO-31 C2/C3 2026-07-16] 재설정 메일 받기
+  const withdrawRequest = useWithdrawProfileChangeRequest();
   const [editing, setEditing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resetConfirm, setResetConfirm] = useState(false);
   const [resetDevUrl, setResetDevUrl] = useState<string | null>(null);
+  const [withdrawId, setWithdrawId] = useState<number | null>(null);
   const profile = profileQuery.data;
   const requests = [...(requestsQuery.data ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
@@ -134,9 +136,9 @@ export default function MyPageView() {
         ) : requests.length === 0 ? (
           <EmptyState message="프로필 변경 요청 이력이 없습니다." />
         ) : (
-          <TableWrap minWidth={720}>
+          <TableWrap minWidth={800}>
             <table className="table">
-              <thead><tr><th>요청일</th><th>변경 항목</th><th>사유</th><th>상태</th><th>처리 결과</th></tr></thead>
+              <thead><tr><th>요청일</th><th>변경 항목</th><th>사유</th><th>상태</th><th>처리 결과</th><th>작업</th></tr></thead>
               <tbody>
                 {requests.map((request) => (
                   <tr key={request.id}>
@@ -146,6 +148,17 @@ export default function MyPageView() {
                     <td><Badge tone={PROFILE_STATUS_TONE[request.status]}>{PROFILE_STATUS_LABEL[request.status]}</Badge></td>
                     <td className="text-fg-muted max-w-[240px] break-words">
                       {request.status === "rejected" ? request.rejectionReason || "반려 사유 없음" : request.status === "approved" ? `프로필 v${request.appliedProfileVersion ?? "—"}` : "—"}
+                    </td>
+                    <td>
+                      {request.status === "pending" ? (
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => setWithdrawId(request.id)}
+                          disabled={withdrawRequest.isPending}
+                        >
+                          철회
+                        </button>
+                      ) : "—"}
                     </td>
                   </tr>
                 ))}
@@ -163,6 +176,30 @@ export default function MyPageView() {
           confirmLabel="메일 받기"
           onClose={() => setResetConfirm(false)}
           onConfirm={sendResetMail}
+        />
+      )}
+
+      {withdrawId != null && (
+        <ConfirmModal
+          title="프로필 변경 요청 철회"
+          message="아직 처리되지 않은 변경 요청을 철회할까요? 철회 이력은 감사 로그에 남습니다."
+          confirmLabel="철회"
+          danger
+          onClose={() => setWithdrawId(null)}
+          onConfirm={() => {
+            setMessage(null);
+            setError(null);
+            withdrawRequest.mutate(withdrawId, {
+              onSuccess: () => {
+                setWithdrawId(null);
+                setMessage("프로필 변경 요청을 철회했습니다.");
+              },
+              onError: (caught) => {
+                setWithdrawId(null);
+                setError(apiErrorMessage(caught, "프로필 변경 요청을 철회하지 못했습니다."));
+              },
+            });
+          }}
         />
       )}
 
