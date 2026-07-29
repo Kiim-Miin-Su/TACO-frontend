@@ -29,6 +29,22 @@ import type {
   CreateEnrollmentInput,
   UpdateEnrollmentInput,
   CreateStudentCounselIntakeInput,
+  CounselAnalyticsRange,
+  CounselCorrelation,
+  CounselFunnel,
+  RegistrationResult,
+  StudentCounselIntakeResult,
+  StudentFamilyAggregate,
+} from "@kms545487/contracts";
+
+export type {
+  CounselAnalyticsRange,
+  CounselCorrelation,
+  CounselCorrelationRow,
+  CounselFunnel,
+  StudentFamilyAggregate,
+  StudentFamilyMember,
+  StudentFamilyMemberCounsel,
 } from "@kms545487/contracts";
 
 export type InternalCreateCounselInput =
@@ -48,51 +64,6 @@ export type InternalUpdateCounselRoundInput =
     formSnapshot?: CounselFormCommandSnapshot;
   };
 
-// [TBO-30G 2026-07-23 대표 지시] 가족(형제·자매) 테이블 조인 단일 진실원 — BE student-family.types.ts 미러.
-//  관계→학생→보호자→수강→상담 서버 조인 파생(읽기 전용·사본 0). 학생 상세·상담 화면이 이 하나만 소비.
-export type StudentFamilyMemberCounsel = Pick<CounselForm, "id" | "status" | "source" | "createdAt"> & {
-  nextContactAt: string | null;
-};
-export type StudentFamilyMember = {
-  relationId: number;
-  relationType: StudentFamilyRelation["relationType"];
-  relationLabel: string | null;
-  student: Student;
-  guardians: Array<{ parent: Parent; relation: ParentStudent }>;
-  activeEnrollmentCount: number;
-  counselForms: StudentFamilyMemberCounsel[];
-  sharedGuardianParentIds: number[];
-};
-export type StudentFamilyAggregate = { studentId: number; members: StudentFamilyMember[] };
-
-// [TBO-30D/30E 2026-07-23] 상담 퍼널·상관관계 — BE counsel-analytics.ts(순수 함수 단일 진실원) 응답 미러.
-export type CounselFunnel = {
-  range: { from: string | null; to: string | null };
-  total: number;
-  statusCounts: Record<CounselStatus, number>;
-  roundReach: Array<{ minRounds: number; count: number }>;
-  dropAfterRounds: Array<{ rounds: number; count: number }>;
-  resultDistribution: Record<CounselResult, number>;
-  conversionRate: number;
-  dropRate: number;
-  avgRoundsToConversion: number | null;
-  avgDaysToConversion: number | null;
-};
-export type CounselCorrelationRow = {
-  interestKey: string;
-  counselCount: number;
-  convertedCount: number;
-  conversionRate: number;
-  enrolledBySubject: Array<{ subject: string; count: number }>;
-};
-export type CounselCorrelation = {
-  range: { from: string | null; to: string | null };
-  totalForms: number;
-  rows: CounselCorrelationRow[];
-  enrolledSubjects: string[];
-};
-export type CounselAnalyticsRange = { from?: string | null; to?: string | null };
-
 export const studentsApi = {
   students: {
     list: (includeInactive = false) =>
@@ -102,23 +73,9 @@ export const studentsApi = {
     aggregate: (id: number) => http.get<StudentAggregate>(`/students/${id}/aggregate`).then((r) => r.data),
     // [TBO-35 35C] 호환 URL도 동일 aggregate command를 소비한다.
     register: (body: CreateStudentAggregateInput) =>
-      http.post<{
-        student: Student;
-        guardian: { parent: Parent; relation: ParentStudent; linkedExisting: boolean } | null;
-        guardians: Array<{ parent: Parent; relation: ParentStudent; linkedExisting: boolean }>;
-        enrollment: Enrollment | null;
-      }>("/students/registrations", body).then((r) => r.data),
+      http.post<RegistrationResult>("/students/registrations", body).then((r) => r.data),
     registerWithCounsel: (body: CreateStudentCounselIntakeInput) =>
-      http.post<{
-        registration: {
-          student: Student;
-          guardian: { parent: Parent; relation: ParentStudent; linkedExisting: boolean } | null;
-          guardians: Array<{ parent: Parent; relation: ParentStudent; linkedExisting: boolean }>;
-          enrollment: Enrollment | null;
-        };
-        counsel: CounselForm;
-        correlationId: string;
-      }>("/students/registrations/with-counsel", body).then((r) => r.data),
+      http.post<StudentCounselIntakeResult>("/students/registrations/with-counsel", body).then((r) => r.data),
     // [피드백 2026-07-03] 캘린더 우측 패널 학생 정보 수정(출국/입국·상태 변경) — PATCH 부분 갱신.
     update: (id: number, patch: Partial<Pick<Student, "name" | "englishName" | "gender" | "birthDate" | "grade" | "phone" | "country" | "residenceType" | "address" | "addressDetail" | "kakaoId" | "counselTopic" | "schoolName" | "status" | "memo">>) =>
       http.patch<Student>(`/students/${id}`, patch).then((r) => r.data),
