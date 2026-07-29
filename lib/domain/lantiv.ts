@@ -19,6 +19,17 @@ export const STATUS_LABEL: Record<string, string> = {
   no_show: '취소',
   makeup: '보강',
 };
+export const MANUAL_SESSION_STATUSES: ScheduleRow['status'][] = [
+  'scheduled',
+  'canceled',
+  'no_show',
+  'makeup',
+];
+export const editableSessionStatuses = (
+  current: ScheduleRow['status'],
+): ScheduleRow['status'][] => current === 'held'
+  ? ['held', 'canceled', 'no_show', 'makeup']
+  : MANUAL_SESSION_STATUSES;
 export const INSTRUCTOR_ATT_LABEL: Record<string, string> = {
   present: '출석',
   late: '지각',

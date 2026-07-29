@@ -12,7 +12,7 @@ import { courseRosterFromScheduleResources, scheduleResourceName } from "@/lib/d
 // [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
 import { Field, ModalShell, SearchableCheckList } from "@/components/ui";
 import { ColorPicker } from "./SessionEditFields";
-import { STATUS_LABEL } from "@/lib/domain/lantiv";
+import { MANUAL_SESSION_STATUSES, STATUS_LABEL } from "@/lib/domain/lantiv";
 import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
 
 const isCanceledStatus = (s?: string) => s === "canceled" || s === "no_show";
@@ -368,9 +368,9 @@ export function ScheduleCreateModal({
                   <input className="input" value="예정 (승인 후 확정)" disabled readOnly />
                 ) : (
                   <select className="input" value={status} onChange={(e) => setStatus(e.target.value as SessionStatus)}>
-                    {Object.keys(STATUS_LABEL).map((s) => (
+                    {MANUAL_SESSION_STATUSES.map((s) => (
                       <option key={s} value={s}>
-                        {STATUS_LABEL[s]}{s === "held" ? " (시수 측정)" : isCanceledStatus(s) ? " (시수 미측정)" : ""}
+                        {STATUS_LABEL[s]}{isCanceledStatus(s) ? " (시수 미측정)" : ""}
                       </option>
                     ))}
                   </select>

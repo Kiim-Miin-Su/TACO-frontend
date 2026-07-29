@@ -10,7 +10,7 @@ import { useState } from "react";
 import type { Room, ScheduleRow, RecurrenceScope } from "@/types";
 import type { SchedulePatchBody } from "@/lib/api";
 import { fromMin, toMin, WEEKDAYS_KO as WD } from "@/lib/domain/schedule";
-import { STATUS_LABEL, sessionEditPatch, KIND_FILTERS, KIND_FILTER_LABEL, MODE_FILTERS, MODE_FILTER_LABEL, type SessionDraft } from "@/lib/domain/lantiv";
+import { editableSessionStatuses, STATUS_LABEL, sessionEditPatch, KIND_FILTERS, KIND_FILTER_LABEL, MODE_FILTERS, MODE_FILTER_LABEL, type SessionDraft } from "@/lib/domain/lantiv";
 import { Field } from "@/components/ui";
 import { ScheduleDateField } from "./inputs/ScheduleDateField";
 import { ScheduleTimeRangeFields } from "./inputs/ScheduleTimeRangeFields";
@@ -96,8 +96,10 @@ export function SessionEditFields({
       <div className="grid grid-cols-2 gap-3">
         <Field label="상태">
           <select className={input} value={d.status} onChange={(e) => set("status", e.target.value as ScheduleRow["status"])}>
-            {Object.keys(STATUS_LABEL).map((s) => (
-              <option key={s} value={s}>{STATUS_LABEL[s]}{s === "held" ? " (시수 측정)" : ""}</option>
+            {editableSessionStatuses(row.status).map((s) => (
+              <option key={s} value={s} disabled={s === "held"}>
+                {STATUS_LABEL[s]}{s === "held" ? " (출결로 자동 전이)" : ""}
+              </option>
             ))}
           </select>
         </Field>

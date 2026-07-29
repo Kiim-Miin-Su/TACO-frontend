@@ -20,9 +20,10 @@ import { countsForPay } from "@/lib/domain/schedule";
 import { payoutHours as hoursLabel } from "@/features/payouts/payout-shared"; // [감사 3] 시수 표기 단일화
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from "@/features/attendance/AttMarker";
 import { SessionFeedbackForm } from "@/features/reports/SessionFeedbackForm";
-import type { AttendanceStatus, InstructorAttendanceStatus } from "@/types";
+import type { AttendanceStatus, InstructorAttendanceStatus, SessionStatus } from "@/types";
 import { shortDate } from "@/lib/format";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
+import { editableSessionStatuses } from "@/lib/domain/lantiv";
 
 // [TBO-34 C3] 상태 표기 = session-shared 단일 진실원(사본 제거)
 import { SESSION_STATUS_LABEL as SESSION_STATUS_LABEL_ENTRIES, sessionStatusLabel as statusLabelOf, sessionStatusTone as statusToneOf } from "./session-shared";
@@ -239,7 +240,11 @@ function SessionEditModal({ session, onClose }: {
         </Field>
         <Field label="상태">
           <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
-            {Object.entries(SESSION_STATUS_LABEL_ENTRIES).map(([value, label]) => (<option key={value} value={value}>{label}</option>))}
+            {editableSessionStatuses(session.status as SessionStatus).map((value) => (
+              <option key={value} value={value} disabled={value === 'held'}>
+                {SESSION_STATUS_LABEL_ENTRIES[value]}{value === 'held' ? ' (출결로 자동 전이)' : ''}
+              </option>
+            ))}
           </select>
         </Field>
         <Field label="주제"><input className="input" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="수업 주제" /></Field>

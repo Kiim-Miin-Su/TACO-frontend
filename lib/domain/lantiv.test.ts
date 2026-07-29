@@ -9,8 +9,10 @@ import {
   matchesCalendarFacetFilters,
   groupSessions,
   isGroupSession,
+  MANUAL_SESSION_STATUSES,
   matchesStatusFilter,
   rowInResource,
+  editableSessionStatuses,
   sessionEditPatch,
   sessionStates,
   sortByDateAsc,
@@ -41,6 +43,22 @@ const row = (over: Partial<ScheduleRow> = {}): ScheduleRow =>
 
 const att = (status: Attendance['status'], sessionId = 1, studentId = 1): Attendance =>
   ({ id: 1, sessionId, studentId, status }) as Attendance;
+
+describe('editableSessionStatuses — held 자동 전이 경계', () => {
+  it('생성·미완료 회차의 수동 상태 후보에 held가 없다', () => {
+    expect(MANUAL_SESSION_STATUSES).toEqual(['scheduled', 'canceled', 'no_show', 'makeup']);
+    expect(editableSessionStatuses('scheduled')).not.toContain('held');
+  });
+
+  it('이미 완료된 회차에서만 현재 held를 읽기용 후보로 보존한다', () => {
+    expect(editableSessionStatuses('held')).toEqual([
+      'held',
+      'canceled',
+      'no_show',
+      'makeup',
+    ]);
+  });
+});
 
 describe('sessionStates — 출석/지각/결강/보강 판정(status + 강사·학생 출결 조합)', () => {
   it('held + 이슈 없음 → 출석(문제 없음)', () => {
