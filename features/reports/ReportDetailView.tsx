@@ -6,8 +6,9 @@
 import { useState } from 'react';
 import { reportApprovalBadge } from '@/lib/domain/reports'; // [P2 FE-4]
 import Link from 'next/link';
-import { Badge, DetailStates, SectionCard, type Tone } from '@/components/ui';
-import { useReport, useApproveReport, useRejectReport } from '@/lib/queries';
+import { useRouter } from 'next/navigation';
+import { Badge, ConfirmModal, DetailStates, SectionCard, type Tone } from '@/components/ui';
+import { useReport, useApproveReport, useRejectReport, useRemoveReport } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { ReasonModal } from '@/components/ReasonModal';
 import { shortDate } from '@/lib/format';
@@ -19,9 +20,12 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
   const access = useAccountAccess();
   const admin = access.can('approval.manage');
   const reportQuery = useReport(reportId);
+  const router = useRouter();
   const approveReport = useApproveReport();
   const rejectReport = useRejectReport();
+  const removeReport = useRemoveReport();
   const [rejecting, setRejecting] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   return (
     <div className="p-6 max-w-[760px] mx-auto space-y-5">
@@ -29,6 +33,8 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
         {(report) => {
           const { context } = report;
           const approval = reportApprovalBadge(report.approvalStatus);
+          const canRemove = report.approvalStatus === 'draft'
+            && (admin || access.instructorId === Number(report.instructorId));
           return (
             <>
               <div>
@@ -70,6 +76,11 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
                   <button className="btn btn-danger" disabled={rejectReport.isPending} onClick={() => setRejecting(true)}>반려</button>
                 </div>
               )}
+              {canRemove && (
+                <button className="btn btn-danger" disabled={removeReport.isPending} onClick={() => setRemoving(true)}>
+                  draft 철회
+                </button>
+              )}
               <p className="text-caption text-fg-subtle">
                 수정은 <Link href={internalRoute.session(report.sessionId)} className="underline">세션 상세의 피드백 폼</Link>에서 —
                 이 페이지와 같은 데이터(단일 소스)입니다.
@@ -81,6 +92,19 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
                   title="리포트 반려"
                   onClose={() => setRejecting(false)}
                   onSubmit={(reason) => { rejectReport.mutate({ id: report.id, reason }); setRejecting(false); }}
+                />
+              )}
+              {removing && (
+                <ConfirmModal
+                  title="draft 보고서 철회"
+                  message="잘못 만든 임시 보고서를 철회할까요? 보고서 행은 soft-delete되고 감사 이력은 보존됩니다."
+                  confirmLabel="철회"
+                  danger
+                  onClose={() => setRemoving(false)}
+                  onConfirm={() => removeReport.mutate(report.id, {
+                    onSuccess: () => router.replace('/reports'),
+                    onSettled: () => setRemoving(false),
+                  })}
                 />
               )}
             </>

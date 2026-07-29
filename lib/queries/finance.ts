@@ -1,6 +1,6 @@
 "use client";
 // 결제·지출·원장·매출·수업 보고서·정산 도메인 훅 — lib/queries.ts에서 분할(순수 이동).
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useAccountAccess } from "@/lib/useAccountAccess";
@@ -157,6 +157,23 @@ export const useCreateReport = () => useMutation({ mutationFn: api.reports.creat
 export const useUpdateReport = () =>
   useMutation({ mutationFn: ({ id, ...patch }: { id: number; content?: string; progressPage?: string; homework?: string }) => api.reports.update(id, patch), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
 export const useSubmitReport = () => useMutation({ mutationFn: api.reports.submit, onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
+export const useRemoveReport = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.reports.remove,
+    onMutate: (id) => queryClient.cancelQueries({ queryKey: qk.reports.detail(id) }),
+    onSuccess: async () => {
+      // Keep the active detail cache until the caller redirects. Removing an active query
+      // makes useQuery recreate it for one render and produces a noisy post-delete 404.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["reports", "list"] }),
+        queryClient.invalidateQueries({ queryKey: qk.payouts.all }),
+        queryClient.invalidateQueries({ queryKey: qk.schedule.all }),
+        queryClient.invalidateQueries({ queryKey: ["audit"] }),
+      ]);
+    },
+  });
+};
 export const useApproveReport = () =>
   useMutation({ mutationFn: (v: { id: number; approvedBy?: number }) => api.reports.approve(v.id, v.approvedBy), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
 export const useRejectReport = () =>

@@ -121,6 +121,8 @@ export const financeApi = {
       http.post<SessionReportRecord>(`/reports/${id}/approve`, { approvedBy }).then((r) => r.data),
     reject: (id: number, reason?: string) =>
       http.post<SessionReportRecord>(`/reports/${id}/reject`, { reason }).then((r) => r.data),
+    remove: (id: number) =>
+      http.delete<{ id: number; deleted: true }>(`/reports/${id}`).then((r) => r.data),
   },
   // ── 강사 페이 정산(TBO-05) — 시수×시급 산정 → 승인 → 지급 ──
   payouts: {
