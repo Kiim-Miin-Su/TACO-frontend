@@ -8,6 +8,8 @@ describe("access-control", () => {
   });
 
   it("keeps finance CEO-only and allows admin roles to enter scoped signup decisions", () => {
+    expect(hasCapability("super_admin", "executive.manage")).toBe(true);
+    expect(hasCapability("admin", "executive.manage")).toBe(false);
     expect(hasCapability("super_admin", "finance.access")).toBe(true);
     expect(hasCapability("super_admin", "signup.decide")).toBe(true);
     expect(hasCapability("admin", "finance.access")).toBe(false);

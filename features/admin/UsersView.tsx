@@ -7,7 +7,7 @@
 //    같은 식별자로 재가입 가능, 주민등록번호 암호문은 즉시 파기).
 //  · 승인/반려 결정 자체는 승인센터(가입 승인 대기)가 단일 창구 — 여기서는 링크로 안내.
 import { ACCOUNT_STATUS_LABEL } from '@/lib/domain/accounts'; // [P2 FE-7]
-import { isSuperAdmin } from '@/lib/access-control'; // [P2 FE-8]
+import { hasCapability } from '@/lib/access-control';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
@@ -39,7 +39,7 @@ type SudoIntent =
 
 export function UsersView() {
   const { role, can } = useAccountAccess();
-  const isSuper = isSuperAdmin(role); // [P2 FE-8] 진실원(access-control)
+  const isSuper = hasCapability(role, 'executive.manage');
   const visibleFilters = isSuper ? FILTERS : FILTERS.filter((item) => item !== 'terminated');
   const { data: users = [], isLoading } = useUsers(isSuper);
   const resend = useResendPendingVerification();

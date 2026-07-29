@@ -1,6 +1,6 @@
 'use client';
 
-import { isSuperAdmin } from '@/lib/access-control'; // [P2 FE-8]
+import { hasCapability } from '@/lib/access-control';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Badge, ConfirmModal, DetailStates, EmptyState, LoadingState, SectionCard, TableWrap } from '@/components/ui';
@@ -27,7 +27,7 @@ export function InstructorDetailView({ instructorId }: { instructorId: number })
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [contractModal, setContractModal] = useState<InstructorContract | 'create' | null>(null);
-  const isSuper = isSuperAdmin(role); // [P2 FE-8] 진실원(access-control)
+  const isSuper = hasCapability(role, 'executive.manage');
 
   return (
     <DetailStates query={query} notFoundMessage="강사를 찾을 수 없습니다." backHref="/admin/instructors">

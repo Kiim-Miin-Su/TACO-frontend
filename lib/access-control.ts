@@ -1,42 +1,18 @@
 import type { AccountRole } from "@/types";
+import { roleHasCapability, type RoleCapability } from "@kms545487/contracts";
 
-export type AppCapability =
-  | "admin.area"
-  | "approval.manage"
-  | "signup.decide"
-  | "finance.access"
-  | "payout.readiness"
-  | "calendar.manage"
-  | "calendar.request-own"
-  | "instructor.self"
-  | "counsel.manage"
-  | "student.hard-delete"
-  | "security.events.read";
+export type AppCapability = RoleCapability;
 
 export type VerifiedAccount = { id: number; name: string; role: AccountRole };
 
 const ROLE_PRIORITY: AccountRole[] = ["super_admin", "admin", "manager", "instructor"];
-
-const ROLE_CAPABILITIES: Record<AccountRole, ReadonlySet<AppCapability>> = {
-  super_admin: new Set([
-    "admin.area", "approval.manage", "signup.decide", "finance.access",
-    "payout.readiness", "calendar.manage", "calendar.request-own", "counsel.manage", "student.hard-delete",
-    "security.events.read",
-  ]),
-  admin: new Set(["admin.area", "approval.manage", "signup.decide", "payout.readiness", "calendar.manage", "calendar.request-own", "counsel.manage", "student.hard-delete", "security.events.read"]),
-  manager: new Set(["admin.area", "approval.manage", "signup.decide", "payout.readiness", "calendar.manage", "calendar.request-own", "counsel.manage"]),
-  instructor: new Set(["calendar.request-own", "instructor.self"]),
-  // 학생과 학부모는 도메인 역할 호환값일 뿐 백오피스 로그인 역할이 아니다.
-  student: new Set(),
-  parent: new Set(),
-};
 
 export function resolveBackofficeRole(roles: readonly string[]): AccountRole | null {
   return ROLE_PRIORITY.find((role) => roles.includes(role)) ?? null;
 }
 
 export function hasCapability(role: AccountRole | null | undefined, capability: AppCapability): boolean {
-  return role != null && ROLE_CAPABILITIES[role].has(capability);
+  return role != null && roleHasCapability(role, capability);
 }
 
 export function accountScopeKey(account: Pick<VerifiedAccount, "id" | "role"> | null): string {
