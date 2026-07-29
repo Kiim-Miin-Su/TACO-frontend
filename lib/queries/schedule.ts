@@ -340,6 +340,17 @@ export const useCreateScheduleRequest = () => {
     },
   });
 };
+export const useCreateScheduleRequestBulk = () => {
+  const qc = useQueryClient();
+  const { scope } = useAccountAccess();
+  return useMutation({
+    mutationFn: api.scheduleRequests.createBulk,
+    onSuccess: (data) => {
+      for (const row of data.rows) upsertScheduleRequestCache(qc, scope, row);
+      return invalidateScheduleRequests(qc);
+    },
+  });
+};
 export const useApproveScheduleRequest = () => {
   const qc = useQueryClient();
   const { scope } = useAccountAccess();

@@ -51,6 +51,7 @@ export type {
   AvailabilityKindEx,
   ScheduleRequestEx,
   CreateScheduleRequestBody,
+  CreateScheduleRequestBulkBody,
   UpdateScheduleRequestBody,
   ScheduleCreateBody,
   ScheduleSeriesCreateBody,

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildAvailabilityRequestBody, buildSessionCreateRequestBody, buildSessionDeleteRequestBody } from './request-drafts';
+import {
+  buildAvailabilityRequestBody,
+  buildSessionCreateRequestBatch,
+  buildSessionCreateRequestBody,
+  buildSessionDeleteRequestBody,
+} from './request-drafts';
 
 describe('request draft builders', () => {
   it('availability_upsert 요청 payload에 사유와 block 필드를 보존', () => {
@@ -81,5 +86,17 @@ describe('request draft builders', () => {
       kind: 'level_test',
       mode: 'online',
     });
+  });
+
+  it('반복 session_create는 같은 idempotency key 아래 결정적 순서로 묶는다', () => {
+    const batch = buildSessionCreateRequestBatch([
+      { courseId: 10, sessionDate: '2026-08-03', startTime: '16:00' },
+      { courseId: 10, sessionDate: '2026-08-10', startTime: '16:00' },
+    ], 1, 'f957825a-f104-4827-9b2b-87f890ca6e9c');
+    expect(batch.idempotencyKey).toBe('f957825a-f104-4827-9b2b-87f890ca6e9c');
+    expect(batch.requests.map((request) => request.sessionDate))
+      .toEqual(['2026-08-03', '2026-08-10']);
+    expect(batch.requests.every((request) =>
+      request.requestKind === 'session_create' && request.instructorId === 1)).toBe(true);
   });
 });

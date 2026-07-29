@@ -30,6 +30,7 @@ import {
   useScheduleResources,
   useAllAvailability,
   useCreateScheduleRequest,
+  useCreateScheduleRequestBulk,
   // [B6 C4/EP9] 관리자 직접 쓰기도 중앙 mutation 훅으로 — 수동 api.* + 수동 무효화 잔재 제거.
   //  훅 onSuccess가 무효화(스케줄=캘린더 명령 7-scope, 가용=availability만)를 담당하므로
   //  성공 직후의 명시 load()/reloadSelBlocks()는 제거했다(이중 refetch 방지).
@@ -51,7 +52,12 @@ import { scopeCalendarRowsToInstructor } from "@/lib/domain/calendar-access";
 import { calendarEnrollmentRows, calendarScheduleCourses, calendarSubjectOptions } from "@/lib/domain/schedule-resources";
 import { appendCalendarPane, companionPaneSeed, currentPaneSeeds } from "@/lib/domain/calendar-panes";
 import { availabilityGhostBandsForColumn } from "@/lib/domain/pending-ghosts";
-import { buildAvailabilityRequestBody, buildSessionCreateRequestBody, buildSessionDeleteRequestBody } from "@/lib/domain/request-drafts";
+import {
+  buildAvailabilityRequestBody,
+  buildSessionCreateRequestBatch,
+  buildSessionCreateRequestBody,
+  buildSessionDeleteRequestBody,
+} from "@/lib/domain/request-drafts";
 import { calendarExportFilename, resolveExportPeople } from "@/lib/domain/calendar-export";
 import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
 import { axisCompanionTimezone, buildTimezonePaneGroups, resourceTimezoneKey, resourceTimezoneOf, type ResourceTimezoneOverrides } from "@/lib/domain/resource-timezone";
@@ -158,6 +164,7 @@ export function ScheduleCalendar() {
   // 권한은 AppShell의 `/auth/me` 검증 계정에서만 파생한다. 실제 쓰기 허용은 백엔드가 최종 판정한다.
   const qc = useQueryClient(); // [TBO-16] 요청 생성 후 scheduleRequests 무효화(배지·승인센터 동일 모집단)
   const createScheduleRequest = useCreateScheduleRequest();
+  const createScheduleRequestBulk = useCreateScheduleRequestBulk();
   // [B6 C4] 중앙 mutation 훅 — mutateAsync로 기존 낙관적 흐름(setRows 스냅샷/롤백)은 그대로 유지하고
   //  쓰기 경로와 무효화만 공용 계층으로 통일. useUpdateSchedule의 accountingPrompt 인터셉트는 mutate
   //  전용이라 mutateAsync엔 안 걸림 — 이 화면은 409 회계영향을 자체 모달(accountingAck)로 처리한다.
@@ -1236,21 +1243,23 @@ export function ScheduleCalendar() {
     }
   }
 
-  // [TBO-29C C2] 강사 반복 — 회차별 승인 요청(각 요청·승인은 서버에서 원자). 시리즈 단위 bulk 요청
-  //  명령은 C3(요청/승인 동일 UoW)에서 다룬다. 중도 실패 시 접수/미접수 개수를 정확히 알린다.
+  // [TBO-78 C2] 강사 반복 — 서버 bulk command 한 번으로 전체 요청+audit를 원자 저장한다.
+  // idempotency key는 한 mutation 변수에 결속되어 network retry가 중복 요청을 만들지 않는다.
   async function createSeriesRequests(bodies: ScheduleCreateBody[]) {
     if (bodies.length === 0) return;
     if (bodies.length === 1) return createSession(bodies[0]);
     setCreating(null);
-    let ok = 0;
     try {
-      for (const b of bodies) {
-        await createScheduleRequest.mutateAsync(buildSessionCreateRequestBody(b, myInstructorId ?? undefined));
-        ok += 1;
-      }
-      setMsg(`반복 수업 승인 요청 ${ok}건을 보냈습니다 — 매니저 승인 시 캘린더에 반영됩니다.`);
+      const result = await createScheduleRequestBulk.mutateAsync(
+        buildSessionCreateRequestBatch(
+          bodies,
+          myInstructorId ?? undefined,
+          crypto.randomUUID(),
+        ),
+      );
+      setMsg(`반복 수업 승인 요청 ${result.rows.length}건을 보냈습니다 — 매니저 승인 시 캘린더에 반영됩니다.`);
     } catch {
-      setMsg(ok ? `승인 요청 ${ok}/${bodies.length}건만 접수됐습니다 — 나머지 회차를 다시 요청하세요.` : "요청 실패 — 입력을 확인하세요");
+      setMsg("반복 승인 요청 전체를 저장하지 못했습니다 — 입력을 확인하고 다시 시도하세요.");
     }
   }
 

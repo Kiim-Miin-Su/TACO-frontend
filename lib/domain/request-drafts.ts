@@ -1,5 +1,10 @@
 import type { RecurrenceScope } from '@kms545487/contracts';
-import type { AvailabilityUpsertBody, CreateScheduleRequestBody, ScheduleCreateBody } from '@/lib/api';
+import type {
+  AvailabilityUpsertBody,
+  CreateScheduleRequestBody,
+  CreateScheduleRequestBulkBody,
+  ScheduleCreateBody,
+} from '@/lib/api';
 
 export type AvailabilityApprovalDraftInput =
   | { action: 'upsert'; body: AvailabilityUpsertBody }
@@ -64,5 +69,16 @@ export function buildSessionCreateRequestBody(
     memo: body.memo,
     kind: body.kind,
     mode: body.mode,
+  };
+}
+
+export function buildSessionCreateRequestBatch(
+  bodies: ScheduleCreateBody[],
+  instructorId: number | undefined,
+  idempotencyKey: string,
+): CreateScheduleRequestBulkBody {
+  return {
+    idempotencyKey,
+    requests: bodies.map((body) => buildSessionCreateRequestBody(body, instructorId)),
   };
 }

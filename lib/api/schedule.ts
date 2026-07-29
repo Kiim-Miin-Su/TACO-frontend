@@ -16,6 +16,8 @@ import type {
   Conflict,
   ScheduleRequest,
   CreateScheduleRequestInput,
+  CreateScheduleRequestBulkInput,
+  ScheduleRequestBulkResult,
   UpdateScheduleRequestInput,
   ScheduleRequestApprovalOptions as SharedScheduleRequestApprovalOptions,
   ScheduleQuery as SharedScheduleQuery,
@@ -39,6 +41,7 @@ export type ScheduleQuery = SharedScheduleQuery;
 export type AvailabilityKindEx = AvailabilityKind;
 export type ScheduleRequestEx = ScheduleRequest;
 export type CreateScheduleRequestBody = CreateScheduleRequestInput;
+export type CreateScheduleRequestBulkBody = CreateScheduleRequestBulkInput;
 export type UpdateScheduleRequestBody = UpdateScheduleRequestInput;
 export type ScheduleCreateBody = CreateClassSessionInput;
 export type ScheduleSeriesCreateBody = CreateScheduleSeriesCommand;
@@ -113,6 +116,8 @@ export const scheduleApi = {
       http.get<ScheduleRequestEx[]>("/schedule-requests", { ...options, params: status ? { status } : {} }).then((r) => r.data),
     create: (input: CreateScheduleRequestBody) =>
       http.post<{ row: ScheduleRequestEx; conflicts: Conflict[] }>("/schedule-requests", input).then((r) => r.data),
+    createBulk: (input: CreateScheduleRequestBulkBody) =>
+      http.post<ScheduleRequestBulkResult>("/schedule-requests/bulk", input).then((r) => r.data),
     approve: (id: number, options: ScheduleRequestApprovalOptions = {}) =>
       http.post<{ request: ScheduleRequestEx; conflicts: Conflict[] }>(
         `/schedule-requests/${id}/approve`,
