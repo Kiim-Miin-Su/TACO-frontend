@@ -10,20 +10,32 @@ import { ACCOUNT_STATUS_LABEL } from '@/lib/domain/accounts'; // [P2 FE-7]
 import { isSuperAdmin } from '@/lib/access-control'; // [P2 FE-8]
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Badge, ClickableTableRow, EmptyState, SectionCard, TableWrap, type Tone } from '@/components/ui';
+import {
+  Badge,
+  ClickableTableRow,
+  EmptyState,
+  SectionCard,
+  SudoActionModal,
+  TableWrap,
+  type Tone,
+} from '@/components/ui';
 import { ReasonModal } from '@/components/ReasonModal';
 import { CreateStaffModal } from '@/features/admin/CreateStaffModal';
 import { roleLabel } from '@/lib/roles';
 import { useAccountAccess } from '@/lib/useAccountAccess';
-import { useDeletePendingAccount, useResendPendingVerification, useUsers } from '@/lib/queries';
+import { useDeletePendingAccount, useReauth, useResendPendingVerification, useUsers } from '@/lib/queries';
 import { dateOnly } from '@/lib/format';
 import { internalRoute } from '@/lib/navigation-security';
 import { apiErrorMessage } from '@/lib/api-error';
 import type { AccountRole } from '@/types';
+import { isSudoValid, markSudoVerified } from '@/lib/sudo';
 
 const STATUS_LABEL = ACCOUNT_STATUS_LABEL; // [P2 FE-7] 진실원(lib/domain/accounts)
 const STATUS_TONE: Record<string, Tone> = { active: 'success', pending: 'attention', rejected: 'danger' };
 const FILTERS = ['all', 'active', 'pending', 'rejected'] as const;
+type SudoIntent =
+  | { kind: 'create' }
+  | { kind: 'delete'; id: number; reason: string };
 
 export function UsersView() {
   const { role, can } = useAccountAccess();
@@ -31,9 +43,12 @@ export function UsersView() {
   const { data: users = [], isLoading } = useUsers();
   const resend = useResendPendingVerification();
   const remove = useDeletePendingAccount();
+  const reauth = useReauth();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('all');
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false); // [07-20] Create는 리스트뷰 분리 버튼(대표 지시)
+  const [sudoIntent, setSudoIntent] = useState<SudoIntent | null>(null);
+  const [sudoError, setSudoError] = useState<unknown | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   const rows = useMemo(
@@ -45,6 +60,25 @@ export function UsersView() {
 
   // [75A] lib/api-error 단일 진실원 위임(로컬 파싱 재구현 제거)
   const serverMessage = (error: unknown, fallback: string): string => apiErrorMessage(error, fallback);
+  const performSensitiveAction = (intent: SudoIntent) => {
+    if (intent.kind === 'create') {
+      setCreateOpen(true);
+      return;
+    }
+    remove.mutate({ id: intent.id, reason: intent.reason }, {
+      onSuccess: () => setMsg('계정을 삭제했습니다. 같은 아이디·이메일로 다시 가입할 수 있습니다.'),
+      onError: (error) => setMsg(serverMessage(error, '삭제하지 못했습니다.')),
+    });
+  };
+  const requestSensitiveAction = (intent: SudoIntent) => {
+    setMsg(null);
+    if (isSudoValid()) {
+      performSensitiveAction(intent);
+      return;
+    }
+    setSudoError(null);
+    setSudoIntent(intent);
+  };
 
   if (!can('admin.area')) return null;
 
@@ -60,7 +94,8 @@ export function UsersView() {
             </button>
           ))}
           {isSuper && (
-            <button type="button" className="btn btn-sm btn-primary" onClick={() => setCreateOpen(true)}>+ 직접 등록</button>
+            <button type="button" className="btn btn-sm btn-primary"
+              onClick={() => requestSensitiveAction({ kind: 'create' })}>+ 직접 등록</button>
           )}
         </div>
       )}
@@ -131,11 +166,33 @@ export function UsersView() {
           placeholder="삭제 사유를 입력하세요 (감사 이력에 남습니다)"
           onClose={() => setDeleteTarget(null)}
           onSubmit={(reason) => {
-            remove.mutate({ id: deleteTarget, reason }, {
-              onSuccess: () => setMsg('계정을 삭제했습니다. 같은 아이디·이메일로 다시 가입할 수 있습니다.'),
-              onError: (error) => setMsg(serverMessage(error, '삭제하지 못했습니다.')),
-            });
+            requestSensitiveAction({ kind: 'delete', id: deleteTarget, reason });
             setDeleteTarget(null);
+          }}
+        />
+      )}
+      {sudoIntent && (
+        <SudoActionModal
+          pending={reauth.isPending}
+          error={sudoError}
+          message={sudoIntent.kind === 'create'
+            ? '직원 계정을 직접 등록하려면 현재 비밀번호를 다시 입력해 주세요.'
+            : '가입 신청을 삭제하려면 현재 비밀번호를 다시 입력해 주세요.'}
+          onClose={() => {
+            setSudoIntent(null);
+            setSudoError(null);
+          }}
+          onSubmit={(password) => {
+            setSudoError(null);
+            reauth.mutate(password, {
+              onSuccess: () => {
+                markSudoVerified();
+                const intent = sudoIntent;
+                setSudoIntent(null);
+                performSensitiveAction(intent);
+              },
+              onError: setSudoError,
+            });
           }}
         />
       )}
