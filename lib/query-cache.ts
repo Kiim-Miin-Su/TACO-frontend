@@ -184,6 +184,23 @@ export async function invalidateInstructorAggregate(queryClient: QueryClient): P
   );
 }
 
+// 계약 변경은 계약 화면뿐 아니라 시급을 소비하는 출결·정산·강사 aggregate 및 감사 이력을 갱신한다.
+export const INSTRUCTOR_CONTRACT_COMMAND_SCOPES = [
+  ["instructor-contracts"] as const,
+  qk.instructors.all,
+  qk.attendance.all,
+  qk.payouts.all,
+  ["audit"] as const,
+] as const;
+
+export async function invalidateInstructorContractCommand(queryClient: QueryClient): Promise<void> {
+  await Promise.all(
+    INSTRUCTOR_CONTRACT_COMMAND_SCOPES.map((key) =>
+      queryClient.invalidateQueries({ queryKey: key as unknown as readonly unknown[], refetchType: "active" }),
+    ),
+  );
+}
+
 export const COURSE_AGGREGATE_SCOPES = [qk.courses.all, qk.schedule.all, qk.payouts.all] as const;
 
 export async function invalidateCourseAggregate(queryClient: QueryClient): Promise<void> {

@@ -9,9 +9,11 @@ import {
   COURSE_AGGREGATE_SCOPES,
   CLASS_OPENING_SCOPES,
   INSTRUCTOR_AGGREGATE_SCOPES,
+  INSTRUCTOR_CONTRACT_COMMAND_SCOPES,
   STUDENT_AGGREGATE_SCOPES,
   STUDENT_RELATED_SCOPES,
   invalidateInstructorAggregate,
+  invalidateInstructorContractCommand,
   invalidateCourseAggregate,
   invalidateClassOpening,
   invalidateStudentAggregate,
@@ -155,6 +157,19 @@ describe("invalidateInstructorAggregate (TBO-36 36B)", () => {
     expect(INSTRUCTOR_AGGREGATE_SCOPES).toEqual(expect.arrayContaining([
       qk.instructors.all, qk.users.all, qk.courses.all, qk.schedule.all, qk.payouts.all,
     ]));
+  });
+});
+
+describe("invalidateInstructorContractCommand (TBO-77 77C)", () => {
+  it("계약 변경 후 계약·강사·출결·정산·감사 조회를 모두 DB 재조회한다", async () => {
+    const { queryClient, spy } = spyInvalidate();
+    await invalidateInstructorContractCommand(queryClient);
+    expect(spy).toHaveBeenCalledTimes(INSTRUCTOR_CONTRACT_COMMAND_SCOPES.length);
+    expect(calledRoots(spy)).toEqual(expect.arrayContaining(
+      [["instructor-contracts"], ["instructors"], ["attendance"], ["payouts"], ["audit"]]
+        .map((root) => JSON.stringify(root)),
+    ));
+    for (const [options] of spy.mock.calls) expect(options).toMatchObject({ refetchType: "active" });
   });
 });
 

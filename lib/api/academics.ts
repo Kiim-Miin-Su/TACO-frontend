@@ -10,6 +10,9 @@ import type {
   InstructorAggregate,
   CreateInstructorInput,
   UpdateInstructorInput,
+  InstructorContract,
+  CreateInstructorContractInput,
+  UpdateInstructorContractInput,
 } from "@kms545487/contracts";
 
 // [TBO-47 2026-07-23] 로드맵 aggregate — BE RoadmapsService.toAggregate 미러(코스명은 courses SSOT 조인 파생, 사본 저장 0).
@@ -22,12 +25,7 @@ export type CreateRoadmapBody = CreateRoadmapInput & { durationWeeks?: number };
 export type UpdateRoadmapInput = {
   title?: string; description?: string; targetGrade?: number | null; durationWeeks?: number | null; isActive?: boolean;
 };
-// [TBO-19 Sprint4] 강사 계약(백엔드 로컬 타입 — @kms545487/contracts 미포함). DB 이관 시 contracts로 승격 검토.
-export type InstructorContract = {
-  id: number; instructorId: number; monthlyHours: number; hourlyRate: number;
-  periodStart: string; periodEnd?: string; active: boolean; memo?: string;
-  createdAt: string; updatedAt: string;
-};
+export type { InstructorContract };
 
 export const academicsApi = {
   courses: {
@@ -57,9 +55,15 @@ export const academicsApi = {
     reorderCourses: (id: number, courseIds: number[]) =>
       http.patch<RoadmapAggregate>(`/roadmaps/${id}/courses/reorder`, { courseIds }).then((r) => r.data),
   },
-  // [TBO-19 Sprint4] 강사 계약(읽기 전용 — 매니저) — 백엔드 로컬 타입(contracts 미포함)
+  // [TBO-77C] 대표 전용 강사 계약 생명주기. 금액과 계약 기간은 DB 응답이 단일 진실원이다.
   instructorContracts: {
-    list: () => http.get<InstructorContract[]>("/instructor-contracts").then((r) => r.data),
+    list: (instructorId?: number) =>
+      http.get<InstructorContract[]>("/instructor-contracts", { params: { instructorId } }).then((r) => r.data),
+    get: (id: number) => http.get<InstructorContract>(`/instructor-contracts/${id}`).then((r) => r.data),
+    create: (input: CreateInstructorContractInput) =>
+      http.post<InstructorContract>("/instructor-contracts", input).then((r) => r.data),
+    update: (id: number, input: UpdateInstructorContractInput) =>
+      http.patch<InstructorContract>(`/instructor-contracts/${id}`, input).then((r) => r.data),
   },
   instructors: {
     list: () => http.get<InstructorAggregate[]>("/instructors").then((r) => r.data),
