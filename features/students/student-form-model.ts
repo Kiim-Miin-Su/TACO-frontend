@@ -78,10 +78,7 @@ export function studentProfileOf(student: Student): StudentProfileFormValue {
 }
 
 export function initialInterests(): InterestFormValue[] {
-  return [
-    { clientId: 'interest-initial-1', target: 'course', courseId: '', customLabel: '' },
-    { clientId: 'interest-initial-2', target: 'course', courseId: '', customLabel: '' },
-  ];
+  return [];
 }
 
 export function interestFormsOf(interests: StudentInterest[]): InterestFormValue[] {
@@ -111,7 +108,7 @@ export function validateStudentForm(profile: StudentProfileFormValue, interests:
   if (!profile.phone.trim()) errors.phone = '학생 연락처를 입력해 주세요.';
   if (profile.country !== 'KR' && !profile.kakaoId.trim()) errors.kakaoId = '해외 거주 학생은 카카오톡 ID가 필요합니다.';
   if (!profile.counselTopic.trim()) errors.counselTopic = '상담 주제를 입력해 주세요.';
-  if (interests.length < 2) errors.interests = '희망 수업은 2개 이상이어야 합니다.';
+  if (interests.length > 20) errors.interests = '희망 수업은 최대 20개까지 등록할 수 있습니다.';
   if (interests.some((item) => item.target === 'course' ? !item.courseId : !item.customLabel.trim())) {
     errors.interests = '각 희망 수업의 코스 또는 직접 입력명을 채워 주세요.';
   }

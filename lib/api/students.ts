@@ -26,6 +26,7 @@ import type {
   UpdateCounselRoundInput,
   CreateParentInput,
   CreateEnrollmentInput,
+  CreateStudentCounselIntakeInput,
 } from "@kms545487/contracts";
 
 export type InternalCreateCounselInput =
@@ -102,6 +103,17 @@ export const studentsApi = {
         guardians: Array<{ parent: Parent; relation: ParentStudent; linkedExisting: boolean }>;
         enrollment: Enrollment | null;
       }>("/students/registrations", body).then((r) => r.data),
+    registerWithCounsel: (body: CreateStudentCounselIntakeInput) =>
+      http.post<{
+        registration: {
+          student: Student;
+          guardian: { parent: Parent; relation: ParentStudent; linkedExisting: boolean } | null;
+          guardians: Array<{ parent: Parent; relation: ParentStudent; linkedExisting: boolean }>;
+          enrollment: Enrollment | null;
+        };
+        counsel: CounselForm;
+        correlationId: string;
+      }>("/students/registrations/with-counsel", body).then((r) => r.data),
     // [피드백 2026-07-03] 캘린더 우측 패널 학생 정보 수정(출국/입국·상태 변경) — PATCH 부분 갱신.
     update: (id: number, patch: Partial<Pick<Student, "name" | "englishName" | "gender" | "birthDate" | "grade" | "phone" | "country" | "residenceType" | "address" | "addressDetail" | "kakaoId" | "counselTopic" | "schoolName" | "status" | "memo">>) =>
       http.patch<Student>(`/students/${id}`, patch).then((r) => r.data),

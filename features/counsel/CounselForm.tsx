@@ -2,14 +2,16 @@
 import { useState } from 'react';
 import { Field } from '@/components/ui';
 // 읽기(subjects·courses)/쓰기(상담 생성·수정)는 TanStack Query 훅 경유(zustand store 대체).
-import { useStudents, useCreateCounsel, useStudentFamily } from '@/lib/queries';
+import { useCourses, useCreateCounsel, useCreateStudentCounselIntake, useStudents, useStudentFamily } from '@/lib/queries';
 import { StudentSearchSelect } from '@/features/students/StudentSearchSelect';
+import { StudentRegistrationFields } from '@/features/students/StudentRegistrationFields';
+import { serverStudentErrors } from '@/features/students/student-form-model';
+import { useStudentRegistrationDraft } from '@/features/students/useStudentRegistrationDraft';
 // [TBO-30G] 가족 조인 단일 진실원 — 학생 상세·상담 상세와 같은 훅·같은 파생 헬퍼 소비(사본 정의 금지)
 import Link from 'next/link';
 import { familyCounselCount, familyMemberSub, familyRelationLabel } from '@/features/students/family-shared';
 import { internalRoute } from '@/lib/navigation-security';
 import { CounselContentField, CounselNextContactField } from './CounselSharedFields';
-import { counselKstPartsToInstant } from '@/lib/domain/counsel-time';
 
 type FormState = {
   studentId: number | null;
@@ -23,10 +25,23 @@ const empty: FormState = {
   nextContactAt: null,
 };
 
-export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) {
+type ApplicantMode = 'existing' | 'new';
+
+export function CounselForm({
+  onSubmitted,
+  initialMode = 'existing',
+}: {
+  onSubmitted?: () => void;
+  initialMode?: ApplicantMode;
+} = {}) {
   const createCounsel = useCreateCounsel();
+  const createIntake = useCreateStudentCounselIntake();
   const { data: students = [] } = useStudents();
+  const { data: courses = [] } = useCourses();
+  const draft = useStudentRegistrationDraft();
+  const [mode, setMode] = useState<ApplicantMode>(initialMode);
   const [f, setF] = useState<FormState>(empty);
+  const [message, setMessage] = useState('');
   const set = (p: Partial<FormState>) => setF((prev) => ({ ...prev, ...p }));
   const selectedStudent = f.studentId == null
     ? undefined
@@ -37,16 +52,31 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    setMessage('');
+    const counsel = {
+      referenceNotes: f.referenceNotes.trim() || undefined,
+      nextContactAt: f.nextContactAt ?? undefined,
+    };
+    if (mode === 'new') {
+      if (!draft.validate() || createIntake.isPending) return;
+      createIntake.mutate({ registration: draft.input(), counsel }, {
+        onSuccess: () => {
+          draft.reset();
+          setF(empty);
+          onSubmitted?.();
+        },
+        onError: (error) => {
+          const parsed = serverStudentErrors(error);
+          draft.setErrors((current) => ({ ...current, ...parsed.fields }));
+          setMessage(parsed.message);
+        },
+      });
+      return;
+    }
     if (f.studentId == null) return;
-    const formData = new FormData(e.currentTarget as HTMLFormElement);
-    const inputInstant = counselKstPartsToInstant({
-      date: String(formData.get('nextContactDate') ?? ''),
-      time: String(formData.get('nextContactTime') ?? ''),
-    });
     createCounsel.mutate({
       studentId: f.studentId,
-      referenceNotes: f.referenceNotes.trim() || undefined,
-      nextContactAt: inputInstant ?? f.nextContactAt ?? undefined,
+      ...counsel,
     }, {
       onSuccess: () => {
         setF(empty);
@@ -59,8 +89,18 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
     <form onSubmit={submit} className="space-y-8">
       {/* 종이 서식처럼 섹션으로 나눠 여백을 넉넉히 — 입력 항목이 많아도 한눈에 */}
       <Section title="신청자 정보">
-        <div className="sm:col-span-2 lg:col-span-3"><StudentSearchSelect students={students} value={f.studentId} onChange={(studentId) => set({ studentId })} required /></div>
-        {selectedStudent && <><Field label="학생 이름 (원부)"><input className="input" readOnly value={selectedStudent.name} /></Field><Field label="학생 본인 연락처 (원부)"><input className="input" readOnly value={selectedStudent.phone ?? ''} /></Field><Field label="Kakao ID (원부)"><input className="input" readOnly value={selectedStudent.kakaoId ?? ''} /></Field></>}
+        <div className="sm:col-span-2 lg:col-span-3">
+          <div className="flex w-fit overflow-hidden rounded-md border border-line" role="group" aria-label="상담 신청 학생 유형">
+            <button type="button" className={`btn btn-sm rounded-none border-0 ${mode === 'existing' ? 'badge-accent' : ''}`} onClick={() => setMode('existing')}>기존 학생</button>
+            <button type="button" className={`btn btn-sm rounded-none border-0 ${mode === 'new' ? 'badge-accent' : ''}`} onClick={() => setMode('new')}>신규 학생 등록</button>
+          </div>
+        </div>
+        {mode === 'existing' && (
+          <>
+            <div className="sm:col-span-2 lg:col-span-3"><StudentSearchSelect students={students} value={f.studentId} onChange={(studentId) => set({ studentId })} required /></div>
+            {selectedStudent && <><Field label="학생 이름 (원부)"><input className="input" readOnly value={selectedStudent.name} /></Field><Field label="학생 본인 연락처 (원부)"><input className="input" readOnly value={selectedStudent.phone ?? ''} /></Field><Field label="Kakao ID (원부)"><input className="input" readOnly value={selectedStudent.kakaoId ?? ''} /></Field></>}
+          </>
+        )}
         {/* [TBO-30G] 가족 맥락(조인 파생) — 형제·자매 상담 접수 시 기존 가족·상담 이력을 재입력 없이 확인 */}
         {selectedStudent && familyMembers.length > 0 && (
           <div className="sm:col-span-2 lg:col-span-3 rounded-lg p-3 bg-canvas-subtle text-body space-y-1">
@@ -80,6 +120,12 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
         )}
       </Section>
 
+      {mode === 'new' && (
+        <div className="space-y-6 border-t border-line-muted pt-6">
+          <StudentRegistrationFields draft={draft} courses={courses} showStatus={false} />
+        </div>
+      )}
+
       <Section title="예약 · 상담">
         <div className="sm:col-span-2">
           <CounselNextContactField value={f.nextContactAt} onChange={(nextContactAt) => set({ nextContactAt })} />
@@ -90,8 +136,13 @@ export function CounselForm({ onSubmitted }: { onSubmitted?: () => void } = {}) 
       </Section>
 
       <div className="flex justify-end pt-2 border-t border-line-muted">
-        <button type="submit" className="btn btn-primary" disabled={createCounsel.isPending || f.studentId == null}>
-          {createCounsel.isPending ? '접수 중…' : '상담 신청'}
+        {message && <p className="mr-auto text-caption text-danger" role="alert">{message}</p>}
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={createCounsel.isPending || createIntake.isPending || (mode === 'existing' && f.studentId == null)}
+        >
+          {createCounsel.isPending || createIntake.isPending ? 'DB 검증·접수 중…' : mode === 'new' ? '학생 등록 및 상담 접수' : '상담 신청'}
         </button>
       </div>
     </form>

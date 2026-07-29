@@ -27,13 +27,21 @@ describe('student aggregate form SSOT', () => {
     expect(interestInputsOf(interests)).toEqual([{ courseId: 10, priority: 1 }, { customLabel: 'Creative Writing', priority: 2 }]);
   });
 
-  it('해외 Kakao, 희망수업 최소 2개와 중복, 보호자 주대표 불변을 차단한다', () => {
+  it('해외 Kakao, 희망수업 최대 20개와 중복, 보호자 주대표 불변을 차단한다', () => {
     const guardians: GuardianFormValue[] = [
       { clientId: 'g1', name: '보호자1', phone: '010-1', relation: '모', isPayer: true, isPrimary: true },
       { clientId: 'g2', name: '보호자2', phone: '010-2', relation: '부', isPayer: false, isPrimary: true },
     ];
     const errors = validateStudentForm({ ...profile, country: 'US', kakaoId: '' }, [interests[0]], guardians);
-    expect(errors).toMatchObject({ kakaoId: expect.any(String), interests: expect.any(String), guardians: expect.any(String) });
+    expect(errors).toMatchObject({ kakaoId: expect.any(String), guardians: expect.any(String) });
+    expect(errors.interests).toBeUndefined();
+    expect(validateStudentForm(profile, []).interests).toBeUndefined();
+    expect(validateStudentForm(profile, Array.from({ length: 21 }, (_, index) => ({
+      clientId: `interest-${index}`,
+      target: 'custom' as const,
+      courseId: '',
+      customLabel: `희망 수업 ${index}`,
+    }))).interests).toContain('20개');
     expect(validateStudentForm(profile, [interests[0], { ...interests[0], clientId: 'duplicate' }]).interests).toContain('중복');
     expect(validateStudentForm({ ...profile, country: 'US-W', kakaoId: 'west' }, interests).country).toContain('2자리');
   });

@@ -93,6 +93,17 @@ export const useRegisterStudent = () => {
     onSettled: (result) => reconcileStudentCommand(queryClient, { studentId: result?.student.id }),
   });
 };
+export const useCreateStudentCounselIntake = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ["students", "register-with-counsel"],
+    mutationFn: api.students.registerWithCounsel,
+    onSuccess: async (result) => {
+      acceptStudentFromDatabase(queryClient, result.registration.student);
+      await reconcileStudentCommand(queryClient, { studentId: result.registration.student.id });
+    },
+  });
+};
 export const useUpdateStudent = () => {
   const queryClient = useQueryClient();
   return useMutation({

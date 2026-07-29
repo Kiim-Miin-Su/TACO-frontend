@@ -59,7 +59,7 @@ export function StudentProfileEditModal({ aggregate, onClose }: StudentProfileEd
         <StudentProfileFields value={profile} onChange={(patch) => setProfile((current) => ({ ...current, ...patch }))} errors={errors} />
       </section>
       <section>
-        <h3 className="text-caption font-semibold text-fg-muted mb-2">관심 희망 수업 (2개 이상)</h3>
+        <h3 className="text-caption font-semibold text-fg-muted mb-2">관심 희망 수업 (선택)</h3>
         <StudentInterestsFields value={interests} courses={courses} onChange={setInterests} error={errors.interests} />
       </section>
       {message && <p className="text-caption text-danger" role="alert">{message}</p>}

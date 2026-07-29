@@ -39,11 +39,12 @@ export function StudentInterestsFields({ value, courses, onChange, error }: Stud
           <div className="flex gap-1 justify-end">
             <button type="button" className="btn btn-sm" onClick={() => move(index, -1)} disabled={index === 0} aria-label={`${index + 1}순위 위로`}>↑</button>
             <button type="button" className="btn btn-sm" onClick={() => move(index, 1)} disabled={index === value.length - 1} aria-label={`${index + 1}순위 아래로`}>↓</button>
-            <button type="button" className="btn btn-sm btn-danger" onClick={() => onChange(value.filter((item) => item.clientId !== interest.clientId))} disabled={value.length <= 2}>삭제</button>
+            <button type="button" className="btn btn-sm btn-danger" onClick={() => onChange(value.filter((item) => item.clientId !== interest.clientId))}>삭제</button>
           </div>
         </div>
       ))}
       <button type="button" className="btn btn-sm" onClick={() => onChange([...value, { clientId: newClientId('interest'), target: 'course', courseId: '', customLabel: '' }])} disabled={value.length >= 20}>+ 희망 수업 추가</button>
+      {value.length === 0 && <p className="text-caption text-fg-subtle">희망 수업은 선택 사항입니다.</p>}
       {error && <p className="text-caption text-danger" role="alert">{error}</p>}
     </div>
   );
