@@ -14,7 +14,11 @@ const form = (id: number, nextContactAt?: string | null): CounselForm => ({
 
 describe('counselReservationsOnDate', () => {
   it('counsel_forms.nextContactAt 한 값만으로 예약일을 선택한다', () => {
-    const forms = [form(1, '2026-07-21'), form(2, null), form(3, '2026-07-22')];
+    const forms = [
+      form(1, '2026-07-20T15:30:00.000Z'),
+      form(2, null),
+      form(3, '2026-07-21T15:30:00.000Z'),
+    ];
     expect(counselReservationsOnDate(forms, '2026-07-21').map((row) => row.id)).toEqual([1]);
   });
 

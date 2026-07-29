@@ -167,14 +167,16 @@ export const useUpdateParentRelation = () => useMutation({
 export const useRemoveGuardian = () => useMutation({ mutationFn: api.parents.removeGuardian, onSuccess: useStudentAggregateMutationInvalidator() });
 
 // 상담
-export const useCreateCounsel = () => useMutation({ mutationFn: api.counsel.create, onSuccess: useInvalidator([qk.counsel.all]) });
+const useCounselMutationInvalidator = () => useInvalidator([qk.counsel.all, qk.students.all]);
+
+export const useCreateCounsel = () => useMutation({ mutationFn: api.counsel.create, onSuccess: useCounselMutationInvalidator() });
 export const useUpdateCounsel = () =>
-  useMutation({ mutationFn: (v: { id: number; patch: Parameters<typeof api.counsel.update>[1] }) => api.counsel.update(v.id, v.patch), onSuccess: useInvalidator([qk.counsel.all]) });
+  useMutation({ mutationFn: (v: { id: number; patch: Parameters<typeof api.counsel.update>[1] }) => api.counsel.update(v.id, v.patch), onSuccess: useCounselMutationInvalidator() });
 export const useRemoveCounsel = () =>
-  useMutation({ mutationFn: api.counsel.remove, onSuccess: useInvalidator([qk.counsel.all]) });
+  useMutation({ mutationFn: api.counsel.remove, onSuccess: useCounselMutationInvalidator() });
 export const useCreateCounselRound = () =>
-  useMutation({ mutationFn: (v: { formId: number; input: Parameters<typeof api.counsel.createRound>[1] }) => api.counsel.createRound(v.formId, v.input), onSuccess: useInvalidator([qk.counsel.all]) });
+  useMutation({ mutationFn: (v: { formId: number; input: Parameters<typeof api.counsel.createRound>[1] }) => api.counsel.createRound(v.formId, v.input), onSuccess: useCounselMutationInvalidator() });
 export const useUpdateCounselRound = () =>
-  useMutation({ mutationFn: (v: { formId: number; roundId: number; input: Parameters<typeof api.counsel.updateRound>[2] }) => api.counsel.updateRound(v.formId, v.roundId, v.input), onSuccess: useInvalidator([qk.counsel.all]) });
+  useMutation({ mutationFn: (v: { formId: number; roundId: number; input: Parameters<typeof api.counsel.updateRound>[2] }) => api.counsel.updateRound(v.formId, v.roundId, v.input), onSuccess: useCounselMutationInvalidator() });
 export const useRemoveCounselRound = () =>
-  useMutation({ mutationFn: (v: { formId: number; roundId: number }) => api.counsel.removeRound(v.formId, v.roundId), onSuccess: useInvalidator([qk.counsel.all]) });
+  useMutation({ mutationFn: (v: { formId: number; roundId: number }) => api.counsel.removeRound(v.formId, v.roundId), onSuccess: useCounselMutationInvalidator() });

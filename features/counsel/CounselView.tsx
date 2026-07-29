@@ -11,6 +11,7 @@ import { recentCounselForms } from '@/lib/domain/counsel';
 import { statusLabel, statusTone, sourceLabel } from './labels';
 import { useCounselStudentLookup } from './useCounselStudentLookup';
 import { internalRoute } from '@/lib/navigation-security';
+import { formatCounselInstantKst } from '@/lib/domain/counsel-time';
 
 type Tab = 'list' | 'calendar';
 
@@ -110,7 +111,7 @@ export function CounselView() {
                       <td className="text-fg-muted">{sourceLabel[f.source]}</td>
                       <td><Badge tone={statusTone[f.status]}>{statusLabel[f.status]}</Badge></td>
                       <td className="mono">{roundCount(f.id)}회</td>
-                      <td className="mono text-fg-muted">{f.nextContactAt ?? '—'}</td>
+                      <td className="mono text-fg-muted">{formatCounselInstantKst(f.nextContactAt)}</td>
                       <td className="mono text-fg-muted">{f.createdAt}</td>
                       <td className="text-right">
                         <Link href={internalRoute.counsel(f.id)} className="btn btn-sm">상세 보기</Link>

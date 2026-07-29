@@ -16,3 +16,10 @@ export const counselSnapshotInput = (snapshot: CounselFormSnapshot) => ({
   referenceNotes: snapshot.referenceNotes ?? null,
   nextContactAt: snapshot.nextContactAt ?? null,
 });
+
+export const counselSnapshotRevision = (snapshot: CounselFormSnapshot) => [
+  snapshot.studentId,
+  snapshot.status,
+  snapshot.referenceNotes ?? '',
+  snapshot.nextContactAt ?? '',
+].join('|');

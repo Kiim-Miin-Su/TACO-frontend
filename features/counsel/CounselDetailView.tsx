@@ -20,7 +20,7 @@ import type {
   StudentAggregate,
 } from '@/types';
 import { CounselPageFields } from './CounselPageFields';
-import { counselSnapshotInput, snapshotFromForm } from './snapshot';
+import { counselSnapshotInput, counselSnapshotRevision, snapshotFromForm } from './snapshot';
 import { resultLabel, resultTone, RESULTS, sourceLabel, statusLabel, statusTone } from './labels';
 import { internalRoute } from '@/lib/navigation-security';
 import { StudentProfileEditModal } from '@/features/students/StudentProfileEditModal';
@@ -62,7 +62,7 @@ function CounselDetailContent({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [editingStudent, setEditingStudent] = useState(false);
-  const latestSnapshot = rounds[rounds.length - 1]?.formSnapshot ?? snapshotFromForm(form);
+  const currentSnapshot = snapshotFromForm(form);
   const studentName = studentAggregate?.student.name ?? `학생 #${form.studentId}`;
 
   return (
@@ -110,8 +110,8 @@ function CounselDetailContent({
       ))}
 
       <NewRoundPage
-        key={`new-round-${rounds.length}`}
-        initial={latestSnapshot}
+        key={`new-round-${rounds.length}-${counselSnapshotRevision(currentSnapshot)}`}
+        initial={currentSnapshot}
         pending={createRound.isPending}
         error={createRound.isError ? '상담 차수를 저장하지 못했습니다.' : null}
         onCreate={(input) => createRound.mutate({ formId: form.id, input })}
@@ -123,6 +123,7 @@ function CounselDetailContent({
           message={`“${studentName}” 최초 폼과 ${rounds.length}개 차수 페이지를 삭제할까요? 행은 soft delete되고 감사 이력은 유지됩니다.`}
           confirmLabel="삭제"
           danger
+          pending={removeCounsel.isPending}
           onClose={() => setDeleteOpen(false)}
           onConfirm={() => {
             setDeleteError(null);
@@ -215,7 +216,7 @@ function HistoryPage({ round }: { round: CounselRound }) {
         }, { onSuccess: () => setEditing(false), onError: () => setError('상담 회차를 수정하지 못했습니다.') })}>{update.isPending ? '저장 중…' : '회차 저장'}</button></div>}
       </div>
       </SectionCard>
-      {deleteOpen && <ConfirmModal title={`${round.roundNo + 1}차 상담 삭제`} message="이 회차를 삭제할까요? 행과 감사 이력은 보존되며 현재 다음 상담일은 남은 최신 회차에서 다시 계산됩니다." confirmLabel="삭제" danger onClose={() => setDeleteOpen(false)} onConfirm={() => remove.mutate({ formId: round.counselFormId, roundId: round.id }, { onSuccess: () => setDeleteOpen(false), onError: () => { setError('상담 회차를 삭제하지 못했습니다.'); setDeleteOpen(false); } })} />}
+      {deleteOpen && <ConfirmModal title={`${round.roundNo + 1}차 상담 삭제`} message="이 회차를 삭제할까요? 행과 감사 이력은 보존되며 현재 다음 상담일은 남은 최신 회차에서 다시 계산됩니다." confirmLabel="삭제" danger pending={remove.isPending} onClose={() => setDeleteOpen(false)} onConfirm={() => remove.mutate({ formId: round.counselFormId, roundId: round.id }, { onSuccess: () => setDeleteOpen(false), onError: () => { setError('상담 회차를 삭제하지 못했습니다.'); setDeleteOpen(false); } })} />}
     </>
   );
 }

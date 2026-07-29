@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { counselSnapshotInput, snapshotFromForm } from '@/features/counsel/snapshot';
+import { counselSnapshotInput, counselSnapshotRevision, snapshotFromForm } from '@/features/counsel/snapshot';
 
 describe('snapshotFromForm', () => {
   it('차수 이력에 필요한 전체 상담 페이지를 nullable 값까지 고정한다', () => {
@@ -38,5 +38,21 @@ describe('snapshotFromForm', () => {
     expect(input).not.toHaveProperty('assignedStaffId');
     expect(input).not.toHaveProperty('source');
     expect(input).not.toHaveProperty('submitterType');
+  });
+
+  it('다음 회차 초안 key는 편집 가능한 snapshot 값이 바뀌면 갱신된다', () => {
+    const base = {
+      studentId: 17,
+      assignedStaffId: 3,
+      status: 'pending' as const,
+      source: 'manual' as const,
+      submitterType: 'staff' as const,
+      referenceNotes: '상담 내용',
+      nextContactAt: '2026-07-21T00:30:00.000Z',
+    };
+    expect(counselSnapshotRevision(base))
+      .not.toBe(counselSnapshotRevision({ ...base, nextContactAt: '2026-07-22T00:30:00.000Z' }));
+    expect(counselSnapshotRevision(base))
+      .not.toBe(counselSnapshotRevision({ ...base, referenceNotes: '수정된 상담 내용' }));
   });
 });

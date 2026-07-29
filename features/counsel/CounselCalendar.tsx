@@ -8,6 +8,7 @@ import { statusLabel, statusTone } from './labels';
 import { counselReservationsOnDate } from '@/lib/domain/counsel';
 import { useCounselStudentLookup } from './useCounselStudentLookup';
 import { internalRoute } from '@/lib/navigation-security';
+import { instantToCounselKstParts } from '@/lib/domain/counsel-time';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -46,28 +47,30 @@ export function CounselCalendar() {
         </div>
       }
     >
-      <div className="grid grid-cols-7 border-b">
+      <div className="grid min-w-0 grid-cols-7 border-b">
         {WEEK.map((w, i) => (
-          <div key={w} className={`px-3 py-2 text-caption font-semibold ${i === 0 ? 'text-danger' : i === 6 ? 'text-accent' : 'text-fg-muted'}`}>{w}</div>
+          <div key={w} className={`min-w-0 px-1 py-2 text-center text-caption font-semibold sm:px-3 ${i === 0 ? 'text-danger' : i === 6 ? 'text-accent' : 'text-fg-muted'}`}>{w}</div>
         ))}
       </div>
-      <div className="grid grid-cols-7">
+      <div className="grid min-w-0 grid-cols-7">
         {cells.map((day, idx) => {
           const dateStr = day ? `${monthStr}-${pad(day)}` : '';
           const history = day ? rounds.filter((r) => r.completedAt === dateStr) : [];
           const reservations = day ? counselReservationsOnDate(forms, dateStr) : [];
           return (
-            <div key={idx} className="min-h-[92px] border-b border-r p-1.5 border-line-muted">
+            <div key={idx} className="min-h-[92px] min-w-0 border-b border-r p-1 border-line-muted sm:p-1.5">
               {day && <div className="text-caption text-fg-subtle mb-1 px-1">{day}</div>}
               <div className="space-y-1">
                 {reservations.map((f) => {
                   const tone = statusTone[f.status];
+                  const time = instantToCounselKstParts(f.nextContactAt).time;
                   return (
                     <Link key={`r${f.id}`} href={internalRoute.counsel(f.id)}
                       className="block rounded px-1.5 py-1 text-micro font-medium truncate"
                       style={{ backgroundColor: toneBg[tone], color: toneFg[tone] }}
-                      title={`상담 예약 · ${statusLabel[f.status]}`}>
-                      📅 {studentById.get(f.studentId)?.name ?? `학생 #${f.studentId}`} 예약 ({statusLabel[f.status]})
+                      title={`${time} 상담 예약 · ${statusLabel[f.status]}`}>
+                      {time} {studentById.get(f.studentId)?.name ?? `학생 #${f.studentId}`}
+                      <span className="hidden sm:inline"> 예약 ({statusLabel[f.status]})</span>
                     </Link>
                   );
                 })}
