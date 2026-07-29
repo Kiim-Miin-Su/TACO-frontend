@@ -9,3 +9,10 @@ export const snapshotFromForm = (form: CounselForm): CounselFormSnapshot => ({
   referenceNotes: form.referenceNotes ?? null,
   nextContactAt: form.nextContactAt ?? null,
 });
+
+export const counselSnapshotInput = (snapshot: CounselFormSnapshot) => ({
+  studentId: snapshot.studentId,
+  status: snapshot.status,
+  referenceNotes: snapshot.referenceNotes ?? null,
+  nextContactAt: snapshot.nextContactAt ?? null,
+});

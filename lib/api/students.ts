@@ -4,6 +4,7 @@ import type {
   Student,
   Enrollment,
   CounselForm,
+  CounselFormSnapshot,
   CounselRound,
   CounselStatus,
   CounselResult,
@@ -26,6 +27,23 @@ import type {
   CreateParentInput,
   CreateEnrollmentInput,
 } from "@kms545487/contracts";
+
+export type InternalCreateCounselInput =
+  Omit<CreateCounselInput, "source" | "submitterType" | "assignedStaffId">;
+export type InternalUpdateCounselInput =
+  Omit<UpdateCounselInput, "source" | "submitterType" | "assignedStaffId">;
+type CounselFormCommandSnapshot = Pick<
+  CounselFormSnapshot,
+  "studentId" | "status" | "referenceNotes" | "nextContactAt"
+>;
+export type InternalCreateCounselRoundInput =
+  Omit<CreateCounselRoundInput, "counselorId" | "formSnapshot"> & {
+    formSnapshot?: CounselFormCommandSnapshot;
+  };
+export type InternalUpdateCounselRoundInput =
+  Omit<UpdateCounselRoundInput, "counselorId" | "formSnapshot"> & {
+    formSnapshot?: CounselFormCommandSnapshot;
+  };
 
 // [TBO-30G 2026-07-23 대표 지시] 가족(형제·자매) 테이블 조인 단일 진실원 — BE student-family.types.ts 미러.
 //  관계→학생→보호자→수강→상담 서버 조인 파생(읽기 전용·사본 0). 학생 상세·상담 화면이 이 하나만 소비.
@@ -123,12 +141,12 @@ export const studentsApi = {
       http.get<CounselCorrelation>("/counsel/analytics/correlation", { params: { ...(range.from ? { from: range.from } : {}), ...(range.to ? { to: range.to } : {}) } }).then((r) => r.data),
     rounds: (counselFormId?: number) =>
       http.get<CounselRound[]>("/counsel/rounds", { params: counselFormId ? { counselFormId } : undefined }).then((r) => r.data),
-    create: (input: CreateCounselInput) => http.post<CounselForm>("/counsel", input).then((r) => r.data),
-    update: (id: number, patch: UpdateCounselInput) => http.patch<CounselForm>(`/counsel/${id}`, patch).then((r) => r.data),
+    create: (input: InternalCreateCounselInput) => http.post<CounselForm>("/counsel", input).then((r) => r.data),
+    update: (id: number, patch: InternalUpdateCounselInput) => http.patch<CounselForm>(`/counsel/${id}`, patch).then((r) => r.data),
     remove: (id: number) => http.delete<CounselForm>(`/counsel/${id}`).then((r) => r.data),
-    createRound: (formId: number, input: CreateCounselRoundInput) =>
+    createRound: (formId: number, input: InternalCreateCounselRoundInput) =>
       http.post<CounselRound>(`/counsel/${formId}/rounds`, input).then((r) => r.data),
-    updateRound: (formId: number, roundId: number, input: UpdateCounselRoundInput) =>
+    updateRound: (formId: number, roundId: number, input: InternalUpdateCounselRoundInput) =>
       http.patch<CounselRound>(`/counsel/${formId}/rounds/${roundId}`, input).then((r) => r.data),
     removeRound: (formId: number, roundId: number) =>
       http.delete<{ id: number; deleted: true }>(`/counsel/${formId}/rounds/${roundId}`).then((r) => r.data),

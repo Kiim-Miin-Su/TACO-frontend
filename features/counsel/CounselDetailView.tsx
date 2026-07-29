@@ -20,7 +20,7 @@ import type {
   StudentAggregate,
 } from '@/types';
 import { CounselPageFields } from './CounselPageFields';
-import { snapshotFromForm } from './snapshot';
+import { counselSnapshotInput, snapshotFromForm } from './snapshot';
 import { resultLabel, resultTone, RESULTS, sourceLabel, statusLabel, statusTone } from './labels';
 import { internalRoute } from '@/lib/navigation-security';
 import { StudentProfileEditModal } from '@/features/students/StudentProfileEditModal';
@@ -111,7 +111,6 @@ function CounselDetailContent({
 
       <NewRoundPage
         key={`new-round-${rounds.length}`}
-        form={form}
         initial={latestSnapshot}
         pending={createRound.isPending}
         error={createRound.isError ? '상담 차수를 저장하지 못했습니다.' : null}
@@ -157,10 +156,7 @@ function EditableInitialPage({
 
   const save = () => onSave({
     studentId: draft.studentId,
-    assignedStaffId: draft.assignedStaffId ?? null,
     status: draft.status,
-    source: draft.source,
-    submitterType: draft.submitterType,
     referenceNotes: draft.referenceNotes ?? null,
     nextContactAt: draft.nextContactAt ?? null,
   });
@@ -215,7 +211,7 @@ function HistoryPage({ round }: { round: CounselRound }) {
         {error && <p className="text-caption text-danger" role="alert">{error}</p>}
         {editing && <div className="flex justify-end gap-2"><button className="btn btn-sm" onClick={() => setEditing(false)}>취소</button><button className="btn btn-sm btn-primary" disabled={update.isPending} onClick={() => update.mutate({
           formId: round.counselFormId, roundId: round.id,
-          input: { summary: notes.summary || null, detail: notes.detail || null, result: (notes.result || null) as CounselResult | null, nextAction: notes.nextAction || null, nextContactAt: snapshot.nextContactAt ?? null, formSnapshot: snapshot },
+          input: { summary: notes.summary || null, detail: notes.detail || null, result: (notes.result || null) as CounselResult | null, nextAction: notes.nextAction || null, nextContactAt: snapshot.nextContactAt ?? null, formSnapshot: counselSnapshotInput(snapshot) },
         }, { onSuccess: () => setEditing(false), onError: () => setError('상담 회차를 수정하지 못했습니다.') })}>{update.isPending ? '저장 중…' : '회차 저장'}</button></div>}
       </div>
       </SectionCard>
@@ -225,23 +221,20 @@ function HistoryPage({ round }: { round: CounselRound }) {
 }
 
 function NewRoundPage({
-  form,
   initial,
   pending,
   error,
   onCreate,
 }: {
-  form: CounselForm;
   initial: CounselFormSnapshot;
   pending: boolean;
   error: string | null;
   onCreate: (input: {
-    counselorId?: number;
     summary?: string;
     detail?: string;
     result?: CounselResult;
     nextAction?: string;
-    formSnapshot: CounselFormSnapshot;
+    formSnapshot: ReturnType<typeof counselSnapshotInput>;
   }) => void;
 }) {
   const [snapshot, setSnapshot] = useState<CounselFormSnapshot>({ ...initial });
@@ -268,12 +261,11 @@ function NewRoundPage({
             className="btn btn-primary"
             disabled={pending}
             onClick={() => onCreate({
-              counselorId: form.assignedStaffId ?? undefined,
               summary: notes.summary.trim() || undefined,
               detail: notes.detail.trim() || undefined,
               result: (notes.result || undefined) as CounselResult | undefined,
               nextAction: notes.nextAction.trim() || undefined,
-              formSnapshot: snapshot,
+              formSnapshot: counselSnapshotInput(snapshot),
             })}
           >
             {pending ? '저장 중…' : '다음 차수 페이지 저장'}

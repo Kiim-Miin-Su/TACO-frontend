@@ -11,7 +11,7 @@ export function CounselNewView() {
   return (
     <div className="p-6 max-w-page-form mx-auto space-y-4">
       <Link href="/counsel" className="text-caption text-fg-muted hover:underline">← 상담 목록</Link>
-      <PageHeader title="상담 신청" sub="학생·학부모 또는 상담실장이 작성 · 접수 후 상담카드로 관리됩니다" />
+      <PageHeader title="상담 신청" sub="내부 담당자가 등록 · 접수 후 상담카드로 관리됩니다" />
       <div className="card p-6 sm:p-8">
         <CounselForm onSubmitted={() => router.push('/counsel')} />
       </div>
