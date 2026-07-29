@@ -7,7 +7,17 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Badge, ConfirmModal, DetailStates, EmptyState, PageHeader, SectionCard, StatCard, TableWrap, type Tone } from "@/components/ui";
+import {
+  Badge,
+  ConfirmModal,
+  DetailStates,
+  EmptyState,
+  PageHeader,
+  SectionCard,
+  StatCard,
+  TableWrap,
+  type Tone,
+} from "@/components/ui";
 import {
   useStudentAggregate,
   useEnrollments,
@@ -122,8 +132,12 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                       <CountryBadge code={student.country} />
                       {canEdit && (
                         <>
-                          <button className="btn btn-sm" onClick={() => setStatusOpen(true)}>상태 변경</button>
-                          <button className="btn btn-sm" onClick={() => setEditing(true)}>정보 수정</button>
+                          <button className="btn btn-sm" onClick={() => setStatusOpen(true)}>
+                            상태 변경
+                          </button>
+                          <button className="btn btn-sm" onClick={() => setEditing(true)}>
+                            정보 수정
+                          </button>
                         </>
                       )}
                     </span>
@@ -259,7 +273,9 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                               <td className="mono text-fg-muted whitespace-nowrap">
                                 {`${shortDate(r.context.session.sessionDate)}${r.context.session.startTime ? ` ${r.context.session.startTime}` : ""}`}
                               </td>
-                              <td className="font-medium whitespace-nowrap">{r.context.subject?.name ?? r.context.course.name}</td>
+                              <td className="font-medium whitespace-nowrap">
+                                {r.context.subject?.name ?? r.context.course.name}
+                              </td>
                               <td className="max-w-[280px] truncate text-fg-muted">{r.progressPage || r.content || "—"}</td>
                               <td className="max-w-[160px] truncate text-fg-muted">{r.homework || "—"}</td>
                               <td>
@@ -391,18 +407,26 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                     <div>
                       <p className="font-medium">잘못 생성된 원부 삭제</p>
                       <p className="text-caption text-fg-muted">
-                        퇴원은 상태 변경을 사용합니다. 원부 삭제는 활성 수강과 연결 관계를 종료하고 감사 이력을 남기는 복구 불가 작업입니다.
+                        퇴원은 상태 변경을 사용합니다. 원부 삭제는 활성 수강과 연결 관계를 종료하고 감사 이력을 남기는 복구 불가
+                        작업입니다.
                       </p>
                     </div>
                     <button
                       type="button"
                       className="btn btn-sm btn-danger shrink-0"
-                      onClick={() => { setDeleteError(""); setDeleteOpen(true); }}
+                      onClick={() => {
+                        setDeleteError("");
+                        setDeleteOpen(true);
+                      }}
                     >
                       원부 삭제
                     </button>
                   </div>
-                  {deleteError && <p className="px-4 pb-4 text-caption text-danger" role="alert">{deleteError}</p>}
+                  {deleteError && (
+                    <p className="px-4 pb-4 text-caption text-danger" role="alert">
+                      {deleteError}
+                    </p>
+                  )}
                 </SectionCard>
               )}
 
@@ -412,12 +436,12 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
               {deleteOpen && (
                 <ConfirmModal
                   title={`${student.name} 학생 원부 삭제`}
-                  message={(
+                  message={
                     <div className="space-y-2">
                       <p>중복 등록이나 잘못 생성한 원부를 soft delete하고 활성 수강과 연결 관계를 종료합니다.</p>
                       <p className="font-medium text-danger">퇴원 또는 등록이탈 처리라면 취소 후 “상태 변경”을 사용하세요.</p>
                     </div>
-                  )}
+                  }
                   confirmLabel="원부 삭제"
                   pending={removeStudent.isPending || sudoAction.isPending}
                   danger
@@ -428,10 +452,9 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                     void sudoAction.run(() => removeStudent.mutateAsync(student.id), {
                       onSuccess: () => router.replace("/students"),
                       onError: (error) => {
-                        setDeleteError(apiErrorMessage(
-                          error,
-                          "DB에서 원부 삭제를 확정하지 못했습니다. 데이터는 변경되지 않았습니다.",
-                        ));
+                        setDeleteError(
+                          apiErrorMessage(error, "DB에서 원부 삭제를 확정하지 못했습니다. 데이터는 변경되지 않았습니다."),
+                        );
                       },
                     });
                   }}
