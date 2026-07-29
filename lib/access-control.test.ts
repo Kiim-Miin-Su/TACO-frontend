@@ -26,6 +26,13 @@ describe("access-control", () => {
     expect(hasCapability("instructor", "counsel.manage")).toBe(false);
   });
 
+  it("keeps student registry deletion out of the manager surface", () => {
+    expect(hasCapability("super_admin", "student.hard-delete")).toBe(true);
+    expect(hasCapability("admin", "student.hard-delete")).toBe(true);
+    expect(hasCapability("manager", "student.hard-delete")).toBe(false);
+    expect(hasCapability("instructor", "student.hard-delete")).toBe(false);
+  });
+
   it("fails closed before an authoritative account exists", () => {
     expect(hasCapability(null, "admin.area")).toBe(false);
     expect(accountScopeKey(null)).toBe("anon");

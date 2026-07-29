@@ -6,6 +6,7 @@ import { logger } from "../log";
 import { safeLogValue, safeUrlForLog } from "../log-redaction";
 import { isPublicRoute } from "../auth-routes";
 import { resetPreferences } from "../storage/preferences";
+import { isSudoRequiredError } from "../sudo";
 
 export type ApiReadOptions = Pick<AxiosRequestConfig, "signal">;
 
@@ -61,9 +62,11 @@ http.interceptors.response.use(
     const status = err?.response?.status ?? "ERR";
     const meta = (err?.config as unknown as MetaConfig)?.meta;
     const errRid = String(err?.response?.headers?.["x-request-id"] ?? "");
-    apiLog.error(
+    const responseData = err?.response?.data;
+    const expectedSudoChallenge = isSudoRequiredError(err);
+    apiLog[expectedSudoChallenge ? "warn" : "error"](
       `✗ ${status} ${err?.config?.method?.toUpperCase() ?? ""} ${safeUrlForLog(err?.config?.url)} ${meta ? `${Date.now() - meta.start}ms #${meta.seq}` : ""}${errRid ? ` rid=${errRid}` : ""}`,
-      safeLogValue(err?.response?.data ?? err?.message),
+      safeLogValue(responseData ?? err?.message),
     );
     // [대표 지시 ④] 401 → refresh 회전으로 조용한 갱신 시도(1회) — 성공 시 원 요청 재실행.
     //  auth 계열 엔드포인트 자신·이미 재시도한 요청은 제외(무한 루프 방지).

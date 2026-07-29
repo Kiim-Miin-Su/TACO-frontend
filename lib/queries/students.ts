@@ -15,7 +15,12 @@ import {
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { CATALOG_STALE, detailRetry, useInvalidator } from "./shared";
 
-export const useStudents = () => useQuery({ queryKey: qk.students.list(), queryFn: () => api.students.list(), staleTime: CATALOG_STALE });
+export const useStudents = (includeInactive = false) =>
+  useQuery({
+    queryKey: qk.students.list(includeInactive),
+    queryFn: () => api.students.list(includeInactive),
+    staleTime: CATALOG_STALE,
+  });
 // [TBO-59 C3 · P0-5] 보호자 연락처 = 관리자 전용 API — 강사 계정에선 조회 자체를 막아 403 소음 제거.
 export const useParents = () => {
   const { can } = useAccountAccess();

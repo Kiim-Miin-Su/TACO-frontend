@@ -93,7 +93,10 @@ export type CounselAnalyticsRange = { from?: string | null; to?: string | null }
 
 export const studentsApi = {
   students: {
-    list: () => http.get<Student[]>("/students").then((r) => r.data),
+    list: (includeInactive = false) =>
+      http.get<Student[]>("/students", {
+        params: includeInactive ? { includeInactive: "true" } : undefined,
+      }).then((r) => r.data),
     aggregate: (id: number) => http.get<StudentAggregate>(`/students/${id}/aggregate`).then((r) => r.data),
     // [TBO-35 35C] 호환 URL도 동일 aggregate command를 소비한다.
     register: (body: CreateStudentAggregateInput) =>

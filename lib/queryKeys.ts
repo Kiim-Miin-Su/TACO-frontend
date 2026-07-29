@@ -51,7 +51,7 @@ export const qk = {
   reports: { all: ["reports"] as const, list: (sessionId?: number, scope = "global") => ["reports", "list", scope, sessionId ?? null] as const, detail: (id: number) => ["reports", "detail", id] as const },
   students: {
     all: ["students"] as const,
-    list: () => ["students", "list"] as const,
+    list: (includeInactive = false) => ["students", "list", includeInactive] as const,
     aggregate: (id: number) => ["students", "aggregate", id] as const,
     family: (id: number) => ["students", "family", id] as const, // [TBO-30G] 가족 조인 SSOT — students prefix라 기존 무효화에 자동 포함
   }, // [B7 E3]

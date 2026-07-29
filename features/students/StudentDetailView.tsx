@@ -6,7 +6,8 @@
 //   · 읽기 전용(편집은 각 도메인 화면 — 결제·상담·출결부). 여기선 종합 열람만.
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Badge, DetailStates, EmptyState, PageHeader, SectionCard, StatCard, TableWrap, type Tone } from "@/components/ui";
+import { useRouter } from "next/navigation";
+import { Badge, ConfirmModal, DetailStates, EmptyState, PageHeader, SectionCard, StatCard, TableWrap, type Tone } from "@/components/ui";
 import {
   useStudentAggregate,
   useEnrollments,
@@ -15,6 +16,7 @@ import {
   useReports,
   usePayments,
   useCounselForms,
+  useRemoveStudent,
 } from "@/lib/queries";
 import { reportApprovalBadge } from "@/lib/domain/reports"; // [75C] 승인 라벨 단일 진실원
 import { useAccountAccess } from "@/lib/useAccountAccess";
@@ -29,16 +31,26 @@ import { StudentGuardiansSection } from "./StudentGuardiansSection";
 import { StudentFamilyRelationsSection } from "./StudentFamilyRelationsSection";
 import { StudentAcademicHistoriesSection } from "./StudentAcademicHistoriesSection";
 import { internalRoute } from "@/lib/navigation-security";
+import { StudentStatusChangeModal } from "./StudentStatusChangeModal";
+import { useSudoAction } from "@/lib/hooks/useSudoAction";
+import { apiErrorMessage } from "@/lib/api-error";
 
 // [TBO-34 C3] 수강 상태 표기 = lib/domain/enrollments 단일 진실원(사본 제거)
 import { ENROLLMENT_STATUS_LABEL as enrollLabel, ENROLLMENT_STATUS_TONE as enrollTone } from "@/lib/domain/enrollments";
 
 export function StudentDetailView({ studentId }: { studentId: number }) {
+  const router = useRouter();
   const access = useAccountAccess();
   const finance = access.can("finance.access");
   const adminArea = access.can("admin.area");
+  const canHardDelete = access.can("student.hard-delete");
   const canEdit = adminArea;
   const [editing, setEditing] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const removeStudent = useRemoveStudent();
+  const sudoAction = useSudoAction();
   const studentQuery = useStudentAggregate(studentId);
   const { data: enrollments = [] } = useEnrollments();
   const { data: courses = [] } = useCourses();
@@ -109,14 +121,16 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                       <Badge tone={STUDENT_STATUS_TONE[student.status] as Tone}>{STUDENT_STATUS_LABEL[student.status]}</Badge>
                       <CountryBadge code={student.country} />
                       {canEdit && (
-                        <button className="btn btn-sm" onClick={() => setEditing(true)}>
-                          정보 수정
-                        </button>
+                        <>
+                          <button className="btn btn-sm" onClick={() => setStatusOpen(true)}>상태 변경</button>
+                          <button className="btn btn-sm" onClick={() => setEditing(true)}>정보 수정</button>
+                        </>
                       )}
                     </span>
                   }
                 />
                 {editing && <StudentProfileEditModal aggregate={aggregate} onClose={() => setEditing(false)} />}
+                {statusOpen && <StudentStatusChangeModal student={student} onClose={() => setStatusOpen(false)} />}
               </div>
 
               {adminArea ? (
@@ -371,9 +385,59 @@ export function StudentDetailView({ studentId }: { studentId: number }) {
                 </SectionCard>
               )}
 
+              {canHardDelete && (
+                <SectionCard title="위험 작업">
+                  <div className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-medium">잘못 생성된 원부 삭제</p>
+                      <p className="text-caption text-fg-muted">
+                        퇴원은 상태 변경을 사용합니다. 원부 삭제는 활성 수강과 연결 관계를 종료하고 감사 이력을 남기는 복구 불가 작업입니다.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-danger shrink-0"
+                      onClick={() => { setDeleteError(""); setDeleteOpen(true); }}
+                    >
+                      원부 삭제
+                    </button>
+                  </div>
+                  {deleteError && <p className="px-4 pb-4 text-caption text-danger" role="alert">{deleteError}</p>}
+                </SectionCard>
+              )}
+
               <p className="text-caption text-fg-subtle">
                 학생 기본정보는 관리자만 이 화면에서 수정합니다. 결제·상담·출결은 각 도메인 화면의 권위 데이터를 사용합니다.
               </p>
+              {deleteOpen && (
+                <ConfirmModal
+                  title={`${student.name} 학생 원부 삭제`}
+                  message={(
+                    <div className="space-y-2">
+                      <p>중복 등록이나 잘못 생성한 원부를 soft delete하고 활성 수강과 연결 관계를 종료합니다.</p>
+                      <p className="font-medium text-danger">퇴원 또는 등록이탈 처리라면 취소 후 “상태 변경”을 사용하세요.</p>
+                    </div>
+                  )}
+                  confirmLabel="원부 삭제"
+                  pending={removeStudent.isPending || sudoAction.isPending}
+                  danger
+                  onClose={() => setDeleteOpen(false)}
+                  onConfirm={() => {
+                    setDeleteOpen(false);
+                    setDeleteError("");
+                    void sudoAction.run(() => removeStudent.mutateAsync(student.id), {
+                      onSuccess: () => router.replace("/students"),
+                      onError: (error) => {
+                        setDeleteError(apiErrorMessage(
+                          error,
+                          "DB에서 원부 삭제를 확정하지 못했습니다. 데이터는 변경되지 않았습니다.",
+                        ));
+                      },
+                    });
+                  }}
+                />
+              )}
+              {sudoAction.modal}
             </div>
           );
         }}
