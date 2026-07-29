@@ -1142,6 +1142,8 @@ export function ScheduleCalendar() {
       courseName: c?.name ?? "수업", subjectName: c?.subjectName ?? "",
       instructorName: c?.instructorName ?? "", roomName: rooms.find((r) => r.id === body.roomId)?.name,
       studentIds: [], studentNames: [],
+      attendanceRequired: false,
+      missingAttendance: { instructor: false, studentIds: [] },
     } as ScheduleRow;
   }
 

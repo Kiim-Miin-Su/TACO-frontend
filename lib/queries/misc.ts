@@ -1,7 +1,7 @@
 "use client";
 // 컴포지트(useAppData/useTaskData)·뷰 프리셋·리포트 템플릿·알림 뱃지 훅 — lib/queries.ts에서 분할(순수 이동).
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { todayKst } from '@/lib/format'; // [P2]
+import { addDaysISO, todayKst } from '@/lib/format'; // [P2]
 import { api } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { canAccessFinance } from "@/lib/roles";
@@ -79,12 +79,22 @@ export function useTaskData() {
   //  실측: 전 페이지 첫 로드가 이 훅으로 전 도메인 14목록을 받고 schedule이 페이로드 1위(12.5KB).
   const upcomingFrom = todayKst(); // [P2] buildTasks와 동일 — KST 진실원
   const upcomingSessions = useCalendarSchedule({ from: upcomingFrom }).data ?? [];
+  // 시간 변경으로 과거에 놓인 회차의 출결 요구 뱃지는 미래 목록만으로는 사라진다.
+  // 최근 31일을 별도 조회해 서버 파생 attendanceRequired를 합치고 id로 중복 제거한다.
+  const recentSessions = useCalendarSchedule({
+    from: addDaysISO(upcomingFrom, -31),
+    to: upcomingFrom,
+  }).data ?? [];
+  const taskSessions = [...new Map(
+    [...recentSessions.filter((row) => row.attendanceRequired), ...upcomingSessions]
+      .map((row) => [Number(row.id), row]),
+  ).values()];
   return {
     instructors: useInstructors().data ?? [],
     students: useStudents().data ?? [],
     courses: useCourses().data ?? [],
     enrollments: useEnrollments().data ?? [],
-    classSessions: upcomingSessions,
+    classSessions: taskSessions,
     sessionReports: useReports().data ?? [],
     expenses: useExpenses().data ?? [],
     instructorPayouts: canAccessFinance(role) ? financePayouts : [],

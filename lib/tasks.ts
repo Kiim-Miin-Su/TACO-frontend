@@ -3,6 +3,7 @@
 import type {
   AccountRole,
   ClassSession,
+  ScheduleRow,
   ScheduleRequest,
   CounselForm,
   Course,
@@ -27,7 +28,7 @@ import type { PendingAccount, ProfileChangeRequest } from '@/lib/api';
 import { internalRoute, type InternalHref } from '@/lib/navigation-security';
 
 // 회계상 분리: pay(강사 페이=출금) / expense(지출=출금) / payment(결제·수납=입금) / counsel(상담) / report·class(강사)
-type TaskGroup = 'pay' | 'expense' | 'payment' | 'counsel' | 'report' | 'class' | 'schedule' | 'account'; // [핫픽스 07-20 ②] account=가입·계정 승인
+type TaskGroup = 'pay' | 'expense' | 'payment' | 'counsel' | 'report' | 'class' | 'schedule' | 'attendance' | 'account';
 
 export type TaskItem = {
   id: string;
@@ -40,12 +41,12 @@ export type TaskItem = {
   counts: boolean;
 };
 
-type StoreSlice = ReportSlice & {
+type StoreSlice = Omit<ReportSlice, 'classSessions'> & {
   currentRole: AccountRole;
   instructors: Instructor[];
   students: Student[];
   courses: Course[];
-  classSessions: ClassSession[];
+  classSessions: Array<ClassSession & Partial<Pick<ScheduleRow, 'attendanceRequired' | 'missingAttendance'>>>;
   sessionReports: SessionReport[];
   expenses: Expense[];
   instructorPayouts: InstructorPayout[];
@@ -66,7 +67,7 @@ const REPORT_READINESS_TYPES = new Set<PayReadinessIssue['type']>([
 ]);
 
 // 미해결 준비 항목은 단순 열람으로 숨기지 않는다. 조건이 해소되어 서버 issue가 사라질 때만 배지가 내려간다.
-const readinessActivityMs = (rows: readonly PayReadinessIssue[]): number =>
+const readinessActivityMs = (rows: readonly unknown[]): number =>
   rows.length ? Number.POSITIVE_INFINITY : 0;
 
 function readinessTask(s: StoreSlice, row: PayReadinessIssue, forInstructor: boolean): TaskItem {
@@ -114,6 +115,17 @@ function adminTasks(s: StoreSlice): TaskItem[] {
   const sname = (id?: number) => s.students.find((x) => x.id === id)?.name ?? '학생';
   const today = todayISO();
   const out: TaskItem[] = [];
+  for (const session of s.classSessions.filter((row) => row.attendanceRequired)) {
+    out.push({
+      id: `attendance-required-${session.id}`,
+      group: 'attendance',
+      tone: 'danger',
+      counts: true,
+      title: `출결 입력 필요 — ${session.topic ?? `수업 ${session.id}`}`,
+      detail: `${session.sessionDate} ${session.startTime ?? ''} · 강사${session.missingAttendance?.instructor ? ' 미입력' : ' 입력'} · 학생 ${session.missingAttendance?.studentIds.length ?? 0}명 미입력`,
+      href: '/attendance',
+    });
+  }
 
   // ── [핫픽스 2026-07-20 ②] 가입·계정 승인 — 승인센터에는 있는데 대시보드에 안 뜨던 결함 해소 ──
   for (const a of s.pendingAccounts) {
@@ -234,6 +246,19 @@ function adminTasks(s: StoreSlice): TaskItem[] {
 function instructorTasks(s: StoreSlice, instructorId: number): TaskItem[] {
   const today = todayISO();
   const out: TaskItem[] = [];
+  for (const session of s.classSessions.filter(
+    (row) => row.attendanceRequired && Number(row.instructorId) === instructorId,
+  )) {
+    out.push({
+      id: `attendance-required-${session.id}`,
+      group: 'attendance',
+      tone: 'danger',
+      counts: true,
+      title: `출결 입력 필요 — ${session.topic ?? `수업 ${session.id}`}`,
+      detail: `${session.sessionDate} ${session.startTime ?? ''} · 강사${session.missingAttendance?.instructor ? ' 미입력' : ' 입력'} · 학생 ${session.missingAttendance?.studentIds.length ?? 0}명 미입력`,
+      href: '/attendance',
+    });
+  }
 
   out.push(...(s.payReadiness?.issues ?? [])
     .filter((row) => row.instructorId === instructorId)
@@ -349,6 +374,10 @@ export function navBadges(
     const myMakeup = makeupNeeds(s, instructorId).filter((m) => !m.resolved);
     const myRejected = s.scheduleRequests.filter((r) => r.status === 'rejected');
     const readinessIssues = (s.payReadiness?.issues ?? []).filter((row) => row.instructorId === instructorId);
+    const attendanceDue = s.classSessions.filter(
+      (row) => row.attendanceRequired && Number(row.instructorId) === instructorId,
+    );
+    put('/attendance', attendanceDue.length, readinessActivityMs(attendanceDue));
     const executionIssues = readinessIssues.filter((row) => row.type === 'session_execution_missing' || row.type === 'session_roster_missing');
     put('/calendar', myMakeup.length + myRejected.length + executionIssues.length,
       Math.max(latestActivityMs(myMakeup.map((m) => m.session)), latestActivityMs(myRejected), readinessActivityMs(executionIssues)));
@@ -367,6 +396,8 @@ export function navBadges(
   // 관리자/매니저
   // [대표 지시 ⑭] 보강 미배정(결강인데 보강 날짜 미정) — 강사 배지와 같은 단일 정의(lib/makeup) 전체 집계.
   const adminMakeup = makeupNeeds(s).filter((m) => !m.resolved);
+  const attendanceDue = s.classSessions.filter((row) => row.attendanceRequired);
+  put('/attendance', attendanceDue.length, readinessActivityMs(attendanceDue));
   const adminExecutionIssues = (s.payReadiness?.issues ?? []).filter((row) =>
     row.type === 'session_execution_missing' || row.type === 'session_roster_missing');
   put('/calendar', adminMakeup.length + adminExecutionIssues.length,

@@ -89,6 +89,36 @@ describe('pay-readiness — 학생별 리포트 SSOT', () => {
   });
 });
 
+describe('출결 요구 — 서버 파생 상태 단일 소스', () => {
+  const due = {
+    id: 71,
+    courseId: 10,
+    instructorId: 1,
+    sessionDate: '2026-07-20',
+    startTime: '14:00',
+    durationMinutes: 60,
+    status: 'scheduled' as const,
+    attendanceRequired: true,
+    missingAttendance: { instructor: true, studentIds: [1, 4] },
+  };
+
+  it('관리자는 할 일과 /attendance 배지에 같은 회차를 1건으로 집계한다', () => {
+    const s = { ...emptySlice, classSessions: [due] };
+    const tasks = buildTasks(s, 'manager');
+    expect(tasks.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'attendance-required-71', group: 'attendance', href: '/attendance' }),
+    ]));
+    expect(navBadges(s, 'manager')['/attendance']).toBe(1);
+  });
+
+  it('강사는 본인 회차만 보고, 해결되지 않은 출결 요구는 탭 열람으로 숨기지 않는다', () => {
+    const other = { ...due, id: 72, instructorId: 2 };
+    const s = { ...emptySlice, currentRole: 'instructor' as const, classSessions: [due, other] };
+    expect(buildTasks(s, 'instructor', 1).items.filter((item) => item.group === 'attendance')).toHaveLength(1);
+    expect(navBadges(s, 'instructor', 1, { attendance: '2099-01-01T00:00:00.000Z' })['/attendance']).toBe(1);
+  });
+});
+
 // [대표 지시 ⑭ 2026-07-16] 보강 미배정 — 매니저 To-do·/calendar 배지(강사와 같은 lib/makeup 단일 정의).
 describe('보강 미배정 — 매니저 배지·To-do', () => {
   const canceled = { id: 21, courseId: 10, instructorId: 1, sessionDate: '2026-01-05', startTime: '16:00', durationMinutes: 60, status: 'canceled' as const };

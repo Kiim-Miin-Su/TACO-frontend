@@ -6,9 +6,10 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { AttendanceStatus, InstructorAttendanceStatus, ScheduleRow } from "@/types";
-import { useSchedule, useAttendance, useUpsertAttendance, useStudents, useCourses, useUpdateSchedule, useInstructorContracts } from "@/lib/queries";
+import { useSchedule, useCalendarSchedule, useAttendance, useUpsertAttendance, useStudents, useCourses, useUpdateSchedule, useInstructorContracts } from "@/lib/queries";
 import { buildAttendanceBook, hoursLabel, nextAttendanceStatus } from "@/lib/domain/attendanceBook";
 import { instructorAttendanceStats } from "@/lib/domain/schedule"; // [TBO-68 C1] 통계 헬퍼 단일화
+import { addDaysISO, todayKst } from "@/lib/format";
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS } from "./AttMarker";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { EmptyState, HelpPopover, LoadingState, PageHeader, SectionCard, TableWrap } from "@/components/ui";
@@ -36,6 +37,11 @@ export function AttendanceBookView() {
   const instructorSelf = access.can("instructor.self");
   // [B6 C3 2026-07-16] isPending 구독 — 로드 중 "…회차가 없습니다" 깜빡임 방지(E0.6 H2 규칙). 주 쿼리=schedule.
   const { data: rows = [], isPending: loadingSchedule } = useSchedule();
+  const today = todayKst();
+  const { data: recentRows = [] } = useCalendarSchedule({
+    from: addDaysISO(today, -31),
+    to: today,
+  });
   const { data: attendance = [] } = useAttendance();
   const { data: students = [] } = useStudents();
   const { data: courses = [] } = useCourses();
@@ -146,6 +152,12 @@ export function AttendanceBookView() {
   // [TBO-19 Sprint2] 강사 출결 초기화(미표시) — clear sentinel(BE mergeFields 우회).
   const clearInstructor = (sessionId: number) =>
     updateSchedule.mutate({ id: sessionId, body: { clearInstructorAttendance: true } });
+  const attendanceDue = useMemo(
+    () => recentRows
+      .filter((row) => row.attendanceRequired && (manager || Number(row.instructorId) === myInstId))
+      .sort((a, b) => `${b.sessionDate} ${b.startTime ?? ''}`.localeCompare(`${a.sessionDate} ${a.startTime ?? ''}`)),
+    [recentRows, manager, myInstId],
+  );
 
   return (
     <div className="p-6 max-w-page-wide mx-auto space-y-4">
@@ -176,6 +188,22 @@ export function AttendanceBookView() {
           </>
         }
       />
+
+      {attendanceDue.length > 0 && (
+        <div role="alert" className="border border-attention bg-attention-subtle px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="font-semibold">출결 입력 필요 {attendanceDue.length}건</div>
+              <div className="text-caption text-fg-muted mt-0.5">
+                시간이 지난 수업의 강사·학생 출결을 모두 입력하면 완료 상태와 시수가 자동 갱신됩니다.
+              </div>
+            </div>
+            <Link href={internalRoute.session(attendanceDue[0].id)} className="btn btn-sm shrink-0">
+              최신 수업 확인
+            </Link>
+          </div>
+        </div>
+      )}
 
       {tab === "student" ? (
         <SectionCard

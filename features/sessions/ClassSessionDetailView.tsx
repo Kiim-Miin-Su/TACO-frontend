@@ -12,7 +12,7 @@ import Link from "next/link";
 import { Badge, ConfirmModal, DetailStates, EmptyState, Field, ModalShell, SectionCard, StatCard, type Tone } from "@/components/ui";
 import { useRouter } from "next/navigation";
 import {
-  useScheduleSession, useEnrollments, useStudents, useRooms,
+  useScheduleSession, useStudents, useRooms,
   useAttendance, useUpdateSchedule, useRemoveSchedule, useUpsertAttendance, useMarkMyInstructorAttendance,
 } from "@/lib/queries";
 import { useAccountAccess } from "@/lib/useAccountAccess";
@@ -32,7 +32,6 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   const admin = access.can("calendar.manage");
   const myId = access.instructorId;
   const sessionQuery = useScheduleSession(sessionId);
-  const { data: enrollments = [] } = useEnrollments();
   const { data: students = [] } = useStudents();
   const { data: attendance = [] } = useAttendance();
   const router = useRouter();
@@ -44,12 +43,15 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const toggle = (id: number) => setExpanded((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  // 이 수업(코스)의 수강생 = enrollments courseId 일치(활성 수강 — 배지·보고서와 동일 모집단).
-  //  로드 전엔 빈 배열 — 렌더는 DetailStates가 skeleton으로 대체하므로 표시 영향 없음.
+  // 세션 응답의 studentIds가 명시 코호트 우선 규칙을 이미 적용한 권위 집합이다.
   const loaded = sessionQuery.data;
   const roster = useMemo(
-    () => (loaded ? enrollments.filter((e) => e.courseId === loaded.courseId).map((e) => students.find((s) => s.id === e.studentId)).filter((s): s is NonNullable<typeof s> => Boolean(s)) : []),
-    [loaded, enrollments, students],
+    () => {
+      if (!loaded) return [];
+      const ids = new Set(loaded.studentIds.map(Number));
+      return students.filter((student) => ids.has(Number(student.id)));
+    },
+    [loaded, students],
   );
 
   // [TBO-62 ④ 2026-07-24] 강사 본인 출결 = 최초 1회 체크 가능(대표 지시), 수정·초기화는 매니저 이상.
@@ -82,6 +84,17 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                   강사 {session.instructorName || "—"} · {session.startTime ?? "시간 미정"} · {session.durationMinutes}분 · {session.topic ?? "주제 미정"}
                 </p>
               </div>
+
+              {session.attendanceRequired && (
+                <div role="alert" className="border border-attention bg-attention-subtle px-4 py-3 text-body">
+                  <div className="font-semibold">이 수업의 출결 입력이 필요합니다.</div>
+                  <div className="text-fg-muted mt-0.5">
+                    {session.missingAttendance.instructor ? "강사 출결 미입력" : "강사 출결 입력 완료"}
+                    {" · "}
+                    학생 {session.missingAttendance.studentIds.length}명 미입력
+                  </div>
+                </div>
+              )}
 
               {/* 세션 편집·삭제 — BE PATCH/DELETE와 회계 영향 ack 모달을 재사용. 매니저 이상만. */}
               {admin && (
