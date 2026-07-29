@@ -88,7 +88,7 @@ export const qk = {
   },
   users: {
     all: ["users"] as const,
-    list: () => ["users", "list"] as const,
+    list: (includeTerminated = false) => ["users", "list", includeTerminated] as const,
     // [TBO-31 C2/C3 2026-07-16] 대표 아이디 변경 중복 라이브 체크(STAFF 전용 /users/exists)
     exists: (webId: string) => ["users", "exists", webId] as const,
     detail: (id: number) => ["users", "detail", id] as const, // [유저 관리 07-20] 상세 단건(B7 규약)

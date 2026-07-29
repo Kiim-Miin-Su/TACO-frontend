@@ -56,9 +56,14 @@ export const usePendingAccounts = () => {
     enabled: can("signup.decide"),
   });
 };
-export const useUsers = () => {
+export const useUsers = (includeTerminated = false) => {
   const { can } = useAccountAccess();
-  return useQuery({ queryKey: qk.users.list(), queryFn: () => api.users.list(), enabled: can("admin.area"), staleTime: CATALOG_STALE });
+  return useQuery({
+    queryKey: qk.users.list(includeTerminated),
+    queryFn: () => api.users.list(includeTerminated),
+    enabled: can("admin.area"),
+    staleTime: CATALOG_STALE,
+  });
 };
 export const useInstructorAdminList = () => {
   const { can } = useAccountAccess();
@@ -100,6 +105,22 @@ export const useAdminUpdateUser = () => {
     // 이름·역할 변경은 강사 선택 자원과 담당 스케줄 렌더링에도 전파된다.
     onSuccess: () => invalidateInstructorAggregate(queryClient),
     // [TBO-34 C2-C] 서버 sudo 창 만료(403 SUDO_REQUIRED) → FE 세션 상태 초기화(게이트가 재인증 재출력)
+    onError: (caught) => { if (isSudoRequiredError(caught)) clearSudo(); },
+  });
+};
+export const useTerminateUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (value: { id: number; reason: string }) => api.users.terminate(value.id, value.reason),
+    onSuccess: () => invalidateInstructorAggregate(queryClient),
+    onError: (caught) => { if (isSudoRequiredError(caught)) clearSudo(); },
+  });
+};
+export const useRestoreUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (value: { id: number; reason: string }) => api.users.restore(value.id, value.reason),
+    onSuccess: () => invalidateInstructorAggregate(queryClient),
     onError: (caught) => { if (isSudoRequiredError(caught)) clearSudo(); },
   });
 };

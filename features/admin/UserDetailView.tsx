@@ -16,7 +16,8 @@ import { roleLabel } from '@/lib/roles';
 import { isSudoValid, markSudoVerified } from '@/lib/sudo';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import {
-  useAdminUpdateUser, useAuthEvents, useDeletePendingAccount, useReauth, useResendPendingVerification, useUser,
+  useAdminUpdateUser, useAuthEvents, useDeletePendingAccount, useReauth, useResendPendingVerification,
+  useRestoreUser, useTerminateUser, useUser,
 } from '@/lib/queries';
 import { isValidKrPhone } from '@/lib/validation';
 import { dateOnly, kstDateTime } from '@/lib/format';
@@ -127,15 +128,19 @@ function DetailBody({ userId }: { userId: number }) {
   const update = useAdminUpdateUser();
   const resend = useResendPendingVerification();
   const remove = useDeletePendingAccount();
+  const terminate = useTerminateUser();
+  const restore = useRestoreUser();
   const [edit, setEdit] = useState<{ name: string; phone: string; email: string; role: string } | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [lifecycleAction, setLifecycleAction] = useState<'terminate' | 'restore' | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   return (
     <DetailStates query={query} notFoundMessage="계정을 찾을 수 없습니다(삭제되었을 수 있음)." backHref="/admin/users">
       {(u) => {
-        const editable = isSuper && u.role !== 'super_admin';
+        const terminated = !!u.deletedAt;
+        const editable = isSuper && u.role !== 'super_admin' && !terminated;
         const form = edit ?? { name: u.name, phone: u.phone ?? '', email: u.email ?? '', role: u.role };
         const save = () => {
           if (!edit || update.isPending) return;
@@ -158,7 +163,7 @@ function DetailBody({ userId }: { userId: number }) {
         return (
           <SectionCard
             title={`${u.name} (${u.webId})`}
-            action={<Badge tone={STATUS_TONE[u.status] ?? 'neutral'}>{STATUS_LABEL[u.status] ?? u.status}</Badge>}
+            action={<Badge tone={terminated ? 'neutral' : STATUS_TONE[u.status] ?? 'neutral'}>{terminated ? '종료됨' : STATUS_LABEL[u.status] ?? u.status}</Badge>}
           >
             <div className="p-4 space-y-4">
               {msg && <p className="text-caption text-accent" role="status">{msg}</p>}
@@ -216,6 +221,14 @@ function DetailBody({ userId }: { userId: number }) {
                 {isSuper && (u.status === 'pending' || u.status === 'rejected') && (
                   <button className="btn btn-sm btn-danger" onClick={() => setDeleteOpen(true)}>삭제</button>
                 )}
+                {isSuper && u.role !== 'super_admin' && u.status === 'active' && (
+                  <button
+                    className={`btn btn-sm ${terminated ? 'btn-primary' : 'btn-danger'}`}
+                    onClick={() => setLifecycleAction(terminated ? 'restore' : 'terminate')}
+                  >
+                    {terminated ? '계정 복구' : '재직 종료'}
+                  </button>
+                )}
               </div>
               <p className="text-caption text-fg-subtle">
                 아이디 변경은 마이페이지 프로필 변경(중복 체크·즉시 적용), 학력(대학·전공)은 강사 프로필이
@@ -237,6 +250,31 @@ function DetailBody({ userId }: { userId: number }) {
                     onError: (caught) => setErr(apiErrorMessage(caught, '삭제하지 못했습니다.')),
                   });
                   setDeleteOpen(false);
+                }}
+              />
+            )}
+            {lifecycleAction && (
+              <ReasonModal
+                mode="input"
+                title={lifecycleAction === 'terminate' ? '직원 재직 종료 — 사유 필수' : '직원 계정 복구 — 사유 필수'}
+                submitLabel={lifecycleAction === 'terminate' ? '재직 종료' : '계정 복구'}
+                placeholder="감사 이력에 남길 사유를 5자 이상 입력하세요"
+                onClose={() => setLifecycleAction(null)}
+                onSubmit={(reason) => {
+                  const action = lifecycleAction;
+                  const mutation = action === 'terminate' ? terminate : restore;
+                  mutation.mutate({ id: u.id, reason }, {
+                    onSuccess: () => {
+                      setMsg(action === 'terminate'
+                        ? '계정을 종료했습니다. 기존 로그인은 즉시 만료됩니다.'
+                        : '계정을 복구했습니다. 다시 로그인할 수 있습니다.');
+                      setLifecycleAction(null);
+                    },
+                    onError: (caught) => {
+                      setErr(apiErrorMessage(caught, action === 'terminate' ? '계정을 종료하지 못했습니다.' : '계정을 복구하지 못했습니다.'));
+                      setLifecycleAction(null);
+                    },
+                  });
                 }}
               />
             )}

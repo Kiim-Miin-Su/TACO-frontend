@@ -105,6 +105,7 @@ export type UserProfileSummary = Omit<MyProfile, "profileVersion"> & {
   profileVersion?: number;
   createdAt?: string;
   updatedAt?: string;
+  deletedAt?: string | null;
 };
 
 export const authAccountApi = {
@@ -185,13 +186,18 @@ export const authAccountApi = {
     // web id 존재 확인 (등록 폼 "확인하기")
     exists: (webId: string) =>
       http.get<WebIdCheckResult>("/users/exists", { params: { webId } }).then((r) => r.data),
-    list: () => http.get<UserProfileSummary[]>("/users").then((r) => r.data),
+    list: (includeTerminated = false) =>
+      http.get<UserProfileSummary[]>("/users", { params: includeTerminated ? { includeTerminated: true } : undefined }).then((r) => r.data),
     // [유저 관리 2026-07-20] 상세 단건(관리자 — super_admin 응답에만 rrnMasked)·대표 직접 수정·직접 등록.
     detail: (id: number) => http.get<UserProfileSummary & { rrnMasked?: string | null; university?: string | null; major?: string | null; birthYear?: number | null }>(`/users/${id}`).then((r) => r.data),
     adminUpdate: (id: number, patch: { name?: string; phone?: string; email?: string; role?: string }) =>
       http.patch<UserProfileSummary>(`/users/${id}`, patch).then((r) => r.data),
     createStaff: (input: { webId: string; name: string; password: string; role?: string; email?: string; phone?: string; university?: string; major?: string; birthYear?: number }) =>
       http.post<UserProfileSummary>("/users/instructors", input).then((r) => r.data),
+    terminate: (id: number, reason: string) =>
+      http.delete<UserProfileSummary>(`/users/${id}`, { data: { reason } }).then((r) => r.data),
+    restore: (id: number, reason: string) =>
+      http.post<UserProfileSummary>(`/users/${id}/restore`, { reason }).then((r) => r.data),
   },
   authEvents: {
     list: (query: AuthEventQuery) =>

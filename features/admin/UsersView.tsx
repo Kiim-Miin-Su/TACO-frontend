@@ -32,7 +32,7 @@ import { isSudoValid, markSudoVerified } from '@/lib/sudo';
 
 const STATUS_LABEL = ACCOUNT_STATUS_LABEL; // [P2 FE-7] 진실원(lib/domain/accounts)
 const STATUS_TONE: Record<string, Tone> = { active: 'success', pending: 'attention', rejected: 'danger' };
-const FILTERS = ['all', 'active', 'pending', 'rejected'] as const;
+const FILTERS = ['all', 'active', 'pending', 'rejected', 'terminated'] as const;
 type SudoIntent =
   | { kind: 'create' }
   | { kind: 'delete'; id: number; reason: string };
@@ -40,7 +40,8 @@ type SudoIntent =
 export function UsersView() {
   const { role, can } = useAccountAccess();
   const isSuper = isSuperAdmin(role); // [P2 FE-8] 진실원(access-control)
-  const { data: users = [], isLoading } = useUsers();
+  const visibleFilters = isSuper ? FILTERS : FILTERS.filter((item) => item !== 'terminated');
+  const { data: users = [], isLoading } = useUsers(isSuper);
   const resend = useResendPendingVerification();
   const remove = useDeletePendingAccount();
   const reauth = useReauth();
@@ -53,7 +54,7 @@ export function UsersView() {
 
   const rows = useMemo(
     () => users
-      .filter((u) => filter === 'all' || u.status === filter)
+      .filter((u) => filter === 'all' || (filter === 'terminated' ? !!u.deletedAt : !u.deletedAt && u.status === filter))
       .sort((a, b) => (a.status === b.status ? a.webId.localeCompare(b.webId) : a.status.localeCompare(b.status))),
     [users, filter],
   );
@@ -87,10 +88,10 @@ export function UsersView() {
       title={`유저 관리 (${rows.length})`}
       action={(
         <div className="flex gap-1.5 items-center">
-          {FILTERS.map((f) => (
+          {visibleFilters.map((f) => (
             <button key={f} type="button" onClick={() => setFilter(f)}
               className={`btn btn-sm ${filter === f ? 'badge-accent' : ''}`}>
-              {f === 'all' ? '전체' : STATUS_LABEL[f]}
+              {f === 'all' ? '전체' : f === 'terminated' ? '종료됨' : STATUS_LABEL[f]}
             </button>
           ))}
           {isSuper && (
@@ -120,7 +121,7 @@ export function UsersView() {
                     <td>{u.name}</td>
                     <td className="text-fg-muted">{u.email ?? '—'}</td>
                     <td>{roleLabel[u.role as AccountRole] ?? u.role}</td>
-                    <td><Badge tone={STATUS_TONE[u.status] ?? 'neutral'}>{STATUS_LABEL[u.status] ?? u.status}</Badge></td>
+                    <td><Badge tone={u.deletedAt ? 'neutral' : STATUS_TONE[u.status] ?? 'neutral'}>{u.deletedAt ? '종료됨' : STATUS_LABEL[u.status] ?? u.status}</Badge></td>
                     <td>{u.emailVerified === true ? <span className="text-success">완료</span> : u.emailVerified === false ? <span className="text-fg-subtle">미완료</span> : '—'}</td>
                     <td className="mono text-fg-muted whitespace-nowrap">{u.createdAt ? dateOnly(u.createdAt) : '—'}</td>
                     <td className="text-right whitespace-nowrap">
@@ -149,8 +150,8 @@ export function UsersView() {
       )}
       <p className="px-4 py-3 text-caption text-fg-subtle">
         반려된 계정은 이력으로 남습니다. 삭제는 소프트 삭제(감사 기록 보존)이며 아이디·이메일이
-        해제되어 같은 정보로 다시 가입할 수 있고, 주민등록번호는 즉시 파기됩니다. 활성 계정은
-        삭제할 수 없습니다(비활성화가 필요하면 별도 요청).
+        해제되어 같은 정보로 다시 가입할 수 있고, 주민등록번호는 즉시 파기됩니다. 활성 직원은
+        상세에서 재직 종료하며 아이디·이력은 보존되고 대표가 복구할 수 있습니다.
       </p>
       {createOpen && (
         <CreateStaffModal
