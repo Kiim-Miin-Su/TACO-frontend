@@ -33,6 +33,13 @@ describe("access-control", () => {
     expect(hasCapability("instructor", "student.hard-delete")).toBe(false);
   });
 
+  it("keeps authentication security history CEO/admin-only", () => {
+    expect(hasCapability("super_admin", "security.events.read")).toBe(true);
+    expect(hasCapability("admin", "security.events.read")).toBe(true);
+    expect(hasCapability("manager", "security.events.read")).toBe(false);
+    expect(hasCapability("instructor", "security.events.read")).toBe(false);
+  });
+
   it("fails closed before an authoritative account exists", () => {
     expect(hasCapability(null, "admin.area")).toBe(false);
     expect(accountScopeKey(null)).toBe("anon");

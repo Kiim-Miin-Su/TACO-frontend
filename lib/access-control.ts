@@ -10,7 +10,8 @@ export type AppCapability =
   | "calendar.request-own"
   | "instructor.self"
   | "counsel.manage"
-  | "student.hard-delete";
+  | "student.hard-delete"
+  | "security.events.read";
 
 export type VerifiedAccount = { id: number; name: string; role: AccountRole };
 
@@ -20,8 +21,9 @@ const ROLE_CAPABILITIES: Record<AccountRole, ReadonlySet<AppCapability>> = {
   super_admin: new Set([
     "admin.area", "approval.manage", "signup.decide", "finance.access",
     "payout.readiness", "calendar.manage", "calendar.request-own", "counsel.manage", "student.hard-delete",
+    "security.events.read",
   ]),
-  admin: new Set(["admin.area", "approval.manage", "signup.decide", "payout.readiness", "calendar.manage", "calendar.request-own", "counsel.manage", "student.hard-delete"]),
+  admin: new Set(["admin.area", "approval.manage", "signup.decide", "payout.readiness", "calendar.manage", "calendar.request-own", "counsel.manage", "student.hard-delete", "security.events.read"]),
   manager: new Set(["admin.area", "approval.manage", "signup.decide", "payout.readiness", "calendar.manage", "calendar.request-own", "counsel.manage"]),
   instructor: new Set(["calendar.request-own", "instructor.self"]),
   // 학생과 학부모는 도메인 역할 호환값일 뿐 백오피스 로그인 역할이 아니다.

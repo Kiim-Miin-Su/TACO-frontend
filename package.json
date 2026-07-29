@@ -12,7 +12,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@kms545487/contracts": "0.2.30",
+    "@kms545487/contracts": "0.2.31",
     "@tanstack/react-query": "^5.101.2",
     "axios": "^1.18.1",
     "chart.js": "^4.5.1",

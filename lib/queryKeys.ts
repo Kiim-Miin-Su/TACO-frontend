@@ -2,6 +2,7 @@
 // 예) queryClient.invalidateQueries({ queryKey: qk.schedule.all })
 import type { ScheduleQuery } from "@/lib/api";
 import type { AvailabilityOwner } from "@/types";
+import type { AuthEventQuery } from "@kms545487/contracts";
 
 export const qk = {
   auth: {
@@ -91,6 +92,17 @@ export const qk = {
     // [TBO-31 C2/C3 2026-07-16] 대표 아이디 변경 중복 라이브 체크(STAFF 전용 /users/exists)
     exists: (webId: string) => ["users", "exists", webId] as const,
     detail: (id: number) => ["users", "detail", id] as const, // [유저 관리 07-20] 상세 단건(B7 규약)
+  },
+  authEvents: {
+    all: ["authEvents"] as const,
+    list: (query: AuthEventQuery) => ["authEvents", "list", {
+      userId: query.userId ?? null,
+      eventType: query.eventType ?? null,
+      success: query.success ?? null,
+      from: query.from ?? null,
+      to: query.to ?? null,
+      limit: query.limit ?? 50,
+    }] as const,
   },
   profile: {
     all: ["profile"] as const,

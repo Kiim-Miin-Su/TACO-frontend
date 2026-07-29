@@ -16,15 +16,78 @@ import { roleLabel } from '@/lib/roles';
 import { isSudoValid, markSudoVerified } from '@/lib/sudo';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import {
-  useAdminUpdateUser, useDeletePendingAccount, useReauth, useResendPendingVerification, useUser,
+  useAdminUpdateUser, useAuthEvents, useDeletePendingAccount, useReauth, useResendPendingVerification, useUser,
 } from '@/lib/queries';
 import { isValidKrPhone } from '@/lib/validation';
-import { dateOnly } from '@/lib/format';
+import { dateOnly, kstDateTime } from '@/lib/format';
 import type { AccountRole } from '@/types';
+import type { AuthEventType } from '@kms545487/contracts';
 
 const STATUS_LABEL = ACCOUNT_STATUS_LABEL; // [P2 FE-7] 진실원(lib/domain/accounts)
 const STATUS_TONE: Record<string, Tone> = { active: 'success', pending: 'attention', rejected: 'danger' };
 const EDITABLE_ROLES = ['instructor', 'manager', 'admin'] as const;
+const AUTH_EVENT_OPTIONS: Array<{ value: '' | AuthEventType; label: string }> = [
+  { value: '', label: '전체 이벤트' },
+  { value: 'login_success', label: '로그인 성공' },
+  { value: 'login_failure', label: '로그인 실패' },
+  { value: 'logout', label: '로그아웃' },
+  { value: 'password_reset_completed', label: '비밀번호 재설정' },
+  { value: 'refresh_reuse_blocked', label: '토큰 재사용 차단' },
+  { value: 'csrf_origin_blocked', label: 'Origin 차단' },
+];
+const AUTH_EVENT_LABEL = Object.fromEntries(
+  AUTH_EVENT_OPTIONS.filter((option) => option.value).map((option) => [option.value, option.label]),
+) as Partial<Record<AuthEventType, string>>;
+
+function AuthEventHistory({ userId }: { userId: number }) {
+  const { can } = useAccountAccess();
+  const [eventType, setEventType] = useState<'' | AuthEventType>('');
+  const events = useAuthEvents({ userId, eventType: eventType || undefined, limit: 50 });
+  if (!can('security.events.read')) return null;
+  return (
+    <section className="border-t border-line-muted pt-4" aria-labelledby="auth-event-heading">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 id="auth-event-heading" className="text-body font-semibold">접속·보안 이력</h2>
+          <p className="text-caption text-fg-subtle">최근 50건 · 원본 IP와 식별자 hash는 화면에 표시하지 않습니다.</p>
+        </div>
+        <select
+          className="input h-8 w-40 text-caption"
+          aria-label="보안 이벤트 유형"
+          value={eventType}
+          onChange={(event) => setEventType(event.target.value as '' | AuthEventType)}
+        >
+          {AUTH_EVENT_OPTIONS.map((option) => (
+            <option key={option.value || 'all'} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </div>
+      {events.isPending ? (
+        <p className="text-caption text-fg-subtle">이력을 불러오는 중입니다.</p>
+      ) : events.isError ? (
+        <p className="text-caption text-danger" role="alert">보안 이력을 불러오지 못했습니다. 재인증 상태를 확인해 주세요.</p>
+      ) : !events.data?.length ? (
+        <p className="text-caption text-fg-subtle">조건에 맞는 이력이 없습니다.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="data-table min-w-[520px]">
+            <thead><tr><th>일시</th><th>이벤트</th><th>결과</th><th>실패 코드</th></tr></thead>
+            <tbody>
+              {events.data.map((event) => (
+                <tr key={event.id}>
+                  <td className="mono whitespace-nowrap">{kstDateTime(event.at)}</td>
+                  <td>{AUTH_EVENT_LABEL[event.eventType] ?? event.eventType}</td>
+                  <td><Badge tone={event.success ? 'success' : 'danger'}>{event.success ? '성공' : '실패'}</Badge></td>
+                  <td className="mono">{event.failureCode ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 
 function SudoGate({ onVerified }: { onVerified: () => void }) {
   const router = useRouter();
@@ -159,6 +222,7 @@ function DetailBody({ userId }: { userId: number }) {
                 권위입니다. 역할·이메일을 바꾸면 해당 계정의 기존 로그인이 모두 종료됩니다. 모든 변경은
                 감사 이력에 남습니다.
               </p>
+              <AuthEventHistory userId={u.id} />
             </div>
             {deleteOpen && (
               <ReasonModal

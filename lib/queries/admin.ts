@@ -8,6 +8,7 @@ import { invalidateInstructorAggregate, invalidateInstructorContractCommand } fr
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { WEB_ID_MIN } from "@/lib/validation"; // [TBO-31 C2 2026-07-16] 아이디 라이브 체크 최소 길이
 import { CATALOG_STALE, detailRetry, useInvalidator } from "./shared";
+import type { AuthEventQuery } from '@kms545487/contracts';
 
 // [TBO-74 C1] 강사 계약은 금액 자산이므로 대표 전용. 백엔드 finance.access와 같은 capability를 사용한다.
 export const useInstructorContracts = (instructorId?: number) => {
@@ -81,6 +82,16 @@ export const useInstructorAdminDetail = (id: number | null) => {
 export const useUser = (id: number | null) => {
   const { can } = useAccountAccess();
   return useQuery({ queryKey: qk.users.detail(id ?? 0), queryFn: () => api.users.detail(id as number), enabled: id != null && can("admin.area") });
+};
+export const useAuthEvents = (query: AuthEventQuery) => {
+  const { can } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.authEvents.list(query),
+    queryFn: () => api.authEvents.list(query),
+    enabled: query.userId != null && can("security.events.read"),
+    staleTime: 15_000,
+    retry: detailRetry,
+  });
 };
 export const useAdminUpdateUser = () => {
   const queryClient = useQueryClient();

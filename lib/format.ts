@@ -33,3 +33,11 @@ export const addDaysISO = (iso: string, n: number): string => {
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 };
+
+/** ISO instant → 고정 KST 표시. locale/런타임 timezone에 의존하지 않는다. */
+export const kstDateTime = (iso: string): string => {
+  const parsed = Date.parse(iso);
+  if (!Number.isFinite(parsed)) return iso;
+  const shifted = new Date(parsed + 9 * 60 * 60 * 1000).toISOString();
+  return `${shifted.slice(0, 10)} ${shifted.slice(11, 16)} KST`;
+};

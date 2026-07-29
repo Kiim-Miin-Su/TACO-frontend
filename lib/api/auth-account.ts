@@ -4,6 +4,8 @@ import type {
   CreateProfileChangeRequestInput,
   ProfileChangeFields,
   ProfileChangeRequest,
+  AuthEventQuery,
+  AuthEventRecord,
   WebIdCheckResult,
 } from "@kms545487/contracts";
 export type { ProfileChangeFields, ProfileChangeRequest } from "@kms545487/contracts";
@@ -190,6 +192,10 @@ export const authAccountApi = {
       http.patch<UserProfileSummary>(`/users/${id}`, patch).then((r) => r.data),
     createStaff: (input: { webId: string; name: string; password: string; role?: string; email?: string; phone?: string; university?: string; major?: string; birthYear?: number }) =>
       http.post<UserProfileSummary>("/users/instructors", input).then((r) => r.data),
+  },
+  authEvents: {
+    list: (query: AuthEventQuery) =>
+      http.get<AuthEventRecord[]>("/auth/events", { params: query }).then((r) => r.data),
   },
   // [E0.5 ④] 참조 데이터 카탈로그 — 국가·시간대 토글 옵션(자유 입력 폐지)의 단일 소스(DB 권위).
   catalog: {
