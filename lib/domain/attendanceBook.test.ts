@@ -57,11 +57,11 @@ describe('buildAttendanceBook — 회차×학생 매트릭스 + 누적 시수', 
 });
 
 describe('nextAttendanceStatus — 셀 클릭 순환', () => {
-  it('미체크→출석→지각→결석→공결→출석', () => {
+  it('미체크→출석→지각→결석→공결→미체크', () => {
     expect(nextAttendanceStatus(undefined)).toBe('present');
     expect(nextAttendanceStatus('present')).toBe('late');
     expect(nextAttendanceStatus('late')).toBe('absent');
     expect(nextAttendanceStatus('absent')).toBe('excused');
-    expect(nextAttendanceStatus('excused')).toBe('present');
+    expect(nextAttendanceStatus('excused')).toBeUndefined();
   });
 });

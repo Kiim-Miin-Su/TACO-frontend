@@ -390,6 +390,11 @@ export const useUpdateScheduleRequest = () => {
 // 출결(강사 마킹) — session×student upsert
 // [TBO-62 ⑤ 2026-07-24] 출결 기록 시 서버가 scheduled→held 자동 전이 — 캘린더·세션 상세 캐시도 무효화.
 export const useUpsertAttendance = () => useMutation({ mutationFn: api.attendance.upsert, onSuccess: useInvalidator([qk.attendance.all, qk.schedule.all, qk.payouts.all, ["audit"] as const]) }); // [TBO-66 F4] 이력 패널
+export const useClearAttendance = () => useMutation({
+  mutationFn: (v: { sessionId: number; studentId: number; reason: string }) =>
+    api.attendance.clear(v.sessionId, v.studentId, { reason: v.reason }),
+  onSuccess: useInvalidator([qk.attendance.all, qk.schedule.all, qk.payouts.all, ["audit"] as const]),
+});
 // [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크(최초 1회) — 수정·초기화는 매니저 PATCH.
 export const useMarkMyInstructorAttendance = () =>
   useMutation({ mutationFn: (v: { id: number; status: InstructorAttendanceStatus }) => api.schedule.markInstructorAttendance(v.id, v.status), onSuccess: useInvalidator([qk.schedule.all, qk.payouts.all, ["audit"] as const]) }); // [TBO-66 F4]

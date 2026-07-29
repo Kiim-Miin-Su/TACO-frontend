@@ -1,6 +1,8 @@
 // 스케줄·수업요청·강의실·가용성·출결·이벤트 도메인 API — lib/api.ts에서 분할(순수 이동).
 import { http, type ApiReadOptions } from "./client";
 import type {
+  ClearAttendanceInput,
+  UpsertAttendanceInput,
   AcademyEvent,
   CreateEventInput,
   Attendance,
@@ -148,8 +150,13 @@ export const scheduleApi = {
   },
   attendance: {
     list: (options: ApiReadOptions = {}) => http.get<Attendance[]>("/attendance", options).then((r) => r.data),
-    upsert: (body: { sessionId: number; studentId: number; status: AttendanceStatus }) =>
+    upsert: (body: UpsertAttendanceInput) =>
       http.put<Attendance>("/attendance", body).then((r) => r.data),
+    clear: (sessionId: number, studentId: number, body: ClearAttendanceInput) =>
+      http.delete<{ id: number; sessionId: number; studentId: number; deleted: true }>(
+        `/attendance/${sessionId}/${studentId}`,
+        { data: body },
+      ).then((r) => r.data),
   },
   // ── 스케줄(v5) ──
   schedule: {

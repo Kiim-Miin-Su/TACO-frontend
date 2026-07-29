@@ -106,9 +106,10 @@ export function buildAttendanceBook(
 /** 분 → "12.5h" 표기(출석부 누적 시수). */
 export const hoursLabel = (min: number) => `${Math.round((min / 60) * 10) / 10}h`;
 
-/** 셀 클릭 순환: 미체크 → 출석 → 지각 → 결석 → 공결 → 출석(해제 API 없음 — upsert 순환). */
-export function nextAttendanceStatus(cur?: AttendanceStatus): AttendanceStatus {
+/** 셀 클릭 순환: 미체크 → 출석 → 지각 → 결석 → 공결 → 미체크. */
+export function nextAttendanceStatus(cur?: AttendanceStatus): AttendanceStatus | undefined {
   const order: AttendanceStatus[] = ['present', 'late', 'absent', 'excused'];
   if (!cur) return 'present';
-  return order[(order.indexOf(cur) + 1) % order.length];
+  const index = order.indexOf(cur);
+  return index === order.length - 1 ? undefined : order[index + 1];
 }

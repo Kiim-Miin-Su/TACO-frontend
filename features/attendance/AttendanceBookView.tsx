@@ -6,7 +6,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { AttendanceStatus, InstructorAttendanceStatus, ScheduleRow } from "@/types";
-import { useSchedule, useCalendarSchedule, useAttendance, useUpsertAttendance, useStudents, useCourses, useUpdateSchedule, useInstructorContracts } from "@/lib/queries";
+import { useSchedule, useCalendarSchedule, useAttendance, useUpsertAttendance, useClearAttendance, useStudents, useCourses, useUpdateSchedule, useInstructorContracts } from "@/lib/queries";
 import { buildAttendanceBook, hoursLabel, nextAttendanceStatus } from "@/lib/domain/attendanceBook";
 import { instructorAttendanceStats } from "@/lib/domain/schedule"; // [TBO-68 C1] 통계 헬퍼 단일화
 import { addDaysISO, todayKst } from "@/lib/format";
@@ -46,6 +46,7 @@ export function AttendanceBookView() {
   const { data: students = [] } = useStudents();
   const { data: courses = [] } = useCourses();
   const upsert = useUpsertAttendance();
+  const clearAttendance = useClearAttendance();
   // [TBO-19] 강사 출결 마킹(매니저 CRUD) — 세션 PATCH(manager+ 게이트)로 저장, 강사는 API상 read-only.
   const updateSchedule = useUpdateSchedule();
   // 강사 계약은 금액 자산이므로 대표에게만 조회·표시한다.
@@ -79,8 +80,18 @@ export function AttendanceBookView() {
 
   const book = useMemo(() => buildAttendanceBook(courseSessions as never, attendance, roster), [courseSessions, attendance, roster]);
 
-  const mark = (sessionId: number, studentId: number, cur?: AttendanceStatus) =>
-    upsert.mutate({ sessionId, studentId, status: nextAttendanceStatus(cur) });
+  const mark = (sessionId: number, studentId: number, cur?: AttendanceStatus) => {
+    const next = nextAttendanceStatus(cur);
+    if (next) {
+      upsert.mutate({ sessionId, studentId, status: next });
+      return;
+    }
+    clearAttendance.mutate({
+      sessionId,
+      studentId,
+      reason: "출석부에서 학생 출결을 미선택으로 초기화",
+    });
+  };
   // 열 헤더 클릭 = 그 회차 전체 출석(Moodle 패턴 — 미체크·타상태 모두 present로)
   const markAll = (sessionId: number) => {
     const col = book.rows.filter((r) => r.cells.find((c) => c.sessionId === sessionId)?.inCohort);
@@ -181,7 +192,7 @@ export function AttendanceBookView() {
             <button className="btn btn-sm" onClick={() => navYm(1)}>▶</button>
             {/* [DESIGN §5.5] 조작 설명은 부제가 아니라 ⓘ 팝오버 */}
             <HelpPopover title="출석부 사용법">
-              <p>셀 클릭 = 상태 변경(출→지→결→공 순환)</p>
+              <p>셀 클릭 = 상태 변경(출→지→결→공→미선택 순환)</p>
               <p>회차 헤더 클릭 = 해당 회차 전체 출석</p>
               <p>시수 인정: 출석·지각만 인정(정산 규칙과 대칭)</p>
             </HelpPopover>
