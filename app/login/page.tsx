@@ -9,6 +9,7 @@ import { apiErrorMessage } from "@/lib/api-error";
 import { AuthShell, AuthField } from "@/components/auth/AuthShell";
 import { resolvePostLoginDestination } from "@/lib/navigation-security";
 import type { AccountRole } from "@/types";
+import { clearAccountScopedClientState } from "@/lib/auth-session";
 
 function LoginForm() {
   const router = useRouter();
@@ -28,8 +29,8 @@ function LoginForm() {
     try {
       const res = await api.auth.login({ webId: webId.trim(), password });
       const accountRole = res.account.role as AccountRole;
+      await clearAccountScopedClientState(queryClient);
       setCurrentAccount({ id: res.account.id, name: res.account.name, role: accountRole, mustChangePassword: res.account.mustChangePassword });
-      queryClient.clear(); // 로그인 계정/권한 변경 — 이전 역할의 서버 캐시 폐기
       router.replace(resolvePostLoginDestination(
         params.get("redirect"),
         accountRole,

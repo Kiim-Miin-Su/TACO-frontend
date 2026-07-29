@@ -13,9 +13,9 @@ import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
+import { clearAccountScopedClientState } from "@/lib/auth-session";
 import { PageHeader, Field } from "@/components/ui";
 import { api, type ProfileVerification } from "@/lib/api";
-import { resetPreferences } from "@/lib/storage/preferences";
 import { useTacoStore } from "@/lib/store";
 // [B6 C2] 쓰기 3종(인증 발송/확인·자격증명 변경)을 중앙 mutation 훅으로 — 수동 api.* 잔재 제거(E1).
 import { useChangeCredentials, useConfirmProfileVerification, useCountries, useCreateProfileVerification } from "@/lib/queries";
@@ -67,11 +67,9 @@ export default function SecuritySettingsView() {
   const emailVerifiedForCurrentTarget = otpVerified && otpTarget === emailNormalized;
 
   async function logout() {
-    try { await api.auth.logout(); } catch { /* fallback route에서 두 인증 cookie를 다시 만료한다. */ }
-    await queryClient.cancelQueries();
-    queryClient.clear();
+    await clearAccountScopedClientState(queryClient);
     setCurrentAccount(null);
-    resetPreferences();
+    try { await api.auth.logout(); } catch { /* fallback route에서 두 인증 cookie를 다시 만료한다. */ }
     window.location.replace("/logout");
   }
 
@@ -181,10 +179,9 @@ export default function SecuritySettingsView() {
           : {}),
         ...(otp ? { verificationChallengeId: otp.id } : {}),
       });
-      try { await api.auth.logout(); } catch { /* authVersion 변경 뒤에도 브라우저 cookie 정리는 best-effort */ }
+      await clearAccountScopedClientState(queryClient);
       setCurrentAccount(null);
-      queryClient.clear();
-      resetPreferences(); // [E0 storage 감사] 자격증명 변경 후 재로그인 전 정리
+      try { await api.auth.logout(); } catch { /* authVersion 변경 뒤에도 브라우저 cookie 정리는 best-effort */ }
       router.replace("/login?credentialsChanged=1");
     } catch (caught) {
       setError(apiErrorMessage(caught, "계정 정보를 변경하지 못했습니다."));
