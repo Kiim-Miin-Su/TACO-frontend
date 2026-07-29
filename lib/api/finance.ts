@@ -13,22 +13,22 @@ import type {
   PayReadiness,
   SessionReport as SessionReportContract,
   SessionReportView as SessionReportViewContract,
+  InstructorPayout,
+  PayoutLine as ContractPayoutLine,
+  PayoutStatus,
 } from "@kms545487/contracts";
 
 // ── TBO-05 시수·페이 정산 타입(백엔드 reports/payouts 모듈 응답) ──
 type SessionReportRecord = SessionReportContract & { createdAt: string; updatedAt: string };
 export type SessionReport = SessionReportViewContract & { createdAt: string; updatedAt: string };
 // 정산 라인(세션 1건 산정 스냅샷)
-export type PayoutLine = {
-  sessionId: number; courseId: number; courseName: string; sessionDate: string;
-  durationMinutes: number; hourlyRate: number; amount: number;
-};
+export type PayoutLine = ContractPayoutLine;
 // 산정 미리보기(읽기전용)
 export type MeasureResult = {
   instructorId: number; periodStart: string; periodEnd: string;
   sessionCount: number; totalMinutes: number; computedAmount: number; lines: PayoutLine[];
 };
-export type PayoutRowStatus = "pending" | "confirmed" | "paid" | "rejected";
+export type PayoutRowStatus = PayoutStatus;
 
 // [TBO-46 G2 2026-07-23] GraphQL 매출 게이트웨이 응답 미러(BE revenue-analytics.ts 단일 진실원).
 export type RevenueKeyAmount = { key: string; amount: number; count: number };
@@ -50,16 +50,7 @@ export type BulkGenerateResult = {
   skipped: Array<{ instructorId: number; reason: string }>;
   failed: Array<{ instructorId: number; error: string }>;
 };
-export type PayoutRow = {
-  id: number; instructorId: number; periodStart: string; periodEnd: string;
-  sessionCount: number; totalMinutes: number; computedAmount: number;
-  adjustedAmount?: number; adjustReason?: string; amount: number;
-  status: PayoutRowStatus; lines: PayoutLine[]; rejectedReason?: string;
-  paidAt?: string; confirmedAt?: string; createdAt: string; updatedAt: string;
-  reversedReason?: string; // [TBO-32 C2] 회수 사유 전용(반려 사유와 분리 영속 — 상세 타임라인 표시)
-  // [B9 E5 2026-07-16] 지급 회수 — 회수된 정산은 status='rejected' + reversedAt(ISO) 세트(반려와 구분 표기)
-  reversedAt?: string;
-};
+export type PayoutRow = InstructorPayout & { createdAt: string; updatedAt: string };
 export type LedgerTx = {
   id: number; direction: "in" | "out"; category: string; label: string;
   amount: number; occurredAt: string; payoutId?: number;
