@@ -15,6 +15,15 @@ import type {
   SessionReportView as SessionReportViewContract,
   InstructorPayout,
   PayoutLine as ContractPayoutLine,
+  PayoutMeasure as ContractPayoutMeasure,
+  BulkGeneratePayoutResult as ContractBulkGeneratePayoutResult,
+  PayoutWorksheetPricing as ContractPayoutWorksheetPricing,
+  PayoutWorksheetRow as ContractPayoutWorksheetRow,
+  PayoutWorksheet as ContractPayoutWorksheet,
+  RevenueKeyAmount as ContractRevenueKeyAmount,
+  RevenueReport as ContractRevenueReport,
+  FinanceSummary as ContractFinanceSummary,
+  CeoDashboard as ContractCeoDashboard,
   PayoutStatus,
 } from "@kms545487/contracts";
 
@@ -24,20 +33,13 @@ export type SessionReport = SessionReportViewContract & { createdAt: string; upd
 // 정산 라인(세션 1건 산정 스냅샷)
 export type PayoutLine = ContractPayoutLine;
 // 산정 미리보기(읽기전용)
-export type MeasureResult = {
-  instructorId: number; periodStart: string; periodEnd: string;
-  sessionCount: number; totalMinutes: number; computedAmount: number; lines: PayoutLine[];
-};
+export type MeasureResult = ContractPayoutMeasure;
 export type PayoutRowStatus = PayoutStatus;
 
-// [TBO-46 G2 2026-07-23] GraphQL 매출 게이트웨이 응답 미러(BE revenue-analytics.ts 단일 진실원).
-export type RevenueKeyAmount = { key: string; amount: number; count: number };
-export type RevenueReport = {
-  from: string | null; to: string | null;
-  realizedTotal: number; unpaidTotal: number; unpaidCount: number;
-  byMonth: RevenueKeyAmount[]; bySubject: RevenueKeyAmount[]; byCourse: RevenueKeyAmount[]; byStudent: RevenueKeyAmount[];
-};
-export type FinanceSummary = { from: string | null; to: string | null; revenue: number; expenses: number; payouts: number; net: number };
+// GraphQL/REST 응답은 contracts가 정본이고 이 별칭은 기존 소비자 import 호환만 담당한다.
+export type RevenueKeyAmount = ContractRevenueKeyAmount;
+export type RevenueReport = ContractRevenueReport;
+export type FinanceSummary = ContractFinanceSummary;
 
 // [TBO-32 C4] 미정산 감지·일괄 산정 응답 — BE C1/C2 계약.
 export type UncoveredPayoutEntry = {
@@ -45,11 +47,7 @@ export type UncoveredPayoutEntry = {
   periodStart: string; periodEnd: string; sessionCount: number; totalMinutes: number; computedAmount: number;
   executionMissingCount: number; // [TBO-66 T2] 실행 미확정(종료 경과 scheduled)
 };
-export type BulkGenerateResult = {
-  generated: Array<{ instructorId: number; payoutId: number; amount: number; sessionCount: number }>;
-  skipped: Array<{ instructorId: number; reason: string }>;
-  failed: Array<{ instructorId: number; error: string }>;
-};
+export type BulkGenerateResult = ContractBulkGeneratePayoutResult;
 export type PayoutRow = InstructorPayout & { createdAt: string; updatedAt: string };
 export type LedgerTx = {
   id: number; direction: "in" | "out"; category: string; label: string;
@@ -164,44 +162,7 @@ export const financeApi = {
   },
 };
 
-// ── [TBO-64] 시수 워크시트 타입(BE payout-worksheet.policy 미러) ──
-export type WorksheetPricing = {
-  kind: 'auto' | 'manual' | 'excluded';
-  manualReasons: Array<'late' | 'attendance_missing' | 'report_incomplete' | 'roster_missing' | 'rate_missing'>; // [기간설정 ①] attendance_missing 추가
-  excludedReason?: 'not_held' | 'instructor_absent' | 'payout_linked';
-  autoAmount: number | null;
-  overrideAmount: number | null;
-  effectiveAmount: number | null;
-};
-export type PayoutWorksheetRow = {
-  sessionId: number; sessionDate: string; startTime: string | null; durationMinutes: number;
-  courseId: number; courseName: string; subjectId: number | null; subjectName: string;
-  hourlyRate: number | null; status: string;
-  instructorAttendance: string | null; payoutId: number | null;
-  participants: Array<{
-    studentId: number;
-    name: string;
-    attendance: string | null;
-    reportId: number | null;
-    reportApproval: string | null;
-  }>;
-  pricing: WorksheetPricing;
-};
-export type PayoutWorksheet = {
-  instructorId: number; periodStart: string; periodEnd: string;
-  rows: PayoutWorksheetRow[];
-  totals: {
-    sessionCount: number; includedCount: number; totalMinutes: number;
-    autoAmount: number; manualAmount: number; totalAmount: number;
-    unpricedCount: number; excludedCount: number;
-  };
-};
-
-// ── [TBO-60] 대표 대시보드 타입(GraphQL CeoDashboard 미러) ──
-export type CeoDashboard = {
-  from: string | null; to: string | null;
-  finance: FinanceSummary;
-  receivables: Array<{ bucket: string; amount: number; count: number }>;
-  enrollmentTrend: Array<{ month: string; started: number; ended: number; net: number }>;
-  courseProfit: Array<{ courseId: number; courseName: string; revenue: number; cost: number; profit: number }>;
-};
+export type WorksheetPricing = ContractPayoutWorksheetPricing;
+export type PayoutWorksheetRow = ContractPayoutWorksheetRow;
+export type PayoutWorksheet = ContractPayoutWorksheet;
+export type CeoDashboard = ContractCeoDashboard;

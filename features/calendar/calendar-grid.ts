@@ -10,6 +10,7 @@ import { toMin, fromMin, weekdayOf, sessionEndMin } from "@/lib/domain/schedule"
 import { PALETTE, type SplitDim } from "@/lib/domain/lantiv";
 import { KST_TZ, tzLocalToKst } from "@/lib/domain/tz";
 import { addDaysISO, todayKst } from "@/lib/format";
+import type { SessionAccountingImpact } from "@kms545487/contracts";
 
 // ── 그리드 상수 (애플/구글 캘린더 스타일: 넓고 시간 단위가 또렷하게) ──
 export const START_H = 0,
@@ -62,12 +63,7 @@ export type ManualPaneState = { uid: number; dim: SplitDim; ids: number[] };
 export type Resizing = { id: number; edge: "top" | "bottom"; startClientY: number; origStart: number; origEnd: number;
   gm: number; gmax: number; tz?: string; dateLocal: string }; // [이슈2] 시차 뷰 리사이즈: 축 경계·tz·현지날짜
 export type Pending = { row: ScheduleRow; patch: SchedulePatchBody; label: string };
-export type AccountingImpact = {
-  payoutId?: number | null;
-  before: { teachingMinutes: number; payoutEligibleMinutes: number; computedAmount: number };
-  after: { teachingMinutes: number; payoutEligibleMinutes: number; computedAmount: number };
-  delta: { teachingMinutes: number; payoutEligibleMinutes: number; computedAmount: number };
-};
+export type AccountingImpact = SessionAccountingImpact;
 export type AccountingAck = { id: number; patch: SchedulePatchBody; impact: AccountingImpact; payoutLocked: boolean };
 // 승인 요청 드래프트 타입은 modals/ApprovalRequestModals(모달과의 계약)에서 import — 여기선 seed만 정의.
 // [B6 C1] window.confirm 대체 — 확인 요청을 상태로 보관하고 ConfirmModal 하나로 렌더(충돌 강행·삭제 확인).
@@ -75,4 +71,3 @@ export type ConfirmRequest = { title: string; message: ReactNode; confirmLabel?:
 export type AvailabilityApprovalSeed =
   | { action: "upsert"; body: AvailabilityUpsertBody; summary: string }
   | { action: "delete"; targetAvailabilityId: number; summary: string };
-

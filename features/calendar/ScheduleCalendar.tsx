@@ -85,7 +85,11 @@ import { SessionDetailModal } from "./modals/SessionDetailModal";
 import { RecurrencePrompt } from "./modals/RecurrencePrompt";
 import { SessionListPanel } from "./SessionListPanel";
 import { SessionDetailPanel } from "./SessionDetailPanel";
-import type { RecurrenceScope } from "@kms545487/contracts";
+import type {
+  AvailabilityImpactConflict,
+  RecurrenceScope,
+  SessionAccountingImpactConflict,
+} from "@kms545487/contracts";
 import { useAutoClear, useElementWidth, useMounted, useWindowKeydown } from "@/lib/hooks/browser-sync";
 import { EventForm } from "@/features/admin/EventsView"; // [B5] 학원 일정 인라인 발행 — 단일 폼 재사용
 
@@ -802,7 +806,7 @@ export function ScheduleCalendar() {
   }, [allBlocks, autoTzPanes, instPicks, manualPanes, panes, selected, selBlocks, singleSplitPicks]);
 
   function approvalImpactOf(e: unknown): AvailabilityImpact[] | null {
-    const data = (e as { response?: { data?: { approvalRequired?: boolean; impactedSessions?: AvailabilityImpact[] } } })?.response?.data;
+    const data = (e as { response?: { data?: Partial<AvailabilityImpactConflict> } })?.response?.data;
     return data?.approvalRequired ? (data.impactedSessions ?? []) : null;
   }
 
@@ -1035,7 +1039,15 @@ export function ScheduleCalendar() {
       const res = await updateScheduleM.mutateAsync({ id, body: patch });
       if (res.updated > 1) setMsg(`반복 일정 ${res.updated}건 함께 수정되었습니다.`);
     } catch (e) {
-      const err = e as { response?: { status?: number; data?: { code?: string; conflicts?: Conflict[]; impact?: AccountingImpact } } };
+      const err = e as {
+        response?: {
+          status?: number;
+          data?: Omit<Partial<SessionAccountingImpactConflict>, 'code'> & {
+            code?: string;
+            conflicts?: Conflict[];
+          };
+        };
+      };
       if (err.response?.status === 409) {
         const code = err.response.data?.code;
         const impact = err.response.data?.impact;

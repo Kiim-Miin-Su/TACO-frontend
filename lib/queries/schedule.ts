@@ -16,6 +16,7 @@ import type { Instructor, InstructorAttendanceStatus } from "@/types";
 import { pushScheduleUndo, sanitizeInversePatch } from '@/lib/schedule-undo'; // [TBO-63] 캘린더 undo 스택
 import { useState } from "react";
 import { CATALOG_STALE, detailRetry, useInvalidator } from "./shared";
+import type { SessionAccountingImpactConflict } from "@kms545487/contracts";
 
 export const useSchedule = () => {
   const { scope } = useAccountAccess();
@@ -165,16 +166,12 @@ export const useOpenClassSeries = () => {
 export type AccountingImpactPrompt = {
   payoutLocked: boolean;
   impactHash?: string;
-  impact: {
-    before: { teachingMinutes: number; computedAmount: number };
-    after: { teachingMinutes: number; computedAmount: number };
-    delta: { teachingMinutes: number; computedAmount: number };
-  };
+  impact: SessionAccountingImpactConflict['impact'];
 };
 
 function accountingPromptFromError(error: unknown): AccountingImpactPrompt | null {
   const data = (error as {
-    response?: { data?: { code?: string; impact?: AccountingImpactPrompt['impact']; impactHash?: string } };
+    response?: { data?: Partial<SessionAccountingImpactConflict> };
   }).response?.data;
   if (!data?.impact || (data.code !== 'ACCOUNTING_IMPACT_ACK_REQUIRED' && data.code !== 'PAYOUT_REVERSAL_REQUIRED'))
     return null;

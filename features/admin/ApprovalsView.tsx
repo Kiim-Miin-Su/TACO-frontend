@@ -46,6 +46,7 @@ import { useAccountAccess } from '@/lib/useAccountAccess';
 import { AccountingImpactModal } from '@/components/AccountingImpactModal';
 import type { AccountingImpactPrompt } from '@/lib/queries';
 import { internalRoute } from '@/lib/navigation-security';
+import type { SessionAccountingImpactConflict } from '@kms545487/contracts';
 
 // 가입 승인 대기 — 서버가 actor 역할에 맞는 행만 반환하며 요청 역할은 승인 시 변경하지 않는다.
 function MemberApprovals({ canManagePendingAccount }: { canManagePendingAccount: boolean }) {
@@ -238,7 +239,7 @@ export function ApprovalsView() {
         const err = e as {
           response?: {
             status?: number;
-            data?: { code?: string; impact?: AccountingImpactPrompt['impact']; message?: string };
+            data?: Partial<SessionAccountingImpactConflict>;
           };
         };
         if (err.response?.data?.impact && (

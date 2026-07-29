@@ -5,14 +5,14 @@
 import { useState } from "react";
 import type { ScheduleRow } from "@/types";
 import type { SchedulePatchBody, AvailabilityUpsertBody } from "@/lib/api";
-import type { RecurrenceScope } from "@kms545487/contracts";
+import type { AvailabilityImpact as ContractAvailabilityImpact, RecurrenceScope } from "@kms545487/contracts";
 import { Field, ModalShell } from "@/components/ui";
 import { applyScheduleRowPatch } from "@/lib/domain/schedule-row";
 
 // 승인 요청 드래프트 타입 — ScheduleCalendar(상태 보유자)와 모달이 공유하는 계약.
 export type ScheduleChangeApprovalDraft = { row: ScheduleRow; patch: SchedulePatchBody; label: string };
 export type ScheduleDeleteApprovalDraft = { row: ScheduleRow };
-export type AvailabilityImpact = { sessionId: number; sessionDate: string; startTime?: string; endTime?: string; reason?: string };
+export type AvailabilityImpact = ContractAvailabilityImpact;
 export type AvailabilityApprovalDraft =
   | { action: "upsert"; body: AvailabilityUpsertBody; impacted: AvailabilityImpact[]; summary: string }
   | { action: "delete"; targetAvailabilityId: number; impacted: AvailabilityImpact[]; summary: string };
