@@ -2,6 +2,7 @@
 import { http } from "./client";
 import type { CounselAnalyticsRange } from "./students";
 import type {
+  DeletedResult,
   RejectReportInput,
   Payment,
   Expense,
@@ -71,7 +72,7 @@ export const financeApi = {
     create: (input: CreateExpenseInput) => http.post<Expense>("/expenses", input).then((r) => r.data),
     // [TBO-58 P2] 오기입 정정(requested만 — 승인 후엔 서버 400, 원장 정합) + 철회(soft delete)
     update: (id: number, patch: Partial<CreateExpenseInput>) => http.patch<Expense>(`/expenses/${id}`, patch).then((r) => r.data),
-    remove: (id: number) => http.delete<{ id: number; deleted: true }>(`/expenses/${id}`).then((r) => r.data),
+    remove: (id: number) => http.delete<DeletedResult>(`/expenses/${id}`).then((r) => r.data),
     approve: (id: number) => http.post<Expense>(`/expenses/${id}/approve`, {}).then((r) => r.data),
     // 반려 사유 **필수**(Q2 2026-07-06 — 반려류 패턴 통일). 서버 저장(Expense.rejectedReason).
     reject: (id: number, reason: string) => http.post<Expense>(`/expenses/${id}/reject`, { reason }).then((r) => r.data),
@@ -123,7 +124,7 @@ export const financeApi = {
     reject: (id: number, body: RejectReportInput = {}) =>
       http.post<SessionReportRecord>(`/reports/${id}/reject`, body).then((r) => r.data),
     remove: (id: number) =>
-      http.delete<{ id: number; deleted: true }>(`/reports/${id}`).then((r) => r.data),
+      http.delete<DeletedResult>(`/reports/${id}`).then((r) => r.data),
   },
   // ── 강사 페이 정산(TBO-05) — 시수×시급 산정 → 승인 → 지급 ──
   payouts: {

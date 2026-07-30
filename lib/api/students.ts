@@ -1,6 +1,7 @@
 // 학생·수강·보호자·상담 도메인 API — lib/api.ts에서 분할(순수 이동).
 import { http } from "./client";
 import type {
+  DeletedResult,
   Student,
   Enrollment,
   CounselForm,
@@ -87,7 +88,7 @@ export const studentsApi = {
     updateFamilyRelation: (studentId: number, relationId: number, input: UpdateStudentFamilyRelationInput) =>
       http.patch<StudentFamilyRelation>(`/students/${studentId}/family-relations/${relationId}`, input).then((r) => r.data),
     removeFamilyRelation: (studentId: number, relationId: number) =>
-      http.delete<{ id: number; deleted: true }>(`/students/${studentId}/family-relations/${relationId}`).then((r) => r.data),
+      http.delete<DeletedResult>(`/students/${studentId}/family-relations/${relationId}`).then((r) => r.data),
     // [TBO-30G] 가족 조인 단일 진실원 — 서버 조인 파생 aggregate(학생 상세·상담 화면 공용)
     family: (studentId: number) =>
       http.get<StudentFamilyAggregate>(`/students/${studentId}/family`).then((r) => r.data),
@@ -96,7 +97,7 @@ export const studentsApi = {
     updateAcademicHistory: (studentId: number, historyId: number, input: UpdateStudentAcademicHistoryInput) =>
       http.patch<StudentAcademicHistory>(`/students/${studentId}/academic-histories/${historyId}`, input).then((r) => r.data),
     removeAcademicHistory: (studentId: number, historyId: number) =>
-      http.delete<{ id: number; deleted: true }>(`/students/${studentId}/academic-histories/${historyId}`).then((r) => r.data),
+      http.delete<DeletedResult>(`/students/${studentId}/academic-histories/${historyId}`).then((r) => r.data),
     remove: (id: number) => http.delete<Student>(`/students/${id}`).then((r) => r.data),
   },
   enrollments: {
@@ -125,7 +126,7 @@ export const studentsApi = {
     updateRound: (formId: number, roundId: number, input: InternalUpdateCounselRoundInput) =>
       http.patch<CounselRound>(`/counsel/${formId}/rounds/${roundId}`, input).then((r) => r.data),
     removeRound: (formId: number, roundId: number) =>
-      http.delete<{ id: number; deleted: true }>(`/counsel/${formId}/rounds/${roundId}`).then((r) => r.data),
+      http.delete<DeletedResult>(`/counsel/${formId}/rounds/${roundId}`).then((r) => r.data),
   },
   parents: {
     list: () => http.get<Parent[]>("/parents").then((r) => r.data),

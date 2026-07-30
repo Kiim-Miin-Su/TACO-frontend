@@ -1,3 +1,4 @@
+import { isValidRrnFormat } from "@kms545487/contracts";
 // [B6 C2 2026-07-16] 폼 검증 규칙 단일 소스 — 정규식·한도가 화면마다 복붙되며 강도가 갈라졌다
 //  (출생연도 범위검사 유무, 비밀번호 byte/char 기준 불일치 — B6 문서 §3c). 여기 정의만 import해 쓴다.
 //  FE 검증은 1차 방어이고 권위는 항상 서버 DTO — 각 항목 주석에 대응 서버 규칙을 명시한다.
@@ -32,27 +33,12 @@ export const isValidBirthYear = (value: string | number) => {
   const year = Number(String(value).trim());
   return Number.isInteger(year) && year >= BIRTH_YEAR_MIN && year <= BIRTH_YEAR_MAX;
 };
-// [TBO-31 C2 2026-07-16] 주민등록번호(RRN) — BE common/rrn-crypto.util.ts RRN_REGEX와 동일 규칙.
-/** 앞 6자리(생년월일) + 성별자리 1~8(내국인 1-4·외국인 5-8) + 6자리, 하이픈 선택. */
-const RRN_RE = /^\d{6}-?[1-8]\d{6}$/;
-const rrnDigits = (value: string) => value.trim().replace(/-/g, "");
-/**
- * 형식 검증 — 정규식 + 앞 6자리의 MM(01-12)·DD(01-31) 타당성만 본다(BE validateRrnFormat 동일).
- * **체크섬 검증은 하지 않는다**: 2020-10 이후 발급분은 뒷자리가 임의번호라 검증식이 폐지됐다
- * (구 검증식을 적용하면 합법 신규 번호를 거부하는 오류가 된다).
- */
-export const isValidRrn = (value: string): boolean => {
-  if (!RRN_RE.test(value.trim())) return false;
-  const digits = rrnDigits(value);
-  const mm = Number(digits.slice(2, 4));
-  const dd = Number(digits.slice(4, 6));
-  return mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31;
-};
-/** 표시용 마스킹 — 생년월일 6자리 + 성별 자리만 남긴다: '950101-1******'(BE maskRrn 동일). */
-export const maskRrn = (value: string): string => {
-  const digits = rrnDigits(value);
-  return `${digits.slice(0, 6)}-${digits[6]}******`;
-};
+// [TBO-79 I1] 주민등록번호(RRN) 규칙의 소유는 contracts/src/rrn.ts다. 종전엔 BE
+//  common/rrn-crypto.util.ts와 이 파일이 같은 규칙을 각자 구현했고 공백 처리가 갈라져
+//  `'950101-1234567 '`가 여기서는 통과하고 서버에서 400이 됐다. 사본을 만들지 말 것.
+export { RRN_REGEX, RRN_FORMAT_MESSAGE, maskRrn } from "@kms545487/contracts";
+/** 형식 검증 — 기존 호출부 호환 별칭. 구현은 contracts의 isValidRrnFormat 하나다. */
+export const isValidRrn = isValidRrnFormat;
 export const passwordByteLength = (value: string) => new TextEncoder().encode(value).length;
 /** 통과 시 null, 실패 시 사용자 표시용 한글 메시지(모든 폼이 같은 문구를 쓰도록 여기서 생성). */
 export const passwordLengthError = (value: string): string | null => {

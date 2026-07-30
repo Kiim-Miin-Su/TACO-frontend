@@ -4,6 +4,7 @@ import { Badge, ModalShell } from '@/components/ui';
 import { won } from '@/lib/format';
 import { approvalDetailActionLabel, approvalDetailTitle } from '@/lib/domain/approvals';
 import { categoryLabel } from '@/features/expenses/labels';
+import { ChangeHistory } from '@/features/calendar/ChangeHistory'; // [TBO-79 I3]
 import type { Expense, SessionReport } from '@/types';
 import type { PayoutRow } from '@/lib/api';
 
@@ -30,6 +31,20 @@ function formatDateTime(value?: string) {
 function reportStatus(row: SessionReport) {
   return row.approvalStatus ?? row.status;
 }
+
+// [TBO-79 I3] 승인 대상 3종 ↔ audit_log.entity. 서버가 기록하는 이름과 정확히 같아야 한다.
+const AUDIT_ENTITY: Record<ApprovalDetailItem['kind'], string> = {
+  report: 'session_reports',
+  expense: 'expenses',
+  payout: 'instructor_payouts',
+};
+
+// entity별 필드 라벨 — ChangeHistory 기본(세션) 라벨에 병합된다.
+const AUDIT_FIELD_LABELS: Record<ApprovalDetailItem['kind'], Record<string, string>> = {
+  report: { approvalStatus: '승인 상태', content: '수업 내용', homework: '과제', progressPage: '진도', rejectedReason: '반려 사유', approvedBy: '승인자' },
+  expense: { status: '상태', title: '항목', category: '분류', amount: '금액', spentAt: '지출일', vendor: '거래처', rejectedReason: '반려 사유' },
+  payout: { status: '상태', amount: '승인 금액', adjustedAmount: '조정 금액', adjustReason: '조정 사유', rejectedReason: '반려 사유', paidAt: '지급 시각', reversedAt: '회수 시각' },
+};
 
 export function ApprovalItemDetailModal({
   item,
@@ -149,6 +164,21 @@ export function ApprovalItemDetailModal({
           </section>
         </>
       )}
+
+      {/* [TBO-79 I3] 처리 이력 — TBO-23 청크4 체크리스트가 굵게 요구한 항목인데 누락돼 있었다.
+          청크3(재무 승인 audit)이 선행조건이었던 바로 그 소비처다. 세션 상세·요청 상세와 같은
+          컴포넌트를 쓰며, entity별 필드 라벨만 다르게 준다. 훅이 관리자 게이트를 갖는다. */}
+      <section className="rounded-md border overflow-hidden">
+        <div className="px-3 py-2 text-caption font-medium bg-canvas-subtle">처리 이력</div>
+        <div className="p-3">
+          <ChangeHistory
+            entity={AUDIT_ENTITY[item.kind]}
+            entityId={item.row.id}
+            actorName={instructorName}
+            fieldLabels={AUDIT_FIELD_LABELS[item.kind]}
+          />
+        </div>
+      </section>
     </ModalShell>
   );
 }

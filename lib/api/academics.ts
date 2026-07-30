@@ -1,6 +1,7 @@
 // 코스·과목·로드맵·강사(프로필/계약) 도메인 API — lib/api.ts에서 분할(순수 이동).
 import { http } from "./client";
 import type {
+  DeletedResult,
   Course,
   Subject,
   CreateCourseInput,
@@ -46,7 +47,7 @@ export const academicsApi = {
     get: (id: number) => http.get<RoadmapAggregate>(`/roadmaps/${id}`).then((r) => r.data),
     create: (input: CreateRoadmapBody) => http.post<RoadmapAggregate>("/roadmaps", input).then((r) => r.data),
     update: (id: number, patch: UpdateRoadmapInput) => http.patch<RoadmapAggregate>(`/roadmaps/${id}`, patch).then((r) => r.data),
-    remove: (id: number) => http.delete<{ id: number; deleted: true }>(`/roadmaps/${id}`).then((r) => r.data),
+    remove: (id: number) => http.delete<DeletedResult>(`/roadmaps/${id}`).then((r) => r.data),
     addCourse: (id: number, courseId: number) => http.post<RoadmapAggregate>(`/roadmaps/${id}/courses`, { courseId }).then((r) => r.data),
     removeCourse: (id: number, courseId: number) => http.delete<RoadmapAggregate>(`/roadmaps/${id}/courses/${courseId}`).then((r) => r.data),
     // 전체 순서 교체 — 부분 목록은 서버가 400(조용한 누락 금지)
@@ -70,6 +71,6 @@ export const academicsApi = {
       http.post<InstructorAggregate>("/instructors", input).then((r) => r.data),
     update: (id: number, patch: UpdateInstructorInput) =>
       http.patch<InstructorAggregate>(`/instructors/${id}`, patch).then((r) => r.data),
-    remove: (id: number) => http.delete<{ id: number; deleted: true }>(`/instructors/${id}`).then((r) => r.data),
+    remove: (id: number) => http.delete<DeletedResult>(`/instructors/${id}`).then((r) => r.data),
   },
 };

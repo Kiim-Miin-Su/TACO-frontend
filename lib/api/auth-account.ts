@@ -1,6 +1,7 @@
 // 인증·계정·유저·프로필 변경/인증 도메인 API — lib/api.ts에서 분할(순수 이동).
 import { http } from "./client";
 import type {
+  DeletedResult,
   StaffAccountDetail,
   Country,
   CreateProfileChangeRequestInput,
@@ -196,7 +197,7 @@ export const authAccountApi = {
     reject: (id: number, reason: string) =>
       http.post<ProfileChangeRequest>(`/profile-change-requests/${id}/reject`, { reason }).then((r) => r.data),
     withdraw: (id: number) =>
-      http.delete<{ id: number; deleted: true }>(`/profile-change-requests/${id}`).then((r) => r.data),
+      http.delete<DeletedResult>(`/profile-change-requests/${id}`).then((r) => r.data),
   },
   // [TBO-29B-4] 연락처 재인증 challenge — 발송(현재 비밀번호 재확인)·코드 확인(5회 잠금)·재전송(60초 cooldown).
   profileVerifications: {
