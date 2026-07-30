@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ClassSession, AvailabilityBlock } from '@/types';
-import { overlaps, addMinutes, weekdayOf, detectConflicts, teachingHours, moveCandidate, resizeCandidate, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, recommendInstructorsForStudent, ownerWindows, blocksOnDate, sessionEndMin, crossMidnightEnd, durationMinutesBetween, blockRestrictsSession, ownerAvailabilityForSlot, countsForPay, instructorAttendanceStats } from './schedule';
+import { overlaps, addMinutes, weekdayOf, teachingHours, layoutLanes, suggestSlots, suggestPairSlots, recommendForStudent, recommendInstructorsForStudent, ownerWindows, blocksOnDate, sessionEndMin, crossMidnightEnd, durationMinutesBetween, blockRestrictsSession, ownerAvailabilityForSlot, countsForPay, instructorAttendanceStats } from './schedule';
 
 const ablock = (p: Partial<AvailabilityBlock>): AvailabilityBlock => ({
   id: 1, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '09:00', endTime: '12:00', ...p,
@@ -38,99 +38,9 @@ describe('overlaps (경계값)', () => {
   });
 });
 
-describe('detectConflicts', () => {
-  const existing = [sess({ id: 100, instructorId: 1, roomId: 1, startTime: '16:00', endTime: '17:30' })];
-
-  it('충돌 없으면 빈 배열', () => {
-    const c = detectConflicts(
-      { sessionDate: '2026-06-29', startTime: '18:00', durationMinutes: 60, instructorId: 1, roomId: 1 },
-      { sessions: existing },
-    );
-    expect(c).toEqual([]);
-  });
-
-  it('같은 강사·시간겹침 → 강사 이중예약', () => {
-    const c = detectConflicts(
-      { sessionDate: '2026-06-29', startTime: '17:00', durationMinutes: 60, instructorId: 1, roomId: 2 },
-      { sessions: existing },
-    );
-    expect(c).toContainEqual({ type: 'double_book', resource: 'instructor', resourceId: 1, sessionId: 100 });
-  });
-
-  it('같은 강의실·시간겹침 → 강의실 이중예약', () => {
-    const c = detectConflicts(
-      { sessionDate: '2026-06-29', startTime: '17:00', durationMinutes: 60, instructorId: 9, roomId: 1 },
-      { sessions: existing },
-    );
-    expect(c.some((x) => x.type === 'double_book' && x.resource === 'room')).toBe(true);
-  });
-
-  it('결강(canceled)·취소(no_show) 세션은 시간 점유에서 제외', () => {
-    const canceled = [
-      sess({ id: 200, instructorId: 1, roomId: 1, startTime: '16:00', endTime: '17:30', status: 'canceled' }),
-      sess({ id: 201, instructorId: 1, roomId: 1, startTime: '16:00', endTime: '17:30', status: 'no_show' }),
-    ];
-    const c = detectConflicts(
-      { sessionDate: '2026-06-29', startTime: '16:00', durationMinutes: 90, instructorId: 1, roomId: 1 },
-      { sessions: canceled },
-    );
-    expect(c).toEqual([]);
-  });
-
-  it('이동(ignoreSessionId)하면 자기 자신과는 충돌 아님', () => {
-    const c = detectConflicts(
-      { sessionDate: '2026-06-29', startTime: '16:00', durationMinutes: 90, instructorId: 1, roomId: 1, ignoreSessionId: 100 },
-      { sessions: existing },
-    );
-    expect(c).toEqual([]);
-  });
-
-  it('불가시간(Block) 위 배치 → unavailable', () => {
-    const blocks: AvailabilityBlock[] = [
-      { id: 1, ownerType: 'instructor', ownerId: 1, kind: 'unavailable', weekday: 1, startTime: '12:00', endTime: '13:00' },
-    ];
-    const c = detectConflicts(
-      { sessionDate: '2026-06-29', startTime: '12:30', durationMinutes: 60, instructorId: 1 },
-      { sessions: [], blocks },
-    );
-    expect(c).toContainEqual({ type: 'unavailable', resource: 'instructor', resourceId: 1 });
-  });
-
-  it('online_only는 대면 수업을 막고 온라인 수업은 허용', () => {
-    const blocks: AvailabilityBlock[] = [
-      ablock({ id: 1, ownerType: 'instructor', ownerId: 1, kind: 'online_only' as AvailabilityBlock['kind'], weekday: 1, startTime: '12:00', endTime: '13:00' }),
-    ];
-    const inPerson = detectConflicts(
-      { sessionDate: '2026-06-29', startTime: '12:30', durationMinutes: 30, instructorId: 1, mode: 'in_person' },
-      { sessions: [], blocks },
-    );
-    const online = detectConflicts(
-      { sessionDate: '2026-06-29', startTime: '12:30', durationMinutes: 30, instructorId: 1, mode: 'online' },
-      { sessions: [], blocks },
-    );
-    expect(inPerson).toContainEqual({ type: 'unavailable', resource: 'instructor', resourceId: 1, detail: 'online_only_overlap' });
-    expect(online).toEqual([]);
-  });
-
-  it('학생 owner의 불가/온라인만 가능도 후보 studentIds 기준으로 검사', () => {
-    const blocks: AvailabilityBlock[] = [
-      ablock({ id: 1, ownerType: 'student', ownerId: 7, kind: 'unavailable', weekday: 1, startTime: '12:00', endTime: '13:00' }),
-    ];
-    const c = detectConflicts(
-      { sessionDate: '2026-06-29', startTime: '12:30', durationMinutes: 30, studentIds: [7, 8] },
-      { sessions: [], blocks },
-    );
-    expect(c).toContainEqual({ type: 'unavailable', resource: 'student', resourceId: 7 });
-  });
-
-  it('강의실 capacity 초과 → room_capacity', () => {
-    const c = detectConflicts(
-      { sessionDate: '2026-06-29', startTime: '20:00', durationMinutes: 60, roomId: 1 },
-      { sessions: [], roomCapacity: { 1: 6 }, enrolledCount: 8 },
-    );
-    expect(c.some((x) => x.type === 'room_capacity')).toBe(true);
-  });
-});
+// [TBO-79 G1] detectConflicts / move·resize 후보 스위트를 제거했다. 대상 구현이 사문이었고,
+//  이 진리표가 BE conflict.util과 **다른** 규칙(학생 이중예약 누락·capacity 비교 대상 상이)을
+//  고정하고 있어 드리프트를 정당화하는 근거로 작동했다. 충돌 판정의 단일 소스는 서버다.
 
 describe('availability block policy', () => {
   it('blockRestrictsSession: online_only는 온라인 수업을 제한하지 않음', () => {
@@ -157,30 +67,6 @@ describe('availability block policy', () => {
   });
 });
 
-describe('move/resize 후보 + 충돌', () => {
-  const base = sess({ id: 1, instructorId: 1, roomId: 1, sessionDate: '2026-06-29', startTime: '16:00', endTime: '17:30', durationMinutes: 90 });
-  const other = sess({ id: 2, instructorId: 1, roomId: 2, sessionDate: '2026-06-30', startTime: '16:00', endTime: '17:00', durationMinutes: 60 });
-
-  it('moveCandidate: 길이 유지하며 날짜/시각 이동', () => {
-    const c = moveCandidate(base, { sessionDate: '2026-06-30', startTime: '16:30' });
-    expect(c).toMatchObject({ sessionDate: '2026-06-30', startTime: '16:30', durationMinutes: 90, ignoreSessionId: 1 });
-  });
-
-  it('moveCandidate: 다른 수업과 강사 시간겹침이면 충돌', () => {
-    const c = moveCandidate(base, { sessionDate: '2026-06-30', startTime: '16:30' }); // 16:30-18:00, 강사1
-    expect(detectConflicts(c, { sessions: [other] }).some((x) => x.resource === 'instructor')).toBe(true);
-  });
-
-  it('resizeCandidate: 끝 핸들 → 길이 재계산', () => {
-    const c = resizeCandidate(base, { endTime: '18:00' });
-    expect(c.durationMinutes).toBe(120);
-  });
-
-  it('resizeCandidate: 최소 길이(15분) 보장', () => {
-    const c = resizeCandidate(base, { startTime: '16:00', endTime: '16:05' });
-    expect(c.durationMinutes).toBe(15);
-  });
-});
 
 describe('teachingHours', () => {
   it('기간·강사 필터 + 시수 합', () => {
@@ -482,33 +368,10 @@ describe('[R-9] sessionEndMin/crossMidnightEnd — 크로스 종료 파생(단�
   });
 });
 
-describe('[R-9] detectConflicts — 자정 크로스 이틀 겹침(BE conflict.util과 동일 규칙 1:1)', () => {
-  // 6/29(월) 23:00 시작 120분 = 6/30(화) 01:00 종료 — endTime 미저장(duration 파생)
-  const cross = [sess({ id: 200, instructorId: 1, roomId: 1, sessionDate: '2026-06-29', startTime: '23:00', endTime: undefined, durationMinutes: 120 })];
-  it('시작일 잔여(월 23:30~) 겹침 → 이중예약', () => {
-    const c = detectConflicts({ sessionDate: '2026-06-29', startTime: '23:30', durationMinutes: 60, instructorId: 1 }, { sessions: cross });
-    expect(c).toContainEqual({ type: 'double_book', resource: 'instructor', resourceId: 1, sessionId: 200 });
-  });
-  it('익일 스필(화 00:30~) 겹침 → 이중예약(이틀에 걸친 검사)', () => {
-    const c = detectConflicts({ sessionDate: '2026-06-30', startTime: '00:30', durationMinutes: 60, instructorId: 1 }, { sessions: cross });
-    expect(c).toContainEqual({ type: 'double_book', resource: 'instructor', resourceId: 1, sessionId: 200 });
-  });
-  it('익일 01:00 맞닿음은 비겹침 · 전전일/다다음날은 검사 제외', () => {
-    expect(detectConflicts({ sessionDate: '2026-06-30', startTime: '01:00', durationMinutes: 60, instructorId: 1 }, { sessions: cross })).toEqual([]);
-    expect(detectConflicts({ sessionDate: '2026-07-01', startTime: '00:30', durationMinutes: 60, instructorId: 1 }, { sessions: cross })).toEqual([]);
-  });
-  it('크로스 **후보**가 익일 기존 세션과 겹침(역방향)', () => {
-    const nextDay = [sess({ id: 201, instructorId: 1, sessionDate: '2026-06-30', startTime: '00:30', endTime: '01:30', durationMinutes: 60 })];
-    const c = detectConflicts({ sessionDate: '2026-06-29', startTime: '23:00', durationMinutes: 120, instructorId: 1 }, { sessions: nextDay });
-    expect(c).toContainEqual({ type: 'double_book', resource: 'instructor', resourceId: 1, sessionId: 201 });
-  });
-  it('크로스 후보의 익일 불가시간 침범 — [시작일 잔여]+[익일 00:00~] 세그먼트 검사', () => {
-    const blocks = [ablock({ id: 9, kind: 'unavailable', weekday: 2, startTime: '00:00', endTime: '02:00' })]; // 화요일 심야 불가
-    const c = detectConflicts({ sessionDate: '2026-06-29', startTime: '23:00', durationMinutes: 120, instructorId: 1 }, { sessions: [], blocks });
-    expect(c).toContainEqual({ type: 'unavailable', resource: 'instructor', resourceId: 1 });
-    // 시작일(월) 요일만 보던 구 규칙이면 미검출 — 회귀 방지
-  });
-});
+// [TBO-79 G1] [R-9] 자정 크로스 detectConflicts 스위트 제거 — 구현이 사문이었고 이 진리표가
+//  "BE와 1:1"이라고 주장했지만 실제로는 학생 이중예약 규칙이 빠져 있었다. 자정 크로스 규칙
+//  자체의 회귀는 바로 위 sessionEndMin / crossMidnightEnd / durationMinutesBetween 스위트가
+//  계속 고정한다(BE session-time.policy와 같은 축).
 
 // ── [TBO-68 C1 2026-07-26] 시수 인정·강사 출결 통계 — BE **동형 계약 진리표** ──────────────────
 //  BE 정본: session-accounting.policy.countsForTeachingHours / schedule.service.instructorAttendanceSummary.

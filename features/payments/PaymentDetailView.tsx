@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { Badge, ConfirmModal, DetailStates, Field, SectionCard } from '@/components/ui';
 import { usePayment, useStudents, useEnrollments, useCourses, useUpdatePayment, useMarkPaymentPaid, useRefundPayment } from '@/lib/queries';
+import { invalidateFinanceLedger } from '@/lib/query-cache'; // [TBO-79 G4]
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { qk } from '@/lib/queryKeys';
 import { apiErrorMessage } from '@/lib/api-error';
@@ -39,13 +40,14 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
   const saving = updatePayment.isPending || markPaid.isPending || refund.isPending || sudoAction.isPending;
 
   // [TBO-54 C2] 409 = 다른 인스턴스/기기가 먼저 전이 — 오류가 아니라 "최신화 필요" 안내 + 자동 invalidate.
-  const recoverFromConflict = (caught: unknown, fallback: string) => {
+  // [TBO-79 G4] 사본 fan-out을 공용 helper로 바꾸고 **await**한다. 종전엔 유일한
+  //  `void invalidateQueries`였고, 재조회가 시작되기 3줄 **전에** "최신 상태로 새로고침했습니다"를
+  //  띄웠다 — 금전 화면에서 사용자는 갱신 전 값을 보면서 최신이라는 안내를 받았다.
+  const recoverFromConflict = async (caught: unknown, fallback: string) => {
     if (isConflict(caught)) {
-      setNotice('다른 기기에서 먼저 처리되었습니다 — 최신 상태로 새로고침했습니다.');
       setSaveError(null);
-      void queryClient.invalidateQueries({ queryKey: qk.payments.all });
-      void queryClient.invalidateQueries({ queryKey: qk.transactions.all });
-      void queryClient.invalidateQueries({ queryKey: qk.revenue.all }); // [TBO-66 F4] 중앙 훅과 동일 세트(누락 정렬)
+      await invalidateFinanceLedger(queryClient);
+      setNotice('다른 기기에서 먼저 처리되었습니다 — 최신 상태로 새로고침했습니다.');
     } else {
       setNotice(null);
       setSaveError(apiErrorMessage(caught, fallback));
@@ -98,7 +100,7 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
               });
               setEditing(false);
             } catch (caught) {
-              if (isConflict(caught)) { setEditing(false); recoverFromConflict(caught, ''); return; }
+              if (isConflict(caught)) { setEditing(false); void recoverFromConflict(caught, ''); return; }
               setSaveError(apiErrorMessage(caught, '저장하지 못했습니다. 다시 시도해 주세요.'));
             }
           };
@@ -190,7 +192,7 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
                   onConfirm={() => {
                     setConfirming(null);
                     void sudoAction.run(() => markPaid.mutateAsync(payment.id), {
-                      onError: (caught) => recoverFromConflict(caught, '수납 처리에 실패했습니다. 다시 시도해 주세요.'),
+                      onError: (caught) => { void recoverFromConflict(caught, '수납 처리에 실패했습니다. 다시 시도해 주세요.'); },
                     });
                   }}
                 />
@@ -205,7 +207,7 @@ export function PaymentDetailView({ paymentId }: { paymentId: number }) {
                   onConfirm={() => {
                     setConfirming(null);
                     void sudoAction.run(() => refund.mutateAsync(payment.id), {
-                      onError: (caught) => recoverFromConflict(caught, '환불 처리에 실패했습니다. 다시 시도해 주세요.'),
+                      onError: (caught) => { void recoverFromConflict(caught, '환불 처리에 실패했습니다. 다시 시도해 주세요.'); },
                     });
                   }}
                 />

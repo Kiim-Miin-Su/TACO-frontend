@@ -1,6 +1,7 @@
 // 인증·계정·유저·프로필 변경/인증 도메인 API — lib/api.ts에서 분할(순수 이동).
 import { http } from "./client";
 import type {
+  Country,
   CreateProfileChangeRequestInput,
   ProfileChangeFields,
   ProfileChangeRequest,
@@ -58,15 +59,8 @@ export type SignupConfig = { phoneVerificationRequired: boolean };
 export type PendingAccount = PendingStaffAccount;
 export type MyProfile = StaffProfile;
 // [E0.5 ④] 국가·시간대 카탈로그 행 — BE countries 표(참조 데이터)와 1:1.
-export type CatalogCountry = {
-  id: number;
-  code: string; // ISO alpha-2 또는 권역 분할 코드(US-W)
-  nameKo: string;
-  nameEn: string;
-  timeZone: string; // 대표 IANA tz
-  flag?: string | null;
-  sortOrder: number;
-};
+// [TBO-79 F1] 소유는 contracts — 손으로 다시 선언하던 사본을 제거했다(flag optional 드리프트 해소).
+export type CatalogCountry = Country;
 // [TBO-29B-4] 모든 프로필 변경 요청은 현재 비밀번호 재확인 필수. 연락처(email/phone 채움) 변경은
 //  verified challenge id를 함께 보내 서버 tx 안에서 일회 소비된다.
 export type CreateProfileChangeRequestBody = CreateProfileChangeRequestInput;

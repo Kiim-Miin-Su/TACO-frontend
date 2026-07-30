@@ -44,6 +44,7 @@ import type { AccountRole } from '@/types';
 import { ProfileChangeRequestsSection } from './ProfileChangeRequestsSection';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { AccountingImpactModal } from '@/components/AccountingImpactModal';
+import { invalidateApprovalCommand } from '@/lib/query-cache'; // [TBO-79 G4]
 import type { AccountingImpactPrompt } from '@/lib/queries';
 import { internalRoute } from '@/lib/navigation-security';
 import type { SessionAccountingImpactConflict } from '@kms545487/contracts';
@@ -188,15 +189,8 @@ export function ApprovalsView() {
     onError: async (error: unknown) => {
       const status = (error as { response?: { status?: number } }).response?.status;
       // [TBO-54 C2] 409 = 다른 기기가 먼저 결재(백엔드 CAS) — 안내 문구가 참이 되도록 실제로 invalidate.
-      if (status === 409) {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: qk.reports.all }),
-          queryClient.invalidateQueries({ queryKey: qk.expenses.all }),
-          queryClient.invalidateQueries({ queryKey: qk.payouts.all }),
-          queryClient.invalidateQueries({ queryKey: qk.transactions.all }),
-          queryClient.invalidateQueries({ queryKey: qk.revenue.all }),
-        ]);
-      }
+      // [TBO-79 G4] 손으로 든 5-scope 배열을 공용 fan-out으로 — 다른 승인 경로와 세트가 갈라지지 않게.
+      if (status === 409) await invalidateApprovalCommand(queryClient);
       setSectionMsg((m) => ({
         ...m,
         [key]: status === 409 ? '다른 기기에서 먼저 처리되었습니다 — 목록을 최신 상태로 새로고침했습니다.'

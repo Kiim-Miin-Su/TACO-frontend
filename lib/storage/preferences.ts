@@ -10,7 +10,8 @@ export const preferenceKeys = {
   calendarView: "taco.calendar.view",
   calendarColorBy: "taco.calendar.colorBy",
   calendarCompactCols: "taco.calendar.compactCols",
-  calendarKstFixed: "taco.calendar.kstFixed",
+  // [TBO-79 G3] calendarKstFixed 제거 — 읽는 곳도 쓰는 곳도 없었다.
+  //  캘린더는 ScheduleCalendar에서 KST 고정이 하드코딩이라 이 키는 처음부터 사문이었다.
   recentCountries: "taco.calendar.recentCountries",
   paymentsView: "taco.payments.view",
   debugEnabled: "taco.debug.enabled",

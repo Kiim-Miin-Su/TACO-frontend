@@ -115,81 +115,12 @@ export function ownerAvailabilityForSlot(
   return { available: true, hasAvailableWindow };
 }
 
-export type ConflictCandidate = {
-  sessionDate: string;
-  startTime: string;
-  durationMinutes: number;
-  instructorId?: ID;
-  roomId?: ID;
-  studentIds?: ID[];
-  mode?: SessionModeForAvailability;
-  ignoreSessionId?: ID;
-};
-export type ConflictCtx = {
-  sessions: ClassSession[];
-  blocks?: AvailabilityBlock[];
-  roomCapacity?: Record<number, number>;
-  enrolledCount?: number; // 후보 수업의 등록 인원(capacity 비교용)
-};
-
-/** 충돌 검사 — 강사/강의실 이중예약 · 불가시간(Block) · 강의실 capacity. 빈 배열=충돌 없음.
- *  [R-9] 자정 크로스 대응(BE conflict.util과 동일 규칙 1:1): 시작일 00:00 기준 절대 분 좌표로
- *  ±1일 세션까지 비교(익일 스필 포함), 불가시간은 [시작일 잔여]+[익일 00:00~] 두 세그먼트 검사. */
-export function detectConflicts(cand: ConflictCandidate, ctx: ConflictCtx): Conflict[] {
-  const out: Conflict[] = [];
-  const cS = toMin(cand.startTime);
-  const cE = cS + cand.durationMinutes; // 자정 크로스면 1440 초과
-
-  // 1) 기존 세션과의 이중예약(강사·강의실) — 인접일(±1일) 세션을 같은 분 좌표계로 비교
-  for (const s of ctx.sessions) {
-    if (s.id === cand.ignoreSessionId) continue;
-    if (s.status === 'canceled' || s.status === 'no_show') continue; // 결강/취소는 점유 아님
-    if (!s.startTime) continue;
-    const dd = dayDiffDays(s.sessionDate, cand.sessionDate);
-    if (dd < -1 || dd > 1) continue; // 세션 상한 8h < 24h — 스필은 인접 1일까지만
-    const off = dd * 1440;
-    const sS = off + toMin(s.startTime);
-    const sE = off + sessionEndMin(s);
-    if (!(cS < sE && sS < cE)) continue;
-    if (cand.instructorId != null && s.instructorId === cand.instructorId)
-      out.push({ type: 'double_book', resource: 'instructor', resourceId: cand.instructorId, sessionId: s.id });
-    if (cand.roomId != null && s.roomId === cand.roomId)
-      out.push({ type: 'double_book', resource: 'room', resourceId: cand.roomId, sessionId: s.id });
-  }
-
-  // 2) 제약 블록 침범 — 강사/강의실/학생. online_only는 대면만 막고 온라인은 허용.
-  //    크로스 후보는 이틀 세그먼트로 각 날짜 요일 검사.
-  const segs = cE > 1440
-    ? [
-        { date: cand.sessionDate, s: cS, e: 1440 },
-        { date: addDaysISO(cand.sessionDate, 1), s: 0, e: cE - 1440 },
-      ]
-    : [{ date: cand.sessionDate, s: cS, e: cE }];
-  for (const seg of segs) {
-    const wd = weekdayOf(seg.date);
-    for (const b of ctx.blocks ?? []) {
-      if (b.weekday !== wd || !blockRestrictsSession(b, cand.mode)) continue;
-      if (!(seg.s < toMin(b.endTime) && toMin(b.startTime) < seg.e)) continue;
-      const detail = (b.kind as AvailabilityKindForSchedule) === 'online_only' ? 'online_only_overlap' : undefined;
-      const conflict = (resource: 'instructor' | 'room' | 'student', resourceId: ID): Conflict =>
-        detail ? { type: 'unavailable', resource, resourceId, detail } : { type: 'unavailable', resource, resourceId };
-      if (b.ownerType === 'instructor' && Number(cand.instructorId) === Number(b.ownerId))
-        out.push(conflict('instructor', b.ownerId));
-      if (b.ownerType === 'room' && Number(cand.roomId) === Number(b.ownerId))
-        out.push(conflict('room', b.ownerId));
-      if (b.ownerType === 'student' && cand.studentIds?.some((id) => Number(id) === Number(b.ownerId)))
-        out.push(conflict('student', b.ownerId));
-    }
-  }
-
-  // 3) 강의실 capacity 초과
-  if (cand.roomId != null && ctx.roomCapacity && ctx.enrolledCount != null) {
-    const cap = ctx.roomCapacity[cand.roomId];
-    if (cap != null && ctx.enrolledCount > cap)
-      out.push({ type: 'room_capacity', resource: 'room', resourceId: cand.roomId, detail: `${ctx.enrolledCount}/${cap}` });
-  }
-  return out;
-}
+// [TBO-79 G1] 프론트 충돌 엔진(detectConflicts / ConflictCandidate / ConflictCtx)을 제거했다.
+//  "BE conflict.util과 동일 규칙 1:1"이라고 적혀 있었지만 실제로는 드리프트해 있었다 —
+//  BE는 학생 이중예약(TBO-28C)을 잡는데 FE는 잡지 않았고, capacity 비교 대상과 unavailable
+//  detail 문구도 달랐다. 게다가 비테스트 소비자가 0인 사문이었는데, 30k줄짜리 테스트가
+//  **틀린 진리표를 고정**하고 있어 언제든 그대로 배선될 수 있었다.
+//  충돌 판정의 단일 소스는 서버다 — UI는 `POST /schedule/conflicts`를 쓴다.
 
 export type TeachingHours = { sessions: number; minutes: number; hours: number };
 
@@ -257,33 +188,11 @@ export function instructorAttendanceStats(
   };
 }
 
-// ── 이동(드래그)·리사이즈 → 충돌검사용 후보 + PATCH 페이로드 ──
-/** 드래그 이동: 날짜/시작시각(과 선택적으로 강의실/강사) 변경. 길이 유지. */
-export function moveCandidate(
-  s: ClassSession,
-  to: { sessionDate?: string; startTime?: string; roomId?: ID; instructorId?: ID },
-): ConflictCandidate {
-  return {
-    sessionDate: to.sessionDate ?? s.sessionDate,
-    startTime: to.startTime ?? s.startTime ?? '00:00',
-    durationMinutes: s.durationMinutes,
-    instructorId: to.instructorId ?? s.instructorId,
-    roomId: to.roomId ?? s.roomId,
-    ignoreSessionId: s.id,
-  };
-}
-
-/** 리사이즈: 시작/끝 핸들 드래그 → 새 시작·종료로 길이 재계산(분). 최소 길이 보장. */
-export function resizeCandidate(
-  s: ClassSession,
-  edge: { startTime?: string; endTime?: string },
-  minMinutes = 15,
-): ConflictCandidate {
-  const startTime = edge.startTime ?? s.startTime ?? '00:00';
-  const endTime = edge.endTime ?? s.endTime ?? addMinutes(startTime, s.durationMinutes);
-  const durationMinutes = Math.max(minMinutes, toMin(endTime) - toMin(startTime));
-  return { sessionDate: s.sessionDate, startTime, durationMinutes, instructorId: s.instructorId, roomId: s.roomId, ignoreSessionId: s.id };
-}
+// [TBO-79 G1] moveCandidate / resizeCandidate 제거 — 둘 다 비테스트 소비자 0인 사문이었다.
+//  특히 resizeCandidate는 `toMin(end) - toMin(start)`를 그대로 써서 자정 크로스에서 음수가
+//  나왔다(23:00→01:00 = -1320 → 최소값으로 클램프). 같은 모듈 6줄 위의 durationMinutesBetween은
+//  +1440 보정을 하는데도 이쪽만 빠져 있었다 — 프로젝트 이력이 경고한 "자정 규칙 사본" 문제의
+//  세 번째 변종이 사문으로 남아 있던 자리다.
 
 // ── 슬롯 추천: 가용 ∩ − 점유 → 겹치지 않는 후보 시간 ──
 export type SuggestInput = {

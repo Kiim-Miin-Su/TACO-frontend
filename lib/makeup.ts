@@ -3,12 +3,15 @@
 // 취소·노쇼·과거 미진행(펑크) 수업은 시수 부족을 만들므로 보강(makeup) 대상이 된다.
 // 원본 세션이 보강 세션(ClassSession.makeupForSessionId)으로 연결되면 "해소"로 본다.
 // ─────────────────────────────────────────────────────────────
+import type { MakeupReason } from "@kms545487/contracts";
 import type { ClassSession } from "@/types";
 import { sessionEndMs } from "@/lib/reports";
 
 export type MakeupSlice = { classSessions: ClassSession[] };
 
-export type MakeupReason = "canceled" | "no_show" | "unheld_past";
+// [TBO-79 G2] 종전엔 같은 union을 여기서 다시 선언했다. 기능은 이미 배포됐는데 계약을 우회한
+//  상태라 contracts/src/workload.ts가 구조적으로 stale이었고, 드리프트를 감지할 장치가 없었다.
+export type { MakeupReason };
 export type MakeupNeedItem = {
   session: ClassSession;
   reason: MakeupReason;

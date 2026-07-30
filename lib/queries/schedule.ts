@@ -122,7 +122,7 @@ export const useRemoveAvailability = () =>
 // [TBO-63] undo용 before 스냅샷 — ["schedule"] 하위 캐시(목록·단건)에서 세션 행을 찾는다.
 //  서버 캐시가 곧 화면의 진실이므로, 사용자가 되돌리길 기대하는 값과 항상 일치한다.
 function cachedScheduleRow(qc: ReturnType<typeof useQueryClient>, id: number): Record<string, unknown> | undefined {
-  for (const [, data] of qc.getQueriesData<unknown>({ queryKey: ["schedule"] })) {
+  for (const [, data] of qc.getQueriesData<unknown>({ queryKey: qk.schedule.all })) { // [TBO-79 G4]
     if (Array.isArray(data)) {
       const hit = (data as Array<{ id?: number }>).find((row) => row && row.id === id);
       if (hit) return hit as Record<string, unknown>;

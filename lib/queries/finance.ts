@@ -167,7 +167,7 @@ export const useRemoveReport = () => {
       // Keep the active detail cache until the caller redirects. Removing an active query
       // makes useQuery recreate it for one render and produces a noisy post-delete 404.
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["reports", "list"] }),
+        queryClient.invalidateQueries({ queryKey: qk.reports.all }), // [TBO-79 G4] 인라인 리터럴 제거
         queryClient.invalidateQueries({ queryKey: qk.payouts.all }),
         queryClient.invalidateQueries({ queryKey: qk.schedule.all }),
         queryClient.invalidateQueries({ queryKey: qk.audit.all }),

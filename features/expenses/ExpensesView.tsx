@@ -11,7 +11,8 @@ import { useAccountAccess } from '@/lib/useAccountAccess';
 import { internalRoute } from '@/lib/navigation-security';
 
 export function ExpensesView() {
-  // 지출 목록은 TanStack Query에서 가져오고, 반려 사유는 클라이언트 전용 store에 유지.
+  // [TBO-79 G3] 반려 사유는 서버 필드(expense.rejectedReason)다 — 종전 주석의 "클라이언트 전용
+  //  store에 유지"는 이관 전 서술이 남은 것이고, 감사자가 휘발성 데이터로 오인할 수 있었다.
   const finance = useAccountAccess().can('finance.access');
   const { data: expenses = [], isPending: loading } = useExpenses(); // [E0.6 H2]
   const [view, setView] = useState<'list' | 'calendar'>('list');

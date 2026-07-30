@@ -228,6 +228,46 @@ export async function invalidateClassOpening(queryClient: QueryClient): Promise<
   );
 }
 
+/**
+ * [TBO-79 G4] 금전 원장 fan-out — 결제·지출·정산 명령이 함께 흔드는 세트.
+ *  종전엔 PaymentDetailView·중앙 훅·ApprovalsView가 각자 배열을 손으로 들고 있었고,
+ *  PaymentDetailView에는 "중앙 훅과 동일 세트(누락 정렬)"라는 주석이 붙어 있었다 —
+ *  이미 한 번 갈라졌다가 손으로 맞춘 흔적이다. 사본을 없애 다시 갈라질 수 없게 한다.
+ */
+export const FINANCE_LEDGER_SCOPES = [
+  qk.payments.all,
+  qk.transactions.all,
+  qk.revenue.all,
+] as const;
+
+export async function invalidateFinanceLedger(queryClient: QueryClient): Promise<void> {
+  await Promise.all(
+    FINANCE_LEDGER_SCOPES.map((key) =>
+      queryClient.invalidateQueries({ queryKey: key as unknown as readonly unknown[], refetchType: 'active' }),
+    ),
+  );
+}
+
+/**
+ * [TBO-79 G4] 승인 명령 fan-out — 리포트·지출·정산 승인이 시수·원장까지 함께 바꾼다.
+ *  ApprovalsView의 409 복구 경로에만 존재하던 5-scope 세트를 여기로 옮겼다.
+ */
+export const APPROVAL_COMMAND_SCOPES = [
+  qk.reports.all,
+  qk.expenses.all,
+  qk.payouts.all,
+  qk.transactions.all,
+  qk.revenue.all,
+] as const;
+
+export async function invalidateApprovalCommand(queryClient: QueryClient): Promise<void> {
+  await Promise.all(
+    APPROVAL_COMMAND_SCOPES.map((key) =>
+      queryClient.invalidateQueries({ queryKey: key as unknown as readonly unknown[], refetchType: 'active' }),
+    ),
+  );
+}
+
 /** @deprecated [C4] invalidateCalendarCommand로 통일 — 부분 무효화 편차 방지를 위해 위임만 남긴다. */
 export async function invalidateScheduleLifecycle(queryClient: QueryClient): Promise<void> {
   await invalidateCalendarCommand(queryClient);
