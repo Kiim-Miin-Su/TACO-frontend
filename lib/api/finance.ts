@@ -2,6 +2,7 @@
 import { http } from "./client";
 import type { CounselAnalyticsRange } from "./students";
 import type {
+  RejectReportInput,
   Payment,
   Expense,
   Transaction,
@@ -118,8 +119,9 @@ export const financeApi = {
     // [TBO-79 C2] 승인 actor는 서버 토큰이 권위 — body로 보내지 않는다.
     approve: (id: number) =>
       http.post<SessionReportRecord>(`/reports/${id}/approve`, {}).then((r) => r.data),
-    reject: (id: number, reason?: string) =>
-      http.post<SessionReportRecord>(`/reports/${id}/reject`, { reason }).then((r) => r.data),
+    // [TBO-79 B5] 반려 body는 RejectReportInput 계약 — 회계 확인 필드를 포함한다.
+    reject: (id: number, body: RejectReportInput = {}) =>
+      http.post<SessionReportRecord>(`/reports/${id}/reject`, body).then((r) => r.data),
     remove: (id: number) =>
       http.delete<{ id: number; deleted: true }>(`/reports/${id}`).then((r) => r.data),
   },

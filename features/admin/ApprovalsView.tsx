@@ -394,6 +394,12 @@ export function ApprovalsView() {
           });
         }}
       />
+      {/* [TBO-79 B5] 승인 리포트 반려는 정산 적격을 되돌린다 — 같은 확인 모달. */}
+      <AccountingImpactModal
+        prompt={rejectReport.accountingPrompt}
+        onClose={rejectReport.dismissAccountingPrompt}
+        onConfirm={rejectReport.confirmAccountingImpact}
+      />
       {/* [C2C-b] 행 클릭 상세 — 승인/반려는 리스트 버튼과 동일 핸들러 재사용(force 분기·사유 모달 포함) */}
       {detailReq && (
         <RequestDetailModal

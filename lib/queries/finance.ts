@@ -2,6 +2,7 @@
 // 결제·지출·원장·매출·수업 보고서·정산 도메인 훅 — lib/queries.ts에서 분할(순수 이동).
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAccountingAck } from './accounting-ack'; // [TBO-79 B5]
 import { qk } from "@/lib/queryKeys";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { logger } from "@/lib/log";
@@ -176,8 +177,28 @@ export const useRemoveReport = () => {
 };
 export const useApproveReport = () =>
   useMutation({ mutationFn: (v: { id: number }) => api.reports.approve(v.id), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
-export const useRejectReport = () =>
-  useMutation({ mutationFn: (v: { id: number; reason?: string }) => api.reports.reject(v.id, v.reason), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
+// [TBO-79 B5] 승인 리포트 반려는 세션을 정산 적격에서 빼낸다 — 서버가 영향 확인을 요구한다.
+type RejectReportVars = {
+  id: number;
+  reason?: string;
+  acknowledgeAccountingImpact?: boolean;
+  expectedAccountingImpactHash?: string;
+};
+export const useRejectReport = () => {
+  const mutation = useMutation({
+    mutationFn: (v: RejectReportVars) => api.reports.reject(v.id, {
+      reason: v.reason,
+      acknowledgeAccountingImpact: v.acknowledgeAccountingImpact,
+      expectedAccountingImpactHash: v.expectedAccountingImpactHash,
+    }),
+    onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]),
+  });
+  return useAccountingAck(mutation, (variables, impactHash) => ({
+    ...variables,
+    acknowledgeAccountingImpact: true,
+    expectedAccountingImpactHash: impactHash,
+  }));
+};
 
 // 정산(강사 페이) — 생성/확정/지급/반려/조정
 export const useGeneratePayout = () =>

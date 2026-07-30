@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Badge, ConfirmModal, DetailStates, SectionCard, type Tone } from '@/components/ui';
 import { useReport, useApproveReport, useRejectReport, useRemoveReport } from '@/lib/queries';
+import { AccountingImpactModal } from '@/components/AccountingImpactModal'; // [TBO-79 B5]
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { ReasonModal } from '@/components/ReasonModal';
 import { shortDate } from '@/lib/format';
@@ -94,6 +95,12 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
                   onSubmit={(reason) => { rejectReport.mutate({ id: report.id, reason }); setRejecting(false); }}
                 />
               )}
+              {/* [TBO-79 B5] 승인 리포트 반려 시 회계 영향 확인. */}
+              <AccountingImpactModal
+                prompt={rejectReport.accountingPrompt}
+                onClose={rejectReport.dismissAccountingPrompt}
+                onConfirm={rejectReport.confirmAccountingImpact}
+              />
               {removing && (
                 <ConfirmModal
                   title="draft 보고서 철회"

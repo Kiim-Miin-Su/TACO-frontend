@@ -439,6 +439,8 @@ export function AttendanceBookView() {
         </SectionCard>
       )}
       <AccountingImpactModal prompt={updateSchedule.accountingPrompt} onClose={updateSchedule.dismissAccountingPrompt} onConfirm={updateSchedule.confirmAccountingImpact} />
+      {/* [TBO-79 B4] 출결 초기화도 held → scheduled 역전이라 정산 예상액이 바뀐다 — 같은 확인 모달. */}
+      <AccountingImpactModal prompt={clearAttendance.accountingPrompt} onClose={clearAttendance.dismissAccountingPrompt} onConfirm={clearAttendance.confirmAccountingImpact} />
     </div>
   );
 }

@@ -13,18 +13,16 @@ import type {
   InstructorContract,
   CreateInstructorContractInput,
   UpdateInstructorContractInput,
+  RoadmapAggregate,
+  UpdateRoadmapInput,
 } from "@kms545487/contracts";
 
-// [TBO-47 2026-07-23] 로드맵 aggregate — BE RoadmapsService.toAggregate 미러(코스명은 courses SSOT 조인 파생, 사본 저장 0).
-export type RoadmapAggregate = Roadmap & {
-  courses: Array<{ linkId: number; courseId: number; sortOrder: number; courseName: string; subjectId: number }>;
-};
-// 계약(CreateRoadmapInput) + BE 운영 필드(durationWeeks) — 수정은 courseIds 제외(연결은 전용 라우트).
+// [TBO-79 E3·E4] 로드맵 aggregate·수정 입력의 소유는 contracts로 이관됐다.
+//  종전엔 BE service와 이 파일이 같은 리터럴을 각자 선언했고(사본 2개), 수정 입력은 계약이
+//  없어 nullability가 양쪽에서 갈라져 있었다. 여기서는 재export만 한다 — 사본을 만들지 말 것.
 //  수정에서 null = 값 해제(대상 학년 '전체'로 등) — BE @IsOptional이 null 통과 → store가 NULL 저장.
-export type CreateRoadmapBody = CreateRoadmapInput & { durationWeeks?: number };
-export type UpdateRoadmapInput = {
-  title?: string; description?: string; targetGrade?: number | null; durationWeeks?: number | null; isActive?: boolean;
-};
+export type { RoadmapAggregate, UpdateRoadmapInput };
+export type CreateRoadmapBody = CreateRoadmapInput;
 export type { InstructorContract };
 
 export const academicsApi = {

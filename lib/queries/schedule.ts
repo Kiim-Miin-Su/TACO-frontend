@@ -163,24 +163,10 @@ export const useOpenClassSeries = () => {
   const queryClient = useQueryClient();
   return useMutation({ mutationFn: api.schedule.openClassSeries, onSuccess: () => invalidateClassOpening(queryClient) });
 };
-export type AccountingImpactPrompt = {
-  payoutLocked: boolean;
-  impactHash?: string;
-  impact: SessionAccountingImpactConflict['impact'];
-};
-
-function accountingPromptFromError(error: unknown): AccountingImpactPrompt | null {
-  const data = (error as {
-    response?: { data?: Partial<SessionAccountingImpactConflict> };
-  }).response?.data;
-  if (!data?.impact || (data.code !== 'ACCOUNTING_IMPACT_ACK_REQUIRED' && data.code !== 'PAYOUT_REVERSAL_REQUIRED'))
-    return null;
-  return {
-    impact: data.impact,
-    impactHash: data.impactHash,
-    payoutLocked: data.code === 'PAYOUT_REVERSAL_REQUIRED',
-  };
-}
+// [TBO-79 B4] 파서·프롬프트 타입의 소유는 lib/queries/accounting-ack — 출결 초기화·리포트 반려도
+//  같은 흐름을 쓰므로 사본을 만들지 않는다.
+export type { AccountingImpactPrompt } from './accounting-ack';
+import { accountingPromptFromError, useAccountingAck, type AccountingImpactPrompt } from './accounting-ack';
 
 export const useUpdateSchedule = () => {
   type Variables = { id: number; body: Parameters<typeof api.schedule.update>[1] };
@@ -398,11 +384,31 @@ export const useUpdateScheduleRequest = () => {
 // 출결(강사 마킹) — session×student upsert
 // [TBO-62 ⑤ 2026-07-24] 출결 기록 시 서버가 scheduled→held 자동 전이 — 캘린더·세션 상세 캐시도 무효화.
 export const useUpsertAttendance = () => useMutation({ mutationFn: api.attendance.upsert, onSuccess: useInvalidator([qk.attendance.all, qk.schedule.all, qk.payouts.all, qk.audit.all]) }); // [TBO-66 F4] 이력 패널
-export const useClearAttendance = () => useMutation({
-  mutationFn: (v: { sessionId: number; studentId: number; reason: string }) =>
-    api.attendance.clear(v.sessionId, v.studentId, { reason: v.reason }),
-  onSuccess: useInvalidator([qk.attendance.all, qk.schedule.all, qk.payouts.all, qk.audit.all]),
-});
+// [TBO-79 B4] 출결 초기화는 held → scheduled 역전이라 정산 예상액을 바꾼다 — 서버가 영향
+//  미리보기와 명시 확인을 요구하므로 수업 수정과 같은 프롬프트 흐름을 쓴다.
+type ClearAttendanceVars = {
+  sessionId: number;
+  studentId: number;
+  reason: string;
+  acknowledgeAccountingImpact?: boolean;
+  expectedAccountingImpactHash?: string;
+};
+export const useClearAttendance = () => {
+  const mutation = useMutation({
+    mutationFn: (v: ClearAttendanceVars) =>
+      api.attendance.clear(v.sessionId, v.studentId, {
+        reason: v.reason,
+        acknowledgeAccountingImpact: v.acknowledgeAccountingImpact,
+        expectedAccountingImpactHash: v.expectedAccountingImpactHash,
+      }),
+    onSuccess: useInvalidator([qk.attendance.all, qk.schedule.all, qk.payouts.all, qk.audit.all]),
+  });
+  return useAccountingAck(mutation, (variables, impactHash) => ({
+    ...variables,
+    acknowledgeAccountingImpact: true,
+    expectedAccountingImpactHash: impactHash,
+  }));
+};
 // [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크(최초 1회) — 수정·초기화는 매니저 PATCH.
 export const useMarkMyInstructorAttendance = () =>
   useMutation({ mutationFn: (v: { id: number; status: InstructorAttendanceStatus }) => api.schedule.markInstructorAttendance(v.id, v.status), onSuccess: useInvalidator([qk.schedule.all, qk.payouts.all, qk.audit.all]) }); // [TBO-66 F4]
