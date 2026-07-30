@@ -1,6 +1,7 @@
 // 인증·계정·유저·프로필 변경/인증 도메인 API — lib/api.ts에서 분할(순수 이동).
 import { http } from "./client";
 import type {
+  StaffAccountDetail,
   Country,
   CreateProfileChangeRequestInput,
   ProfileChangeFields,
@@ -164,7 +165,9 @@ export const authAccountApi = {
     list: (includeTerminated = false) =>
       http.get<UserProfileSummary[]>("/users", { params: includeTerminated ? { includeTerminated: true } : undefined }).then((r) => r.data),
     // [유저 관리 2026-07-20] 상세 단건(관리자 — super_admin 응답에만 rrnMasked)·대표 직접 수정·직접 등록.
-    detail: (id: number) => http.get<UserProfileSummary & { rrnMasked?: string | null; university?: string | null; major?: string | null; birthYear?: number | null }>(`/users/${id}`).then((r) => r.data),
+    // [TBO-79 E5] 종전엔 계약이 부족해 `& { rrnMasked?; university?; major?; birthYear? }`를 손으로
+    //  덧붙이고 있었다. 계약이 실제 wire와 일치하도록 확장돼 이제 재선언이 필요 없다.
+    detail: (id: number) => http.get<StaffAccountDetail>(`/users/${id}`).then((r) => r.data),
     adminUpdate: (id: number, patch: { name?: string; phone?: string; email?: string; role?: string }) =>
       http.patch<UserProfileSummary>(`/users/${id}`, patch).then((r) => r.data),
     createStaff: (input: { webId: string; name: string; password: string; role?: string; email?: string; phone?: string; university?: string; major?: string; birthYear?: number }) =>

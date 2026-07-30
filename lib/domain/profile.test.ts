@@ -12,6 +12,9 @@ const profile: MyProfile = {
   status: "active",
   countryCode: "KR",
   timeZone: "Asia/Seoul",
+  // [TBO-79 E5] 서버가 항상 채우는 필드 — 계약이 optional에서 required로 정정됐다.
+  emailVerified: true,
+  smsVerificationAvailable: false,
   profileVersion: 3,
 };
 

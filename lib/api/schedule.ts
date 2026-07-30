@@ -1,6 +1,8 @@
 // 스케줄·수업요청·강의실·가용성·출결·이벤트 도메인 API — lib/api.ts에서 분할(순수 이동).
 import { http, type ApiReadOptions } from "./client";
 import type {
+  ScheduleMutationResult,
+  ScheduleDeleteResult,
   ClearAttendanceInput,
   UpsertAttendanceInput,
   AcademyEvent,
@@ -82,14 +84,15 @@ export const scheduleApi = {
     instructorAttendanceSummary: (from?: string, to?: string, instructorId?: number) =>
       http.get<InstructorAttendanceSummary>("/schedule/instructor-attendance-summary", { params: { from, to, instructorId } }).then((r) => r.data),
     // [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크(최초 1회) — 수정·초기화는 매니저 PATCH 전용.
+    // [TBO-79 E5] 내부적으로 update를 재사용하므로 회계 영향까지 같은 모양으로 돌아온다.
     markInstructorAttendance: (id: number, status: InstructorAttendanceStatus) =>
-      http.post<{ row: ScheduleRow }>(`/schedule/${id}/instructor-attendance`, { status }).then((r) => r.data),
+      http.post<ScheduleMutationResult<ScheduleRow, Conflict>>(`/schedule/${id}/instructor-attendance`, { status }).then((r) => r.data),
     // [TBO-64 2026-07-24] 회차 가격 책정(정산 연결 전) — null=해제. 매니저 이상.
     setPayAmount: (id: number, amount: number | null) =>
       http.put<{ row: ScheduleRow }>(`/schedule/${id}/pay-amount`, { amount }).then((r) => r.data),
-    // [TBO-63 2026-07-24] 삭제 복구(캘린더 undo) — soft delete 해제.
-    restore: (id: number) =>
-      http.post<{ row: ScheduleRow }>(`/schedule/${id}/restore`).then((r) => r.data),
+    // [TBO-79 G1] restore 스텁 제거 — 서버는 이 라우트에서 **항상** 409
+    //  (SESSION_AGGREGATE_RESTORE_REQUIRED)를 던진다. 성공 모양을 선언한 클라이언트가 남아 있으면
+    //  "복구 버튼"이 만들어질 수 있어 지운다. 세션 삭제는 되돌릴 수 없다.
     // 추천→배정·수동 추가 → { row, conflicts }. 충돌 시 409 → force로 재시도.
     create: (body: ScheduleCreateBody) =>
       http.post<{ row: ScheduleRow; conflicts: Conflict[] }>("/schedule", body).then((r) => r.data),
@@ -103,12 +106,12 @@ export const scheduleApi = {
       http.post<OpenClassSeriesResult>("/schedule/open-class-series", body).then((response) => response.data),
     // 이동·리사이즈·편집 → { row, conflicts }. 충돌 시 409(서버) → force로 재시도.
     update: (id: number, body: SchedulePatchBody) =>
-      http.patch<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }>(`/schedule/${id}`, body).then((r) => r.data),
+      http.patch<ScheduleMutationResult<ScheduleRow, Conflict>>(`/schedule/${id}`, body).then((r) => r.data),
     conflicts: (body: ConflictCheckBody) =>
       http.post<Conflict[]>("/schedule/conflicts", body).then((r) => r.data),
     // 세션 삭제(soft delete — v9). [TBO-29C C3] scope(this/this_and_following/all) + series CAS 지원.
     remove: (id: number, opts?: ScheduleDeleteOptions) =>
-      http.delete<{ id: number; deleted: boolean; removedIds: number[] }>(`/schedule/${id}`, { params: opts }).then((r) => r.data),
+      http.delete<ScheduleDeleteResult>(`/schedule/${id}`, { params: opts }).then((r) => r.data),
   },
   // 강사 수업 요청 → 매니저 승인/반려(TBO-16 #9). 승인=서버가 createSession 재사용(409+force 동일 규약).
   scheduleRequests: {
