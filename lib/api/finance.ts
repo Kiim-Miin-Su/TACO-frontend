@@ -115,8 +115,9 @@ export const financeApi = {
     update: (id: number, body: { content?: string; progressPage?: string; homework?: string }) =>
       http.patch<SessionReportRecord>(`/reports/${id}`, body).then((r) => r.data),
     submit: (id: number) => http.post<SessionReportRecord>(`/reports/${id}/submit`, {}).then((r) => r.data),
-    approve: (id: number, approvedBy?: number) =>
-      http.post<SessionReportRecord>(`/reports/${id}/approve`, { approvedBy }).then((r) => r.data),
+    // [TBO-79 C2] 승인 actor는 서버 토큰이 권위 — body로 보내지 않는다.
+    approve: (id: number) =>
+      http.post<SessionReportRecord>(`/reports/${id}/approve`, {}).then((r) => r.data),
     reject: (id: number, reason?: string) =>
       http.post<SessionReportRecord>(`/reports/${id}/reject`, { reason }).then((r) => r.data),
     remove: (id: number) =>

@@ -175,7 +175,7 @@ export const useRemoveReport = () => {
   });
 };
 export const useApproveReport = () =>
-  useMutation({ mutationFn: (v: { id: number; approvedBy?: number }) => api.reports.approve(v.id, v.approvedBy), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
+  useMutation({ mutationFn: (v: { id: number }) => api.reports.approve(v.id), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
 export const useRejectReport = () =>
   useMutation({ mutationFn: (v: { id: number; reason?: string }) => api.reports.reject(v.id, v.reason), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
 
