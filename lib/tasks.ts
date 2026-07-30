@@ -19,7 +19,7 @@ import type {
 } from '@/types';
 import type { Tone } from '@/components/ui';
 import { won, todayKst } from '@/lib/format'; // [감사 10] 사본 제거 — 단일 진실원
-import { isAdmin } from '@/lib/roles';
+import { isAdmin, isInstructorSelf } from '@/lib/roles';
 import type { ReportSlice } from '@/lib/reports';
 import { makeupNeeds, MAKEUP_REASON_LABEL } from '@/lib/makeup';
 // [핫픽스 2026-07-20 ②] 승인센터 모집단 단일 소스 — 대시보드·배지·승인센터가 같은 술어를 공유.
@@ -331,8 +331,10 @@ function instructorTasks(s: StoreSlice, instructorId: number): TaskItem[] {
 
 export function buildTasks(s: StoreSlice, role: AccountRole = s.currentRole, instructorId?: number): { items: TaskItem[]; count: number } {
   let items: TaskItem[] = [];
+  // [TBO-79 G5] actor 권한 판정은 capability로 — role 리터럴 비교는 CAPABILITY_ROLES가 바뀌어도
+  //  따라오지 않는다(같은 함수 한 줄 위 isAdmin은 이미 capability 기반이었다).
   if (isAdmin(role)) items = adminTasks(s);
-  else if (role === 'instructor' && instructorId != null) items = instructorTasks(s, instructorId);
+  else if (isInstructorSelf(role) && instructorId != null) items = instructorTasks(s, instructorId);
   // 학생/학부모는 운영 할 일 없음(일정은 캘린더에서)
   const count = items.filter((t) => t.counts).length;
   return { items, count };
@@ -367,7 +369,7 @@ export function navBadges(
 
   // 강사: 본인 수업보고서 미작성(보고서 건수) + 취소·미진행 보강 필요(캘린더 탭)
   // ⚠ 배지와 To-do는 백엔드 pay-readiness의 같은 학생별 모집단을 공유한다.
-  if (role === 'instructor') {
+  if (isInstructorSelf(role)) {
     if (instructorId == null) return out;
     // /reports 배지는 아래에서 미작성+반려를 합산해 한 번만 계산한다([핫픽스 07-20 ③]).
     // 보강 필요 + 반려된 내 수업 요청(재요청 필요) — 캘린더 탭

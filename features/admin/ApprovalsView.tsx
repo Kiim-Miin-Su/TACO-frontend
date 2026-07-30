@@ -173,7 +173,9 @@ export function ApprovalsView() {
   const confirmPayout = useConfirmPayout();
   const rejectPayout = useRejectPayout();
   const canDecideSignup = can('signup.decide');
-  const isSuper = verifiedRole === 'super_admin';
+  // [TBO-79 G5] 로그인 actor의 권한 판정이므로 raw role 리터럴이 아니라 capability를 쓴다.
+  //  이 값은 지출·강사페이 승인 섹션과 가입 삭제 어포던스를 가린다 — finance.access 와 같은 축이다.
+  const isSuper = can('finance.access');
   const instructorName = (id?: number) => id != null ? instructors.find((i) => i.id === id)?.name ?? '—' : '—';
 
   const [reportReject, setReportReject] = useState<number | null>(null);
