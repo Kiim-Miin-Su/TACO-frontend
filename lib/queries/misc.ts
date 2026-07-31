@@ -17,10 +17,16 @@ import { usePendingAccounts, useProfileChangeRequests, useMyProfileChangeRequest
 const usePayReadiness = () => {
   const { scope, can } = useAccountAccess();
   // 금액 없는 시수 누락 판정은 운영 관리자에게 허용하되 금액 워크시트와 분리한다.
+  // [TBO-80 80J F-2] 강사 분기 복원 — TBO-62 ⑥이 강사 readiness 라우트를 제거하면서 이 쿼리가
+  //  강사에게 비활성이 됐고, lib/tasks.ts 강사 배지 피드(리포트 미작성/반려·실행 이슈)가 죽은
+  //  소비처가 됐다(시뮬레이션 QA 실측). 강사는 본인 스코프 비금전 라우트(me/readiness)만 소비한다
+  //  — rate_missing·적격 시수 메타는 서버가 제외(시수·페이 비노출 정책 유지).
+  const managerScope = can("payout.readiness");
+  const instructorSelf = can("instructor.self");
   return useQuery({
     queryKey: qk.payouts.readiness(scope),
-    queryFn: () => api.payouts.readiness(),
-    enabled: can("payout.readiness"),
+    queryFn: () => (managerScope ? api.payouts.readiness() : api.payouts.myReadiness()),
+    enabled: managerScope || instructorSelf,
     refetchOnWindowFocus: true, // [TBO-66 F3] 금전 화면 신선도
     staleTime: 15_000,
   });

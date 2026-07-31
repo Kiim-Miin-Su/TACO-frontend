@@ -113,7 +113,8 @@ export function CounselView() {
                       <td><Badge tone={statusTone[f.status]}>{statusLabel[f.status]}</Badge></td>
                       <td className="mono">{roundCount(f.id)}회</td>
                       <td className="mono text-fg-muted">{formatCounselInstantKst(f.nextContactAt)}</td>
-                      <td className="mono text-fg-muted">{f.createdAt}</td>
+                      {/* [TBO-80 80J F-1] 접수일 raw UTC ISO 노출 수정 — 다음 상담 컬럼과 같은 KST 포맷터(단일 소스) */}
+                      <td className="mono text-fg-muted">{formatCounselInstantKst(f.createdAt)}</td>
                       <td className="text-right">
                         <Link href={internalRoute.counsel(f.id)} className="btn btn-sm">상세 보기</Link>
                       </td>

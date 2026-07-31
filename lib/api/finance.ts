@@ -137,6 +137,9 @@ export const financeApi = {
     // [TBO-62 ⑥ 2026-07-24] 강사용 preview/readiness 제거 — 강사는 지급 완료(paid) 내역만(서버 라우트 삭제).
     readiness: (params: { instructorId?: number; from?: string; to?: string } = {}) =>
       http.get<PayReadiness>("/payouts/readiness", { params }).then((r) => r.data),
+    // [TBO-80 80J F-2] 강사 본인 비금전 준비 이슈 — 배지·To-do 피드 복원(rate_missing·적격 시수 메타는
+    //  서버가 제외 보장 — TBO-62 시수·페이 비노출 정책 유지). lib/tasks.ts 강사 분기의 단일 소스.
+    myReadiness: () => http.get<PayReadiness>("/payouts/me/readiness").then((r) => r.data),
     // [TBO-74 C1] 시수 워크시트 — 회차별 출결·리포트·가격 분류·합계(대표 전용).
     worksheet: (instructorId: number, from: string, to: string) =>
       http.get<PayoutWorksheet>("/payouts/worksheet", { params: { instructorId, from, to } }).then((r) => r.data),
