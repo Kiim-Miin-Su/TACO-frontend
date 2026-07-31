@@ -5,7 +5,6 @@ import { useEffect } from 'react';
 
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
-    // eslint-disable-next-line no-console
     console.error(`[fe] global-error digest=${error.digest ?? '-'} message=${error.message}`);
   }, [error]);
   return (

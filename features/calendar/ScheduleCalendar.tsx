@@ -716,7 +716,6 @@ export function ScheduleCalendar() {
           { key: "r-none", label: "미지정", date: anchor, noRoom: true } as Col, // [L1] 강의실 없는 세션도 보이게
         ]
       : dates.map((d) => ({ key: d, label: WD[weekdayOf(d)], sub: d.slice(5), date: d })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- colsFor는 view/dates/period/anchor 클로저(아래 deps로 충분)
     // resourceTzOverride·resourcesByType: owner 컬럼 개별 시차(자동 국가·수동 변경)가 컬럼 tzc에 반영되므로 필수
     [singleSplitPicks, view, rooms, anchor, dates, period, resourceTzOverride, resourcesByType]);
 

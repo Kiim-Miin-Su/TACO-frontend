@@ -4,7 +4,7 @@
 //  - 속성 변경(색·상태·강의실·메모)은 부모 requestChange 경유 → PATCH /schedule/:id
 //    (반복 시리즈면 부모가 범위(scope) 확인 → 관련 조인·시수 무효화는 백엔드+쿼리 invalidate가 담당).
 //  - 더블클릭 상세편집 모달은 유지 — "상세 편집" 버튼으로도 진입(onOpenModal).
-import { useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Room, ScheduleRow } from "@/types";
 import type { SchedulePatchBody } from "@/lib/api";
@@ -17,6 +17,9 @@ import { CountryBadge } from "./CountryInput";
 import { studentGradeLabel, STUDENT_STATUS_LABEL } from "@/lib/domain/students";
 import { ChangeHistory } from "./ChangeHistory"; // [R-6] 변경 이력(audit) — 관리자
 import { internalRoute } from "@/lib/navigation-security";
+// [TBO-80 80I / P-7] 캘린더 인라인 리포트 — 세션 상세 페이지와 동일 폼(SessionFeedbackForm 단일 소스)·동일 권한 규칙 재사용(이원화 금지)
+import { SessionFeedbackForm } from "@/features/reports/SessionFeedbackForm";
+import { useAccountAccess } from "@/lib/useAccountAccess";
 
 export function SessionDetailPanel({
   row, rooms, instructors, canEdit, colorOf, onPatch, onDelete, onOpenModal, onPickStudent, onPickInstructor,
@@ -40,6 +43,20 @@ export function SessionDetailPanel({
   // 편집 모드(TBO-10 #3): DetailModal과 동일한 SessionEditFields 공통 폼 — 모든 input 편집 가능.
   const [editingId, setEditingId] = useState<number | null>(null);
   const editing = row != null && editingId === row.id;
+  // [TBO-80 80I / P-7] 인라인 리포트 권한 — ClassSessionDetailView와 동일 규칙(calendar.manage or 담당 강사 본인).
+  //  강사의 캘린더 rows는 서버가 본인 담당만 반환(TBO-47)하지만, 권한식은 세션 상세와 동일하게 유지(단일 규칙).
+  const access = useAccountAccess();
+  const canFeedback =
+    access.can("calendar.manage") ||
+    (access.instructorId != null && row != null && Number(row.instructorId) === access.instructorId);
+  // 세션 응답의 studentIds = 명시 코호트 우선 규칙이 이미 적용된 권위 집합(SSOT) — 프론트 재계산 금지.
+  const roster = useMemo(() => {
+    if (!row) return [];
+    const ids = new Set((row.studentIds ?? []).map(Number));
+    return allStudents.filter((s) => ids.has(Number(s.id)));
+  }, [row, allStudents]);
+  const [fbOpen, setFbOpen] = useState<Set<number>>(new Set());
+  const toggleFb = (id: number) => setFbOpen((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   if (!row) {
     return (
@@ -163,6 +180,37 @@ export function SessionDetailPanel({
             모달로 크게…
           </button>
         </div>
+
+        {/* [TBO-80 80I / P-7 · Grace #2] 학습 리포트 인라인 작성 — 세션 상세 페이지와 동일 컴포넌트 재사용.
+            접이식(기본 접힘) + 학생별 펼침(좁은 패널에서 N개 폼 동시 마운트 방지 — 펼친 학생만 마운트). */}
+        {roster.length > 0 && (
+          <details className="mt-1 border-t pt-2">
+            <summary className="text-caption text-fg-muted cursor-pointer select-none">
+              학습 리포트 ({roster.length}명)
+            </summary>
+            <div className="mt-1 divide-y border-line-muted">
+              {roster.map((student) => {
+                const open = fbOpen.has(student.id);
+                return (
+                  <Fragment key={student.id}>
+                    <div className="py-1.5 flex items-center gap-2">
+                      <span className="text-body font-medium min-w-0 truncate">{student.name}</span>
+                      <button type="button" className="btn btn-sm ml-auto" onClick={() => toggleFb(student.id)}>
+                        {open ? "피드백 접기 ▴" : canFeedback ? "피드백 작성 ▾" : "피드백 보기 ▾"}
+                      </button>
+                    </div>
+                    {open && (
+                      // -mx-4 = card-pad(p-4) 상쇄로 카드 전폭 사용, overflow-x-auto = 좁은 패널에서 템플릿 행 클리핑 방지
+                      <div className="bg-canvas-subtle -mx-4 overflow-x-auto">
+                        <SessionFeedbackForm session={row} student={student} canEdit={canFeedback} />
+                      </div>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </div>
+          </details>
+        )}
 
         {/* [R-6] 변경 이력(audit) — 관리자만. 접이식(기본 접힘). 세션 CRUD·강사 출결 변경 추적. */}
         {canEdit && (

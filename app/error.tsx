@@ -6,7 +6,6 @@ import { useEffect } from 'react';
 
 export default function RouteError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
-    // eslint-disable-next-line no-console
     console.error(`[fe] route-error digest=${error.digest ?? '-'} message=${error.message}`);
   }, [error]);
   return (

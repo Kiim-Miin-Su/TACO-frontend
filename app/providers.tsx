@@ -15,7 +15,6 @@ function useGlobalErrorLogging(): void {
       const text = `[fe] ${kind} message=${message}`;
       if (text === lastLine) return; // 렌더 루프성 중복 억제
       lastLine = text;
-      // eslint-disable-next-line no-console
       console.error(text);
     };
     const onRejection = (e: PromiseRejectionEvent) =>
