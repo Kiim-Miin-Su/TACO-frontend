@@ -30,6 +30,8 @@ import type {
   CreateEnrollmentInput,
   UpdateEnrollmentInput,
   CreateStudentCounselIntakeInput,
+  ConvertCounselInput,
+  ConvertCounselResult,
   CounselAnalyticsRange,
   CounselCorrelation,
   CounselFunnel,
@@ -119,6 +121,9 @@ export const studentsApi = {
     rounds: (counselFormId?: number) =>
       http.get<CounselRound[]>("/counsel/rounds", { params: counselFormId ? { counselFormId } : undefined }).then((r) => r.data),
     create: (input: InternalCreateCounselInput) => http.post<CounselForm>("/counsel", input).then((r) => r.data),
+    // [TBO-80 80E = TBO-30E] 상담→수강 전환 — 진실원은 enrollment.counselCardId FK(서버 단일 tx).
+    convert: (id: number, input: ConvertCounselInput) =>
+      http.post<ConvertCounselResult>(`/counsel/${id}/convert`, input).then((r) => r.data),
     update: (id: number, patch: InternalUpdateCounselInput) => http.patch<CounselForm>(`/counsel/${id}`, patch).then((r) => r.data),
     remove: (id: number) => http.delete<CounselForm>(`/counsel/${id}`).then((r) => r.data),
     createRound: (formId: number, input: InternalCreateCounselRoundInput) =>

@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Course, CreateEnrollmentInput, Enrollment } from "@kms545487/contracts";
+import type { ConvertCounselInput, Course, CreateEnrollmentInput, Enrollment } from "@kms545487/contracts";
 import type { RoadmapAggregate } from "@/lib/api";
 import { ModalShell } from "@/components/ui";
-import { useCreateEnrollment } from "@/lib/queries";
+import { useConvertCounsel, useCreateEnrollment } from "@/lib/queries";
 import { eligibleRoadmapsForCourse } from "@/lib/domain/enrollments";
 import { todayKst } from "@/lib/format";
 import { apiErrorMessage } from "@/lib/api-error";
@@ -14,15 +14,21 @@ export function EnrollmentCreateModal({
   courses,
   enrollments,
   roadmaps,
+  convertCounselFormId,
   onClose,
 }: {
   studentId: number;
   courses: Course[];
   enrollments: Enrollment[];
   roadmaps: RoadmapAggregate[];
+  /** [TBO-80 80E] 지정 시 상담→수강 전환 command(POST /counsel/:id/convert)로 제출 —
+   *  같은 폼·검증을 재사용하고 서버가 studentId·counselCardId·폼 전이를 한 tx로 결정한다. */
+  convertCounselFormId?: number;
   onClose: () => void;
 }) {
   const create = useCreateEnrollment();
+  const convert = useConvertCounsel();
+  const pending = convertCounselFormId != null ? convert.isPending : create.isPending;
   const linkedCourseIds = useMemo(
     () => new Set(enrollments.map((enrollment) => enrollment.courseId)),
     [enrollments],
@@ -47,8 +53,7 @@ export function EnrollmentCreateModal({
   const save = () => {
     if (invalid || courseId == null) return;
     setMessage("");
-    const input: CreateEnrollmentInput = {
-      studentId,
+    const common = {
       courseId,
       ...(roadmapId == null ? {} : { roadmapId }),
       ...(startDate ? { startDate } : {}),
@@ -56,6 +61,15 @@ export function EnrollmentCreateModal({
       ...(totalSessions === "" ? {} : { totalSessions: Number(totalSessions) }),
       ...(memo.trim() ? { memo: memo.trim() } : {}),
     };
+    if (convertCounselFormId != null) {
+      const input: ConvertCounselInput = common;
+      convert.mutate({ id: convertCounselFormId, input }, {
+        onSuccess: onClose,
+        onError: (error) => setMessage(apiErrorMessage(error, "상담을 수강으로 전환하지 못했습니다.")),
+      });
+      return;
+    }
+    const input: CreateEnrollmentInput = { studentId, ...common };
     create.mutate(input, {
       onSuccess: onClose,
       onError: (error) => setMessage(apiErrorMessage(error, "수강을 등록하지 못했습니다.")),
@@ -64,21 +78,23 @@ export function EnrollmentCreateModal({
 
   return (
     <ModalShell
-      title="수강 코스 등록"
+      title={convertCounselFormId != null ? "상담 → 수강 전환" : "수강 코스 등록"}
       size="md"
       onClose={onClose}
       bodyClassName="space-y-4"
       footer={(
         <>
-          <button className="btn btn-sm" disabled={create.isPending} onClick={onClose}>취소</button>
-          <button className="btn btn-sm btn-primary" disabled={create.isPending || invalid} onClick={save}>
-            {create.isPending ? "DB 확인 중…" : "수강 등록"}
+          <button className="btn btn-sm" disabled={pending} onClick={onClose}>취소</button>
+          <button className="btn btn-sm btn-primary" disabled={pending || invalid} onClick={save}>
+            {pending ? "DB 확인 중…" : convertCounselFormId != null ? "전환 등록" : "수강 등록"}
           </button>
         </>
       )}
     >
       <p className="text-caption text-fg-muted">
-        이미 연결된 코스는 상태 변경으로 다시 활성화합니다. 새 연결은 학생·코스·로드맵을 한 트랜잭션에서 검증합니다.
+        {convertCounselFormId != null
+          ? "상담카드가 이 수강에 FK로 연결되고 상담 상태가 등록으로 전이됩니다(한 트랜잭션 — 실패 시 전부 취소)."
+          : "이미 연결된 코스는 상태 변경으로 다시 활성화합니다. 새 연결은 학생·코스·로드맵을 한 트랜잭션에서 검증합니다."}
       </p>
       <label className="block">
         <span className="block text-caption font-medium text-fg-muted mb-1">코스 *</span>

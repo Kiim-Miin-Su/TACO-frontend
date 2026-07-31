@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3]
 import { Fragment, useCallback, useMemo, useState } from 'react';
 import { PayoutWorksheet } from './PayoutWorksheet';
+import { MyPayoutsView } from './MyPayoutsView'; // [TBO-80 80G] 강사 "내 정산" 읽기 화면
 import { Badge, ClickableTableRow, EmptyState, Field, PageHeader, PromptModal, SectionCard, TableWrap } from '@/components/ui';
 import {
   useInstructors, usePayouts, usePayoutPreview,
@@ -29,6 +30,8 @@ import { useSudoAction } from '@/lib/hooks/useSudoAction';
 export function PayoutsView() {
   const access = useAccountAccess();
   if (!access.can('finance.access')) {
+    // [TBO-80 80G = O13 대표 결정] 강사는 "내 정산" 읽기 화면 — tasks.ts 배지(/payouts)의 실제 도착지.
+    if (access.can('instructor.self')) return <MyPayoutsView />;
     return (
       <div className="p-6 max-w-page mx-auto">
         <PageHeader title="강사 시수" />

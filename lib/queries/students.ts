@@ -208,6 +208,17 @@ export const useRemoveGuardian = () => useMutation({ mutationFn: api.parents.rem
 const useCounselMutationInvalidator = () => useInvalidator([qk.counsel.all, qk.students.all]);
 
 export const useCreateCounsel = () => useMutation({ mutationFn: api.counsel.create, onSuccess: useCounselMutationInvalidator() });
+// [TBO-80 80E] 상담→수강 전환 — 상담·학생 aggregate에 더해 수강 fan-out(audit 포함)도 재조회한다.
+export const useConvertCounsel = () => {
+  const queryClient = useQueryClient();
+  const invalidateCounsel = useCounselMutationInvalidator();
+  return useMutation({
+    mutationFn: (v: { id: number; input: Parameters<typeof api.counsel.convert>[1] }) => api.counsel.convert(v.id, v.input),
+    onSuccess: async () => {
+      await Promise.all([invalidateCounsel(), invalidateEnrollmentCommand(queryClient)]);
+    },
+  });
+};
 export const useUpdateCounsel = () =>
   useMutation({ mutationFn: (v: { id: number; patch: Parameters<typeof api.counsel.update>[1] }) => api.counsel.update(v.id, v.patch), onSuccess: useCounselMutationInvalidator() });
 export const useRemoveCounsel = () =>

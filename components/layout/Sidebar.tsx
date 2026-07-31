@@ -45,6 +45,9 @@ const groups: { title: string; items: Item[] }[] = [
     title: "출금",
     items: [
       { label: "강사 시수", icon: IconWallet, href: "/payouts", capability: "finance.access" },
+      // [TBO-80 80G = O13 대표 결정] 강사 "내 정산"(읽기 전용) — tasks.ts /payouts 배지의 도착지.
+      //  capability가 상호배타(finance.access=대표 / instructor.self=강사)라 이중 노출은 없다.
+      { label: "내 정산", icon: IconWallet, href: "/payouts", capability: "instructor.self" },
       { label: "지출 · 비품", icon: IconReceipt, href: "/expenses", financeOnly: true },
     ],
   },

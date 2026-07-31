@@ -47,6 +47,8 @@ import { AccountingImpactModal } from '@/components/AccountingImpactModal';
 import { invalidateApprovalCommand } from '@/lib/query-cache'; // [TBO-79 G4]
 import type { AccountingImpactPrompt } from '@/lib/queries';
 import { internalRoute } from '@/lib/navigation-security';
+import { useSudoAction } from '@/lib/hooks/useSudoAction'; // [TBO-80 80A] sudo 명령 공용 상태기계(ExpenseDetailView와 동일 패턴 — 사본 금지)
+import { isSudoRequiredError } from '@/lib/sudo';
 import type { SessionAccountingImpactConflict } from '@kms545487/contracts';
 
 // 가입 승인 대기 — 서버가 actor 역할에 맞는 행만 반환하며 요청 역할은 승인 시 변경하지 않는다.
@@ -56,6 +58,9 @@ function MemberApprovals({ canManagePendingAccount }: { canManagePendingAccount:
   const rejectAccount = useRejectPendingAccount();
   const resendVerification = useResendPendingVerification(); // [핫픽스 07-20 ①] 레거시 미인증 구제
   const deleteAccount = useDeletePendingAccount(); // [핫픽스 07-20] 오가입 정리(식별자 해제·재가입 허용)
+  // [TBO-80 80A] DELETE /auth/pending/:id 는 서버 SudoGuard 라우트 — 재인증 흐름 없이 호출하면
+  //  대표가 정상 클릭해도 403(SUDO_REQUIRED)이 떨어진다(TBO-79 4-2). 공용 코디네이터로 배선.
+  const sudoAction = useSudoAction();
   const [msg, setMsg] = useState<string | null>(null);
   const [memberReject, setMemberReject] = useState<number | null>(null); // [TBO-28B] 반려 사유 필수 모달
   const [memberDelete, setMemberDelete] = useState<number | null>(null); // [핫픽스 07-20] 삭제 사유 필수 모달
@@ -65,6 +70,9 @@ function MemberApprovals({ canManagePendingAccount }: { canManagePendingAccount:
   // [75A] 409 안내만 이 화면 고유 — 파싱은 lib/api-error 단일 진실원 위임(재구현 제거)
   const serverMessage = (error: unknown, fallback: string): string => {
     const status = (error as { response?: { status?: number } }).response?.status;
+    // [TBO-80 80A/C5] 재인증 필요와 권한 부족을 구분 — 코디네이터가 1차 SUDO_REQUIRED를 흡수하므로
+    //  여기 도달하는 것은 재시도조차 거부된 경우(세션 경계 변화 등)다.
+    if (isSudoRequiredError(error)) return '보안 확인(비밀번호 재입력)이 필요합니다. 다시 시도해 주세요.';
     if (status === 409) return '이미 처리된 계정입니다(목록을 새로고침했습니다).';
     return apiErrorMessage(error, fallback);
   };
@@ -140,14 +148,18 @@ function MemberApprovals({ canManagePendingAccount }: { canManagePendingAccount:
           placeholder="삭제 사유를 입력하세요 (감사 이력에 남습니다)"
           onClose={() => setMemberDelete(null)}
           onSubmit={(reason) => {
-            deleteAccount.mutate({ id: memberDelete, reason }, {
+            const id = memberDelete;
+            setMemberDelete(null);
+            // [TBO-80 80A] sudo 라우트 — 1차 403(SUDO_REQUIRED)은 코디네이터가 재인증 모달로 흡수하고
+            //  성공 시 같은 명령을 정확히 한 번 재시도한다(취소 시 조용히 종료 — 별도 오류 안내 없음).
+            void sudoAction.run(() => deleteAccount.mutateAsync({ id, reason }), {
               onSuccess: () => setMsg('가입 신청을 삭제했습니다. 같은 아이디·이메일로 다시 가입할 수 있습니다.'),
               onError: (error) => setMsg(serverMessage(error, '삭제하지 못했습니다.')),
             });
-            setMemberDelete(null);
           }}
         />
       )}
+      {sudoAction.modal}
     </SectionCard>
   );
 }
@@ -173,6 +185,9 @@ export function ApprovalsView() {
   const confirmPayout = useConfirmPayout();
   const rejectPayout = useRejectPayout();
   const canDecideSignup = can('signup.decide');
+  // [TBO-80 80A] 지출 승인(POST /expenses/:id/approve)은 서버 SudoGuard 라우트(74B) —
+  //  ExpenseDetailView와 같은 공용 코디네이터로 배선한다(세 번째 사본 금지).
+  const sudoAction = useSudoAction();
   // [TBO-79 G5] 로그인 actor의 권한 판정이므로 raw role 리터럴이 아니라 capability를 쓴다.
   //  이 값은 지출·강사페이 승인 섹션과 가입 삭제 어포던스를 가린다 — finance.access 와 같은 축이다.
   const isSuper = can('finance.access');
@@ -193,11 +208,14 @@ export function ApprovalsView() {
       // [TBO-54 C2] 409 = 다른 기기가 먼저 결재(백엔드 CAS) — 안내 문구가 참이 되도록 실제로 invalidate.
       // [TBO-79 G4] 손으로 든 5-scope 배열을 공용 fan-out으로 — 다른 승인 경로와 세트가 갈라지지 않게.
       if (status === 409) await invalidateApprovalCommand(queryClient);
+      // [TBO-80 80A/C5] 종전 403 문구는 "대표 전용 권한 없음"으로 SUDO_REQUIRED까지 뭉뚱그려
+      //  대표 본인에게 권한이 없다고 오안내했다(TBO-79 4-2). 재인증 필요는 별도 문구로 분리한다.
       setSectionMsg((m) => ({
         ...m,
         [key]: status === 409 ? '다른 기기에서 먼저 처리되었습니다 — 목록을 최신 상태로 새로고침했습니다.'
-          : status === 403 ? '처리 권한이 없습니다(대표 전용).'
-            : '처리에 실패했습니다. 다시 시도해 주세요.',
+          : isSudoRequiredError(error) ? '보안 확인(비밀번호 재입력)이 필요합니다. 다시 시도해 주세요.'
+            : status === 403 ? '이 작업을 처리할 권한이 없습니다.'
+              : '처리에 실패했습니다. 다시 시도해 주세요.',
       }));
     },
   });
@@ -303,7 +321,8 @@ export function ApprovalsView() {
   const approveDetailItem = (item: ApprovalDetailItem) => {
     setDetailItem(null);
     if (item.kind === 'report') approveReport.mutate({ id: item.row.id }, feedback('reports', '보고서를 승인했습니다 — 시수 정산 대상에 반영됩니다.'));
-    else if (item.kind === 'expense') approveExpense.mutate(item.row.id, feedback('expenses', '지출을 승인했습니다.'));
+    // [TBO-80 80A] 지출 승인만 sudo 라우트(74B) — 보고서 승인·페이 확정은 sudo 비대상(payouts.controller 실측: adjust/reverse/pay만 SudoGuard).
+    else if (item.kind === 'expense') void sudoAction.run(() => approveExpense.mutateAsync(item.row.id), feedback('expenses', '지출을 승인했습니다.'));
     else confirmPayout.mutate(item.row.id, feedback('payouts', '페이 지급을 확정했습니다.'));
   };
   const rejectDetailItem = (item: ApprovalDetailItem) => {
@@ -489,7 +508,7 @@ export function ApprovalsView() {
                   <td className="text-right mono">{won(e.amount)}</td>
                   <td className="mono text-fg-muted">{dateOnly(e.spentAt)}</td>
                   <td className="text-right whitespace-nowrap">
-                    <button className="btn btn-sm btn-primary mr-1.5" disabled={approveExpense.isPending} onClick={(ev) => { ev.stopPropagation(); approveExpense.mutate(e.id, feedback('expenses', '지출을 승인했습니다.')); }}>승인</button>
+                    <button className="btn btn-sm btn-primary mr-1.5" disabled={approveExpense.isPending || sudoAction.isPending} onClick={(ev) => { ev.stopPropagation(); void sudoAction.run(() => approveExpense.mutateAsync(e.id), feedback('expenses', '지출을 승인했습니다.')); }}>승인</button>
                     <button className="btn btn-sm btn-danger" onClick={(ev) => { ev.stopPropagation(); setExpenseReject(e.id); }}>반려</button>
                   </td>
                 </ClickableTableRow>
@@ -596,6 +615,7 @@ export function ApprovalsView() {
           onSubmit={(reason) => { rejectPayout.mutate({ id: payoutReject, reason }, feedback('payouts', '페이를 반려했습니다.')); setPayoutReject(null); }}
         />
       )}
+      {sudoAction.modal}
     </div>
   );
 }

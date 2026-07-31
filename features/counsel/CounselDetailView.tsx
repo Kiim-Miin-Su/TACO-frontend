@@ -23,6 +23,10 @@ import { CounselPageFields } from './CounselPageFields';
 import { counselSnapshotInput, counselSnapshotRevision, snapshotFromForm } from './snapshot';
 import { resultLabel, resultTone, RESULTS, sourceLabel, statusLabel, statusTone } from './labels';
 import { internalRoute } from '@/lib/navigation-security';
+// [TBO-80 80E = TBO-30E] 전환 모달·등록 결과 역링크 — 학생 상세의 수강 등록 모달을 재사용(사본 금지).
+import { useCourses, useEnrollments, useRoadmaps } from '@/lib/queries';
+import { EnrollmentCreateModal } from '@/features/students/EnrollmentCreateModal';
+import { ENROLLMENT_STATUS_LABEL } from '@/lib/domain/enrollments';
 import { StudentProfileEditModal } from '@/features/students/StudentProfileEditModal';
 import { StudentGuardiansSection } from '@/features/students/StudentGuardiansSection';
 import { StudentFamilyRelationsSection } from '@/features/students/StudentFamilyRelationsSection';
@@ -62,6 +66,14 @@ function CounselDetailContent({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [editingStudent, setEditingStudent] = useState(false);
+  // [TBO-80 80E] 전환 모달 + 등록 결과 역링크 데이터 — 진실원은 enrollment.counselCardId FK.
+  const [convertOpen, setConvertOpen] = useState(false);
+  const { data: courses = [] } = useCourses();
+  const { data: roadmaps = [] } = useRoadmaps();
+  const { data: studentEnrollments = [] } = useEnrollments(form.studentId);
+  const linkedEnrollments = studentEnrollments.filter((row) => row.counselCardId === form.id);
+  const courseName = (id: number) => courses.find((course) => course.id === id)?.name ?? `코스 #${id}`;
+  const canConvert = form.status !== 'registered' && form.status !== 'dropped' && studentAggregate != null;
   const currentSnapshot = snapshotFromForm(form);
   const studentName = studentAggregate?.student.name ?? `학생 #${form.studentId}`;
 
@@ -76,6 +88,10 @@ function CounselDetailContent({
             actions={(
               <div className="flex items-center gap-2">
                 <Badge tone={statusTone[form.status]}>{statusLabel[form.status]}</Badge>
+                {/* [TBO-80 80E] 상담→수강 전환 — 수강 생성+폼 registered 전이를 서버 한 tx로 */}
+                {canConvert && (
+                  <button type="button" className="btn btn-sm btn-primary" onClick={() => setConvertOpen(true)}>등록 전환</button>
+                )}
                 <button type="button" className="btn btn-sm text-danger" onClick={() => setDeleteOpen(true)}>삭제</button>
               </div>
             )}
@@ -100,6 +116,41 @@ function CounselDetailContent({
           </div>
         </SectionCard>
         {editingStudent && <StudentProfileEditModal aggregate={studentAggregate} onClose={() => setEditingStudent(false)} />}
+
+        {/* [TBO-80 80E] 등록 결과 역링크 — 이 상담을 counselCardId로 참조하는 수강 행(FK가 전환의 진실원) */}
+        {(form.status === 'registered' || linkedEnrollments.length > 0) && (
+          <SectionCard title="등록 결과 — 이 상담에서 전환된 수강">
+            {linkedEnrollments.length === 0 ? (
+              <p className="px-4 py-3 text-caption text-fg-subtle">
+                상태는 등록이지만 이 상담카드에 FK로 연결된 수강 행이 없습니다. 과거 수동 상태 변경이거나
+                수강 등록 시 상담 연결이 생략된 경우입니다 — 필요하면 학생 상세에서 수강을 확인하세요.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {linkedEnrollments.map((row) => (
+                  <li key={row.id} className="px-4 py-3 flex items-center justify-between gap-3 text-body">
+                    <span>
+                      <span className="font-medium">{courseName(row.courseId)}</span>
+                      <span className="ml-2 text-caption text-fg-muted">{ENROLLMENT_STATUS_LABEL[row.status]} · 등록일 {row.enrolledAt}</span>
+                    </span>
+                    <Link href={internalRoute.student(row.studentId)} className="btn btn-sm">학생 수강 상세</Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SectionCard>
+        )}
+
+        {convertOpen && (
+          <EnrollmentCreateModal
+            studentId={studentAggregate.student.id}
+            courses={courses}
+            enrollments={studentEnrollments}
+            roadmaps={roadmaps}
+            convertCounselFormId={form.id}
+            onClose={() => setConvertOpen(false)}
+          />
+        )}
         <StudentGuardiansSection studentId={studentAggregate.student.id} guardians={studentAggregate.guardians} canEdit />
         <StudentFamilyRelationsSection studentId={studentAggregate.student.id} relations={studentAggregate.familyRelations ?? []} canEdit />
         <StudentAcademicHistoriesSection studentId={studentAggregate.student.id} histories={studentAggregate.academicHistories ?? []} canEdit />
