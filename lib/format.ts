@@ -26,6 +26,22 @@ export const todayKst = (now = new Date()): string => {
   return `${value('year')}-${value('month')}-${value('day')}`;
 };
 
+export const currentMonthKst = (now = new Date()): string => todayKst(now).slice(0, 7);
+
+export const monthRangeKst = (ym: string): { from: string; to: string } => {
+  if (!/^\d{4}-\d{2}$/.test(ym)) throw new RangeError("Month must be YYYY-MM");
+  const [year, month] = ym.split("-").map(Number);
+  if (month < 1 || month > 12) throw new RangeError("Month must be YYYY-MM");
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return { from: `${ym}-01`, to: `${ym}-${String(last).padStart(2, "0")}` };
+};
+
+export const shiftMonth = (ym: string, delta: number): string => {
+  const [year, month] = ym.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return shifted.toISOString().slice(0, 7);
+};
+
 // [TBO-69 C4 2026-07-26] ISO 날짜 문자열 산술 — FE 5곳 사본 수렴(domain/schedule·series·tz·
 //  ScheduleCalendar·ScheduleCreateModal). 'YYYY-MM-DD' 문자열 위 UTC 산술이라 타임존 무관(순수).
 export const addDaysISO = (iso: string, n: number): string => {

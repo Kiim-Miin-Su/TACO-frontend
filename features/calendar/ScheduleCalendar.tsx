@@ -98,6 +98,7 @@ import type {
 } from "@kms545487/contracts";
 import { useAutoClear, useElementWidth, useMounted, useWindowKeydown } from "@/lib/hooks/browser-sync";
 import { EventForm } from "@/features/admin/EventsView"; // [B5] 학원 일정 인라인 발행 — 단일 폼 재사용
+import type { CalendarCompareSelection } from "@/lib/navigation-security";
 
 // [TBO-69 C4] 그리드 상수·순수 헬퍼·상호작용 타입은 calendar-grid.ts로 분리(본문 이동 — 값 무변).
 import {
@@ -110,7 +111,7 @@ import {
 } from "./calendar-grid";
 import { addDaysISO } from "@/lib/format"; // [TBO-69 C4] 정본 소비(사본 제거)
 
-export function ScheduleCalendar() {
+export function ScheduleCalendar({ initialSelection = null }: { initialSelection?: CalendarCompareSelection | null }) {
   // [C-2 2026-07-06] 뷰 프리셋(월/주/일·색 기준·열 좁게)만 typed preference로 복원 — 새로고침에도 유지.
   //  anchor(기준일)는 항상 오늘로 시작(과거 날짜 고정 방지). 내용 필터(Set)는 후속(setCodec)으로 확장.
   const [view, setView] = usePersistedState<View>(
@@ -118,7 +119,7 @@ export function ScheduleCalendar() {
     "week",
     enumPreferenceCodec<View>(["month", "week", "day"]),
   );
-  const [anchor, setAnchor] = useState(todayISO());
+  const [anchor, setAnchor] = useState(initialSelection?.from ?? todayISO());
   // [TBO-21 B2] 현재시각선은 new Date()를 렌더 중 계산 → SSR HTML과 클라 하이드레이션 시각이 달라
   //  React #418(hydration text mismatch)이 났다. mount 후에만 렌더해 서버·클라 첫 렌더를 일치시킴.
   const mounted = useMounted();
@@ -200,7 +201,7 @@ export function ScheduleCalendar() {
     enumPreferenceCodec<ColorBy>(["subject", "instructor", "room", "student"]),
   );
   const [fInstructors, setFInstructors] = useState<Set<number>>(
-    () => myInstructorId != null ? new Set([myInstructorId]) : new Set(),
+    () => myInstructorId != null ? new Set([myInstructorId]) : new Set(initialSelection?.instructorIds ?? []),
   );
   const [fSubjects, setFSubjects] = useState<Set<string>>(new Set());
   const [fRooms, setFRooms] = useState<Set<number>>(new Set());
@@ -211,7 +212,7 @@ export function ScheduleCalendar() {
   //  진단고사/상담은 과목 필터의 유사 옵션(SUBJECT_KIND_OPTIONS)으로 이동. 프리셋 편입은 R-7.
   const [fModes, setFModes] = useState<Set<SessionModeFilter>>(new Set());
   const [groupOnly, setGroupOnly] = useState(false);
-  const [period, setPeriod] = useState<Period | null>(null);
+  const [period, setPeriod] = useState<Period | null>(initialSelection ? { from: initialSelection.from, to: initialSelection.to } : null);
   // [이슈3] 표(패널)별 날짜 범위 — 캘린더(from/to)로 표마다 다르게(예: 왼쪽 7/6~7/8, 오른쪽 7/6~7/10).
   //  미설정=전역 기간을 따름. from만 있고 to 없으면 from 하루.
   // [fit-to-width 2026-07-06] 그리드 폭 = 컨테이너 폭(가로 스크롤 제거 — 대표 지적 2·3, Lantiv 대응).

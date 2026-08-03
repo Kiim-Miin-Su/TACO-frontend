@@ -11,19 +11,15 @@ import { payoutHours as hoursLabel } from '@/features/payouts/payout-shared'; //
 import Link from 'next/link';
 import type { AttendanceStatus, InstructorAttendanceStatus } from '@/types';
 import { EmptyState, LoadingState, PageHeader, SectionCard, StatCard, TableWrap } from '@/components/ui';
-import { useInstructors, useInstructorSessions, useInstructorAttendanceSummary, useUpdateSchedule, useAttendance, useUpsertAttendance } from '@/lib/queries';
+import { useInstructors, useInstructorSessions, useInstructorAttendanceSummary, useInstructorAttendanceLedger, useUpdateSchedule, useAttendance, useUpsertAttendance } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { countsForPay, WEEKDAYS_KO as WD } from '@/lib/domain/schedule';
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from './AttMarker';
 import { AccountingImpactModal } from '@/components/AccountingImpactModal';
+import { DateRangeControl } from '@/components/DateRangeControl';
+import { currentMonthKst, monthRangeKst, shiftMonth } from '@/lib/format';
+import { STAFF_ATTENDANCE_LABEL } from '@/lib/domain/staff-attendance';
 
-const pad = (n: number) => String(n).padStart(2, '0');
-const thisYm = () => new Date().toISOString().slice(0, 7);
-const monthRange = (ym: string) => {
-  const [y, m] = ym.split('-').map(Number);
-  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return { from: `${ym}-01`, to: `${ym}-${pad(last)}` };
-};
 export function InstructorAttendanceDetailView({ instructorId }: { instructorId: number }) {
   const admin = useAccountAccess().can('admin.area');
   const { data: instructors = [], isLoading: loadingInst } = useInstructors();
@@ -38,13 +34,14 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
   const attOf = (sid: number, stuId: number): AttendanceStatus | undefined => attendance.find((a) => a.sessionId === sid && a.studentId === stuId)?.status;
   const markStu = (sid: number, stuId: number, st: AttendanceStatus) => upsert.mutate({ sessionId: sid, studentId: stuId, status: st });
   const [mode, setMode] = useState<'month' | 'custom'>('month');
-  const [ym, setYm] = useState(thisYm());
-  const [custom, setCustom] = useState(() => monthRange(thisYm()));
-  const range = mode === 'month' ? monthRange(ym) : custom;
+  const [ym, setYm] = useState(currentMonthKst());
+  const [custom, setCustom] = useState(() => monthRangeKst(currentMonthKst()));
+  const range = mode === 'month' ? monthRangeKst(ym) : custom;
 
   const { data: sessions = [], isLoading } = useInstructorSessions(admin ? instructorId : null, range.from, range.to);
   // [TBO-68 C1] 통계는 서버 summary 정본(qk.schedule 하위 — 아래 출결 마킹 mutation이 자동 무효화).
   const { data: summary } = useInstructorAttendanceSummary(range.from, range.to, instructorId);
+  const { data: ledger } = useInstructorAttendanceLedger({ from: range.from, to: range.to, instructorId });
 
   // 참조 무결성: 유효한 강사인지 검증(목록 로딩 후에만 판정).
   const instructor = instructors.find((i) => Number(i.id) === instructorId);
@@ -60,7 +57,9 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
   const rate = stat?.attendanceRate ?? null;
   const hours = stat?.teachingHours ?? 0;
 
-  const navMonth = (d: number) => { const [y, m] = ym.split('-').map(Number); setYm(new Date(Date.UTC(y, m - 1 + d, 1)).toISOString().slice(0, 7)); };
+  const navMonth = (d: number) => setYm((current) => shiftMonth(current, d));
+  const staffDays = ledger?.entries.filter((entry) => entry.source === 'staff_day') ?? [];
+  const leaveDays = staffDays.filter((entry) => ['paid_leave', 'unpaid_leave', 'sick_leave'].includes(entry.status)).length;
 
   if (!admin) {
     return (
@@ -101,11 +100,7 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
                   <button className="btn btn-sm" onClick={() => navMonth(1)}>▶</button>
                 </>
               ) : (
-                <>
-                  <input type="date" className="input h-7 w-[130px] text-caption" value={custom.from} onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))} />
-                  <span className="text-caption text-fg-subtle">~</span>
-                  <input type="date" className="input h-7 w-[130px] text-caption" value={custom.to} min={custom.from} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))} />
-                </>
+                <DateRangeControl value={custom} onChange={setCustom} label="조회" />
               )}
               <Link href="/attendance" className="btn btn-sm">출석부에서 편집 →</Link>
             </div>
@@ -121,6 +116,33 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
         <StatCard label="출석률" value={rate == null ? '—' : `${rate}%`} />
         <StatCard label="인정 시수" value={`${hours}h`} tone="accent" />
       </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard label="근무 기록" value={`${staffDays.length}건`} />
+        <StatCard label="출근" value={`${staffDays.filter((entry) => entry.status === 'present').length}건`} tone="success" />
+        <StatCard label="지각" value={`${staffDays.filter((entry) => entry.status === 'late').length}건`} tone="attention" />
+        <StatCard label="휴가·병가" value={`${leaveDays}건`} tone="attention" />
+      </div>
+
+      <SectionCard title={`근무·휴가 이력 (${staffDays.length})`}>
+        {!staffDays.length ? <EmptyState compact message="해당 기간의 근무·휴가 기록이 없습니다." /> : (
+          <TableWrap>
+            <table className="table text-body">
+              <thead><tr><th>업무일</th><th>상태</th><th>출퇴근</th><th>메모</th></tr></thead>
+              <tbody>
+                {staffDays.map((entry) => (
+                  <tr key={entry.key}>
+                    <td className="mono">{entry.date}</td>
+                    <td>{STAFF_ATTENDANCE_LABEL[entry.status as keyof typeof STAFF_ATTENDANCE_LABEL]}</td>
+                    <td className="mono text-fg-muted">{entry.startTime ?? '—'}{entry.endTime ? `~${entry.endTime}` : ''}</td>
+                    <td className="text-fg-muted">{entry.memo ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableWrap>
+        )}
+      </SectionCard>
 
       <SectionCard title={`회차 상세 (${held.length})`}>
         {isLoading ? (

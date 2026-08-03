@@ -9,12 +9,13 @@ import type { AttendanceStatus, InstructorAttendanceStatus, ScheduleRow } from "
 import { useSchedule, useCalendarSchedule, useAttendance, useUpsertAttendance, useClearAttendance, useStudents, useCourses, useUpdateSchedule, useInstructorContracts } from "@/lib/queries";
 import { buildAttendanceBook, hoursLabel, nextAttendanceStatus } from "@/lib/domain/attendanceBook";
 import { instructorAttendanceStats } from "@/lib/domain/schedule"; // [TBO-68 C1] 통계 헬퍼 단일화
-import { addDaysISO, todayKst } from "@/lib/format";
+import { addDaysISO, shiftMonth, todayKst } from "@/lib/format";
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS } from "./AttMarker";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { EmptyState, HelpPopover, LoadingState, PageHeader, SectionCard, TableWrap } from "@/components/ui";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 import { internalRoute } from "@/lib/navigation-security";
+import { StaffAttendanceLedgerView } from "./StaffAttendanceLedgerView";
 
 // 상태 배지(셀) — LMS 관례: P/L/A/E 원형 + 색
 const CELL: Record<AttendanceStatus, { label: string; bg: string }> = {
@@ -27,7 +28,7 @@ const CELL: Record<AttendanceStatus, { label: string; bg: string }> = {
 // [TBO-19] 강사 출결 선택 순서(매니저 편집 select).
 
 const ymOf = (iso: string) => iso.slice(0, 7);
-const thisYm = () => new Date().toISOString().slice(0, 7);
+const thisYm = () => todayKst().slice(0, 7);
 
 export function AttendanceBookView() {
   const access = useAccountAccess();
@@ -52,7 +53,8 @@ export function AttendanceBookView() {
   // 강사 계약은 금액 자산이므로 대표에게만 조회·표시한다.
   const { data: contracts = [] } = useInstructorContracts();
 
-  const [tab, setTab] = useState<"student" | "instructor">("student");
+  const [tab, setTab] = useState<"student" | "instructor">("instructor");
+  const [instructorView, setInstructorView] = useState<"ledger" | "matrix">("ledger");
   const [ym, setYm] = useState(thisYm());
   const [courseId, setCourseId] = useState<number | null>(null);
 
@@ -99,9 +101,7 @@ export function AttendanceBookView() {
   };
 
   const navYm = (d: number) => {
-    const [y, m] = ym.split("-").map(Number);
-    const nd = new Date(Date.UTC(y, m - 1 + d, 1));
-    setYm(nd.toISOString().slice(0, 7));
+    setYm((current) => shiftMonth(current, d));
   };
 
   // ── 강사 출석: 행=강사, 열=이 달 진행 회차. **매니저=전 강사 편집(CRUD)**, **강사=본인만 읽기**. ──
@@ -187,9 +187,19 @@ export function AttendanceBookView() {
                 ))}
               </div>
             )}
-            <button className="btn btn-sm" onClick={() => navYm(-1)}>◀</button>
-            <span className="mono text-body">{ym}</span>
-            <button className="btn btn-sm" onClick={() => navYm(1)}>▶</button>
+            {manager && tab === "instructor" && (
+              <div className="flex rounded-md overflow-hidden border">
+                <button className={`btn btn-sm rounded-none border-0 ${instructorView === "ledger" ? "badge-accent" : ""}`} onClick={() => setInstructorView("ledger")}>목록</button>
+                <button className={`btn btn-sm rounded-none border-0 ${instructorView === "matrix" ? "badge-accent" : ""}`} onClick={() => setInstructorView("matrix")}>회차표</button>
+              </div>
+            )}
+            {(tab === "student" || !manager || instructorView === "matrix") && (
+              <>
+                <button className="btn btn-sm" onClick={() => navYm(-1)}>◀</button>
+                <span className="mono text-body">{ym}</span>
+                <button className="btn btn-sm" onClick={() => navYm(1)}>▶</button>
+              </>
+            )}
             {/* [DESIGN §5.5] 조작 설명은 부제가 아니라 ⓘ 팝오버 */}
             <HelpPopover title="출석부 사용법">
               <p>셀 클릭 = 상태 변경(출→지→결→공→미선택 순환)</p>
@@ -312,6 +322,8 @@ export function AttendanceBookView() {
             시수 인정: 출석·지각 = 회차 시간 인정 · 결석·공결·미체크 = 0 (강사 정산 시수 규칙과 대칭). 예정 회차는 집계 제외.
           </p>
         </SectionCard>
+      ) : manager && instructorView === "ledger" ? (
+        <StaffAttendanceLedgerView />
       ) : (
         <SectionCard
           title={`${manager ? "강사 출석" : "내 출석"} — ${ym} 진행 회차`}

@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Room, ScheduleResources } from "@/types";
 import { MAX_SPLIT, STATUS_FILTERS, STATUS_FILTER_LABEL, MODE_FILTERS, MODE_FILTER_LABEL, type StatusFilter, type SessionModeFilter } from "@/lib/domain/lantiv";
+import { DateRangeControl } from "@/components/DateRangeControl";
 
 // [#2 2026-07-06] subject 추가 — 수동 표 빌더의 과목 차원 MultiPick 지원.
 export type FilterDim = "instructor" | "student" | "room" | "subject";
@@ -282,37 +283,12 @@ export function CalendarFilterBar({
         <span className="w-px h-5 bg-line" />
         {/* 기간: 우측 리스트·조회 범위 확장(뷰 기간 대신 사용)
             [정렬 2026-07-06] 필터바 컨트롤 높이 h-7 통일(btn-sm과 동일선) · 폭 w-[120px] = 표별 필터바와 동일 규격 */}
-        <label className="flex items-center gap-1 text-caption text-fg-muted">
-          기간
-          <input
-            type="date"
-            className="input h-7 px-1.5 text-caption w-[120px]"
-            value={period?.from ?? ""}
-            onChange={(e) => {
-              const from = e.target.value;
-              if (!from) return onPeriod(null);
-              onPeriod({ from, to: period?.to && period.to >= from ? period.to : from });
-            }}
-          />
-          ~
-          <input
-            type="date"
-            className="input h-7 px-1.5 text-caption w-[120px]"
-            value={period?.to ?? ""}
-            min={period?.from}
-            onChange={(e) => {
-              const to = e.target.value;
-              if (!to || !period) return;
-              onPeriod({ from: period.from, to: to >= period.from ? to : period.from });
-            }}
-            disabled={!period}
-          />
-          {period && (
-            <button className="btn btn-sm h-7 px-1.5" onClick={() => onPeriod(null)} title="기간 해제(뷰 기간으로)">
-              ✕
-            </button>
-          )}
-        </label>
+        <DateRangeControl
+          value={period}
+          onChange={onPeriod}
+          allowClear
+          onClear={() => onPeriod(null)}
+        />
         {/* [cherry-pick 2026-07-06] 원하는 날짜만 여러 개(불연속·최대 14) — 선택 시 기간보다 우선(표별 헤더와 동일 문법) */}
         <label className="flex items-center gap-1 text-caption text-fg-muted" title="원하는 날짜만 골라 보기 — 고르면 기간(from~to) 대신 이 날짜들만 표시">
           날짜

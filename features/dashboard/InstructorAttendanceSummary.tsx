@@ -6,32 +6,22 @@ import Link from 'next/link';
 import { SectionCard, EmptyState, LoadingState, TableWrap } from '@/components/ui';
 import { useInstructors, useInstructorAttendanceSummary } from '@/lib/queries';
 import { internalRoute } from '@/lib/navigation-security';
-
-const pad = (n: number) => String(n).padStart(2, '0');
-const thisYm = () => new Date().toISOString().slice(0, 7);
-// 월(YYYY-MM) → 그 달 1일·말일
-const monthRange = (ym: string): { from: string; to: string } => {
-  const [y, m] = ym.split('-').map(Number);
-  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return { from: `${ym}-01`, to: `${ym}-${pad(last)}` };
-};
+import { DateRangeControl } from '@/components/DateRangeControl';
+import { currentMonthKst, monthRangeKst, shiftMonth } from '@/lib/format';
 
 export function InstructorAttendanceSummary() {
   const { data: instructors = [] } = useInstructors();
   const [mode, setMode] = useState<'month' | 'custom'>('month');
-  const [ym, setYm] = useState(thisYm());
-  const [custom, setCustom] = useState<{ from: string; to: string }>(() => monthRange(thisYm()));
+  const [ym, setYm] = useState(currentMonthKst());
+  const [custom, setCustom] = useState<{ from: string; to: string }>(() => monthRangeKst(currentMonthKst()));
   const [instructorId, setInstructorId] = useState<number>(0); // 0 = 전체
 
-  const range = mode === 'month' ? monthRange(ym) : custom;
+  const range = mode === 'month' ? monthRangeKst(ym) : custom;
   const { data, isLoading } = useInstructorAttendanceSummary(range.from, range.to, instructorId || undefined);
   const rows = data?.rows ?? [];
   const totals = data?.totals;
 
-  const navMonth = (d: number) => {
-    const [y, m] = ym.split('-').map(Number);
-    setYm(new Date(Date.UTC(y, m - 1 + d, 1)).toISOString().slice(0, 7));
-  };
+  const navMonth = (d: number) => setYm((current) => shiftMonth(current, d));
   const label = useMemo(() => (mode === 'month' ? `${ym.replace('-', '년 ')}월` : `${range.from} ~ ${range.to}`), [mode, ym, range]);
 
   return (
@@ -53,11 +43,7 @@ export function InstructorAttendanceSummary() {
               <button className="btn btn-sm" onClick={() => navMonth(1)}>▶</button>
             </>
           ) : (
-            <>
-              <input type="date" className="input h-7 w-[130px] text-caption" value={custom.from} onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))} />
-              <span className="text-caption text-fg-subtle">~</span>
-              <input type="date" className="input h-7 w-[130px] text-caption" value={custom.to} min={custom.from} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))} />
-            </>
+            <DateRangeControl value={custom} onChange={setCustom} label="조회" />
           )}
           <select aria-label="강사 필터" className="input h-7 w-28 text-caption" value={instructorId} onChange={(e) => setInstructorId(Number(e.target.value))}>
             <option value={0}>강사 전체</option>

@@ -2,7 +2,7 @@
 // 예) queryClient.invalidateQueries({ queryKey: qk.schedule.all })
 import type { ScheduleQuery } from "@/lib/api";
 import type { AvailabilityOwner } from "@/types";
-import type { AuthEventQuery } from "@kms545487/contracts";
+import type { AuthEventQuery, InstructorAttendanceLedgerQuery, StaffAttendanceQuery } from "@kms545487/contracts";
 
 export const qk = {
   auth: {
@@ -89,6 +89,11 @@ export const qk = {
   reportTemplates: { all: ["reportTemplates"] as const, list: () => ["reportTemplates", "list"] as const },
   events: { all: ["events"] as const, list: () => ["events", "list"] as const },
   attendance: { all: ["attendance"] as const, list: (scope = "global") => ["attendance", "list", scope] as const },
+  staffAttendance: {
+    all: ["staff-attendance"] as const,
+    list: (query: StaffAttendanceQuery, scope = "global") => ["staff-attendance", "list", scope, query] as const,
+    ledger: (query: InstructorAttendanceLedgerQuery, scope = "global") => ["staff-attendance", "ledger", scope, query] as const,
+  },
   parents: {
     all: ["parents"] as const,
     list: () => ["parents", "list"] as const,

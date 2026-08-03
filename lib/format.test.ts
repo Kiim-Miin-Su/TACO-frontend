@@ -1,6 +1,6 @@
 // 공용 표시 유틸은 SSR/CSR 하이드레이션 결정을 위해 locale에 의존하지 않는다.
 import { describe, expect, it } from 'vitest';
-import { dateOnly, kstDateTime, shortDate, won } from '@/lib/format';
+import { currentMonthKst, dateOnly, kstDateTime, monthRangeKst, shiftMonth, shortDate, won } from '@/lib/format';
 
 describe('format', () => {
   it('won — 천 단위 콤마, 반올림, 0·음수 처리', () => {
@@ -32,5 +32,12 @@ describe('format', () => {
 
   it('returns malformed input unchanged', () => {
     expect(kstDateTime('not-a-date')).toBe('not-a-date');
+  });
+
+  it('derives month boundaries from KST instead of UTC', () => {
+    expect(currentMonthKst(new Date('2026-07-31T15:30:00.000Z'))).toBe('2026-08');
+    expect(monthRangeKst('2026-02')).toEqual({ from: '2026-02-01', to: '2026-02-28' });
+    expect(monthRangeKst('2028-02')).toEqual({ from: '2028-02-01', to: '2028-02-29' });
+    expect(shiftMonth('2026-12', 1)).toBe('2027-01');
   });
 });

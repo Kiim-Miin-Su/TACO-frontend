@@ -48,3 +48,8 @@ export function calendarSubjectOptions(resources?: ScheduleResources | null) {
 export function scheduleResourceName(resource: Pick<ScheduleResource, 'name' | 'scheduleOwnerRole'>): string {
   return resource.scheduleOwnerRole === 'super_admin' ? `${resource.name} (대표)` : resource.name;
 }
+
+/** 일정 소유자 중 강사만 고르는 대상-role 판정. 로그인 actor 인가는 capability가 담당한다. */
+export function isInstructorScheduleResource(resource: Pick<ScheduleResource, 'scheduleOwnerRole'>): boolean {
+  return resource.scheduleOwnerRole === 'instructor';
+}

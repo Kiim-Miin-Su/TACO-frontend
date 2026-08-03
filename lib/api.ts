@@ -5,6 +5,7 @@ import { scheduleApi } from "./api/schedule";
 import { academicsApi } from "./api/academics";
 import { financeApi } from "./api/finance";
 import { miscApi } from "./api/misc";
+import { staffAttendanceApi } from "./api/staff-attendance";
 
 // [TBO-34 C1] 인증은 backend-set HttpOnly cookie 단일 소스. Bearer 조립/토큰 decode를 금지한다.
 export const api = {
@@ -14,6 +15,7 @@ export const api = {
   ...financeApi,
   ...academicsApi,
   ...scheduleApi,
+  ...staffAttendanceApi,
 };
 
 export type { ApiReadOptions } from "./api/client";

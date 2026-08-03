@@ -14,3 +14,4 @@ export * from "./queries/schedule";
 export * from "./queries/finance";
 export * from "./queries/admin";
 export * from "./queries/misc";
+export * from "./queries/staff-attendance";

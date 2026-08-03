@@ -2,12 +2,48 @@ import { hasCapability, type AppCapability } from "@/lib/access-control";
 import { isPublicRoute, LOGOUT_ROUTE } from "@/lib/auth-routes";
 import type { AccountRole } from "@/types";
 import type { Route } from "next";
+import { MAX_SPLIT } from "@/lib/domain/lantiv";
 
 const INTERNAL_ORIGIN = "https://taco.internal";
 const MAX_REDIRECT_LENGTH = 2048;
 const MAX_POSTGRES_INTEGER = 2_147_483_647;
 const UNSAFE_CHARACTER = /[\u0000-\u001f\u007f\\]/;
 const CANONICAL_POSITIVE_INTEGER = /^[1-9]\d*$/;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_CALENDAR_COMPARE_DATES = 14;
+
+export type CalendarCompareSelection = {
+  from: string;
+  to: string;
+  instructorIds: number[];
+};
+
+function validIsoDate(value: string): boolean {
+  if (!ISO_DATE.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+export function parseCalendarCompareSearchParams(params: URLSearchParams): CalendarCompareSelection | null {
+  const from = params.get("from") ?? "";
+  const to = params.get("to") ?? "";
+  const rawIds = params.get("instructorIds") ?? "";
+  if (!validIsoDate(from) || !validIsoDate(to) || to < from) return null;
+  const days = Math.floor((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+  if (days > 366) return null;
+  const pieces = rawIds.split(",");
+  if (!rawIds || pieces.length > MAX_SPLIT) return null;
+  const instructorIds = pieces.map(positiveRouteId);
+  if (instructorIds.some((id) => id == null)) return null;
+  const unique = [...new Set(instructorIds as number[])];
+  if (unique.length !== instructorIds.length) return null;
+  const boundedTo = days < MAX_CALENDAR_COMPARE_DATES
+    ? to
+    : new Date(Date.parse(`${from}T00:00:00Z`) + (MAX_CALENDAR_COMPARE_DATES - 1) * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+  return { from, to: boundedTo, instructorIds: unique };
+}
 
 export type InternalHref =
   | "/"
@@ -97,6 +133,19 @@ export const internalRoute = {
     `/admin/users/${routeIdSegment(id)}`,
   attendanceInstructor: (id: number): InternalHref =>
     `/attendance/instructor/${routeIdSegment(id)}`,
+  calendarCompare: (instructorIds: number[], range: { from: string; to: string }): Route => {
+    const params = new URLSearchParams({
+      from: range.from,
+      to: range.to,
+      instructorIds: instructorIds.map(routeIdSegment).join(","),
+    });
+    const parsed = parseCalendarCompareSearchParams(params);
+    if (!parsed) throw new RangeError("Calendar comparison parameters are invalid");
+    params.set("from", parsed.from);
+    params.set("to", parsed.to);
+    params.set("instructorIds", parsed.instructorIds.join(","));
+    return `/calendar?${params.toString()}` as Route;
+  },
   counsel: (id: number): InternalHref => `/counsel/${routeIdSegment(id)}`,
   expense: (id: number): InternalHref => `/expenses/${routeIdSegment(id)}`,
   payment: (id: number): InternalHref => `/payments/${routeIdSegment(id)}`,

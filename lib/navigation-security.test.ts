@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   defaultPostLoginLanding,
   internalRoute,
+  parseCalendarCompareSearchParams,
   positiveRouteId,
   resolvePostLoginDestination,
   safeInternalRedirect,
@@ -68,6 +69,9 @@ describe("internalRoute", () => {
     expect(internalRoute.session(12)).toBe("/sessions/12");
     expect(internalRoute.sessionFeedback(12, 13)).toBe("/sessions/12/feedback/13");
     expect(internalRoute.student(14)).toBe("/students/14");
+    expect(internalRoute.calendarCompare([5, 6], { from: "2026-08-01", to: "2026-08-31" })).toBe(
+      "/calendar?from=2026-08-01&to=2026-08-14&instructorIds=5%2C6",
+    );
   });
 
   it.each([0, -1, 1.5, Number.NaN, 2_147_483_648])(
@@ -76,6 +80,36 @@ describe("internalRoute", () => {
       expect(() => internalRoute.student(candidate)).toThrow(RangeError);
     },
   );
+});
+
+describe("calendar comparison query", () => {
+  it("accepts a bounded unique instructor selection", () => {
+    expect(parseCalendarCompareSearchParams(new URLSearchParams("from=2026-08-01&to=2026-08-31&instructorIds=5,6"))).toEqual({
+      from: "2026-08-01",
+      to: "2026-08-14",
+      instructorIds: [5, 6],
+    });
+  });
+
+  it("keeps a comparison range that already fits the 14-date grid", () => {
+    expect(parseCalendarCompareSearchParams(new URLSearchParams("from=2026-08-01&to=2026-08-07&instructorIds=5"))).toEqual({
+      from: "2026-08-01",
+      to: "2026-08-07",
+      instructorIds: [5],
+    });
+  });
+
+  it.each([
+    "from=2026-02-30&to=2026-03-01&instructorIds=1",
+    "from=2026-08-03&to=2026-08-01&instructorIds=1",
+    "from=2026-01-01&to=2027-02-01&instructorIds=1",
+    "from=2026-08-01&to=2026-08-02&instructorIds=1,1",
+    "from=2026-08-01&to=2026-08-02&instructorIds=1,2,3,4,5,6,7",
+    "from=2026-08-01&to=2026-08-02&instructorIds=0",
+    "from=2026-08-01&to=2026-08-02&instructorIds=1%2Cjavascript%3Aalert(1)",
+  ])("fails closed for invalid input: %s", (query) => {
+    expect(parseCalendarCompareSearchParams(new URLSearchParams(query))).toBeNull();
+  });
 });
 
 describe("safeInternalRedirect", () => {
