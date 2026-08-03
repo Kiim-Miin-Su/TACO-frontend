@@ -3,7 +3,13 @@ import { roleHasCapability, type RoleCapability } from "@kms545487/contracts";
 
 export type AppCapability = RoleCapability;
 
-export type VerifiedAccount = { id: number; name: string; role: AccountRole };
+export type VerifiedAccount = {
+  id: number;
+  name: string;
+  role: AccountRole;
+  accessVersion: number;
+  effectiveCapabilities: readonly RoleCapability[];
+};
 
 const ROLE_PRIORITY: AccountRole[] = ["super_admin", "admin", "manager", "instructor"];
 
@@ -15,8 +21,15 @@ export function hasCapability(role: AccountRole | null | undefined, capability: 
   return role != null && roleHasCapability(role, capability);
 }
 
-export function accountScopeKey(account: Pick<VerifiedAccount, "id" | "role"> | null): string {
-  return account ? `${account.id}:${account.role}` : "anon";
+export function accountHasCapability(
+  account: Pick<VerifiedAccount, "effectiveCapabilities"> | null | undefined,
+  capability: AppCapability,
+): boolean {
+  return account?.effectiveCapabilities.includes(capability) === true;
+}
+
+export function accountScopeKey(account: Pick<VerifiedAccount, "id" | "role" | "accessVersion"> | null): string {
+  return account ? `${account.id}:${account.role}:v${account.accessVersion}` : "anon";
 }
 
 export function instructorIdFor(account: Pick<VerifiedAccount, "id" | "role"> | null): number | null {

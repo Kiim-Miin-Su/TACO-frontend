@@ -8,7 +8,7 @@ import { invalidateInstructorAggregate, invalidateInstructorContractCommand } fr
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { WEB_ID_MIN } from "@/lib/validation"; // [TBO-31 C2 2026-07-16] 아이디 라이브 체크 최소 길이
 import { CATALOG_STALE, detailRetry, useInvalidator } from "./shared";
-import type { AuthEventQuery } from '@kms545487/contracts';
+import type { AuthEventQuery, RoleCapability, SetUserCapabilityInput } from '@kms545487/contracts';
 
 // [TBO-74 C1] 강사 계약은 금액 자산이므로 대표 전용. 백엔드 finance.access와 같은 capability를 사용한다.
 export const useInstructorContracts = (instructorId?: number) => {
@@ -87,6 +87,33 @@ export const useInstructorAdminDetail = (id: number | null) => {
 export const useUser = (id: number | null) => {
   const { can } = useAccountAccess();
   return useQuery({ queryKey: qk.users.detail(id ?? 0), queryFn: () => api.users.detail(id as number), enabled: id != null && can("admin.area") });
+};
+export const useUserPermissions = (id: number | null) => {
+  const { can, scope } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.users.permissions(id ?? 0),
+    queryFn: () => api.users.permissions(id as number),
+    enabled: id != null && can('access.manage'),
+    staleTime: 0,
+    gcTime: 5 * 60_000,
+    meta: { accountScope: scope },
+  });
+};
+export const useSetUserPermission = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (value: { id: number; capability: RoleCapability; input: SetUserCapabilityInput }) =>
+      api.users.setPermission(value.id, value.capability, value.input),
+    onSuccess: async (projection) => {
+      queryClient.setQueryData(qk.users.permissions(projection.userId), projection);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: qk.users.detail(projection.userId) }),
+        queryClient.invalidateQueries({ queryKey: qk.users.all }),
+        queryClient.invalidateQueries({ queryKey: qk.audit.all }),
+      ]);
+    },
+    onError: (caught) => { if (isSudoRequiredError(caught)) clearSudo(); },
+  });
 };
 export const useAuthEvents = (query: AuthEventQuery) => {
   const { can } = useAccountAccess();

@@ -8,7 +8,7 @@ import { useTacoStore } from "@/lib/store";
 import { apiErrorMessage } from "@/lib/api-error";
 import { AuthShell, AuthField } from "@/components/auth/AuthShell";
 import { resolvePostLoginDestination } from "@/lib/navigation-security";
-import type { AccountRole } from "@/types";
+import { resolveBackofficeRole } from "@/lib/access-control";
 import { clearAccountScopedClientState } from "@/lib/auth-session";
 
 function LoginForm() {
@@ -28,13 +28,22 @@ function LoginForm() {
     setErr(null);
     try {
       const res = await api.auth.login({ webId: webId.trim(), password });
-      const accountRole = res.account.role as AccountRole;
       await clearAccountScopedClientState(queryClient);
-      setCurrentAccount({ id: res.account.id, name: res.account.name, role: accountRole, mustChangePassword: res.account.mustChangePassword });
+      const claims = await api.auth.me();
+      const accountRole = resolveBackofficeRole(claims.roles ?? []);
+      if (!accountRole) throw new Error("BACKOFFICE_ROLE_REQUIRED");
+      setCurrentAccount({
+        id: claims.sub,
+        name: claims.name,
+        role: accountRole,
+        mustChangePassword: claims.mustChangePassword === true,
+        accessVersion: claims.accessVersion,
+        effectiveCapabilities: claims.effectiveCapabilities,
+      });
       router.replace(resolvePostLoginDestination(
         params.get("redirect"),
         accountRole,
-        res.account.mustChangePassword,
+        claims.mustChangePassword === true,
       ));
     } catch (e) {
       // [E0.6 L 2026-07-16] 서버 원문(영문 프레임워크 메시지·프록시 HTML 등) 노출 방지 —

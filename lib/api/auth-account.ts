@@ -15,6 +15,9 @@ import type {
   StaffProfile,
   StaffSignupResult,
   WebIdCheckResult,
+  RoleCapability,
+  SetUserCapabilityInput,
+  UserPermissionsProjection,
 } from "@kms545487/contracts";
 export type { ProfileChangeFields, ProfileChangeRequest } from "@kms545487/contracts";
 
@@ -113,7 +116,7 @@ export const authAccountApi = {
       http.get<{ ok: boolean; message: string }>("/auth/verify-email", { params: { token } }).then((r) => r.data),
     // 토큰 검증(서버에서 claims 반환)
     me: () =>
-      http.get<{ sub: number; name: string; roles: string[]; mustChangePassword?: boolean }>("/auth/me").then((r) => r.data),
+      http.get<{ sub: number; name: string; roles: string[]; accessVersion: number; effectiveCapabilities: RoleCapability[]; mustChangePassword?: boolean }>("/auth/me").then((r) => r.data),
     // [TBO-28B] 로그아웃 — auth_events 보안 기록(베스트에포트 호출, 토큰 폐기는 클라이언트).
     logout: () => http.post<{ ok: boolean }>("/auth/logout", {}).then((r) => r.data),
     // [유저 관리 2026-07-20] 재인증 게이트 — 민감 화면 진입 전 비밀번호 재확인(5회/분 스로틀).
@@ -169,6 +172,10 @@ export const authAccountApi = {
     // [TBO-79 E5] 종전엔 계약이 부족해 `& { rrnMasked?; university?; major?; birthYear? }`를 손으로
     //  덧붙이고 있었다. 계약이 실제 wire와 일치하도록 확장돼 이제 재선언이 필요 없다.
     detail: (id: number) => http.get<StaffAccountDetail>(`/users/${id}`).then((r) => r.data),
+    permissions: (id: number) =>
+      http.get<UserPermissionsProjection>(`/users/${id}/permissions`).then((r) => r.data),
+    setPermission: (id: number, capability: RoleCapability, input: SetUserCapabilityInput) =>
+      http.put<UserPermissionsProjection>(`/users/${id}/permissions/${encodeURIComponent(capability)}`, input).then((r) => r.data),
     adminUpdate: (id: number, patch: { name?: string; phone?: string; email?: string; role?: string }) =>
       http.patch<UserProfileSummary>(`/users/${id}`, patch).then((r) => r.data),
     createStaff: (input: { webId: string; name: string; password: string; role?: string; email?: string; phone?: string; university?: string; major?: string; birthYear?: number }) =>

@@ -33,6 +33,7 @@ const thisYm = () => todayKst().slice(0, 7);
 export function AttendanceBookView() {
   const access = useAccountAccess();
   const manager = access.can("admin.area");
+  const canManageAttendance = access.can("attendance.manage");
   const finance = access.can("finance.access");
   // [B6 C3 2026-07-16] role 비교 → capability(instructor.self는 instructor 역할에만 부여 — 동치).
   const instructorSelf = access.can("instructor.self");
@@ -83,6 +84,7 @@ export function AttendanceBookView() {
   const book = useMemo(() => buildAttendanceBook(courseSessions as never, attendance, roster), [courseSessions, attendance, roster]);
 
   const mark = (sessionId: number, studentId: number, cur?: AttendanceStatus) => {
+    if (!canManageAttendance) return;
     const next = nextAttendanceStatus(cur);
     if (next) {
       upsert.mutate({ sessionId, studentId, status: next });
@@ -96,6 +98,7 @@ export function AttendanceBookView() {
   };
   // 열 헤더 클릭 = 그 회차 전체 출석(Moodle 패턴 — 미체크·타상태 모두 present로)
   const markAll = (sessionId: number) => {
+    if (!canManageAttendance) return;
     const col = book.rows.filter((r) => r.cells.find((c) => c.sessionId === sessionId)?.inCohort);
     col.forEach((r) => upsert.mutate({ sessionId, studentId: r.studentId, status: "present" }));
   };
@@ -106,7 +109,7 @@ export function AttendanceBookView() {
 
   // ── 강사 출석: 행=강사, 열=이 달 진행 회차. **매니저=전 강사 편집(CRUD)**, **강사=본인만 읽기**. ──
   //  [TBO-19] 강사는 API상 세션 PATCH가 manager+ 게이트라 자동 read-only(UI도 select 대신 배지).
-  const canEditInstructorAtt = manager; // 매니저/관리자만 강사 출결 마킹
+  const canEditInstructorAtt = canManageAttendance;
   const instructorBook = useMemo(() => {
     // 강사 본인 스코프(manager는 전체). 강사인데 id 미해석이면 빈 목록.
     if (!manager && myInstId == null) return [];
@@ -255,7 +258,8 @@ export function AttendanceBookView() {
                       <th key={c.sessionId} className="text-center min-w-[64px]">
                         <button
                           className={`block w-full ${c.held ? "hover:text-accent" : "opacity-60"}`}
-                          title={c.held ? `${c.no}회차 전체 출석 처리` : "예정 회차(집계 제외)"}
+                          title={!canManageAttendance ? "출결 변경은 대표자만 가능합니다." : c.held ? `${c.no}회차 전체 출석 처리` : "예정 회차(집계 제외)"}
+                          disabled={!canManageAttendance || upsert.isPending}
                           onClick={() => c.held && markAll(c.sessionId)}
                         >
                           <div className="font-semibold">{c.no}회차</div>
@@ -281,7 +285,8 @@ export function AttendanceBookView() {
                             <button
                               className="inline-grid place-items-center w-6 h-6 rounded-full text-micro font-semibold text-white disabled:opacity-40"
                               style={{ background: cell.status ? CELL[cell.status].bg : "var(--color-line)" }}
-                              title={cell.held ? "클릭 = 출석→지각→결석→공결 순환" : "예정 회차 — 미리 체크 가능"}
+                              title={!canManageAttendance ? "출결 변경은 대표자만 가능합니다." : cell.held ? "클릭 = 출석→지각→결석→공결 순환" : "예정 회차 — 미리 체크 가능"}
+                              disabled={!canManageAttendance || upsert.isPending}
                               onClick={() => mark(cell.sessionId, r.studentId, cell.status)}
                             >
                               {cell.status ? CELL[cell.status].label : ""}

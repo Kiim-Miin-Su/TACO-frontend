@@ -21,7 +21,9 @@ import { currentMonthKst, monthRangeKst, shiftMonth } from '@/lib/format';
 import { STAFF_ATTENDANCE_LABEL } from '@/lib/domain/staff-attendance';
 
 export function InstructorAttendanceDetailView({ instructorId }: { instructorId: number }) {
-  const admin = useAccountAccess().can('admin.area');
+  const access = useAccountAccess();
+  const admin = access.can('admin.area');
+  const canManageAttendance = access.can('attendance.manage');
   const { data: instructors = [], isLoading: loadingInst } = useInstructors();
   // [req3] 매니저 CRUD — 강사 출결(세션 PATCH)·학생 출결(attendance upsert). 상세=지난 회차 편집 진입점.
   const updateSchedule = useUpdateSchedule();
@@ -180,7 +182,7 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
                         <td className="text-fg-muted">{s.roomName ?? '—'}</td>
                         <td className="text-center">
                           {/* [req3] 강사 출결 CRUD(버튼·원클릭·수정하기) — 관리자만 */}
-                          <AttMarker value={s.instructorAttendance} options={INSTRUCTOR_ATT_OPTIONS} canEdit={admin} pending={updateSchedule.isPending} onMark={(st) => markInst(s.id, st)} onClear={() => clearInst(s.id)} />
+                          <AttMarker value={s.instructorAttendance} options={INSTRUCTOR_ATT_OPTIONS} canEdit={canManageAttendance} pending={updateSchedule.isPending} onMark={(st) => markInst(s.id, st)} onClear={() => clearInst(s.id)} />
                         </td>
                         <td className="text-center">
                           {paid ? (
@@ -204,7 +206,7 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
                                   {cohort.map((st) => (
                                     <span key={st.id} className="inline-flex items-center gap-1.5 text-caption">
                                       <span className="min-w-[64px] truncate font-medium">{st.name}</span>
-                                      <AttMarker value={attOf(s.id, st.id)} options={STUDENT_ATT_OPTIONS} canEdit={admin} pending={upsert.isPending} onMark={(v) => markStu(s.id, st.id, v)} />
+                                      <AttMarker value={attOf(s.id, st.id)} options={STUDENT_ATT_OPTIONS} canEdit={canManageAttendance} pending={upsert.isPending} onMark={(v) => markStu(s.id, st.id, v)} />
                                     </span>
                                   ))}
                                 </div>

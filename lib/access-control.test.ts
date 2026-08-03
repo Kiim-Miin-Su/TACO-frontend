@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accountScopeKey, hasCapability, instructorIdFor, resolveBackofficeRole } from "@/lib/access-control";
+import { accountHasCapability, accountScopeKey, hasCapability, instructorIdFor, resolveBackofficeRole } from "@/lib/access-control";
 
 describe("access-control", () => {
   it("resolves only supported backoffice roles with deterministic priority", () => {
@@ -49,9 +49,17 @@ describe("access-control", () => {
   });
 
   it("builds cache scope and instructor identity from the same verified account", () => {
-    const account = { id: 42, role: "instructor" as const };
-    expect(accountScopeKey(account)).toBe("42:instructor");
+    const account = { id: 42, role: "instructor" as const, accessVersion: 7 };
+    expect(accountScopeKey(account)).toBe("42:instructor:v7");
     expect(instructorIdFor(account)).toBe(42);
     expect(instructorIdFor({ id: 42, role: "manager" })).toBeNull();
+  });
+
+  it("uses the server effective projection instead of recomputing role defaults", () => {
+    const deniedManager = { effectiveCapabilities: ["staff.login"] as const };
+    const grantedInstructor = { effectiveCapabilities: ["staff.login", "calendar.manage"] as const };
+    expect(accountHasCapability(deniedManager, "calendar.manage")).toBe(false);
+    expect(accountHasCapability(grantedInstructor, "calendar.manage")).toBe(true);
+    expect(accountHasCapability(null, "calendar.manage")).toBe(false);
   });
 });

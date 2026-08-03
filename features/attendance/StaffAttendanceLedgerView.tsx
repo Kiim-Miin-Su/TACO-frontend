@@ -20,6 +20,7 @@ import { internalRoute } from "@/lib/navigation-security";
 import { useInstructorAttendanceLedger, useRemoveStaffAttendance, useScheduleResources, useStaffAttendance } from "@/lib/queries";
 import { isInstructorScheduleResource } from "@/lib/domain/schedule-resources";
 import { StaffAttendanceRecordModal } from "./StaffAttendanceRecordModal";
+import { useAccountAccess } from "@/lib/useAccountAccess";
 
 const statusLabel = (entry: InstructorAttendanceLedgerEntry): string => entry.source === "staff_day"
   ? STAFF_ATTENDANCE_LABEL[entry.status as keyof typeof STAFF_ATTENDANCE_LABEL]
@@ -32,6 +33,7 @@ const statusTone = (status: string): "success" | "attention" | "danger" | "neutr
         : "neutral";
 
 export function StaffAttendanceLedgerView() {
+  const canManageAttendance = useAccountAccess().can("attendance.manage");
   const initialRange = monthRangeKst(currentMonthKst());
   const [range, setRange] = useState(initialRange);
   const [q, setQ] = useState("");
@@ -62,7 +64,7 @@ export function StaffAttendanceLedgerView() {
   const leaveCount = staffEntries.filter((entry) => ["paid_leave", "unpaid_leave", "sick_leave"].includes(entry.status)).length;
 
   const openStaffRecord = (entry: InstructorAttendanceLedgerEntry) => {
-    if (entry.source !== "staff_day") return;
+    if (!canManageAttendance || entry.source !== "staff_day") return;
     const canonical = staffRecords.data?.find((candidate) => Number(candidate.id) === Number(entry.recordId));
     setEditRecord(canonical ?? {
       id: entry.recordId,
@@ -100,7 +102,9 @@ export function StaffAttendanceLedgerView() {
               <button type="button" className={`btn btn-sm rounded-none border-0 ${groupMode === "date" ? "badge-accent" : ""}`} onClick={() => setGroupMode("date")}>날짜순</button>
               <button type="button" className={`btn btn-sm rounded-none border-0 ${groupMode === "instructor" ? "badge-accent" : ""}`} onClick={() => setGroupMode("instructor")}>이름순</button>
             </div>
-            <button type="button" className="btn btn-sm btn-primary" disabled={!instructors.length} onClick={() => setEditRecord("new")}>근무·휴가 추가</button>
+            {canManageAttendance && (
+              <button type="button" className="btn btn-sm btn-primary" disabled={!instructors.length} onClick={() => setEditRecord("new")}>근무·휴가 추가</button>
+            )}
           </div>
         )}
       >
@@ -166,8 +170,10 @@ export function StaffAttendanceLedgerView() {
                     );
                     return entry.source === "class_session" ? (
                       <ClickableTableRow key={entry.key} href={internalRoute.attendanceInstructor(entry.instructorId)} label={`${entry.instructorName} 출결 상세`}>{cells}</ClickableTableRow>
-                    ) : (
+                    ) : canManageAttendance ? (
                       <ClickableTableRow key={entry.key} onActivate={() => openStaffRecord(entry)} label={`${entry.instructorName} ${entry.date} 근무 기록 수정`}>{cells}</ClickableTableRow>
+                    ) : (
+                      <tr key={entry.key}>{cells}</tr>
                     );
                   }),
                 ])}
@@ -178,7 +184,7 @@ export function StaffAttendanceLedgerView() {
         <p className="text-caption text-fg-subtle mt-2">수업 인정 시수와 직원 근태 횟수는 원부가 다릅니다. 근무·휴가 기록은 급여 정책 확정 전 수업 정산액을 변경하지 않습니다.</p>
       </SectionCard>
 
-      {editRecord && (
+      {canManageAttendance && editRecord && (
         <StaffAttendanceRecordModal
           instructors={instructors}
           record={editRecord === "new" ? undefined : editRecord}
@@ -188,7 +194,7 @@ export function StaffAttendanceLedgerView() {
           onDelete={(record) => { setEditRecord(null); setDeleteRecord(record); }}
         />
       )}
-      {deleteRecord && (
+      {canManageAttendance && deleteRecord && (
         <ReasonModal mode="input" title="근무·휴가 기록 삭제" submitLabel="삭제" placeholder="삭제 사유를 입력하세요" onClose={() => setDeleteRecord(null)} onSubmit={requestDelete} />
       )}
     </div>

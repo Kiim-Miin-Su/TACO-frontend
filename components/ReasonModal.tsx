@@ -7,6 +7,7 @@ import { ModalShell } from "@/components/ui";
 //  - mode="view" : 적힌 사유를 읽기 전용으로 표시(강사가 확인).
 export function ReasonModal({
   mode, title, initial = "", onClose, onSubmit, submitLabel = "반려", placeholder,
+  minLength = 1, maxLength,
 }: {
   mode: "input" | "view";
   title: string;
@@ -16,8 +17,11 @@ export function ReasonModal({
   /** [핫픽스 07-20] 제출 버튼 라벨 — 삭제 등 반려 외 용도 재사용(기본 '반려'). */
   submitLabel?: string;
   placeholder?: string;
+  minLength?: number;
+  maxLength?: number;
 }) {
   const [reason, setReason] = useState(initial);
+  const trimmedLength = reason.trim().length;
   return (
     <ModalShell
       title={title}
@@ -27,7 +31,7 @@ export function ReasonModal({
         <>
           <button className="btn btn-sm" onClick={onClose}>{mode === "view" ? "닫기" : "취소"}</button>
           {mode === "input" && (
-            <button className="btn btn-sm btn-danger" disabled={!reason.trim()} onClick={() => onSubmit?.(reason.trim())}>{submitLabel}</button>
+            <button className="btn btn-sm btn-danger" disabled={trimmedLength < minLength} onClick={() => onSubmit?.(reason.trim())}>{submitLabel}</button>
           )}
         </>
       )}
@@ -38,6 +42,8 @@ export function ReasonModal({
           data-modal-autofocus="true"
           placeholder={placeholder ?? "반려 사유를 입력하세요 (강사에게 표시됩니다)"}
           aria-label="사유"
+          minLength={minLength}
+          maxLength={maxLength}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         />

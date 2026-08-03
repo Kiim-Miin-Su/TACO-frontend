@@ -33,7 +33,14 @@ export function useAuthoritativeAccess(pathname: string, publicRoute: boolean): 
         setMode("error");
         return;
       }
-      setCurrentAccount({ id: claims.sub, name: claims.name, role, mustChangePassword: claims.mustChangePassword === true });
+      setCurrentAccount({
+        id: claims.sub,
+        name: claims.name,
+        role,
+        mustChangePassword: claims.mustChangePassword === true,
+        accessVersion: claims.accessVersion,
+        effectiveCapabilities: claims.effectiveCapabilities,
+      });
       const locked = claims.mustChangePassword === true;
       setMode(locked ? "locked" : "open");
       if (locked && pathname !== "/account/security") router.replace("/account/security");

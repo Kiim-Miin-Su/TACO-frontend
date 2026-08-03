@@ -8,9 +8,17 @@
 //  expenseRejectReasons → Expense.rejectedReason(서버 필드) — 브라우저 휘발분을 사내 자산으로 이관.
 import { create } from 'zustand';
 import type { AccountRole } from '@/types';
+import type { RoleCapability } from '@kms545487/contracts';
 
 type TacoState = {
-  currentAccount: { id: number; name: string; role: AccountRole; mustChangePassword: boolean } | null;
+  currentAccount: {
+    id: number;
+    name: string;
+    role: AccountRole;
+    mustChangePassword: boolean;
+    accessVersion: number;
+    effectiveCapabilities: RoleCapability[];
+  } | null;
   setCurrentAccount: (account: TacoState['currentAccount']) => void;
 };
 

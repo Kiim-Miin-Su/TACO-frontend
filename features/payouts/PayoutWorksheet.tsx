@@ -18,6 +18,7 @@ import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from '@/featur
 import { AccountingImpactModal } from '@/components/AccountingImpactModal';
 import { internalRoute } from '@/lib/navigation-security';
 import { useSudoAction } from '@/lib/hooks/useSudoAction';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 
 // [감사 3·5 해소 2026-07-24] 지역 won(toLocaleString — SSR 하이드레이션 금지 규약 위반)·hoursOf
 //  (2자리 반올림 — payoutHours 1자리와 화면 간 불일치) 사본 제거 → format.won·payout-shared 소비.
@@ -94,6 +95,7 @@ export function PayoutWorksheetAmountCell({ row }: { row: PayoutWorksheetRow }) 
 }
 
 export function PayoutWorksheet({ instructorId, from, to }: { instructorId: number | null; from: string; to: string }) {
+  const canManageAttendance = useAccountAccess().can('attendance.manage');
   const ws = usePayoutWorksheet(instructorId, from, to);
   const updateSchedule = useUpdateSchedule();
   const upsert = useUpsertAttendance();
@@ -139,7 +141,7 @@ export function PayoutWorksheet({ instructorId, from, to }: { instructorId: numb
                       <AttMarker
                         value={(row.instructorAttendance ?? undefined) as InstructorAttendanceStatus | undefined}
                         options={INSTRUCTOR_ATT_OPTIONS}
-                        canEdit={row.pricing.excludedReason !== 'payout_linked'}
+                        canEdit={canManageAttendance && row.pricing.excludedReason !== 'payout_linked'}
                         pending={updateSchedule.isPending}
                         onMark={(st) => updateSchedule.mutate({ id: row.sessionId, body: { instructorAttendance: st } })}
                         onClear={() => updateSchedule.mutate({ id: row.sessionId, body: { clearInstructorAttendance: true } })}
@@ -156,7 +158,7 @@ export function PayoutWorksheet({ instructorId, from, to }: { instructorId: numb
                             <AttMarker
                               value={(participant.attendance ?? undefined) as AttendanceStatus | undefined}
                               options={STUDENT_ATT_OPTIONS}
-                              canEdit={row.pricing.excludedReason !== 'payout_linked'}
+                              canEdit={canManageAttendance && row.pricing.excludedReason !== 'payout_linked'}
                               pending={upsert.isPending}
                               onMark={(st) => upsert.mutate({ sessionId: row.sessionId, studentId: participant.studentId, status: st })}
                             />
