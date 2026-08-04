@@ -2,6 +2,10 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "packageManager": "npm@10.9.4",
   "description": "TACO ERP web (Next.js, web first → desktop later)",
   "scripts": {
     "dev": "next dev -p 3000",
