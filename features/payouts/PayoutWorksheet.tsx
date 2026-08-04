@@ -9,13 +9,14 @@ import { useState, type ReactNode } from 'react';
 import { reportApprovalBadge } from '@/lib/domain/reports'; // [P2 FE-4]
 import Link from 'next/link';
 import { Badge, EmptyState, LoadingState, SectionCard, TableWrap, type Tone } from '@/components/ui';
-import { usePayoutWorksheet, useSetSessionPayAmount, useUpdateSchedule, useUpsertAttendance } from '@/lib/queries';
+import { useInstructorAttendanceCommand, usePayoutWorksheet, useSetSessionPayAmount, useUpsertAttendance } from '@/lib/queries';
 import { won } from '@/lib/format';
 import { payoutHours as hoursOf } from '@/features/payouts/payout-shared';
 import type { PayoutWorksheetRow } from '@/lib/api';
 import type { AttendanceStatus, InstructorAttendanceStatus } from '@/types';
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from '@/features/attendance/AttMarker';
 import { AccountingImpactModal } from '@/components/AccountingImpactModal';
+import { InstructorAttendanceClearModal } from '@/features/attendance/InstructorAttendanceClearModal';
 import { internalRoute } from '@/lib/navigation-security';
 import { useSudoAction } from '@/lib/hooks/useSudoAction';
 import { useAccountAccess } from '@/lib/useAccountAccess';
@@ -97,8 +98,9 @@ export function PayoutWorksheetAmountCell({ row }: { row: PayoutWorksheetRow }) 
 export function PayoutWorksheet({ instructorId, from, to }: { instructorId: number | null; from: string; to: string }) {
   const canManageAttendance = useAccountAccess().can('attendance.manage');
   const ws = usePayoutWorksheet(instructorId, from, to);
-  const updateSchedule = useUpdateSchedule();
+  const attendanceCommand = useInstructorAttendanceCommand();
   const upsert = useUpsertAttendance();
+  const [clearAttendanceSessionId, setClearAttendanceSessionId] = useState<number | null>(null);
 
   if (instructorId == null) return null;
   const data = ws.data;
@@ -137,14 +139,14 @@ export function PayoutWorksheet({ instructorId, from, to }: { instructorId: numb
                     </td>
                     <td className="text-right mono">{hoursOf(row.durationMinutes)}</td>
                     <td>
-                      {/* 강사 출결 CRUD(⑥) — 기존 PATCH 재사용(회계 영향 ack 모달 공유) */}
+                      {/* 강사 출결은 전용 command가 회계 영향·자동 전이·감사를 함께 처리한다. */}
                       <AttMarker
                         value={(row.instructorAttendance ?? undefined) as InstructorAttendanceStatus | undefined}
                         options={INSTRUCTOR_ATT_OPTIONS}
                         canEdit={canManageAttendance && row.pricing.excludedReason !== 'payout_linked'}
-                        pending={updateSchedule.isPending}
-                        onMark={(st) => updateSchedule.mutate({ id: row.sessionId, body: { instructorAttendance: st } })}
-                        onClear={() => updateSchedule.mutate({ id: row.sessionId, body: { clearInstructorAttendance: true } })}
+                        pending={attendanceCommand.isPending}
+                        onMark={(st) => attendanceCommand.setAttendance(row.sessionId, st)}
+                        onClear={() => setClearAttendanceSessionId(row.sessionId)}
                       />
                     </td>
                     <td>
@@ -198,7 +200,10 @@ export function PayoutWorksheet({ instructorId, from, to }: { instructorId: numb
             포함됩니다. 출결 수정은 출석부·세션 상세와 같은 데이터(단일 소스)이며, 정산서 생성 시 확정
             금액이 그대로 스냅샷됩니다.
           </p>
-          <AccountingImpactModal prompt={updateSchedule.accountingPrompt} onClose={updateSchedule.dismissAccountingPrompt} onConfirm={updateSchedule.confirmAccountingImpact} />
+          <InstructorAttendanceClearModal sessionId={clearAttendanceSessionId}
+            onClose={() => setClearAttendanceSessionId(null)}
+            onSubmit={(id, reason) => { setClearAttendanceSessionId(null); attendanceCommand.clearAttendance(id, reason); }} />
+          <AccountingImpactModal prompt={attendanceCommand.accountingPrompt} onClose={attendanceCommand.dismissAccountingPrompt} onConfirm={attendanceCommand.confirmAccountingImpact} />
         </>
       )}
     </SectionCard>

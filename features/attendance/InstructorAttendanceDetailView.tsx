@@ -11,7 +11,7 @@ import { payoutHours as hoursLabel } from '@/features/payouts/payout-shared'; //
 import Link from 'next/link';
 import type { AttendanceStatus, InstructorAttendanceStatus } from '@/types';
 import { EmptyState, LoadingState, PageHeader, SectionCard, StatCard, TableWrap } from '@/components/ui';
-import { useInstructors, useInstructorSessions, useInstructorAttendanceSummary, useInstructorAttendanceLedger, useUpdateSchedule, useAttendance, useUpsertAttendance } from '@/lib/queries';
+import { useInstructors, useInstructorSessions, useInstructorAttendanceSummary, useInstructorAttendanceLedger, useInstructorAttendanceCommand, useAttendance, useUpsertAttendance } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { countsForPay, WEEKDAYS_KO as WD } from '@/lib/domain/schedule';
 import { AttMarker, INSTRUCTOR_ATT_OPTIONS, STUDENT_ATT_OPTIONS } from './AttMarker';
@@ -19,20 +19,22 @@ import { AccountingImpactModal } from '@/components/AccountingImpactModal';
 import { DateRangeControl } from '@/components/DateRangeControl';
 import { currentMonthKst, monthRangeKst, shiftMonth } from '@/lib/format';
 import { STAFF_ATTENDANCE_LABEL } from '@/lib/domain/staff-attendance';
+import { InstructorAttendanceClearModal } from './InstructorAttendanceClearModal';
 
 export function InstructorAttendanceDetailView({ instructorId }: { instructorId: number }) {
   const access = useAccountAccess();
   const admin = access.can('admin.area');
   const canManageAttendance = access.can('attendance.manage');
   const { data: instructors = [], isLoading: loadingInst } = useInstructors();
-  // [req3] 매니저 CRUD — 강사 출결(세션 PATCH)·학생 출결(attendance upsert). 상세=지난 회차 편집 진입점.
-  const updateSchedule = useUpdateSchedule();
+  // 강사 출결은 attendance.manage 전용 command, 학생 출결은 attendance upsert를 사용한다.
+  const attendanceCommand = useInstructorAttendanceCommand();
   const { data: attendance = [] } = useAttendance();
   const upsert = useUpsertAttendance();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [clearAttendanceSessionId, setClearAttendanceSessionId] = useState<number | null>(null);
   const toggleExpand = (id: number) => setExpanded((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const markInst = (sid: number, st: InstructorAttendanceStatus) => updateSchedule.mutate({ id: sid, body: { instructorAttendance: st } });
-  const clearInst = (sid: number) => updateSchedule.mutate({ id: sid, body: { clearInstructorAttendance: true } });
+  const markInst = (sid: number, st: InstructorAttendanceStatus) => attendanceCommand.setAttendance(sid, st);
+  const clearInst = (sid: number) => setClearAttendanceSessionId(sid);
   const attOf = (sid: number, stuId: number): AttendanceStatus | undefined => attendance.find((a) => a.sessionId === sid && a.studentId === stuId)?.status;
   const markStu = (sid: number, stuId: number, st: AttendanceStatus) => upsert.mutate({ sessionId: sid, studentId: stuId, status: st });
   const [mode, setMode] = useState<'month' | 'custom'>('month');
@@ -181,8 +183,8 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
                         <td>{s.subjectName} · <span className="text-fg-muted">{s.courseName}</span></td>
                         <td className="text-fg-muted">{s.roomName ?? '—'}</td>
                         <td className="text-center">
-                          {/* [req3] 강사 출결 CRUD(버튼·원클릭·수정하기) — 관리자만 */}
-                          <AttMarker value={s.instructorAttendance} options={INSTRUCTOR_ATT_OPTIONS} canEdit={canManageAttendance} pending={updateSchedule.isPending} onMark={(st) => markInst(s.id, st)} onClear={() => clearInst(s.id)} />
+                          {/* 강사 출결 CRUD는 attendance.manage 권한에서만 노출한다. */}
+                          <AttMarker value={s.instructorAttendance} options={INSTRUCTOR_ATT_OPTIONS} canEdit={canManageAttendance} pending={attendanceCommand.isPending} onMark={(st) => markInst(s.id, st)} onClear={() => clearInst(s.id)} />
                         </td>
                         <td className="text-center">
                           {paid ? (
@@ -224,7 +226,10 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
         )}
         <p className="text-caption text-fg-subtle mt-2">시수 인정 = 진행(held)·강사 결석 아님(정산과 동일 규칙). 보강·결석·미진행은 제외(잠정).</p>
       </SectionCard>
-      <AccountingImpactModal prompt={updateSchedule.accountingPrompt} onClose={updateSchedule.dismissAccountingPrompt} onConfirm={updateSchedule.confirmAccountingImpact} />
+      <InstructorAttendanceClearModal sessionId={clearAttendanceSessionId}
+        onClose={() => setClearAttendanceSessionId(null)}
+        onSubmit={(id, reason) => { setClearAttendanceSessionId(null); attendanceCommand.clearAttendance(id, reason); }} />
+      <AccountingImpactModal prompt={attendanceCommand.accountingPrompt} onClose={attendanceCommand.dismissAccountingPrompt} onConfirm={attendanceCommand.confirmAccountingImpact} />
     </div>
   );
 }

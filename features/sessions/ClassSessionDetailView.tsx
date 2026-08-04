@@ -13,7 +13,7 @@ import { Badge, ConfirmModal, DetailStates, EmptyState, Field, ModalShell, Secti
 import { useRouter } from "next/navigation";
 import {
   useScheduleSession, useStudents, useRooms,
-  useAttendance, useUpdateSchedule, useRemoveSchedule, useUpsertAttendance,
+  useAttendance, useInstructorAttendanceCommand, useUpdateSchedule, useRemoveSchedule, useUpsertAttendance,
 } from "@/lib/queries";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { countsForPay } from "@/lib/domain/schedule";
@@ -23,6 +23,7 @@ import { SessionFeedbackForm } from "@/features/reports/SessionFeedbackForm";
 import type { AttendanceStatus, InstructorAttendanceStatus, SessionStatus } from "@/types";
 import { shortDate } from "@/lib/format";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
+import { InstructorAttendanceClearModal } from "@/features/attendance/InstructorAttendanceClearModal";
 import { editableSessionStatuses } from "@/lib/domain/lantiv";
 
 // [TBO-34 C3] 상태 표기 = session-shared 단일 진실원(사본 제거)
@@ -37,10 +38,11 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   const { data: students = [] } = useStudents();
   const { data: attendance = [] } = useAttendance();
   const router = useRouter();
-  const updateSchedule = useUpdateSchedule();
+  const attendanceCommand = useInstructorAttendanceCommand();
   const removeSchedule = useRemoveSchedule();
   const upsert = useUpsertAttendance();
   const [manageModal, setManageModal] = useState<'edit' | 'remove' | null>(null); // [TBO-58 P2]
+  const [clearAttendanceOpen, setClearAttendanceOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const toggle = (id: number) => setExpanded((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -56,8 +58,8 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   );
 
   const markInst = (st: InstructorAttendanceStatus) =>
-    updateSchedule.mutate({ id: sessionId, body: { instructorAttendance: st } });
-  const clearInst = () => updateSchedule.mutate({ id: sessionId, body: { clearInstructorAttendance: true } });
+    attendanceCommand.setAttendance(sessionId, st);
+  const clearInst = () => setClearAttendanceOpen(true);
   const attOf = (stuId: number): AttendanceStatus | undefined => attendance.find((a) => a.sessionId === sessionId && a.studentId === stuId)?.status;
   const markStu = (stuId: number, st: AttendanceStatus) => upsert.mutate({ sessionId, studentId: stuId, status: st });
 
@@ -118,10 +120,10 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                 <StatCard label="시수 인정" value={paid ? hoursLabel(session.durationMinutes) : "제외"} tone={paid ? "accent" : undefined} />
               </div>
 
-              {/* ① 강사 출결 — 매니저 CRUD + 강사 본인 최초 1회 체크(TBO-62 ④) — AttMarker 재사용 */}
+              {/* 강사 출결은 attendance.manage 전용 command와 AttMarker를 재사용한다. */}
               <SectionCard title="강사 출결">
                 <div className="p-4 flex items-center gap-3 flex-wrap">
-                  <AttMarker value={session.instructorAttendance} options={INSTRUCTOR_ATT_OPTIONS} canEdit={canManageAttendance} pending={updateSchedule.isPending} onMark={markInst} onClear={canManageAttendance ? clearInst : undefined} />
+                  <AttMarker value={session.instructorAttendance} options={INSTRUCTOR_ATT_OPTIONS} canEdit={canManageAttendance} pending={attendanceCommand.isPending} onMark={markInst} onClear={canManageAttendance ? clearInst : undefined} />
                   <span className="text-caption text-fg-subtle">
                     {paid ? "시수 인정(진행·결석 아님)" : `시수 제외${session.instructorAttendance === "absent" ? "(결석)" : session.status === "makeup" ? "(보강)" : session.status !== "held" ? `(${statusLabelOf(session.status) ?? session.status})` : ""}`}
                   </span>
@@ -169,7 +171,10 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
           );
         }}
       </DetailStates>
-      <AccountingImpactModal prompt={updateSchedule.accountingPrompt} onClose={updateSchedule.dismissAccountingPrompt} onConfirm={updateSchedule.confirmAccountingImpact} />
+      <InstructorAttendanceClearModal sessionId={clearAttendanceOpen ? sessionId : null}
+        onClose={() => setClearAttendanceOpen(false)}
+        onSubmit={(id, reason) => { setClearAttendanceOpen(false); attendanceCommand.clearAttendance(id, reason); }} />
+      <AccountingImpactModal prompt={attendanceCommand.accountingPrompt} onClose={attendanceCommand.dismissAccountingPrompt} onConfirm={attendanceCommand.confirmAccountingImpact} />
       <AccountingImpactModal
         prompt={removeSchedule.accountingPrompt}
         onClose={removeSchedule.dismissAccountingPrompt}

@@ -12,11 +12,15 @@ import {
   upsertScheduleRequestCache,
 } from "@/lib/query-cache";
 import { useAccountAccess } from "@/lib/useAccountAccess";
-import type { Instructor, InstructorAttendanceStatus } from "@/types";
+import type { Instructor } from "@/types";
 import { pushScheduleUndo, sanitizeInversePatch } from '@/lib/schedule-undo'; // [TBO-63] 캘린더 undo 스택
 import { useState } from "react";
 import { CATALOG_STALE, detailRetry, useInvalidator } from "./shared";
-import type { SessionAccountingImpactConflict } from "@kms545487/contracts";
+import type {
+  ClearInstructorAttendanceInput,
+  SessionAccountingImpactConflict,
+  SetInstructorAttendanceInput,
+} from "@kms545487/contracts";
 
 export const useSchedule = () => {
   const { scope } = useAccountAccess();
@@ -409,6 +413,28 @@ export const useClearAttendance = () => {
     expectedAccountingImpactHash: impactHash,
   }));
 };
-// [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크(최초 1회) — 수정·초기화는 매니저 PATCH.
-export const useMarkMyInstructorAttendance = () =>
-  useMutation({ mutationFn: (v: { id: number; status: InstructorAttendanceStatus }) => api.schedule.markInstructorAttendance(v.id, v.status), onSuccess: useInvalidator([qk.schedule.all, qk.payouts.all, qk.audit.all]) }); // [TBO-66 F4]
+export type InstructorAttendanceCommandVariables =
+  | { kind: "set"; id: number; body: SetInstructorAttendanceInput }
+  | { kind: "clear"; id: number; body: ClearInstructorAttendanceInput };
+
+/** 강사 출결 C/U/D의 유일한 frontend command. 일정 PATCH·undo와 분리한다. */
+export const useInstructorAttendanceCommand = () => {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (variables: InstructorAttendanceCommandVariables) => variables.kind === "set"
+      ? api.schedule.setInstructorAttendance(variables.id, variables.body)
+      : api.schedule.clearInstructorAttendance(variables.id, variables.body),
+    onSuccess: () => invalidateCalendarCommand(qc),
+  });
+  const command = useAccountingAck(mutation, (variables, impactHash): InstructorAttendanceCommandVariables =>
+    variables.kind === "set"
+      ? { kind: "set", id: variables.id, body: { ...variables.body, acknowledgeAccountingImpact: true, expectedAccountingImpactHash: impactHash } }
+      : { kind: "clear", id: variables.id, body: { ...variables.body, acknowledgeAccountingImpact: true, expectedAccountingImpactHash: impactHash } });
+  return {
+    ...command,
+    setAttendance: (id: number, status: SetInstructorAttendanceInput["status"]) =>
+      command.mutate({ kind: "set", id, body: { status } }),
+    clearAttendance: (id: number, reason: string) =>
+      command.mutate({ kind: "clear", id, body: { reason } }),
+  };
+};

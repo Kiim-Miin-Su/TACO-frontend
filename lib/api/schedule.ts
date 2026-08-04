@@ -31,7 +31,8 @@ import type {
   UpsertAvailabilityInput,
   ConflictCheckInput,
   InstructorAttendanceSummary as SharedInstructorAttendanceSummary,
-  InstructorAttendanceStatus,
+  SetInstructorAttendanceInput,
+  ClearInstructorAttendanceInput,
   OpenClassInput,
   OpenClassSeriesInput,
   OpenClassResult,
@@ -83,10 +84,10 @@ export const scheduleApi = {
     // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터
     instructorAttendanceSummary: (from?: string, to?: string, instructorId?: number) =>
       http.get<InstructorAttendanceSummary>("/schedule/instructor-attendance-summary", { params: { from, to, instructorId } }).then((r) => r.data),
-    // [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크(최초 1회) — 수정·초기화는 매니저 PATCH 전용.
-    // [TBO-79 E5] 내부적으로 update를 재사용하므로 회계 영향까지 같은 모양으로 돌아온다.
-    markInstructorAttendance: (id: number, status: InstructorAttendanceStatus) =>
-      http.post<ScheduleMutationResult<ScheduleRow, Conflict>>(`/schedule/${id}/instructor-attendance`, { status }).then((r) => r.data),
+    setInstructorAttendance: (id: number, body: SetInstructorAttendanceInput) =>
+      http.put<ScheduleMutationResult<ScheduleRow, Conflict>>(`/schedule/${id}/instructor-attendance`, body).then((r) => r.data),
+    clearInstructorAttendance: (id: number, body: ClearInstructorAttendanceInput) =>
+      http.delete<ScheduleMutationResult<ScheduleRow, Conflict>>(`/schedule/${id}/instructor-attendance`, { data: body }).then((r) => r.data),
     // [TBO-64 2026-07-24] 회차 가격 책정(정산 연결 전) — null=해제. 매니저 이상.
     setPayAmount: (id: number, amount: number | null) =>
       http.put<{ row: ScheduleRow }>(`/schedule/${id}/pay-amount`, { amount }).then((r) => r.data),

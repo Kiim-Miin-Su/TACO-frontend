@@ -6,7 +6,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { AttendanceStatus, InstructorAttendanceStatus, ScheduleRow } from "@/types";
-import { useSchedule, useCalendarSchedule, useAttendance, useUpsertAttendance, useClearAttendance, useStudents, useCourses, useUpdateSchedule, useInstructorContracts } from "@/lib/queries";
+import { useSchedule, useCalendarSchedule, useAttendance, useUpsertAttendance, useClearAttendance, useStudents, useCourses, useInstructorAttendanceCommand, useInstructorContracts } from "@/lib/queries";
 import { buildAttendanceBook, hoursLabel, nextAttendanceStatus } from "@/lib/domain/attendanceBook";
 import { instructorAttendanceStats } from "@/lib/domain/schedule"; // [TBO-68 C1] 통계 헬퍼 단일화
 import { addDaysISO, shiftMonth, todayKst } from "@/lib/format";
@@ -16,6 +16,7 @@ import { EmptyState, HelpPopover, LoadingState, PageHeader, SectionCard, TableWr
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 import { internalRoute } from "@/lib/navigation-security";
 import { StaffAttendanceLedgerView } from "./StaffAttendanceLedgerView";
+import { InstructorAttendanceClearModal } from "./InstructorAttendanceClearModal";
 
 // 상태 배지(셀) — LMS 관례: P/L/A/E 원형 + 색
 const CELL: Record<AttendanceStatus, { label: string; bg: string }> = {
@@ -49,8 +50,7 @@ export function AttendanceBookView() {
   const { data: courses = [] } = useCourses();
   const upsert = useUpsertAttendance();
   const clearAttendance = useClearAttendance();
-  // [TBO-19] 강사 출결 마킹(매니저 CRUD) — 세션 PATCH(manager+ 게이트)로 저장, 강사는 API상 read-only.
-  const updateSchedule = useUpdateSchedule();
+  const attendanceCommand = useInstructorAttendanceCommand();
   // 강사 계약은 금액 자산이므로 대표에게만 조회·표시한다.
   const { data: contracts = [] } = useInstructorContracts();
 
@@ -58,6 +58,7 @@ export function AttendanceBookView() {
   const [instructorView, setInstructorView] = useState<"ledger" | "matrix">("ledger");
   const [ym, setYm] = useState(thisYm());
   const [courseId, setCourseId] = useState<number | null>(null);
+  const [clearInstructorSessionId, setClearInstructorSessionId] = useState<number | null>(null);
 
   // [TBO-21 P1] 로그인 강사의 도메인 강사 id(=JWT sub)만 신뢰한다. 해석 실패 시 전체 코스 폴백 금지.
   const myInstId = access.instructorId;
@@ -160,12 +161,10 @@ export function AttendanceBookView() {
     [instructorBook, attFilter, attSubject],
   );
 
-  // [TBO-19] 강사 출결 저장(매니저) — 세션 PATCH. 성공 시 schedule·reports·payouts 무효화(useUpdateSchedule).
   const markInstructor = (sessionId: number, status: InstructorAttendanceStatus) =>
-    updateSchedule.mutate({ id: sessionId, body: { instructorAttendance: status } });
-  // [TBO-19 Sprint2] 강사 출결 초기화(미표시) — clear sentinel(BE mergeFields 우회).
+    attendanceCommand.setAttendance(sessionId, status);
   const clearInstructor = (sessionId: number) =>
-    updateSchedule.mutate({ id: sessionId, body: { clearInstructorAttendance: true } });
+    setClearInstructorSessionId(sessionId);
   const attendanceDue = useMemo(
     () => recentRows
       .filter((row) => row.attendanceRequired && (manager || Number(row.instructorId) === myInstId))
@@ -401,7 +400,7 @@ export function AttendanceBookView() {
                                 value={s.instructorAttendance}
                                 options={INSTRUCTOR_ATT_OPTIONS}
                                 canEdit={canEditInstructorAtt}
-                                pending={updateSchedule.isPending}
+                                pending={attendanceCommand.isPending}
                                 onMark={(st) => markInstructor(s.id, st)}
                                 onClear={() => clearInstructor(s.id)}
                               />
@@ -455,7 +454,10 @@ export function AttendanceBookView() {
           </p>
         </SectionCard>
       )}
-      <AccountingImpactModal prompt={updateSchedule.accountingPrompt} onClose={updateSchedule.dismissAccountingPrompt} onConfirm={updateSchedule.confirmAccountingImpact} />
+      <InstructorAttendanceClearModal sessionId={clearInstructorSessionId}
+        onClose={() => setClearInstructorSessionId(null)}
+        onSubmit={(id, reason) => { setClearInstructorSessionId(null); attendanceCommand.clearAttendance(id, reason); }} />
+      <AccountingImpactModal prompt={attendanceCommand.accountingPrompt} onClose={attendanceCommand.dismissAccountingPrompt} onConfirm={attendanceCommand.confirmAccountingImpact} />
       {/* [TBO-79 B4] 출결 초기화도 held → scheduled 역전이라 정산 예상액이 바뀐다 — 같은 확인 모달. */}
       <AccountingImpactModal prompt={clearAttendance.accountingPrompt} onClose={clearAttendance.dismissAccountingPrompt} onConfirm={clearAttendance.confirmAccountingImpact} />
     </div>
