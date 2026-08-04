@@ -139,7 +139,7 @@ function cachedScheduleRow(qc: ReturnType<typeof useQueryClient>, id: number): R
 // 역패치 대상 필드(단일 회차 편집 표면) — patch가 건드린 키만 before 값으로 되돌린다.
 const UNDOABLE_FIELDS = [
   "sessionDate", "startTime", "endTime", "durationMinutes", "roomId", "instructorId", "courseId",
-  "studentIds", "topic", "memo", "color", "status", "kind", "mode", "instructorAttendance",
+  "studentIds", "topic", "memo", "color", "status", "kind", "mode",
 ] as const;
 // 스케줄(생성·수정·삭제) — [C4] 캘린더 명령 무효화 단일 소스(invalidateCalendarCommand)로 통일.
 const useCalendarCommandInvalidator = () => {
@@ -190,12 +190,6 @@ export const useUpdateSchedule = () => {
       if (before && !scoped) {
         const inverse: Record<string, unknown> = {};
         for (const field of UNDOABLE_FIELDS) if (field in body) inverse[field] = before[field] ?? null;
-        if ((body as { clearInstructorAttendance?: boolean }).clearInstructorAttendance && before.instructorAttendance != null)
-          inverse.instructorAttendance = before.instructorAttendance;
-        if ("instructorAttendance" in inverse && inverse.instructorAttendance == null) {
-          delete inverse.instructorAttendance;
-          inverse.clearInstructorAttendance = true;
-        }
         if (Object.keys(inverse).length)
           pushScheduleUndo({
             label: "수업 변경 되돌리기",
