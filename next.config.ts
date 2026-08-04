@@ -1,8 +1,12 @@
 import type { NextConfig } from "next";
+import { SECURITY_HEADERS } from "./lib/security-headers";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   typedRoutes: true,
+  async headers() {
+    return [{ source: '/(.*)', headers: [...SECURITY_HEADERS] }];
+  },
   // 추후 데스크탑(Electron/Tauri) 전환을 위해 정적 export로 바꿀 수 있도록 여지를 둡니다.
   // output: 'export',
   async rewrites() {
