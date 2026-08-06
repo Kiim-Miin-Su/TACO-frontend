@@ -35,6 +35,7 @@ import {
   //  훅 onSuccess가 무효화(스케줄=캘린더 명령 7-scope, 가용=availability만)를 담당하므로
   //  성공 직후의 명시 load()/reloadSelBlocks()는 제거했다(이중 refetch 방지).
   useCreateSchedule,
+  useCreateHistoricalCompletedSchedule,
   useCreateScheduleSeries,
   useUpdateSchedule,
   useRemoveSchedule,
@@ -171,6 +172,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   //  쓰기 경로와 무효화만 공용 계층으로 통일. useUpdateSchedule의 accountingPrompt 인터셉트는 mutate
   //  전용이라 mutateAsync엔 안 걸림 — 이 화면은 409 회계영향을 자체 모달(accountingAck)로 처리한다.
   const createScheduleM = useCreateSchedule();
+  const createHistoricalCompletedM = useCreateHistoricalCompletedSchedule();
   const createScheduleSeriesM = useCreateScheduleSeries();
   const updateScheduleM = useUpdateSchedule();
   const removeScheduleM = useRemoveSchedule();
@@ -183,6 +185,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   const canManage = access.can("calendar.manage");
   const [showEventForm, setShowEventForm] = useState(false); // [B5] 학원 일정 인라인 발행 토글
   const isInstructor = access.can("instructor.self");
+  const instructorRequestMode = isInstructor && !canManage;
   const myInstructorId = access.instructorId ?? undefined;
   const canAdd = canManage || (isInstructor && myInstructorId != null);
   // start가 있으면 그 시각으로 프리필(빈 곳 더블클릭 — 피드백 2026-07-02 #4).
@@ -1190,7 +1193,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   // [TBO-16 #8·#9] 강사는 직접 배정 불가(BE 403) → **승인 요청(schedule-requests)으로 전환**.
   //  같은 입력·같은 검증(서버 validateSessionInput 재사용), 승인 시 매니저 경로로 세션 생성.
   async function createSession(body: ScheduleCreateBody) {
-    if (isInstructor) {
+    if (instructorRequestMode) {
       try {
         await createScheduleRequest.mutateAsync(buildSessionCreateRequestBody(body, myInstructorId ?? undefined));
         setCreating(null);
@@ -1225,6 +1228,16 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
         setRows(snapshot);
         setMsg("스케줄 추가 실패");
       }
+    }
+  }
+
+  async function createHistoricalCompleted(body: import("@kms545487/contracts").CreateHistoricalCompletedSessionInput) {
+    try {
+      const result = await createHistoricalCompletedM.mutateAsync(body);
+      setCreating(null);
+      setMsg(`과거 완료 수업을 이관했습니다 — 강사·학생 출결 ${result.attendance.length + 1}건 저장 완료.`);
+    } catch (error) {
+      setMsg(apiErrorMessage(error, "과거 완료 수업을 이관하지 못했습니다."));
     }
   }
 
@@ -2867,16 +2880,17 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
         <ScheduleCreateModal
           resources={resources}
           rooms={rooms}
-          requestMode={isInstructor} // [UX H1] 강사=수업 탭 제출이 승인 요청
+          requestMode={instructorRequestMode} // 관리 capability가 있으면 복합 역할도 직접 명령 경로
           defaultDate={creating.date}
           defaultStart={creating.start}
           defaultEnd={creating.end}
-          lockInstructorId={isInstructor ? myInstructorId : undefined}
+          lockInstructorId={instructorRequestMode ? myInstructorId : undefined}
           defaultInstructorId={creating.defaultInstructorId}
           defaultOwner={creating.owner ?? selected}
           ownerTz={creating.tz ?? undefined}
           onClose={() => setCreating(null)}
           onCreate={createSession}
+          onCreateHistorical={createHistoricalCompleted}
           onCreateSeries={createSeriesRequests}
           onCreateSeriesCommand={createSeriesCommand}
           onCreateBlock={createBlock}

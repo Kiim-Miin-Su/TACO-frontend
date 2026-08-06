@@ -7,7 +7,7 @@ import { useCallback, useMemo, useState } from "react";
 import { addDaysISO } from "@/lib/format"; // [TBO-69 C4]
 import type { AvailabilityUpsertBody, ScheduleCreateBody, ScheduleSeriesCreateBody } from "@/lib/api";
 import type { Room, ScheduleResource, ScheduleResources } from "@/types";
-import type { SessionStatus } from "@kms545487/contracts";
+import type { CreateHistoricalCompletedSessionInput, SessionStatus } from "@kms545487/contracts";
 import { courseRosterFromScheduleResources, courseStudentOptionsFromScheduleResources, scheduleResourceName } from "@/lib/domain/schedule-resources";
 // [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
 import { Field, ModalShell, SearchableCheckList } from "@/components/ui";
@@ -32,6 +32,7 @@ import { ScheduleEntryTypeSelector } from "./inputs/ScheduleEntryTypeSelector";
 import { availabilityKindOf, type ScheduleEntryType } from "@/lib/domain/schedule-entry-kind";
 import { ScheduleRepeatFields, type ScheduleRepeat } from "./inputs/ScheduleRepeatFields";
 import { ScheduleTimeRangeFields } from "./inputs/ScheduleTimeRangeFields";
+import { historicalCompletedInput, historicalSessionEnded } from "@/lib/domain/historical-session";
 
 // [TBO-69 C4] addDaysISO — lib/format 정본 소비(사본 제거)
 // ── 관리자: 스케줄 추가 모달 ──
@@ -48,6 +49,7 @@ export function ScheduleCreateModal({
   ownerTz,
   onClose,
   onCreate,
+  onCreateHistorical,
   onCreateSeries,
   onCreateSeriesCommand,
   onCreateBlock,
@@ -64,6 +66,7 @@ export function ScheduleCreateModal({
   ownerTz?: CountryInfo | null; // [이슈1] 비KST 컬럼 추가 — 입력은 현지 시각, 저장 시 KST 역변환
   onClose: () => void;
   onCreate: (body: ScheduleCreateBody) => void;
+  onCreateHistorical: (body: CreateHistoricalCompletedSessionInput) => void;
   onCreateSeries: (bodies: ScheduleCreateBody[]) => void; // 강사 — 회차별 승인 요청
   onCreateSeriesCommand: (body: ScheduleSeriesCreateBody, previews: ScheduleCreateBody[]) => void; // 관리자 — bulk 원자 생성
   // [B6 C1] {ok, message?} — 실패 사유를 모달 안 인라인 에러로 표시(window.alert 폐지). 승인 전환 시 message 없음.
@@ -102,6 +105,8 @@ export function ScheduleCreateModal({
   // 색상 라벨: 생성 시 기본값은 개설 때 고른 코스 색(미지정 시 비움 → 백엔드가 코스/과목 색 폴백)
   const [color, setColor] = useState<string | undefined>(myCourses[0]?.color);
   const [status, setStatus] = useState<SessionStatus>("scheduled");
+  const [historicalImport, setHistoricalImport] = useState(false);
+  const [importReason, setImportReason] = useState("");
   // ── 반복(그날만/매주/커스텀) + 종료일 ──
   const [repeat, setRepeat] = useState<ScheduleRepeat>("none");
   const [untilDate, setUntilDate] = useState(addDaysISO(defaultDate, 28));
@@ -137,6 +142,14 @@ export function ScheduleCreateModal({
   //  기존 start<end 유지 — availability는 FE splitKstBand 분할·BE end<=start 400 정책 불변.)
   const crossesMidnight = type === "session" && end < start;
   const sessionValid = courseId && date && start !== end;
+  const historicalKstStart = toKst(date, start);
+  const historicalImportEnded = historicalSessionEnded({
+    sessionDate: historicalKstStart.date,
+    startTime: historicalKstStart.time,
+    durationMinutes: durationMinutesBetween(start, end),
+  });
+  const historicalImportEligible = historicalImportEnded && repeat === "none" && kind !== "counsel";
+  const historicalImportVisible = !requestMode && (historicalImportEligible || historicalImport);
 
   // ── #2: 선택 시간대에 가용한 강사 안내(가용 강사 먼저) ──
   const { data: blocks = [] } = useAllAvailability();
@@ -269,7 +282,32 @@ export function ScheduleCreateModal({
         ...(!requestMode ? { status, isPublic } : {}) }; // 상태·공개 여부는 관리자 확정 일정에만 적용
     };
     const days = occurrences();
-    if (days.length <= 1) { onCreate(mk(days[0] ?? date)); return; }
+    if (days.length <= 1) {
+      const single = mk(days[0] ?? date);
+      if (historicalImport) {
+        const pickedInstructorId = lockInstructorId ?? (instructorId || undefined);
+        if (!historicalImportEligible || !historicalSessionEnded(single)) {
+          setBlockError("종료된 과거 수업만 완료 상태로 이관할 수 있습니다.");
+          return;
+        }
+        if (!pickedInstructorId || effPicked.size === 0) {
+          setBlockError("완료 이관에는 담당 강사와 학생을 한 명 이상 선택해야 합니다.");
+          return;
+        }
+        if (importReason.trim().length < 5) {
+          setBlockError("이관 사유를 5자 이상 입력해 주세요.");
+          return;
+        }
+        onCreateHistorical(historicalCompletedInput(single, {
+          instructorId: Number(pickedInstructorId),
+          studentIds: [...effPicked],
+          importReason,
+        }));
+        return;
+      }
+      onCreate(single);
+      return;
+    }
     if (requestMode) { onCreateSeries(days.map(mk)); return; } // 강사 — 회차별 승인 요청(C3에서 bulk 요청 통합 검토)
     // 관리자 — KST 정규화 규칙만 전송(occurrence 날짜는 서버가 재계산·발급)
     const rule = seriesRuleToKst({ date, untilDate, repeat: repeat === "none" ? "weekly" : repeat, customWds, toKst, start, end });
@@ -295,7 +333,7 @@ export function ScheduleCreateModal({
           <button className="btn" onClick={onClose}>취소</button>
           {type === "session" ? (
             <button className="btn btn-primary" disabled={!sessionValid || (repeat !== "none" && occurrences().length === 0)} onClick={submitSession}>
-              {requestMode ? "승인 요청 보내기" : repeat === "none" ? "수업 추가" : `반복 추가 (${occurrences().length}회)`}
+              {requestMode ? "승인 요청 보내기" : historicalImport ? "완료 수업 이관" : repeat === "none" ? "수업 추가" : `반복 추가 (${occurrences().length}회)`}
             </button>
           ) : (
             <button className="btn btn-primary" disabled={!blockValid} onClick={submitBlocks}>
@@ -487,6 +525,8 @@ export function ScheduleCreateModal({
               <Field label="상태">
                 {requestMode ? (
                   <input className="input" value="예정 (승인 후 확정)" disabled readOnly />
+                ) : historicalImport ? (
+                  <input className="input" value="완료 (출결 자동 확정)" disabled readOnly />
                 ) : (
                   <select className="input" value={status} onChange={(e) => setStatus(e.target.value as SessionStatus)}>
                     {MANUAL_SESSION_STATUSES.map((s) => (
@@ -514,9 +554,42 @@ export function ScheduleCreateModal({
                 </Field>
               )}
             </div>
+            {historicalImportVisible && (
+                <div className="rounded-md border p-3 space-y-2" style={{ borderColor: "var(--color-line-muted)" }}>
+                  <label className="flex items-start gap-2 text-body-sm">
+                    <input
+                      type="checkbox"
+                      checked={historicalImport}
+                      disabled={!historicalImportEligible && !historicalImport}
+                      onChange={(event) => { setHistoricalImport(event.target.checked); setBlockError(null); }}
+                    />
+                    <span>
+                      <b>완료 수업으로 이관</b>
+                      <span className="block text-caption text-fg-muted">강사와 선택 학생의 출결을 정상으로 저장하고 완료 상태를 자동 확정합니다.</span>
+                    </span>
+                  </label>
+                  {historicalImport && (
+                    <Field label="이관 사유">
+                      <textarea
+                        className="input min-h-[52px] py-1.5"
+                        rows={2}
+                        maxLength={500}
+                        placeholder="예: 기존 7월 수업 기록 이관"
+                        value={importReason}
+                        onChange={(event) => setImportReason(event.target.value)}
+                      />
+                    </Field>
+                  )}
+                  {!historicalImportEligible && <p className="text-caption text-danger" role="alert">과거의 단건 수업만 완료 상태로 이관할 수 있습니다. 완료 이관을 해제해 주세요.</p>}
+                </div>
+            )}
             <Field label="메모"><textarea className="input min-h-[52px] py-1.5" rows={2} placeholder="선택 — 메모" value={memo} onChange={(e) => setMemo(e.target.value)} /></Field>
-            <ScheduleRepeatFields repeat={repeat} onRepeatChange={setRepeat} customWeekdays={customWds} onToggleWeekday={toggleWd}
-              untilDate={untilDate} onUntilDateChange={setUntilDate} startDate={date} occurrencesCount={occurrences().length} noneLabel="그날만" />
+            {historicalImport ? (
+              <p className="text-caption text-fg-muted">완료 수업 이관은 실제 출결을 확정하므로 한 회차씩 저장합니다.</p>
+            ) : (
+              <ScheduleRepeatFields repeat={repeat} onRepeatChange={setRepeat} customWeekdays={customWds} onToggleWeekday={toggleWd}
+                untilDate={untilDate} onUntilDateChange={setUntilDate} startDate={date} occurrencesCount={occurrences().length} noneLabel="그날만" />
+            )}
           </>
         ) : (
           <>

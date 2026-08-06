@@ -37,6 +37,8 @@ import type {
   OpenClassSeriesInput,
   OpenClassResult,
   OpenClassSeriesResult,
+  CreateHistoricalCompletedSessionInput,
+  HistoricalCompletedSessionResult,
 } from "@kms545487/contracts";
 
 // 기존 "@/lib/api" import 표면을 보존하되 wire 필드는 contracts 0.2.32만 소유한다.
@@ -97,6 +99,8 @@ export const scheduleApi = {
     // 추천→배정·수동 추가 → { row, conflicts }. 충돌 시 409 → force로 재시도.
     create: (body: ScheduleCreateBody) =>
       http.post<{ row: ScheduleRow; conflicts: Conflict[] }>("/schedule", body).then((r) => r.data),
+    createHistoricalCompleted: (body: CreateHistoricalCompletedSessionInput) =>
+      http.post<HistoricalCompletedSessionResult>("/schedule/historical-completed", body).then((r) => r.data),
     // [TBO-29C C2] 반복 생성 bulk — 서버 발급 series ID + 전체 원자 커밋(중간 실패=전부 롤백).
     createSeries: (body: ScheduleSeriesCreateBody) =>
       http.post<{ series: ScheduleSeriesInfo; rows: ScheduleRow[]; conflicts: Conflict[] }>("/schedule/series", body).then((r) => r.data),

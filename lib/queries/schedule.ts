@@ -158,6 +158,11 @@ export const useCreateSchedule = () => {
     },
   });
 };
+export const useCreateHistoricalCompletedSchedule = () =>
+  useMutation({
+    mutationFn: api.schedule.createHistoricalCompleted,
+    onSuccess: useCalendarCommandInvalidator(),
+  });
 export const useCreateScheduleSeries = () => useMutation({ mutationFn: api.schedule.createSeries, onSuccess: useCalendarCommandInvalidator() }); // [C2/C4] 반복 bulk
 export const useOpenClass = () => {
   const queryClient = useQueryClient();
@@ -381,7 +386,7 @@ export const useUpdateScheduleRequest = () => {
 };
 // 출결(강사 마킹) — session×student upsert
 // [TBO-62 ⑤ 2026-07-24] 출결 기록 시 서버가 scheduled→held 자동 전이 — 캘린더·세션 상세 캐시도 무효화.
-export const useUpsertAttendance = () => useMutation({ mutationFn: api.attendance.upsert, onSuccess: useInvalidator([qk.attendance.all, qk.schedule.all, qk.payouts.all, qk.audit.all]) }); // [TBO-66 F4] 이력 패널
+export const useUpsertAttendance = () => useMutation({ mutationFn: api.attendance.upsert, onSuccess: useCalendarCommandInvalidator() });
 // [TBO-79 B4] 출결 초기화는 held → scheduled 역전이라 정산 예상액을 바꾼다 — 서버가 영향
 //  미리보기와 명시 확인을 요구하므로 수업 수정과 같은 프롬프트 흐름을 쓴다.
 type ClearAttendanceVars = {
@@ -399,7 +404,7 @@ export const useClearAttendance = () => {
         acknowledgeAccountingImpact: v.acknowledgeAccountingImpact,
         expectedAccountingImpactHash: v.expectedAccountingImpactHash,
       }),
-    onSuccess: useInvalidator([qk.attendance.all, qk.schedule.all, qk.payouts.all, qk.audit.all]),
+    onSuccess: useCalendarCommandInvalidator(),
   });
   return useAccountingAck(mutation, (variables, impactHash) => ({
     ...variables,

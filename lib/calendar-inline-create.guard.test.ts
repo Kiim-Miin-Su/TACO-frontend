@@ -31,4 +31,11 @@ describe('[TBO-86 C] 캘린더 인라인 등록 공용 컴포넌트', () => {
     expect(scheduleModal).toContain('<InlineCreateField');
     expect(scheduleModal).toContain('access.can("executive.manage")');
   });
+
+  it('과거 완료 이관은 전용 command를 쓰고 일반 held 주입을 열지 않는다', () => {
+    expect(scheduleModal).toContain('historicalCompletedInput');
+    expect(scheduleModal).toContain('onCreateHistorical');
+    expect(read('lib/api/schedule.ts')).toContain('/schedule/historical-completed');
+    expect(read('lib/domain/lantiv.ts')).not.toMatch(/MANUAL_SESSION_STATUSES[^\n]*held/);
+  });
 });
