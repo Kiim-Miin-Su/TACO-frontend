@@ -7,8 +7,9 @@ import { useState } from "react";
 import { apiErrorMessage } from "@/lib/api-error";
 import type { Room } from "@/types";
 import { Badge, ConfirmModal, EmptyState, LoadingState, TableWrap } from "@/components/ui";
-import { useCreateRoom, useRemoveRoom, useRooms, useUpdateRoom } from "@/lib/queries";
+import { useRemoveRoom, useRooms, useUpdateRoom } from "@/lib/queries";
 import { useAccountAccess } from "@/lib/useAccountAccess";
+import { RoomCreateForm } from "./RoomCreateForm";
 
 // 실패 사유 표면화 — CoursesView 폼 규약과 동일(서버 message 우선, 배열이면 join).
 // [75A] lib/api-error 단일 진실원 위임(로컬 파싱 재구현 제거)
@@ -17,7 +18,6 @@ const serverError = (caught: unknown, fallback: string) => apiErrorMessage(caugh
 export function RoomManagerPanel({ compact }: { compact?: boolean }) {
   const { can } = useAccountAccess();
   const { data: rooms = [], isPending: loading } = useRooms();
-  const createRoom = useCreateRoom();
   const updateRoom = useUpdateRoom();
   const removeRoom = useRemoveRoom();
 
@@ -25,30 +25,10 @@ export function RoomManagerPanel({ compact }: { compact?: boolean }) {
   const [editing, setEditing] = useState<{ id: number; name: string; capacity: string; isActive: boolean } | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Room | null>(null);
-  // 신규 추가 폼 — 이름 + 정원(기본 1명, BE 기본값과 동일).
-  const [newName, setNewName] = useState("");
-  const [newCapacity, setNewCapacity] = useState("1");
-  const [formError, setFormError] = useState<string | null>(null);
-
   if (!can("calendar.manage")) return null; // 강의실 쓰기 API는 매니저 이상(강사 403) — 노출 자체를 차단
 
-  const busy = createRoom.isPending || updateRoom.isPending || removeRoom.isPending;
+  const busy = updateRoom.isPending || removeRoom.isPending;
   const pad = compact ? "p-2" : "p-4";
-
-  const submitCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-    if (!newName.trim()) { setFormError("강의실 이름을 입력해 주세요."); return; }
-    const capacity = Number(newCapacity);
-    if (!Number.isInteger(capacity) || capacity < 1) { setFormError("정원은 1명 이상의 정수여야 합니다."); return; }
-    createRoom.mutate(
-      { name: newName.trim(), capacity },
-      {
-        onSuccess: () => { setNewName(""); setNewCapacity("1"); },
-        onError: (caught) => setFormError(serverError(caught, "강의실을 추가하지 못했습니다. 다시 시도해 주세요.")),
-      },
-    );
-  };
 
   const saveEdit = () => {
     if (!editing) return;
@@ -128,17 +108,7 @@ export function RoomManagerPanel({ compact }: { compact?: boolean }) {
         </TableWrap>
       )}
 
-      {/* 신규 추가 — 이름 + 정원(기본 1명). 실패 시 인라인 에러(role=alert)·제출 중 disabled(폼 규약). */}
-      <form onSubmit={submitCreate} className="flex flex-wrap items-center gap-2">
-        <input className="input h-8 flex-1 min-w-[140px]" placeholder="강의실 이름 (예: A101)" aria-label="강의실 이름"
-          value={newName} onChange={(e) => setNewName(e.target.value)} />
-        <input className="input h-8 w-24 text-right" type="number" min={1} placeholder="정원" aria-label="정원(명)"
-          value={newCapacity} onChange={(e) => setNewCapacity(e.target.value)} />
-        <button type="submit" className="btn btn-sm btn-primary" disabled={createRoom.isPending}>
-          {createRoom.isPending ? "추가 중…" : "강의실 추가"}
-        </button>
-        {formError && <span className="text-caption text-danger w-full" role="alert">{formError}</span>}
-      </form>
+      <RoomCreateForm compact />
 
       {confirmRemove && (
         <ConfirmModal

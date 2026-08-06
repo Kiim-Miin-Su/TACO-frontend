@@ -6,17 +6,16 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ClickableTableRow, ConfirmModal, SectionCard, EmptyState, LoadingState, TableWrap } from '@/components/ui';
-import { useCourses, useSubjects, useInstructorAdminList, useCreateCourse, useCreateSubject, useRemoveCourse, useRemoveSubject } from '@/lib/queries';
+import { useCourses, useSubjects, useInstructorAdminList, useRemoveCourse, useRemoveSubject } from '@/lib/queries';
 import { won } from '@/lib/format';
 import { internalRoute } from '@/lib/navigation-security';
 import { apiErrorMessage } from '@/lib/api-error';
 import { AdminGuard, AdminHeader } from './AdminShell';
-import { Field } from '@/components/ui';
 // [B4 2026-07-16 대표 결정 ②] 강의실 관리 — 수업 추가 모달과 같은 공용 컴포넌트 재사용(사설 사본 금지)
 import { RoomManagerPanel } from '@/features/rooms/RoomManagerPanel';
 import { CourseEditModal, SubjectEditModal } from './CatalogEditModals';
 import type { Course, Subject } from '@/types';
-import { CoursePayFields, type CoursePayForm } from './courses/CoursePayFields';
+import { CourseCreateForm, SubjectCreateForm } from './catalog/CatalogCreateForms';
 
 export function CoursesView() {
   const { data: subjects = [] } = useSubjects();
@@ -36,8 +35,8 @@ export function CoursesView() {
       <div className="p-6 max-w-page mx-auto space-y-6">
         <AdminHeader />
         <div className="grid lg:grid-cols-2 gap-6">
-          <SectionCard title="코스 추가"><CourseForm /></SectionCard>
-          <SectionCard title="과목 추가"><SubjectForm /></SectionCard>
+          <SectionCard title="코스 추가"><CourseCreateForm /></SectionCard>
+          <SectionCard title="과목 추가"><SubjectCreateForm /></SectionCard>
         </div>
         <SectionCard title={`코스 목록 (${courses.length})`}>
           {actionError && <p className="px-4 pt-3 text-caption text-danger" role="alert">{actionError}</p>}
@@ -119,103 +118,5 @@ export function CoursesView() {
         )}
       </div>
     </AdminGuard>
-  );
-}
-
-const COURSE_PALETTE = ['#0969da', '#1a7f37', '#8250df', '#bf3989', '#9a6700', '#1b7c83'];
-
-function CourseForm() {
-  const { data: subjects = [] } = useSubjects();
-  const { data: instructors = [] } = useInstructorAdminList();
-  const addCourse = useCreateCourse();
-  const [name, setName] = useState('');
-  const [subjectId, setSubjectId] = useState('');
-  const [instructorId, setInstructorId] = useState('');
-  const [price, setPrice] = useState('');
-  const [pay, setPay] = useState<CoursePayForm>({ hourlyRateOverride: '', isKinder: false });
-  const [color, setColor] = useState<string>(COURSE_PALETTE[0]);
-  // [E0.6 M 2026-07-16] 종전엔 필수 미입력 시 조용히 return, 서버 실패도 무통보 — 인라인 검증+실패 표시.
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-    if (!name.trim()) { setFormError('코스명을 입력해 주세요.'); return; }
-    if (!subjectId) { setFormError('과목을 선택해 주세요.'); return; }
-    if (!instructorId) { setFormError('담당 강사를 선택해 주세요.'); return; }
-    addCourse.mutate(
-      {
-        name: name.trim(), subjectId: Number(subjectId), instructorId: Number(instructorId),
-        price: Number(price) || 0,
-        hourlyRateOverride: pay.hourlyRateOverride ? Number(pay.hourlyRateOverride) : null,
-        isKinder: pay.isKinder,
-        color,
-      },
-      {
-        onSuccess: () => { setName(''); setSubjectId(''); setInstructorId(''); setPrice(''); setPay({ hourlyRateOverride: '', isKinder: false }); setColor(COURSE_PALETTE[0]); },
-        onError: (caught) => setFormError(apiErrorMessage(caught, '코스를 추가하지 못했습니다. 다시 시도해 주세요.')), // [75A]
-      },
-    );
-  };
-
-  return (
-    <form onSubmit={submit} className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <Field label="코스명 *"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="SAT Reading 정규" /></Field>
-      <Field label="정가(원)"><input className="input" type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="480000" /></Field>
-      <CoursePayFields value={pay} instructor={instructors.find((row) => row.id === Number(instructorId))} onChange={setPay} />
-      <Field label="과목 *">
-        <select className="input" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
-          <option value="">선택</option>
-          {subjects.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
-        </select>
-      </Field>
-      <Field label="담당 강사 *">
-        <select className="input" value={instructorId} onChange={(e) => setInstructorId(e.target.value)}>
-          <option value="">선택</option>
-          {instructors.map((i) => (<option key={i.id} value={i.id}>{i.name}</option>))}
-        </select>
-      </Field>
-      <Field label="캘린더 색상 라벨">
-        <div className="flex items-center gap-1.5 h-9">
-          {COURSE_PALETTE.map((c) => (
-            <button key={c} type="button" onClick={() => setColor(c)} aria-label={c}
-              className="w-6 h-6 rounded-full"
-              style={{ background: c, outline: color === c ? '2px solid var(--color-fg)' : '1px solid var(--color-line)', outlineOffset: 1 }} />
-          ))}
-        </div>
-      </Field>
-      <div className="sm:col-span-2 flex items-center justify-end gap-3">
-        {formError && <span className="text-caption text-danger" role="alert">{formError}</span>}
-        <button type="submit" className="btn btn-primary" disabled={addCourse.isPending}>{addCourse.isPending ? '추가 중…' : '코스 추가'}</button>
-      </div>
-    </form>
-  );
-}
-
-function SubjectForm() {
-  const addSubject = useCreateSubject();
-  const [code, setCode] = useState('');
-  const [name, setName] = useState('');
-  // [E0.6 M 2026-07-16] CourseForm과 동일 규약 — 인라인 검증+onError+제출 중 비활성.
-  const [formError, setFormError] = useState<string | null>(null);
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-    if (!code.trim()) { setFormError('과목 코드를 입력해 주세요.'); return; }
-    if (!name.trim()) { setFormError('과목명을 입력해 주세요.'); return; }
-    addSubject.mutate({ code: code.trim(), name: name.trim() }, {
-      onSuccess: () => { setCode(''); setName(''); },
-      onError: (caught) => setFormError(apiErrorMessage(caught, '과목을 추가하지 못했습니다. 다시 시도해 주세요.')), // [75A]
-    });
-  };
-  return (
-    <form onSubmit={submit} className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <Field label="코드 *"><input className="input" value={code} onChange={(e) => setCode(e.target.value)} placeholder="science" /></Field>
-      <Field label="과목명 *"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="과학" /></Field>
-      <div className="sm:col-span-2 flex items-center justify-end gap-3">
-        {formError && <span className="text-caption text-danger" role="alert">{formError}</span>}
-        <button type="submit" className="btn btn-primary" disabled={addSubject.isPending}>{addSubject.isPending ? '추가 중…' : '과목 추가'}</button>
-      </div>
-    </form>
   );
 }

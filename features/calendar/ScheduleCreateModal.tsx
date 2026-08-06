@@ -11,6 +11,7 @@ import type { SessionStatus } from "@kms545487/contracts";
 import { courseRosterFromScheduleResources, courseStudentOptionsFromScheduleResources, scheduleResourceName } from "@/lib/domain/schedule-resources";
 // [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
 import { Field, ModalShell, SearchableCheckList } from "@/components/ui";
+import { InlineCreateField } from "@/components/InlineCreateField";
 import { ColorPicker } from "./SessionEditFields";
 import { MANUAL_SESSION_STATUSES, STATUS_LABEL } from "@/lib/domain/lantiv";
 import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
@@ -18,8 +19,11 @@ import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
 const isCanceledStatus = (s?: string) => s === "canceled" || s === "no_show";
 import { useAllAvailability, useCreateEnrollment } from "@/lib/queries";
 import { apiErrorMessage } from "@/lib/api-error";
-// [B4 2026-07-16 대표 결정 ②] 강의실 관리 — 수업탭(CoursesView)과 같은 공용 컴포넌트 재사용(사설 사본 금지)
-import { RoomManagerPanel } from "@/features/rooms/RoomManagerPanel";
+import { CourseCreateForm, SubjectCreateForm } from "@/features/admin/catalog/CatalogCreateForms";
+import { InstructorCreateForm } from "@/features/admin/instructors/InstructorCreateForm";
+import { RoomCreateForm } from "@/features/rooms/RoomCreateForm";
+import { StudentRegistrationForm } from "@/features/students/StudentRegistrationForm";
+import { useAccountAccess } from "@/lib/useAccountAccess";
 import { weekdayOf, toMin, fromMin, durationMinutesBetween, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
 import { seriesRuleToKst } from "@/lib/domain/series";
 import { splitKstBand, tzLocalToKst, KST_TZ, type CountryInfo } from "@/lib/domain/tz";
@@ -65,6 +69,7 @@ export function ScheduleCreateModal({
   // [B6 C1] {ok, message?} — 실패 사유를 모달 안 인라인 에러로 표시(window.alert 폐지). 승인 전환 시 message 없음.
   onCreateBlock: (body: AvailabilityUpsertBody, options?: { closeOnSuccess?: boolean }) => Promise<{ ok: boolean; message?: string }>;
 }) {
+  const access = useAccountAccess();
   // [이슈1] 현지 tz의 (date, HH:mm) → KST 저장값. KST면 그대로. 저장은 항상 KST 단일 진실원.
   const tzActive = !!ownerTz && ownerTz.tz !== KST_TZ;
   const toKst = (dLocal: string, t: string) => (tzActive ? tzLocalToKst(dLocal, t, ownerTz!.tz) : { date: dLocal, time: t });
@@ -77,8 +82,10 @@ export function ScheduleCreateModal({
   const course = resources.courses.find((c) => c.id === courseId);
   const [instructorId, setInstructorId] = useState<number | "">(lockInstructorId ?? defaultInstructorId ?? course?.instructorId ?? "");
   const [roomId, setRoomId] = useState<number | "">("");
-  // [B4] 강의실 관리 패널 토글(매니저 이상) — 모달 안 인라인 렌더(새 모달 중첩 금지, DESIGN §5)
-  const [showRoomManager, setShowRoomManager] = useState(false);
+  type InlineCreator = "course" | "instructor" | "room" | "student";
+  const [inlineCreator, setInlineCreator] = useState<InlineCreator | null>(null);
+  const [inlineSubjectId, setInlineSubjectId] = useState<number | undefined>();
+  const toggleInlineCreator = (creator: InlineCreator) => setInlineCreator((current) => current === creator ? null : creator);
   const [date, setDate] = useState(defaultDate);
   const [start, setStart] = useState(defaultStart ?? "16:00");
   // 진행시간은 코스(실제 수업) 데이터에서 — 종료시각 자동 계산(편집 가능)
@@ -314,51 +321,82 @@ export function ScheduleCreateModal({
         {type === "session" ? (
           <>
             {lockedInstructorName && <div className="text-caption text-fg-muted">{lockedInstructorName} (내 수업)</div>}
-            <Field label="과목">
-              <select className="input" value={courseId} onChange={(e) => pickCourse(Number(e.target.value))}>
-                {myCourses.map((c) => <option key={c.id} value={c.id}>{c.subjectName} · {c.name}</option>)}
-              </select>
-            </Field>
-            <Field label={`담당자 ${instructorId && !instAvailable(Number(instructorId)) ? `· ⚠ ${instAvailabilityLabel(Number(instructorId))}` : ""}`}>
-              {lockInstructorId == null ? (
-                <select className="input" value={instructorId} onChange={(e) => setInstructorId(e.target.value ? Number(e.target.value) : "")}>
-                  {sortedInstructors.map((i) => (
-                    <option key={i.id} value={i.id}>{scheduleResourceName(i)} · {instAvailabilityLabel(i.id)}</option>
+            <InlineCreateField
+              label="과목"
+              createLabel="새 과목과 수업 과정 등록"
+              expanded={inlineCreator === "course"}
+              onToggle={() => toggleInlineCreator("course")}
+              canCreate={!requestMode}
+              controls={(
+                <select className="input" value={courseId} onChange={(event) => pickCourse(Number(event.target.value))}>
+                  {myCourses.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.subjectName} · {candidate.name}</option>)}
+                </select>
+              )}
+            >
+              <div className="space-y-4">
+                <div>
+                  <p className="text-caption font-semibold text-fg-muted mb-2">1. 과목 원본 등록</p>
+                  <SubjectCreateForm compact onCreated={(created) => setInlineSubjectId(created.id)} />
+                </div>
+                <div className="border-t pt-3" style={{ borderColor: "var(--color-line-muted)" }}>
+                  <p className="text-caption font-semibold text-fg-muted mb-2">2. 캘린더에서 선택할 수업 과정 등록</p>
+                  <CourseCreateForm
+                    compact
+                    initialSubjectId={inlineSubjectId}
+                    initialInstructorId={instructorId === "" ? undefined : Number(instructorId)}
+                    submitLabel="수업 과정 등록"
+                    onCreated={(created) => {
+                      setCourseId(created.id);
+                      setInstructorId(created.instructorId);
+                      setColor(created.color);
+                    }}
+                  />
+                </div>
+              </div>
+            </InlineCreateField>
+            <InlineCreateField
+              label={`담당자 ${instructorId && !instAvailable(Number(instructorId)) ? `· ⚠ ${instAvailabilityLabel(Number(instructorId))}` : ""}`}
+              createLabel="새 강사 등록"
+              expanded={inlineCreator === "instructor"}
+              onToggle={() => toggleInlineCreator("instructor")}
+              canCreate={!requestMode && lockInstructorId == null && access.can("executive.manage")}
+              controls={lockInstructorId == null ? (
+                <select className="input" value={instructorId} onChange={(event) => setInstructorId(event.target.value ? Number(event.target.value) : "")}>
+                  {sortedInstructors.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>{scheduleResourceName(candidate)} · {instAvailabilityLabel(candidate.id)}</option>
                   ))}
                 </select>
               ) : (
                 <input className="input" value={lockedInstructorName ?? "본인"} disabled readOnly />
               )}
-            </Field>
-            <Field label="강의실">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5">
-                  <select className="input flex-1" value={roomId} onChange={(e) => setRoomId(e.target.value ? Number(e.target.value) : "")}>
-                    <option value="">미지정</option>
-                    {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                  </select>
-                  {/* [B4] 강의실 관리 토글 — 매니저 이상만(강사 요청 모드 제외). 펼치면 공용 패널을
-                      모달 안 인라인으로 렌더(새 모달 중첩 금지, DESIGN §5). 생성/수정 성공 시
-                      qk.rooms invalidate → 위 select 옵션 자동 갱신. */}
-                  {!requestMode && (
-                    <button type="button" onClick={() => setShowRoomManager((v) => !v)}
-                      className={`btn btn-sm shrink-0 ${showRoomManager ? "badge-accent" : ""}`}>
-                      강의실 관리
-                    </button>
-                  )}
-                </div>
-                {!requestMode && showRoomManager && (
-                  <div className="border rounded-md bg-canvas-subtle">
-                    <RoomManagerPanel compact />
-                  </div>
-                )}
-              </div>
-            </Field>
+            >
+              <InstructorCreateForm compact onCreated={(created) => setInstructorId(created.id)} />
+            </InlineCreateField>
+            <InlineCreateField
+              label="강의실"
+              createLabel="새 강의실 등록"
+              expanded={inlineCreator === "room"}
+              onToggle={() => toggleInlineCreator("room")}
+              canCreate={!requestMode}
+              controls={(
+                <select className="input" value={roomId} onChange={(event) => setRoomId(event.target.value ? Number(event.target.value) : "")}>
+                  <option value="">미지정</option>
+                  {rooms.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+                </select>
+              )}
+            >
+              <RoomCreateForm compact onCreated={(created) => setRoomId(created.id)} />
+            </InlineCreateField>
             {/* [v0.1.13] 학생 선택(단체) — 코스 활성 수강생 체크리스트. 기본 전원(코스 파생과 동일),
                 일부 해제 시 그 학생들만의 명시 코호트로 저장(개별·소그룹 수업). */}
             {/* [이슈1] 학생 검색 리스트 — 인원이 많아도 검색으로 좁혀 선택. 전체/해제 빠른 버튼. */}
-            <Field label={`학생 (${effPicked.size}/${courseRoster.length}명 — 기본 전원)`}>
-              <div className="space-y-2">
+            <InlineCreateField
+              label={`학생 (${effPicked.size}/${courseRoster.length}명 — 기본 전원)`}
+              createLabel="새 학생 등록"
+              expanded={inlineCreator === "student"}
+              onToggle={() => toggleInlineCreator("student")}
+              canCreate={!requestMode}
+              controls={<div className="space-y-2">
                 {courseRoster.length === 0 ? (
                   <p className="text-caption text-fg-subtle">이 과목의 활성 수강생이 없습니다.</p>
                 ) : (
@@ -419,8 +457,14 @@ export function ScheduleCreateModal({
                     )}
                   </div>
                 )}
-              </div>
-            </Field>
+              </div>}
+            >
+              <StudentRegistrationForm
+                compact
+                initialCourseId={courseId || undefined}
+                onCreated={(result) => setPickedStudents(new Set([...effPicked, result.student.id]))}
+              />
+            </InlineCreateField>
             <ScheduleDateField value={date} onChange={setDate} />
             <ScheduleTimeRangeFields start={start} end={end} onStartChange={changeStart} onEndChange={setEnd} endHint={`진행 ${courseDur}분`} />
             {crossesMidnight && (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { CreateStudentAggregateInput } from '@kms545487/contracts';
 import {
   emptyStudentProfile,
@@ -14,12 +14,16 @@ import {
   type StudentFormErrors,
 } from './student-form-model';
 
-export function useStudentRegistrationDraft() {
+export function useStudentRegistrationDraft(initialCourseId?: number) {
   const [profile, setProfile] = useState(emptyStudentProfile);
   const [interests, setInterests] = useState(initialInterests);
   const [guardians, setGuardians] = useState<GuardianFormValue[]>([]);
-  const [courseId, setCourseId] = useState('');
+  const [courseId, setCourseId] = useState(initialCourseId == null ? '' : String(initialCourseId));
   const [errors, setErrors] = useState<StudentFormErrors>({});
+
+  useEffect(() => {
+    if (initialCourseId != null) setCourseId(String(initialCourseId));
+  }, [initialCourseId]);
 
   const updateGuardian = (clientId: string, patch: Partial<GuardianFormValue>) => {
     setGuardians((current) => current.map((guardian) => {
@@ -57,7 +61,7 @@ export function useStudentRegistrationDraft() {
     setProfile(emptyStudentProfile());
     setInterests(initialInterests());
     setGuardians([]);
-    setCourseId('');
+    setCourseId(initialCourseId == null ? '' : String(initialCourseId));
     setErrors({});
   };
 

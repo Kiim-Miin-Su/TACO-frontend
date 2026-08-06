@@ -13,10 +13,12 @@ export function StudentRegistrationFields({
   draft,
   courses,
   showStatus = true,
+  showOptionalSections = true,
 }: {
   draft: StudentRegistrationDraft;
   courses: Course[];
   showStatus?: boolean;
+  showOptionalSections?: boolean;
 }) {
   return (
     <>
@@ -29,16 +31,16 @@ export function StudentRegistrationFields({
         />
       </FormGroup>
 
-      <FormGroup title="관심 희망 수업 (선택 · 실제 수강 등록과 별도)">
+      {showOptionalSections && <FormGroup title="관심 희망 수업 (선택 · 실제 수강 등록과 별도)">
         <StudentInterestsFields
           value={draft.interests}
           courses={courses}
           onChange={draft.setInterests}
           error={draft.errors.interests}
         />
-      </FormGroup>
+      </FormGroup>}
 
-      <FormGroup title="보호자 (선택 · 학생과 함께 원자 저장)">
+      {showOptionalSections && <FormGroup title="보호자 (선택 · 학생과 함께 원자 저장)">
         <div className="space-y-3">
           {draft.guardians.map((guardian) => (
             <GuardianFields
@@ -51,7 +53,7 @@ export function StudentRegistrationFields({
           <button type="button" className="btn btn-sm" onClick={draft.addGuardian} disabled={draft.guardians.length >= 10}>+ 보호자 추가</button>
           {draft.errors.guardians && <p className="text-caption text-danger" role="alert">{draft.errors.guardians}</p>}
         </div>
-      </FormGroup>
+      </FormGroup>}
 
       <FormGroup title="즉시 수강 등록 (선택 · 희망 수업과 별도)">
         <div className="max-w-md">
