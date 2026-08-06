@@ -12,11 +12,16 @@ type FieldProps = {
   hint?: ReactNode;
   /** 검증 오류 — danger 톤, hint보다 우선 표시 */
   error?: ReactNode;
+  /** [TBO-86I-3] 다중 컨트롤 그룹은 div로 렌더 — <label>은 헤더 클릭이 첫 labelable 자식
+   *  (버튼 등)으로 전달되고(실측: 학생 라벨 클릭 → "수강생 전체" 오발동), 내부에 체크리스트
+   *  <label>이 있으면 중첩 label 무효 마크업이 된다. 단일 입력 필드는 기존 label 유지. */
+  asDiv?: boolean;
 };
 
-export function Field({ label, children, hint, error }: FieldProps) {
+export function Field({ label, children, hint, error, asDiv }: FieldProps) {
+  const Tag = asDiv ? 'div' : 'label';
   return (
-    <label className="block">
+    <Tag className="block">
       <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
       {children}
       {error ? (
@@ -24,7 +29,7 @@ export function Field({ label, children, hint, error }: FieldProps) {
       ) : (
         hint && <span className="block text-micro text-fg-subtle mt-1">{hint}</span>
       )}
-    </label>
+    </Tag>
   );
 }
 

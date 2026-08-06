@@ -41,6 +41,24 @@ describe('[TBO-86 C] 캘린더 인라인 등록 공용 컴포넌트', () => {
     expect(scheduleModal).not.toContain('재원생 연결');
   });
 
+  // [TBO-86I-3] 운영 리포트: ① 기본 전원 체크 불필요 — 기본은 아무도 선택 안 됨 ② 카운트 분모가
+  //  수강 roster라 (1/1)→(x/2)→(x/4)처럼 움직임 — 분모는 보이는 재원생 전체 ③ 원부 삭제 학생이
+  //  선택에 유령으로 남음 — 파생 prune ④ 직렬화는 단일 규칙. (수정 전 이 단언들은 실패한다.)
+  it('학생 선택 기본은 미체크·분모는 재원생 전체·유령 선택은 파생 정리·직렬화 단일 규칙', () => {
+    expect(scheduleModal).not.toContain('기본 전원');
+    expect(scheduleModal).toContain('pruneStudentSelection');
+    expect(scheduleModal).toContain('explicitCohortForSubmit');
+    expect(scheduleModal).toContain('studentPickerItems.length}명');
+  });
+
+  // [TBO-86I-3] 실측: <label> 래핑 필드는 헤더 텍스트 클릭이 첫 labelable 자식으로 전달돼
+  //  "수강생 전체" 버튼이 오발동했고(기본 미체크에서 3명이 몰래 선택됨), 내부 체크리스트
+  //  <label>과 중첩 label 무효 마크업이었다. 인라인 생성 필드는 div 렌더를 강제한다.
+  it('다중 컨트롤 인라인 필드는 label 클릭 전달을 막는 div 렌더를 쓴다', () => {
+    expect(read('components/InlineCreateField.tsx')).toContain('<Field label={label} asDiv>');
+    expect(read('components/ui/Field.tsx')).toContain("asDiv ? 'div' : 'label'");
+  });
+
   it('과거 완료 이관은 전용 command를 쓰고 일반 held 주입을 열지 않는다', () => {
     expect(scheduleModal).toContain('historicalCompletedInput');
     expect(scheduleModal).toContain('onCreateHistorical');

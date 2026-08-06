@@ -8,7 +8,7 @@ import { addDaysISO } from "@/lib/format"; // [TBO-69 C4]
 import type { AvailabilityUpsertBody, ScheduleCreateBody, ScheduleSeriesCreateBody } from "@/lib/api";
 import type { Room, ScheduleResource, ScheduleResources } from "@/types";
 import type { CreateHistoricalCompletedSessionInput, SessionStatus } from "@kms545487/contracts";
-import { courseRosterFromScheduleResources, scheduleResourceName, studentPickerItemsFromScheduleResources } from "@/lib/domain/schedule-resources";
+import { courseRosterFromScheduleResources, explicitCohortForSubmit, pruneStudentSelection, scheduleResourceName, studentPickerItemsFromScheduleResources } from "@/lib/domain/schedule-resources";
 // [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
 import { Field, ModalShell, SearchableCheckList } from "@/components/ui";
 import { InlineCreateField } from "@/components/InlineCreateField";
@@ -180,21 +180,15 @@ export function ScheduleCreateModal({
     [resources.instructors, instAvailable],
   );
 
-  // ── [v0.1.13] 수업 학생 선택(단체) — 코스 활성 수강생 체크리스트(기본 전원 선택) ──
-  //  전원 선택 = studentIds 미전송(기존 코스 파생과 동일 — 하위 호환). 부분 선택 = 명시 코호트 저장.
+  // ── [TBO-86I Grace ver.2 2.2] 학생 선택 = 재원생 전체 단일 검색 리스트(수강생 먼저).
+  //  미수강생을 숨김 패널로 빼지 않는다 — 같은 리스트에서 검색·선택하면 서버 enrollment 생성(자동
+  //  연결) 뒤 코호트에 들어간다. 강사 요청 모드는 연결 권한이 없으므로 본인 코스 roster만 노출한다.
   //  수강생 산출은 `/schedule/resources` course.studentIds 한 곳을 사용한다. 강사 모달에서
   //  전역 /enrollments·/students cache를 읽지 않아 계정 전환 시 타 강사 roster가 섞이지 않는다.
   const courseRoster = useMemo(
     () => courseRosterFromScheduleResources(resources, courseId),
     [resources, courseId],
   );
-  const [pickedStudentState, setPickedStudentState] = useState<{ courseId: number; ids: Set<number> | null } | null>(null);
-  const pickedStudents = pickedStudentState?.courseId === courseId ? pickedStudentState.ids : null;
-  const setPickedStudents = (ids: Set<number> | null) => setPickedStudentState({ courseId, ids });
-  const effPicked = pickedStudents ?? new Set(courseRoster.map((r) => r.id));
-  // [TBO-86I Grace ver.2 2.2] 학생 선택 = 재원생 전체 단일 검색 리스트(수강생 먼저·기본 전원 체크).
-  //  미수강생을 숨김 패널로 빼지 않는다 — 같은 리스트에서 검색·선택하면 서버 enrollment 생성(자동
-  //  연결) 뒤 코호트에 들어간다. 강사 요청 모드는 연결 권한이 없으므로 본인 코스 roster만 노출한다.
   const studentPickerItems = useMemo(
     () =>
       requestMode
@@ -202,6 +196,15 @@ export function ScheduleCreateModal({
         : studentPickerItemsFromScheduleResources(resources, courseId),
     [requestMode, resources, courseId],
   );
+  // [TBO-86I-3] 기본은 아무도 선택 안 됨(운영 지시 — 구 전원 자동 체크 폐지). 학생 컬럼/카드에서 연
+  //  경우만 그 학생 1명 프리필. 선택 상태는 화면에 보이는 재원생으로만 파생(prune — 원부 삭제·퇴원·
+  //  과목 전환 시 유령 선택/카운트 자동 정리, 등록 직후 refetch 도착 시 자동 복원되는 비파괴 파생).
+  const [pickedStudentState, setPickedStudentState] = useState<{ courseId: number; ids: Set<number> } | null>(null);
+  const pickedStudents = pickedStudentState?.courseId === courseId ? pickedStudentState.ids : null;
+  const setPickedStudents = (ids: Set<number>) => setPickedStudentState({ courseId, ids });
+  const seedStudentId = defaultOwner?.type === "student" ? Number(defaultOwner.id) : undefined;
+  const rawPicked = pickedStudents ?? (seedStudentId != null ? new Set([seedStudentId]) : new Set<number>());
+  const effPicked = pruneStudentSelection(rawPicked, studentPickerItems);
   const createEnrollment = useCreateEnrollment();
   const [studentLinkMessage, setStudentLinkMessage] = useState("");
 
@@ -225,6 +228,9 @@ export function ScheduleCreateModal({
     if (next.has(studentId)) next.delete(studentId); else next.add(studentId);
     setPickedStudents(next);
   }
+  // [TBO-86I-3] 수업은 학생 1명 이상 필수 — 빈 선택을 서버에 보내면 roster 파생(전원) 규칙과
+  //  화면(아무도 선택 안 됨)이 어긋나므로 제출 자체를 막는다.
+  const cohortValid = effPicked.size > 0;
 
   // ── 가용/불가 대상(오너) — 시간·날짜·반복은 수업과 공유 ──
   const lockOwner = lockInstructorId != null;
@@ -280,9 +286,9 @@ export function ScheduleCreateModal({
   }
   function submitSession() {
     // [TBO-29C C2] 클라이언트 seriesId(Date.now()) 폐기 — 시리즈 ID·규칙은 서버가 발급/자산화.
-    // 부분 선택 시에만 명시 코호트 전송(전원=미전송 — 코스 파생과 동일·하위 호환)
-    const studentIds =
-      pickedStudents != null && effPicked.size !== courseRoster.length ? [...effPicked] : undefined;
+    // [TBO-86I-3] 직렬화 단일 규칙: 체크 집합이 수강생 전원과 정확히 일치할 때만 미전송(서버
+    //  파생 — 시리즈가 이후 수강 변동을 따라가는 하위 호환), 그 외에는 명시 코호트 전송.
+    const studentIds = explicitCohortForSubmit(effPicked, courseRoster);
     // [이슈1] 각 발생일(현지)을 KST로 변환해 저장 — 종료는 시작과 같은 현지날짜 기준으로 변환.
     const selectedInstructorId = lockInstructorId
       ?? (instructorId === "unassigned" ? null : (instructorId || undefined));
@@ -343,7 +349,7 @@ export function ScheduleCreateModal({
           {blockError && <span className="text-caption text-danger mr-auto self-center" role="alert">{blockError}</span>}
           <button className="btn" onClick={onClose}>취소</button>
           {type === "session" ? (
-            <button className="btn btn-primary" disabled={!sessionValid || (repeat !== "none" && occurrences().length === 0)} onClick={submitSession}>
+            <button className="btn btn-primary" disabled={!sessionValid || !cohortValid || (repeat !== "none" && occurrences().length === 0)} onClick={submitSession}>
               {requestMode ? "승인 요청 보내기" : historicalImport ? "완료 수업 이관" : repeat === "none" ? "수업 추가" : `반복 추가 (${occurrences().length}회)`}
             </button>
           ) : (
@@ -437,11 +443,12 @@ export function ScheduleCreateModal({
             >
               <RoomCreateForm compact onCreated={(created) => setRoomId(created.id)} />
             </InlineCreateField>
-            {/* [TBO-86I Grace ver.2 2.2] 학생 선택(단체) — 재원생 전체 단일 검색 리스트(수강생 먼저,
-                기본 전원 체크 = 코스 파생과 동일). 미수강생도 같은 리스트에서 검색·선택 — 선택 시
-                서버 enrollment 자동 생성 후 코호트 포함(성공/실패 인라인 표시). 전체/해제는 수강생만. */}
+            {/* [TBO-86I-3] 학생 선택(단체) — 재원생 전체 단일 검색 리스트(수강생 먼저). 기본은 아무도
+                선택 안 됨·분모는 보이는 재원생 전체 수. 미수강생도 같은 리스트에서 검색·선택 — 선택 시
+                서버 enrollment 자동 생성 후 코호트 포함(성공/실패 인라인 표시). 수강생 전체 버튼은
+                수강생만 일괄 체크(자동 연결 아님). 수업은 학생 1명 이상 선택해야 추가된다. */}
             <InlineCreateField
-              label={`학생 (${effPicked.size}/${courseRoster.length}명 — 기본 전원)`}
+              label={`학생 (${effPicked.size}/${studentPickerItems.length}명 선택)`}
               createLabel="새 학생 등록"
               expanded={inlineCreator === "student"}
               onToggle={() => toggleInlineCreator("student")}
@@ -452,7 +459,7 @@ export function ScheduleCreateModal({
                 ) : (
                   <div className="space-y-1">
                   <div className="flex gap-1">
-                    <button type="button" className="btn btn-sm" onClick={() => setPickedStudents(new Set(courseRoster.map((r) => r.id)))}>전체</button>
+                    <button type="button" className="btn btn-sm" onClick={() => setPickedStudents(new Set(courseRoster.map((r) => r.id)))}>수강생 전체</button>
                     <button type="button" className="btn btn-sm" onClick={() => setPickedStudents(new Set())}>해제</button>
                   </div>
                   <SearchableCheckList
@@ -461,6 +468,9 @@ export function ScheduleCreateModal({
                     placeholder="재원생 이름 검색"
                     onToggle={toggleStudentPick}
                   />
+                  {!cohortValid && (
+                    <p className="text-caption text-fg-subtle" role="note">수업에 넣을 학생을 한 명 이상 선택하세요.</p>
+                  )}
                   </div>
                 )}
                 {studentLinkMessage && (

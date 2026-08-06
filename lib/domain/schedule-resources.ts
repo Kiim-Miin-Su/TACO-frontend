@@ -57,6 +57,30 @@ export function studentPickerItemsFromScheduleResources(
     );
 }
 
+/** [TBO-86I-3] 선택 상태는 화면에 보이는 재원생으로만 파생(prune) — 원부 삭제·퇴원 전이·과목
+ *  전환으로 리스트에서 빠진 학생이 선택/카운트/제출에 유령으로 남지 않게 한다(비파괴 파생:
+ *  등록 직후처럼 아직 refetch 전인 학생은 리스트에 돌아오면 선택이 자동 복원된다). */
+export function pruneStudentSelection(
+  picked: ReadonlySet<number>,
+  items: ReadonlyArray<{ id: number }>,
+): Set<number> {
+  const visible = new Set(items.map((item) => item.id));
+  return new Set([...picked].filter((id) => visible.has(id)));
+}
+
+/** [TBO-86I-3] 제출 코호트 직렬화 단일 규칙 — 체크한 집합이 수강생 전원과 정확히 일치할 때만
+ *  미전송(서버 roster 파생·하위 호환 — 시리즈가 이후 수강 변동을 따라감), 그 외에는 명시 코호트.
+ *  빈 선택은 []를 반환하며 제출 차단은 호출부(모달 valid 게이트)가 담당한다 — 서버 규칙상
+ *  빈/NULL은 전원 파생이므로 []를 그대로 전송하면 안 된다. */
+export function explicitCohortForSubmit(
+  picked: ReadonlySet<number>,
+  roster: ReadonlyArray<{ id: number }>,
+): number[] | undefined {
+  const rosterIds = new Set(roster.map((student) => student.id));
+  const isFullRoster = picked.size === rosterIds.size && [...picked].every((id) => rosterIds.has(id));
+  return isFullRoster ? undefined : [...picked];
+}
+
 /** 붙여넣기 코스 재배정용 최소 enrollment 투영. 원천은 course.studentIds 한 곳이다. */
 export function calendarEnrollmentRows(resources?: ScheduleResources | null) {
   return calendarScheduleCourses(resources).flatMap((course) =>
