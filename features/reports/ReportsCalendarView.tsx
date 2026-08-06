@@ -84,7 +84,7 @@ export function ReportsCalendarView() {
       <PageHeader
         title="수업 보고서"
         sub="캘린더·리스트에서 수업을 선택해 확인하거나, 한 페이지에서 바로 작성하세요."
-        actions={(access.can('instructor.self') || access.can('approval.manage'))
+        actions={access.can('report.write') // [TBO-86I-2] 작성 CTA — BE write command와 동일 판정
           ? <Link href="/reports/write" className="btn btn-primary">리포트 작성하기</Link>
           : undefined}
       />

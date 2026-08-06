@@ -46,9 +46,11 @@ export function SessionDetailPanel({
   // [TBO-80 80I / P-7] 인라인 리포트 권한 — ClassSessionDetailView와 동일 규칙(calendar.manage or 담당 강사 본인).
   //  강사의 캘린더 rows는 서버가 본인 담당만 반환(TBO-47)하지만, 권한식은 세션 상세와 동일하게 유지(단일 규칙).
   const access = useAccountAccess();
+  // [TBO-86I-2] capability 층(report.write = BE write command와 동일) ∧ 스코프 층(관리 or 본인 담당).
   const canFeedback =
-    access.can("calendar.manage") ||
-    (access.instructorId != null && row != null && Number(row.instructorId) === access.instructorId);
+    access.can("report.write") &&
+    (access.can("calendar.manage") ||
+      (access.instructorId != null && row != null && Number(row.instructorId) === access.instructorId));
   // 세션 응답의 studentIds = 명시 코호트 우선 규칙이 이미 적용된 권위 집합(SSOT) — 프론트 재계산 금지.
   const roster = useMemo(() => {
     if (!row) return [];

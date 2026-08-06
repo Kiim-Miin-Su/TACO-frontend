@@ -71,7 +71,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
       <DetailStates query={sessionQuery} notFoundMessage="수업을 찾을 수 없습니다." backHref="/sessions">
         {(session) => {
           const ownSession = myId != null && session.instructorId === myId;
-          const canFeedback = admin || ownSession;
+          const canFeedback = access.can("report.write") && (admin || ownSession); // [TBO-86I-2] capability ∧ 스코프
           const paid = countsForPay(session);
           return (
             <>

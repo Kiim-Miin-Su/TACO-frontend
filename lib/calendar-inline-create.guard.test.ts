@@ -59,6 +59,30 @@ describe('[TBO-86 C] 캘린더 인라인 등록 공용 컴포넌트', () => {
     expect(read('components/ui/Field.tsx')).toContain("asDiv ? 'div' : 'label'");
   });
 
+  // [TBO-86I-4] 운영 리포트: 인라인 학생 등록이 compact 분기로 관심 수업·보호자·상태를 숨겼고
+  //  "기존에 다니는 가족" 연결 input은 등록 폼 어디에도 없었다(input≠DTO). 인라인·표준·상담 접수는
+  //  같은 필드 전체를 쓰고, 가족 연결은 등록 command와 같은 tx로 전송된다(수정 전 이 단언은 실패한다).
+  it('학생 등록 폼은 화면과 무관하게 같은 input 전체 — 가족 연결 포함, compact 필드 분기 금지', () => {
+    const form = read('features/students/StudentRegistrationForm.tsx');
+    const fields = read('features/students/StudentRegistrationFields.tsx');
+    expect(form).not.toContain('showOptionalSections');
+    expect(form).not.toContain('showStatus');
+    expect(fields).toContain('기존에 다니는 가족');
+    expect(fields).toContain('familyRelations');
+    expect(read('features/students/student-form-model.ts')).toContain('familyRelationInputsOf');
+    expect(read('features/counsel/CounselForm.tsx')).not.toContain('showStatus={false}');
+  });
+
+  // [TBO-86I-2] 리포트 작성 표면은 BE write command와 같은 report.write capability 판정을 쓴다.
+  it('리포트 작성 게이트는 report.write 단일 capability를 소비한다', () => {
+    const write = read('features/reports/ReportWriteView.tsx');
+    expect(write).toContain("access.can('report.write')");
+    expect(write).not.toContain("access.can('instructor.self') && !access.can('approval.manage')");
+    expect(read('features/calendar/SessionDetailPanel.tsx')).toContain('report.write');
+    expect(read('features/sessions/ClassSessionDetailView.tsx')).toContain('report.write');
+    expect(read('features/reports/ReportsCalendarView.tsx')).toContain("access.can('report.write')");
+  });
+
   it('과거 완료 이관은 전용 command를 쓰고 일반 held 주입을 열지 않는다', () => {
     expect(scheduleModal).toContain('historicalCompletedInput');
     expect(scheduleModal).toContain('onCreateHistorical');

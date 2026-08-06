@@ -23,7 +23,7 @@ import { sessionStatusLabel, sessionStatusTone } from '@/features/sessions/sessi
 // 한 페이지 리포트 작성 — 강사의 진행중 모든 수업·학생을 좌(목록)/우(인라인 작성)로.
 export function ReportWriteView() {
   const access = useAccountAccess();
-  if (!access.can('instructor.self') && !access.can('approval.manage')) {
+  if (!access.can('report.write')) { // [TBO-86I-2] 작성 표면 공통 capability — BE write command와 동일 판정
     return (
       <div className="p-6 max-w-page mx-auto">
         <SectionCard title="리포트 작성">
