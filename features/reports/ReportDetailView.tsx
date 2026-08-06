@@ -14,6 +14,7 @@ import { useAccountAccess } from '@/lib/useAccountAccess';
 import { ReasonModal } from '@/components/ReasonModal';
 import { shortDate } from '@/lib/format';
 import { internalRoute } from '@/lib/navigation-security';
+import { ReportBundleCopyButton } from './ReportBundleCopyButton';
 
 // [P2 FE-4] 라벨 진실원 = lib/domain/reports(사본 제거)
 
@@ -58,7 +59,7 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
                 <div className="p-3 rounded-lg border border-danger/40 text-body text-danger">반려 사유: {report.rejectedReason}</div>
               )}
 
-              <SectionCard title="리포트 내용">
+              <SectionCard title="리포트 내용" action={<ReportBundleCopyButton report={report} />}>
                 <div className="p-4 space-y-3 text-body">
                   <p className="whitespace-pre-wrap">{report.content || <span className="text-fg-subtle">내용 없음</span>}</p>
                   {report.progressPage && (

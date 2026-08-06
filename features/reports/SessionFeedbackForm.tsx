@@ -11,6 +11,7 @@ import { useReports, useReportTemplates, useCreateReportTemplate, useUpdateRepor
 import type { ClassSession, ReportStatus, Student } from '@/types';
 import type { ReportTemplate } from '@kms545487/contracts';
 import { useAccountAccess } from '@/lib/useAccountAccess';
+import { ReportBundleCopyButton } from './ReportBundleCopyButton';
 
 const reportTone: Record<ReportStatus, Tone> = { draft: 'neutral', submitted: 'accent', sent: 'success' };
 const reportLabel: Record<ReportStatus, string> = { draft: '작성중', submitted: '작성완료', sent: '발송됨' };
@@ -103,13 +104,16 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
 
   return (
     <div className="p-4">
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
         <span className="font-medium">{student.name}</span>
         {student.englishName && <span className="text-caption text-fg-subtle">{student.englishName}</span>}
         <Badge tone={reportTone[status]}>{reportLabel[status]}</Badge>
         {report?.approvalStatus === 'approved' && <Badge tone={reportApprovalBadge('approved').tone}>{reportApprovalBadge('approved').label}</Badge>}
         {report?.approvalStatus === 'rejected' && <Badge tone="danger">반려</Badge>}
-        {savedAt && <span className="text-micro text-fg-subtle ml-auto">저장됨 {savedAt}</span>}
+        <span className="flex w-full items-center justify-end gap-2 sm:ml-auto sm:w-auto">
+          {savedAt && <span className="text-micro text-fg-subtle">저장됨 {savedAt}</span>}
+          {report && <ReportBundleCopyButton report={report} />}
+        </span>
       </div>
       {report?.approvalStatus === 'rejected' && report.rejectedReason && (
         <div className="mb-2 text-caption text-danger">반려 사유: {report.rejectedReason}</div>

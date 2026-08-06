@@ -47,8 +47,21 @@ describe('joined report view', () => {
     });
   });
 
-  it('normalizes legacy approved and rejected status without changing context', () => {
-    expect(toStoreReport(apiReport({ approvalStatus: 'approved' })).status).toBe('sent');
-    expect(toStoreReport(apiReport({ approvalStatus: 'rejected' })).status).toBe('draft');
+  it('keeps authored delivery status separate from approval status', () => {
+    expect(toStoreReport(apiReport({ status: 'submitted', approvalStatus: 'approved' }))).toMatchObject({
+      status: 'submitted',
+      approvalStatus: 'approved',
+    });
+    expect(toStoreReport(apiReport({ status: 'submitted', approvalStatus: 'rejected' }))).toMatchObject({
+      status: 'submitted',
+      approvalStatus: 'rejected',
+    });
+  });
+
+  it('infers legacy approval without rewriting delivery status', () => {
+    expect(toStoreReport(apiReport({ status: 'sent', approvalStatus: undefined }))).toMatchObject({
+      status: 'sent',
+      approvalStatus: 'approved',
+    });
   });
 });
