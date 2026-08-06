@@ -12,3 +12,6 @@ tsconfig.tsbuildinfo
 
 # FUSE 마운트 삭제 잔재 (샌드박스)
 **/.fuse_hidden*
+
+# git 잠금/임시 객체 대피 폴더(샌드박스 unlink 불가 우회) — 저장소 추적 금지
+tmp/_to_delete/
