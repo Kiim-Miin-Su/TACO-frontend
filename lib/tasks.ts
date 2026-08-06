@@ -16,6 +16,8 @@ import type {
   Student,
   PayReadiness,
   PayReadinessIssue,
+  ReportWorklist,
+  ReportWorklistItem,
 } from '@/types';
 import type { Tone } from '@/components/ui';
 import { won, todayKst } from '@/lib/format'; // [감사 10] 사본 제거 — 단일 진실원
@@ -60,6 +62,7 @@ type StoreSlice = Omit<ReportSlice, 'classSessions'> & {
   profileChangeRequests: ProfileChangeRequest[];
   myProfileChangeRequests: ProfileChangeRequest[];
   payReadiness?: PayReadiness;
+  reportWorklist?: ReportWorklist;
 };
 
 const REPORT_READINESS_TYPES = new Set<PayReadinessIssue['type']>([
@@ -70,7 +73,7 @@ const REPORT_READINESS_TYPES = new Set<PayReadinessIssue['type']>([
 const readinessActivityMs = (rows: readonly unknown[]): number =>
   rows.length ? Number.POSITIVE_INFINITY : 0;
 
-function readinessTask(s: StoreSlice, row: PayReadinessIssue, forInstructor: boolean): TaskItem {
+function readinessTask(s: StoreSlice, row: PayReadinessIssue | ReportWorklistItem, forInstructor: boolean): TaskItem {
   const student = row.studentId == null ? null : s.students.find((item) => item.id === row.studentId);
   const instructor = s.instructors.find((item) => item.id === row.instructorId);
   const context = `${row.sessionDate} ${row.startTime ?? ''} · ${student?.name ?? row.topic ?? `수업 ${row.sessionId}`}`;
@@ -233,7 +236,10 @@ function adminTasks(s: StoreSlice): TaskItem[] {
   }
 
   // 정산 준비 상태는 백엔드가 코호트 학생별로 판정한다. 프론트에서 보고서 완전성을 재계산하지 않는다.
-  out.push(...(s.payReadiness?.issues ?? []).map((row) => readinessTask(s, row, false)));
+  out.push(...(s.payReadiness?.issues ?? [])
+    .filter((row) => !REPORT_READINESS_TYPES.has(row.type))
+    .map((row) => readinessTask(s, row, false)));
+  out.push(...(s.reportWorklist?.items ?? []).map((row) => readinessTask(s, row, false)));
 
   // ── [대표 지시 ⑭ 2026-07-16] 보강 미배정 — 결강(취소·노쇼·펑크)인데 보강 날짜가 아직 안 잡힌 수업.
   //  강사 탭과 **같은 단일 정의(lib/makeup)** 재사용 — 매니저도 배정을 챙겨야 하므로 관리자 To-do에 편입.
@@ -267,6 +273,9 @@ function instructorTasks(s: StoreSlice, instructorId: number): TaskItem[] {
   }
 
   out.push(...(s.payReadiness?.issues ?? [])
+    .filter((row) => row.instructorId === instructorId && !REPORT_READINESS_TYPES.has(row.type))
+    .map((row) => readinessTask(s, row, true)));
+  out.push(...(s.reportWorklist?.items ?? [])
     .filter((row) => row.instructorId === instructorId)
     .map((row) => readinessTask(s, row, true)));
 
@@ -404,8 +413,7 @@ export function navBadges(
       Math.max(latestActivityMs(myMakeup.map((m) => m.session)), latestActivityMs(rejectedCalendarRequests), readinessActivityMs(executionIssues)));
     // [핫픽스 2026-07-20 ③] 반려 사유 배지 — 내 정산 반려/회수(/payouts), 보고서 반려는 위 /reports
     //  모집단과 별개 상태(approvalStatus rejected — status는 submitted 유지)라 여기서 합산.
-    const reportIssues = readinessIssues.filter((row) => REPORT_READINESS_TYPES.has(row.type));
-    put('/reports', reportIssues.length, readinessActivityMs(reportIssues));
+    put('/reports', s.reportWorklist?.itemCount ?? 0, readinessActivityMs(s.reportWorklist?.items ?? []));
     const myRejectedPayouts = s.instructorPayouts.filter((p) => p.status === 'rejected');
     const rateIssues = readinessIssues.filter((row) => row.type === 'rate_missing');
     put('/payouts', myRejectedPayouts.length + rateIssues.length,
@@ -432,8 +440,7 @@ export function navBadges(
   put('/payouts', payoutRows.length + rateIssues.length, Math.max(latestActivityMs(payoutRows), readinessActivityMs(rateIssues)));
   const expenseRows = s.expenses.filter((e) => e.status === 'requested');
   put('/expenses', expenseRows.length, latestActivityMs(expenseRows)); // 승인 대기
-  const reportIssues = (s.payReadiness?.issues ?? []).filter((row) => REPORT_READINESS_TYPES.has(row.type));
-  put('/reports', reportIssues.length, readinessActivityMs(reportIssues));
+  put('/reports', s.reportWorklist?.itemCount ?? 0, readinessActivityMs(s.reportWorklist?.items ?? []));
 
   // [핫픽스 2026-07-20 ②] 관리자(승인 센터) — lib/approvals 단일 소스로 통일: 보고서+지출+정산+
   //  수업 요청+**가입 승인+프로필 변경**(종전엔 뒤 2종이 빠져 승인센터에는 보이는데 배지·대시보드에

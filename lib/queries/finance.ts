@@ -8,6 +8,7 @@ import { useAccountAccess } from "@/lib/useAccountAccess";
 import { logger } from "@/lib/log";
 import { detailRetry, useInvalidator } from "./shared";
 import { toStoreReport } from "@/lib/domain/report-view";
+import type { ReportListQuery, ReportWorklistQuery } from '@kms545487/contracts';
 
 // [TBO-54 C2 대표 지시 콘솔 로깅] 머니 액션 관측 — id·금액·결과만(PII 0).
 const moneyLog = logger("money");
@@ -99,9 +100,18 @@ export const useExpense = (id: number | null) => {
 };
 
 // 보고서는 store 모델로 매핑해서 반환(배지·리포트 화면이 store 형상 사용).
-export const useReports = () => {
+export const useReports = (query: ReportListQuery = {}) => {
   const { scope } = useAccountAccess();
-  return useQuery({ queryKey: qk.reports.list(undefined, scope), queryFn: async () => (await api.reports.list()).map(toStoreReport) });
+  return useQuery({ queryKey: qk.reports.list(query, scope), queryFn: async () => (await api.reports.list(query)).map(toStoreReport) });
+};
+export const useReportWorklist = (query: ReportWorklistQuery = {}) => {
+  const { scope } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.reports.worklist(query, scope),
+    queryFn: () => api.reports.worklist(query),
+    refetchOnWindowFocus: true,
+    staleTime: 15_000,
+  });
 };
 // [TBO-58 P2] 보고서 단건 — /reports/[id] 딥링크(강사는 본인 것만: 서버 403 그대로 표면)
 export const useReport = (id: number | null) =>
@@ -152,12 +162,12 @@ export const useUpdateExpense = () =>
 export const useWithdrawExpense = () => useMutation({ mutationFn: api.expenses.remove, onSuccess: useInvalidator([qk.expenses.all]) });
 
 // 리포트(작성·제출·승인/반려) — 승인은 시수/정산 적격 변동
-export const useCreateReport = () => useMutation({ mutationFn: api.reports.create, onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
+export const useCreateReport = () => useMutation({ mutationFn: api.reports.create, onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all, qk.audit.all]) });
 // [E0.6 H1] 기존 보고서 임시 저장(본문/숙제 수정) — 승인 전까지.
 // [TBO-62 ① 2026-07-24] body에 id가 섞여 서버 whitelist 400("property id should not exist") — 운영 콘솔 실측. patch만 전송.
 export const useUpdateReport = () =>
-  useMutation({ mutationFn: ({ id, ...patch }: { id: number; content?: string; progressPage?: string; homework?: string }) => api.reports.update(id, patch), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
-export const useSubmitReport = () => useMutation({ mutationFn: api.reports.submit, onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
+  useMutation({ mutationFn: ({ id, ...patch }: { id: number; content?: string; progressPage?: string; homework?: string }) => api.reports.update(id, patch), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all, qk.audit.all]) });
+export const useSubmitReport = () => useMutation({ mutationFn: api.reports.submit, onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all, qk.audit.all]) });
 export const useRemoveReport = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -176,7 +186,7 @@ export const useRemoveReport = () => {
   });
 };
 export const useApproveReport = () =>
-  useMutation({ mutationFn: (v: { id: number }) => api.reports.approve(v.id), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]) });
+  useMutation({ mutationFn: (v: { id: number }) => api.reports.approve(v.id), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all, qk.audit.all]) });
 // [TBO-79 B5] 승인 리포트 반려는 세션을 정산 적격에서 빼낸다 — 서버가 영향 확인을 요구한다.
 type RejectReportVars = {
   id: number;
@@ -191,7 +201,7 @@ export const useRejectReport = () => {
       acknowledgeAccountingImpact: v.acknowledgeAccountingImpact,
       expectedAccountingImpactHash: v.expectedAccountingImpactHash,
     }),
-    onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all]),
+    onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all, qk.audit.all]),
   });
   return useAccountingAck(mutation, (variables, impactHash) => ({
     ...variables,

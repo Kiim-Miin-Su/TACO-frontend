@@ -10,7 +10,7 @@ import { CATALOG_STALE, useInvalidator } from "./shared";
 import { useStudents, useParents, useParentStudents, useEnrollments, useCounselForms, useCounselRounds } from "./students";
 import { useSubjects, useCourses } from "./academics";
 import { useSchedule, useCalendarSchedule, useAttendance, useAcademyEvents, useInstructors, useScheduleRequests } from "./schedule";
-import { usePayments, useTransactions, useExpenses, usePayouts, useReports } from "./finance";
+import { usePayments, useTransactions, useExpenses, usePayouts, useReports, useReportWorklist } from "./finance";
 import { usePendingAccounts, useProfileChangeRequests, useMyProfileChangeRequests } from "./admin";
 
 // [TBO-62 ⑥ 2026-07-24] useMyPayoutPreview 제거 — 강사 시수 미리보기는 관리자 전용(서버 라우트 삭제).
@@ -51,6 +51,7 @@ export function useAppData() {
   const classSessions = useSchedule().data ?? [];
   const attendance = useAttendance().data ?? [];
   const sessionReports = useReports().data ?? [];
+  const reportWorklist = useReportWorklist().data;
   const payments = usePayments().data ?? [];
   const transactions = useTransactions().data ?? [];
   const expenses = useExpenses().data ?? [];
@@ -69,7 +70,7 @@ export function useAppData() {
   const payReadiness = usePayReadiness().data;
   return {
     students, parents, parentStudents, subjects, courses, enrollments, classSessions,
-    attendance, sessionReports, payments, transactions, expenses, instructorPayouts,
+    attendance, sessionReports, reportWorklist, payments, transactions, expenses, instructorPayouts,
     counselForms, counselRounds, academyEvents, instructors,
     scheduleRequests, pendingAccounts, profileChangeRequests, myProfileChangeRequests, payReadiness,
   };
@@ -80,6 +81,7 @@ export function useTaskData() {
   const { role } = useAccountAccess();
   const financePayouts = usePayouts().data ?? [];
   const payReadiness = usePayReadiness().data;
+  const reportWorklist = useReportWorklist().data;
   // [TBO-34 C4 2026-07-23] 배지의 classSessions 소비는 sessionDate >= 오늘(다가오는 수업)뿐 —
   //  전체 이력 대신 미래분만 구독(useCalendarSchedule 재사용, schedule prefix 키라 무효화 자동 포함).
   //  실측: 전 페이지 첫 로드가 이 훅으로 전 도메인 14목록을 받고 schedule이 페이로드 1위(12.5KB).
@@ -102,6 +104,7 @@ export function useTaskData() {
     enrollments: useEnrollments().data ?? [],
     classSessions: taskSessions,
     sessionReports: useReports().data ?? [],
+    reportWorklist,
     expenses: useExpenses().data ?? [],
     instructorPayouts: canAccessFinance(role) ? financePayouts : [],
     counselForms: useCounselForms().data ?? [],

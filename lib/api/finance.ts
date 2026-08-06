@@ -12,6 +12,9 @@ import type {
   CreateExpenseInput,
   ReportApprovalStatus,
   ReportStatus,
+  ReportListQuery,
+  ReportWorklist,
+  ReportWorklistQuery,
   PayReadiness,
   SessionReport as SessionReportContract,
   SessionReportView as SessionReportViewContract,
@@ -108,8 +111,10 @@ export const financeApi = {
   },
   // ── 수업 보고서(TBO-05) — 강사 제출 → 관리자 승인/반려 ──
   reports: {
-    list: (sessionId?: number) =>
-      http.get<SessionReport[]>("/reports", { params: sessionId ? { sessionId } : undefined }).then((r) => r.data),
+    list: (query: ReportListQuery = {}) =>
+      http.get<SessionReport[]>("/reports", { params: query }).then((r) => r.data),
+    worklist: (query: ReportWorklistQuery = {}) =>
+      http.get<ReportWorklist>("/reports/worklist", { params: query }).then((r) => r.data),
     get: (id: number) => http.get<SessionReport>(`/reports/${id}`).then((r) => r.data), // [TBO-58 P2] 상세 딥링크
     create: (body: { sessionId: number; studentId: number; instructorId?: number; content: string; progressPage?: string; homework?: string; status?: "draft" | "submitted" }) =>
       http.post<SessionReportRecord>("/reports", body).then((r) => r.data),

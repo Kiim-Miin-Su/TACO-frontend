@@ -2,7 +2,7 @@
 // 예) queryClient.invalidateQueries({ queryKey: qk.schedule.all })
 import type { ScheduleQuery } from "@/lib/api";
 import type { AvailabilityOwner } from "@/types";
-import type { AuthEventQuery, InstructorAttendanceLedgerQuery, StaffAttendanceQuery } from "@kms545487/contracts";
+import type { AuthEventQuery, InstructorAttendanceLedgerQuery, ReportListQuery, ReportWorklistQuery, StaffAttendanceQuery } from "@kms545487/contracts";
 
 export const qk = {
   auth: {
@@ -49,7 +49,12 @@ export const qk = {
     summary: (from?: string | null, to?: string | null) => ["revenue", "summary", from ?? null, to ?? null] as const,
     ceo: (from?: string | null, to?: string | null) => ["revenue", "ceo", from ?? null, to ?? null] as const, // [TBO-60]
   },
-  reports: { all: ["reports"] as const, list: (sessionId?: number, scope = "global") => ["reports", "list", scope, sessionId ?? null] as const, detail: (id: number) => ["reports", "detail", id] as const },
+  reports: {
+    all: ["reports"] as const,
+    list: (query: ReportListQuery = {}, scope = "global") => ["reports", "list", scope, query] as const,
+    worklist: (query: ReportWorklistQuery = {}, scope = "global") => ["reports", "worklist", scope, query] as const,
+    detail: (id: number) => ["reports", "detail", id] as const,
+  },
   students: {
     all: ["students"] as const,
     list: (includeInactive = false) => ["students", "list", includeInactive] as const,

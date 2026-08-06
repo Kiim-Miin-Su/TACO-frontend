@@ -6,9 +6,10 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Badge, EmptyState, LoadingState, SectionCard, PageHeader, type Tone } from '@/components/ui';
 import {
-  useSchedule, useCourses, useInstructors, useEnrollments, useStudents, useReports, useAttendance,
+  useSchedule, useCourses, useSubjects, useInstructors, useEnrollments, useStudents, useReports,
+  useReportWorklist, useAttendance,
 } from '@/lib/queries';
-import { pendingReportSummary, rosterStudentIds } from '@/lib/reports';
+import { rosterStudentIds } from '@/lib/reports';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import type { AttendanceStatus, ReportStatus } from '@/types';
 
@@ -17,24 +18,33 @@ const attTone: Record<AttendanceStatus, Tone> = { present: 'success', late: 'att
 const reportTone: Record<ReportStatus, Tone> = { draft: 'neutral', submitted: 'accent', sent: 'success' };
 const reportLabel: Record<ReportStatus, string> = { draft: '작성중', submitted: '작성완료', sent: '발송됨' };
 import { WEEKDAYS_KO as WEEK, pad2 as pad } from '@/lib/domain/schedule';
+import type { ReportWorklistQuery } from '@kms545487/contracts';
+import { ReportFilterBar } from './ReportFilterBar';
+import { filterReportSessions, hasActiveReportFilters } from '@/lib/domain/report-filters';
 
 export function ReportsCalendarView() {
   const access = useAccountAccess();
+  const [filters, setFilters] = useState<ReportWorklistQuery>({});
   // [B6 C3 2026-07-16] isPending 구독 — 로드 중 "…없습니다" 깜빡임 방지(E0.6 H2 규칙). 주 쿼리=schedule.
   const { data: classSessions = [], isPending: loadingSessions } = useSchedule();
   const { data: courses = [] } = useCourses();
+  const { data: subjects = [] } = useSubjects();
   const { data: instructors = [] } = useInstructors();
   const { data: enrollments = [] } = useEnrollments();
   const { data: students = [] } = useStudents();
-  const { data: sessionReports = [] } = useReports();
+  const { data: sessionReports = [] } = useReports(filters);
+  const { data: worklist, isPending: loadingWorklist } = useReportWorklist(filters);
   const { data: attendance = [] } = useAttendance();
-  // slice(단일 소스 조립) — 배지(navBadges)와 같은 pendingReportSummary 모집단을 쓴다.
-  const reportSlice = { classSessions, enrollments, sessionReports };
-  // 역할 스코프: 강사는 본인 수업만(배지와 동일). 관리자·매니저는 전체.
-  const scopeInstructorId = access.can('instructor.self') ? (access.instructorId ?? undefined) : undefined;
-  // 배지와 동일 모집단(전체 기간 + 역할 스코프): sessions=목록, itemCount=배지 숫자.
-  const pending = pendingReportSummary(reportSlice, scopeInstructorId);
-  const pendingIds = new Set(pending.sessions.map((s) => s.id));
+  const hasFilters = hasActiveReportFilters(filters);
+  const filteredSessions = filterReportSessions({
+    sessions: classSessions,
+    courses,
+    enrollments,
+    reports: sessionReports,
+    query: filters,
+  });
+  const pendingIds = new Set((worklist?.items ?? []).map((item) => item.sessionId));
+  const pendingSessions = filteredSessions.filter((session) => pendingIds.has(session.id));
   // 초기 달 = 오늘(과거 하드코딩 금지 — 2026-06 고정으로 배지·리스트가 어긋나 보이던 원인 중 하나)
   const now = new Date();
   const [ym, setYm] = useState({ y: now.getFullYear(), m: now.getMonth() });
@@ -45,7 +55,7 @@ export function ReportsCalendarView() {
   const daysInMonth = new Date(ym.y, ym.m + 1, 0).getDate();
   const monthStr = `${ym.y}-${pad(ym.m + 1)}`;
   const sessionsOn = (day: number) =>
-    classSessions.filter((cs) => cs.sessionDate === `${monthStr}-${pad(day)}`);
+    filteredSessions.filter((cs) => cs.sessionDate === `${monthStr}-${pad(day)}`);
 
   const cells: (number | null)[] = [];
   for (let i = 0; i < startWeekday; i++) cells.push(null);
@@ -60,10 +70,11 @@ export function ReportsCalendarView() {
   const courseName = (id: number) => courses.find((c) => c.id === id)?.name ?? '수업';
   const instructorName = (id: number | null) => id == null ? '배정중' : (instructors.find((i) => i.id === id)?.name ?? '—');
 
-  const session = selected != null ? classSessions.find((s) => s.id === selected) : undefined;
+  const session = selected != null ? filteredSessions.find((s) => s.id === selected) : undefined;
   // 로스터 = 명시 세션 코호트 우선, 없으면 활성 수강(contracts 순수 함수).
   const roster = session
     ? rosterStudentIds({ enrollments }, session)
+        .filter((id) => filters.studentId == null || id === filters.studentId)
         .map((id) => students.find((s) => s.id === id))
         .filter((s): s is NonNullable<typeof s> => Boolean(s))
     : [];
@@ -76,6 +87,15 @@ export function ReportsCalendarView() {
         actions={(access.can('instructor.self') || access.can('approval.manage'))
           ? <Link href="/reports/write" className="btn btn-primary">리포트 작성하기</Link>
           : undefined}
+      />
+
+      <ReportFilterBar
+        filters={filters}
+        onChange={(next) => { setFilters(next); setSelected(null); }}
+        students={students}
+        subjects={subjects}
+        instructors={instructors}
+        showInstructor={access.can('approval.manage')}
       />
 
       <SectionCard
@@ -134,19 +154,19 @@ export function ReportsCalendarView() {
 
       {/* 수업 리스트 — 캘린더와 별도 컴포넌트(리포트 진행률·바로 작성) */}
       {(() => {
-        const inMonth = classSessions
+        const inMonth = filteredSessions
           .filter((cs) => cs.sessionDate.startsWith(monthStr))
           .sort((a, b) => (a.sessionDate + (a.startTime ?? '')).localeCompare(b.sessionDate + (b.startTime ?? '')));
         // "작성 필요" = 배지와 완전히 같은 모집단(전체 기간·역할 스코프, 월 필터 없음) → 숫자 불일치 원천 차단.
         //  전체 보기 = 선택한 달의 수업 리스트(기존 동작).
         const monthSessions = needOnly
-          ? [...pending.sessions].sort((a, b) => (a.sessionDate + (a.startTime ?? '')).localeCompare(b.sessionDate + (b.startTime ?? '')))
+          ? [...pendingSessions].sort((a, b) => (a.sessionDate + (a.startTime ?? '')).localeCompare(b.sessionDate + (b.startTime ?? '')))
           : inMonth;
         return (
           <SectionCard
             title={
               needOnly
-                ? `작성 필요 — 수업 ${pending.sessionCount}개 · 보고서 ${pending.itemCount}건 (배지 기준)`
+                ? `작성 필요 — 수업 ${worklist?.sessionCount ?? 0}개 · 보고서 ${worklist?.itemCount ?? 0}건 (${hasFilters ? '필터 결과' : '배지 기준'})`
                 : `수업 리스트 (${monthSessions.length}) — ${ym.y}년 ${ym.m + 1}월`
             }
             action={
@@ -155,7 +175,7 @@ export function ReportsCalendarView() {
               </button>
             }
           >
-            {loadingSessions ? (
+            {loadingSessions || loadingWorklist ? (
               <LoadingState />
             ) : monthSessions.length === 0 ? (
               /* [B6 C3 2026-07-16] 자체 div 빈 상태 → EmptyState 규격 */
@@ -165,7 +185,8 @@ export function ReportsCalendarView() {
                 <thead><tr><th>날짜</th><th>수업</th><th>강사</th><th className="text-right">리포트</th><th></th></tr></thead>
                 <tbody>
                   {monthSessions.map((s) => {
-                    const ids = rosterStudentIds({ enrollments }, s);
+                    const ids = rosterStudentIds({ enrollments }, s)
+                      .filter((id) => filters.studentId == null || id === filters.studentId);
                     const done = sessionReports.filter((r) => r.sessionId === s.id && ids.includes(r.studentId) && r.status !== 'draft').length;
                     return (
                       <tr key={s.id} className={s.id === selected ? 'bg-accent-subtle' : ''}>

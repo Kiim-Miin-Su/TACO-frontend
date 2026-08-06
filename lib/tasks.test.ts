@@ -99,26 +99,40 @@ describe('scheduleRequests — 배지·To-do 동일 모집단(R1)', () => {
   });
 });
 
-describe('pay-readiness — 학생별 리포트 SSOT', () => {
-  const readiness = {
-    periodStart: '2026-07-01',
-    periodEnd: '2026-07-31',
+describe('report worklist — 학생별 리포트 SSOT', () => {
+  const worklist = {
+    from: null,
+    to: null,
     instructorId: 1,
-    eligibleSessionIds: [],
-    issueCount: 2,
-    issues: [
-      { id: 'report_missing:91:1', type: 'report_missing' as const, sessionId: 91, instructorId: 1, studentId: 1, sessionDate: '2026-07-10', startTime: '10:00', topic: 'Writing' },
-      { id: 'report_missing:91:4', type: 'report_missing' as const, sessionId: 91, instructorId: 1, studentId: 4, sessionDate: '2026-07-10', startTime: '10:00', topic: 'Writing' },
+    itemCount: 2,
+    sessionCount: 1,
+    items: [
+      { id: 'report:91:1', type: 'report_missing' as const, sessionId: 91, instructorId: 1, studentId: 1, sessionDate: '2026-07-10', startTime: '10:00', topic: 'Writing' },
+      { id: 'report:91:4', type: 'report_missing' as const, sessionId: 91, instructorId: 1, studentId: 4, sessionDate: '2026-07-10', startTime: '10:00', topic: 'Writing' },
     ],
   };
 
   it('같은 수업의 학생 2명 누락을 To-do와 /reports 배지에서 각각 2건으로 유지한다', () => {
-    const s = { ...emptySlice, currentRole: 'instructor' as const, payReadiness: readiness };
+    const s = { ...emptySlice, currentRole: 'instructor' as const, reportWorklist: worklist };
     const result = buildTasks(s, 'instructor', 1);
     expect(result.items.filter((item) => item.group === 'report')).toHaveLength(2);
     expect(result.count).toBe(2);
     expect(navBadges(s, 'instructor', 1)['/reports']).toBe(2);
     expect(navBadges(s, 'instructor', 1, { reports: '2099-01-01T00:00:00.000Z' })['/reports']).toBe(2);
+  });
+
+  it('정산 readiness의 리포트 이슈를 중복 집계하지 않는다', () => {
+    const s = {
+      ...emptySlice,
+      currentRole: 'instructor' as const,
+      reportWorklist: worklist,
+      payReadiness: {
+        periodStart: '2026-07-01', periodEnd: '2026-07-31', instructorId: 1,
+        eligibleSessionIds: [], issueCount: 1,
+        issues: [worklist.items[0]],
+      },
+    };
+    expect(buildTasks(s, 'instructor', 1).items.filter((item) => item.group === 'report')).toHaveLength(2);
   });
 });
 

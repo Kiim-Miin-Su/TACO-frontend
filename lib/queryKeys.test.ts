@@ -25,6 +25,19 @@ describe("queryKeys", () => {
     expect(qk.payouts.readiness("4:manager")).not.toEqual(qk.payouts.readiness("1:instructor"));
   });
 
+  it("keys report lists and worklists by both verified scope and server filters", () => {
+    const filters = { from: '2026-07-01', studentId: 7 };
+    expect(qk.reports.list(filters, '1:instructor')).toEqual([
+      'reports', 'list', '1:instructor', filters,
+    ]);
+    expect(qk.reports.worklist(filters, '4:manager')).toEqual([
+      'reports', 'worklist', '4:manager', filters,
+    ]);
+    expect(qk.reports.worklist(filters, '1:instructor')).not.toEqual(
+      qk.reports.worklist(filters, '4:manager'),
+    );
+  });
+
   it("isolates counsel aggregate by verified account scope", () => {
     expect(qk.counsel.aggregate(7, "3:super_admin")).toEqual(["counsel", "aggregate", "3:super_admin", 7]);
     expect(qk.counsel.aggregate(7, "4:manager")).not.toEqual(qk.counsel.aggregate(7, "3:super_admin"));

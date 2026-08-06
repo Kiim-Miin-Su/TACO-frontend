@@ -5,11 +5,17 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Badge, SectionCard, type Tone } from '@/components/ui';
-import { useSchedule, useCourses, useInstructors, useEnrollments, useStudents, useReports } from '@/lib/queries';
+import {
+  useSchedule, useCourses, useSubjects, useInstructors, useEnrollments, useStudents, useReports,
+  useReportWorklist,
+} from '@/lib/queries';
 import { SessionFeedbackForm } from '@/features/reports/SessionFeedbackForm';
 import { useAccountAccess } from '@/lib/useAccountAccess';
-import { pendingReportSummary, rosterStudentIds, sessionNeedsReport } from '@/lib/reports';
+import { rosterStudentIds } from '@/lib/reports';
 import type { ClassSession, Student } from '@/types';
+import type { ReportWorklistQuery } from '@kms545487/contracts';
+import { ReportFilterBar } from './ReportFilterBar';
+import { filterReportSessions, hasActiveReportFilters } from '@/lib/domain/report-filters';
 
 // [TBO-34 C3] 상태 표기 = session-shared 단일 진실원(사본 제거)
 import { sessionStatusLabel, sessionStatusTone } from '@/features/sessions/session-shared';
@@ -35,31 +41,41 @@ function InstructorReportWriteSurface() {
   const access = useAccountAccess();
   const { data: instructors = [] } = useInstructors();
   const { data: courses = [] } = useCourses();
+  const { data: subjects = [] } = useSubjects();
   const { data: classSessions = [] } = useSchedule();
   const { data: enrollments = [] } = useEnrollments();
   const { data: students = [] } = useStudents();
-  const { data: sessionReports = [] } = useReports();
-  // sessionNeedsReport용 slice(단일 소스 조립)
-  const reportSlice = useMemo(
-    () => ({ classSessions, enrollments, sessionReports }),
-    [classSessions, enrollments, sessionReports],
+  const [filters, setFilters] = useState<ReportWorklistQuery>({});
+  const effectiveFilters = useMemo<ReportWorklistQuery>(
+    () => access.instructorId == null ? filters : { ...filters, instructorId: undefined },
+    [access.instructorId, filters],
   );
-  const [proxyInstructorId, setProxyInstructorId] = useState<number | undefined>();
-  const instructorId = access.instructorId ?? proxyInstructorId ?? instructors[0]?.id;
-  const instructorName = instructors.find((i) => i.id === instructorId)?.name ?? '강사';
+  const { data: sessionReports = [] } = useReports(effectiveFilters);
+  const { data: worklist } = useReportWorklist(effectiveFilters);
+  const hasFilters = hasActiveReportFilters(effectiveFilters);
+  const instructorId = access.instructorId ?? filters.instructorId;
+  const instructorName = instructorId == null
+    ? '전체 강사'
+    : `${instructors.find((i) => i.id === instructorId)?.name ?? '선택한 강사'} 강사`;
   const courseName = (id: number) => courses.find((c) => c.id === id)?.name ?? '수업';
 
   const sessions = useMemo(
     () =>
-      classSessions
-        .filter((s) => instructorId != null && s.instructorId === instructorId)
+      filterReportSessions({
+        sessions: classSessions,
+        courses,
+        enrollments,
+        reports: sessionReports,
+        query: { ...effectiveFilters, instructorId },
+      })
         .sort((a, b) => (b.sessionDate + (b.startTime ?? '')).localeCompare(a.sessionDate + (a.startTime ?? ''))),
-    [classSessions, instructorId],
+    [classSessions, courses, effectiveFilters, enrollments, instructorId, sessionReports],
   );
 
   // 로스터 = 명시 세션 코호트 우선, 없으면 활성 수강(contracts 순수 함수).
   const rosterOf = (session: Pick<ClassSession, 'courseId' | 'studentIds'>): Student[] =>
     rosterStudentIds({ enrollments }, session)
+      .filter((id) => effectiveFilters.studentId == null || id === effectiveFilters.studentId)
       .map((id) => students.find((s) => s.id === id))
       .filter((s): s is Student => Boolean(s));
 
@@ -72,14 +88,13 @@ function InstructorReportWriteSurface() {
     return { done, total: roster.length };
   };
 
-  // 배지와 동일 기준의 "작성 필요"(held·지난 수업·미작성) 목록. 기본은 이 목록만 노출(배지=리스트 일치).
-  // 전체 보기로 전환하면 예정·완료 수업도 열어 편집 가능.
-  const needSessions = useMemo(() => sessions.filter((s) => sessionNeedsReport(reportSlice, s)), [sessions, reportSlice]);
-  // 강사 배지와 같은 숫자(보고서 건수) — 같은 모집단(pendingReportSummary) 사용.
-  const needItemCount = useMemo(
-    () => pendingReportSummary(reportSlice, instructorId ?? undefined).itemCount,
-    [reportSlice, instructorId],
+  const worklistSessionIds = useMemo(
+    () => new Set((worklist?.items ?? []).map((item) => item.sessionId)),
+    [worklist],
   );
+  // 작성 필요 목록과 배지는 같은 서버 worklist 응답을 사용한다.
+  const needSessions = useMemo(() => sessions.filter((session) => worklistSessionIds.has(session.id)), [sessions, worklistSessionIds]);
+  const needItemCount = worklist?.itemCount ?? 0;
   const [needOnly, setNeedOnly] = useState(true);
   const listSessions = needOnly ? needSessions : sessions;
 
@@ -95,30 +110,25 @@ function InstructorReportWriteSurface() {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-title font-bold">리포트 작성</h1>
-          <p className="text-body text-fg-muted mt-0.5">{instructorName} 강사 · 진행중인 모든 수업·학생을 한 페이지에서 작성하세요.</p>
+          <p className="text-body text-fg-muted mt-0.5">{instructorName} · 진행중인 모든 수업·학생을 한 페이지에서 작성하세요.</p>
         </div>
         <Link href="/reports" className="btn btn-sm">← 캘린더로</Link>
       </div>
-      {!access.can('instructor.self') && (
-        <div className="flex items-center gap-2">
-          <label htmlFor="report-instructor" className="text-caption font-medium text-fg-muted">담당 강사</label>
-          <select
-            id="report-instructor"
-            className="input w-full max-w-[280px]"
-            value={instructorId ?? ''}
-            onChange={(event) => setProxyInstructorId(Number(event.target.value) || undefined)}
-          >
-            {instructors.map((instructor) => (
-              <option key={instructor.id} value={instructor.id}>{instructor.name}</option>
-            ))}
-          </select>
-        </div>
-      )}
+      <ReportFilterBar
+        filters={filters}
+        onChange={(next) => { setFilters(next); setSelId(undefined); }}
+        students={students}
+        subjects={subjects}
+        instructors={instructors}
+        showInstructor={access.can('approval.manage')}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 items-start">
         {/* 좌: 내 수업 목록 — 기본은 배지와 동일 기준(작성 필요)만 */}
         <SectionCard
-          title={needOnly ? `작성 필요 — 수업 ${needSessions.length}개 · 보고서 ${needItemCount}건` : `내 수업 (${sessions.length})`}
+          title={needOnly
+            ? `작성 필요 — 수업 ${needSessions.length}개 · 보고서 ${needItemCount}건 (${hasFilters ? '필터 결과' : '배지 기준'})`
+            : `내 수업 (${sessions.length})`}
           action={
             <button className="btn btn-sm" onClick={() => setNeedOnly((v) => !v)}>
               {needOnly ? '전체 보기' : '작성 필요만'}
@@ -129,7 +139,7 @@ function InstructorReportWriteSurface() {
             {listSessions.map((s) => {
               const p = progressOf(s);
               const active = s.id === selId;
-              const need = sessionNeedsReport(reportSlice, s);
+              const need = worklistSessionIds.has(s.id);
               return (
                 <li key={s.id}>
                   <button
