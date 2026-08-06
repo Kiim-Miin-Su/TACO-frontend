@@ -40,6 +40,23 @@ export function courseStudentOptionsFromScheduleResources(
   }));
 }
 
+export type StudentPickerItem = { id: number; name: string; enrolled: boolean; description?: string };
+
+/** [TBO-86I Grace ver.2 2.2] 생성 모달 학생 선택 = 재원생 전체 단일 검색 리스트(수강생 먼저).
+ *  미수강생을 별도 확장 패널로 숨기지 않고 같은 리스트에서 검색·선택하게 하며, 선택 시 서버
+ *  enrollment 생성(자동 연결) 뒤 코호트에 넣는다 — roster 무결성 검사는 그대로 서버가 지킨다.
+ *  관리자 스코프 전용: 강사 요청 모드는 본인 코스 roster만 사용한다(연결 권한 없음). */
+export function studentPickerItemsFromScheduleResources(
+  resources: ScheduleResources,
+  courseId: number,
+): StudentPickerItem[] {
+  return [...courseStudentOptionsFromScheduleResources(resources, courseId)]
+    .sort((a, b) => Number(b.enrolled) - Number(a.enrolled))
+    .map((student) =>
+      student.enrolled ? student : { ...student, description: '미수강 — 선택하면 이 과목에 자동 연결' },
+    );
+}
+
 /** 붙여넣기 코스 재배정용 최소 enrollment 투영. 원천은 course.studentIds 한 곳이다. */
 export function calendarEnrollmentRows(resources?: ScheduleResources | null) {
   return calendarScheduleCourses(resources).flatMap((course) =>

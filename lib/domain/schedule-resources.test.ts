@@ -8,6 +8,7 @@ import {
   courseStudentOptionsFromScheduleResources,
   isInstructorScheduleResource,
   scheduleResourceName,
+  studentPickerItemsFromScheduleResources,
 } from './schedule-resources';
 
 const resources = {
@@ -46,6 +47,17 @@ describe('schedule resources calendar SSOT', () => {
       { id: 10, name: '김학생', enrolled: true },
       { id: 11, name: '박학생', enrolled: false },
     ]);
+  });
+
+  // [TBO-86I Grace ver.2 2.2] 스케줄 추가 모달 학생 리스트가 roster로 좁혀져 재원생이 안 보이던 결함.
+  //  선택지는 항상 재원생 전체(수강생 먼저)여야 하고 미수강생은 자동 연결 안내를 달고 같은 리스트에 나온다.
+  it('생성 모달 학생 선택지는 재원생 전체를 한 리스트로 — 수강생 먼저, 미수강생은 자동 연결 표기', () => {
+    expect(studentPickerItemsFromScheduleResources(resources, 101)).toEqual([
+      { id: 11, name: '박학생', enrolled: true },
+      { id: 10, name: '김학생', enrolled: false, description: '미수강 — 선택하면 이 과목에 자동 연결' },
+    ]);
+    // 미수강생을 숨기지 않는다: 어떤 코스를 골라도 항목 수 = 재원생 전체 수.
+    expect(studentPickerItemsFromScheduleResources(resources, 100)).toHaveLength(2);
   });
 
   it('과목과 활성 enrollment 투영을 같은 scoped course 집합에서 만든다', () => {

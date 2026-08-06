@@ -8,7 +8,7 @@ import { addDaysISO } from "@/lib/format"; // [TBO-69 C4]
 import type { AvailabilityUpsertBody, ScheduleCreateBody, ScheduleSeriesCreateBody } from "@/lib/api";
 import type { Room, ScheduleResource, ScheduleResources } from "@/types";
 import type { CreateHistoricalCompletedSessionInput, SessionStatus } from "@kms545487/contracts";
-import { courseRosterFromScheduleResources, courseStudentOptionsFromScheduleResources, scheduleResourceName } from "@/lib/domain/schedule-resources";
+import { courseRosterFromScheduleResources, scheduleResourceName, studentPickerItemsFromScheduleResources } from "@/lib/domain/schedule-resources";
 // [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
 import { Field, ModalShell, SearchableCheckList } from "@/components/ui";
 import { InlineCreateField } from "@/components/InlineCreateField";
@@ -192,33 +192,38 @@ export function ScheduleCreateModal({
   const pickedStudents = pickedStudentState?.courseId === courseId ? pickedStudentState.ids : null;
   const setPickedStudents = (ids: Set<number> | null) => setPickedStudentState({ courseId, ids });
   const effPicked = pickedStudents ?? new Set(courseRoster.map((r) => r.id));
-  const studentOptions = useMemo(
-    () => courseStudentOptionsFromScheduleResources(resources, courseId),
-    [resources, courseId],
-  );
-  const unlinkedStudents = useMemo(
-    () => studentOptions.filter((student) => !student.enrolled),
-    [studentOptions],
+  // [TBO-86I Grace ver.2 2.2] 학생 선택 = 재원생 전체 단일 검색 리스트(수강생 먼저·기본 전원 체크).
+  //  미수강생을 숨김 패널로 빼지 않는다 — 같은 리스트에서 검색·선택하면 서버 enrollment 생성(자동
+  //  연결) 뒤 코호트에 들어간다. 강사 요청 모드는 연결 권한이 없으므로 본인 코스 roster만 노출한다.
+  const studentPickerItems = useMemo(
+    () =>
+      requestMode
+        ? courseRosterFromScheduleResources(resources, courseId).map((student) => ({ ...student, enrolled: true }))
+        : studentPickerItemsFromScheduleResources(resources, courseId),
+    [requestMode, resources, courseId],
   );
   const createEnrollment = useCreateEnrollment();
-  const [showStudentLinker, setShowStudentLinker] = useState(false);
-  const [studentLinkQuery, setStudentLinkQuery] = useState("");
   const [studentLinkMessage, setStudentLinkMessage] = useState("");
-  const visibleUnlinkedStudents = useMemo(() => {
-    const needle = studentLinkQuery.trim().toLocaleLowerCase("ko");
-    return unlinkedStudents.filter((student) => !needle || student.name.toLocaleLowerCase("ko").includes(needle));
-  }, [studentLinkQuery, unlinkedStudents]);
 
   function linkStudent(studentId: number) {
     setStudentLinkMessage("");
     createEnrollment.mutate({ studentId, courseId }, {
       onSuccess: () => {
-        const student = studentOptions.find((candidate) => candidate.id === studentId);
+        const student = studentPickerItems.find((candidate) => candidate.id === studentId);
         setPickedStudents(new Set([...effPicked, studentId]));
         setStudentLinkMessage(`${student?.name ?? "학생"} 학생을 과목에 연결했습니다.`);
       },
       onError: (error) => setStudentLinkMessage(apiErrorMessage(error, "학생을 과목에 연결하지 못했습니다.")),
     });
+  }
+
+  function toggleStudentPick(studentId: number) {
+    const item = studentPickerItems.find((candidate) => candidate.id === studentId);
+    // 미수강 + 미선택 → 자동 연결(성공 시 onSuccess에서 체크). 그 외에는 일반 코호트 토글.
+    if (item && !item.enrolled && !effPicked.has(studentId)) { linkStudent(studentId); return; }
+    const next = new Set(effPicked);
+    if (next.has(studentId)) next.delete(studentId); else next.add(studentId);
+    setPickedStudents(next);
   }
 
   // ── 가용/불가 대상(오너) — 시간·날짜·반복은 수업과 공유 ──
@@ -432,9 +437,9 @@ export function ScheduleCreateModal({
             >
               <RoomCreateForm compact onCreated={(created) => setRoomId(created.id)} />
             </InlineCreateField>
-            {/* [v0.1.13] 학생 선택(단체) — 코스 활성 수강생 체크리스트. 기본 전원(코스 파생과 동일),
-                일부 해제 시 그 학생들만의 명시 코호트로 저장(개별·소그룹 수업). */}
-            {/* [이슈1] 학생 검색 리스트 — 인원이 많아도 검색으로 좁혀 선택. 전체/해제 빠른 버튼. */}
+            {/* [TBO-86I Grace ver.2 2.2] 학생 선택(단체) — 재원생 전체 단일 검색 리스트(수강생 먼저,
+                기본 전원 체크 = 코스 파생과 동일). 미수강생도 같은 리스트에서 검색·선택 — 선택 시
+                서버 enrollment 자동 생성 후 코호트 포함(성공/실패 인라인 표시). 전체/해제는 수강생만. */}
             <InlineCreateField
               label={`학생 (${effPicked.size}/${courseRoster.length}명 — 기본 전원)`}
               createLabel="새 학생 등록"
@@ -442,8 +447,8 @@ export function ScheduleCreateModal({
               onToggle={() => toggleInlineCreator("student")}
               canCreate={!requestMode}
               controls={<div className="space-y-2">
-                {courseRoster.length === 0 ? (
-                  <p className="text-caption text-fg-subtle">이 과목의 활성 수강생이 없습니다.</p>
+                {studentPickerItems.length === 0 ? (
+                  <p className="text-caption text-fg-subtle">선택할 수 있는 재원생이 없습니다. 아래에서 새 학생을 등록해 주세요.</p>
                 ) : (
                   <div className="space-y-1">
                   <div className="flex gap-1">
@@ -451,56 +456,17 @@ export function ScheduleCreateModal({
                     <button type="button" className="btn btn-sm" onClick={() => setPickedStudents(new Set())}>해제</button>
                   </div>
                   <SearchableCheckList
-                    items={courseRoster}
+                    items={studentPickerItems}
                     selected={effPicked}
-                    placeholder="학생 이름 검색"
-                    onToggle={(id) => { const n = new Set(effPicked); if (n.has(id)) n.delete(id); else n.add(id); setPickedStudents(n); }}
+                    placeholder="재원생 이름 검색"
+                    onToggle={toggleStudentPick}
                   />
                   </div>
                 )}
-                {!requestMode && (
-                  <div className="border-t pt-2 space-y-2" style={{ borderColor: "var(--color-line-muted)" }}>
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      aria-expanded={showStudentLinker}
-                      onClick={() => { setShowStudentLinker((current) => !current); setStudentLinkMessage(""); }}
-                    >
-                      {showStudentLinker ? "학생 연결 접기" : "+ 재원생 연결"}
-                    </button>
-                    {showStudentLinker && (
-                      <div className="space-y-1.5">
-                        <input
-                          className="input w-full"
-                          value={studentLinkQuery}
-                          placeholder="전체 재원생 검색"
-                          onChange={(event) => setStudentLinkQuery(event.target.value)}
-                        />
-                        <div className="max-h-32 overflow-y-auto border rounded-md divide-y" style={{ borderColor: "var(--color-line-muted)" }}>
-                          {!visibleUnlinkedStudents.length ? (
-                            <p className="p-2 text-caption text-fg-subtle">연결할 재원생이 없습니다.</p>
-                          ) : visibleUnlinkedStudents.map((student) => (
-                            <div key={student.id} className="flex items-center justify-between gap-2 p-2">
-                              <span className="text-caption truncate" title={student.name}>{student.name}</span>
-                              <button
-                                type="button"
-                                className="btn btn-sm shrink-0"
-                                disabled={createEnrollment.isPending}
-                                onClick={() => linkStudent(student.id)}
-                              >
-                                연결
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {studentLinkMessage && (
-                      <p className={`text-caption ${createEnrollment.isError ? "text-danger" : "text-success"}`} role="status">
-                        {studentLinkMessage}
-                      </p>
-                    )}
-                  </div>
+                {studentLinkMessage && (
+                  <p className={`text-caption ${createEnrollment.isError ? "text-danger" : "text-success"}`} role="status">
+                    {studentLinkMessage}
+                  </p>
                 )}
               </div>}
             >
