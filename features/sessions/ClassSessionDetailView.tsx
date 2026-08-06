@@ -25,6 +25,7 @@ import type { AttendanceStatus, InstructorAttendanceStatus, SessionStatus } from
 import { shortDate } from "@/lib/format";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 import { InstructorAttendanceClearModal } from "@/features/attendance/InstructorAttendanceClearModal";
+import { InstructorAttendanceCorrectionModal } from "@/features/attendance/InstructorAttendanceCorrectionModal";
 import { editableSessionStatuses } from "@/lib/domain/lantiv";
 
 // [TBO-34 C3] 상태 표기 = session-shared 단일 진실원(사본 제거)
@@ -44,6 +45,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   const upsert = useUpsertAttendance();
   const [manageModal, setManageModal] = useState<'edit' | 'remove' | null>(null); // [TBO-58 P2]
   const [clearAttendanceOpen, setClearAttendanceOpen] = useState(false);
+  const [correctionOpen, setCorrectionOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const toggle = (id: number) => setExpanded((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -139,9 +141,14 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                     {paid ? "시수 인정(진행·결석 아님)" : `시수 제외${session.instructorAttendance === "absent" ? "(결석)" : session.status === "makeup" ? "(보강)" : session.status !== "held" ? `(${statusLabelOf(session.status) ?? session.status})` : ""}`}
                   </span>
                   {session.instructorId != null && !canManageAttendance && (
-                    <span className="text-caption text-fg-subtle ml-auto">
-                      열람 전용 (수업 출결 관리 권한 필요)
-                    </span>
+                    <div className="ml-auto inline-flex items-center gap-2">
+                      <span className="text-caption text-fg-subtle">열람 전용</span>
+                      {ownSession && access.can('instructor.self') && (
+                        <button type="button" className="btn btn-sm" onClick={() => setCorrectionOpen(true)}>
+                          정정 요청
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </SectionCard>
@@ -187,6 +194,12 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
       <InstructorAttendanceClearModal sessionId={clearAttendanceOpen ? sessionId : null}
         onClose={() => setClearAttendanceOpen(false)}
         onSubmit={(id, reason) => { setClearAttendanceOpen(false); attendanceCommand.clearAttendance(id, reason); }} />
+      {correctionOpen && loaded && (
+        <InstructorAttendanceCorrectionModal
+          session={loaded}
+          onClose={() => setCorrectionOpen(false)}
+        />
+      )}
       <AccountingImpactModal prompt={attendanceCommand.accountingPrompt} onClose={attendanceCommand.dismissAccountingPrompt} onConfirm={attendanceCommand.confirmAccountingImpact} />
       <AccountingImpactModal
         prompt={removeSchedule.accountingPrompt}

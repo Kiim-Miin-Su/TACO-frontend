@@ -21,6 +21,9 @@ import type { ScheduleRequestEx, UpdateScheduleRequestBody } from '@/lib/api';
 import { apiErrorMessage } from '@/lib/api-error';
 
 const SESSION_KIND_LABEL: Record<string, string> = { class: '수업', level_test: '진단고사', counsel: '상담' };
+const INSTRUCTOR_ATTENDANCE_LABEL: Record<string, string> = {
+  present: '출석', late: '지각', absent: '결석', makeup: '보강',
+};
 
 function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -63,7 +66,11 @@ export function RequestDetailModal({
   const [err, setErr] = useState<string | null>(null);
 
   const isAvailability = r.requestKind === 'availability_upsert' || r.requestKind === 'availability_delete';
-  const editable = r.status === 'pending' && r.requestKind !== 'availability_delete' && r.requestKind !== 'session_delete'; // 삭제 요청은 수정 항목 없음(BE 400)
+  const isAttendanceCorrection = r.requestKind === 'instructor_attendance_correction';
+  const editable = r.status === 'pending'
+    && r.requestKind !== 'availability_delete'
+    && r.requestKind !== 'session_delete'
+    && !isAttendanceCorrection; // 출결 before snapshot은 불변이며 BE도 pending PATCH를 차단한다.
   const kindLabel = REQUEST_KIND_LABEL[r.requestKind ?? 'session_create'] ?? '요청';
   const statusLabel = REQUEST_STATUS_LABEL[r.status] ?? r.status;
 
@@ -172,6 +179,8 @@ export function RequestDetailModal({
             <>요청 내용 수정 — 저장 시 감사 이력(diff)에 기록됩니다</>
           ) : isAvailability ? (
             <>요청 내용 — {AVAILABILITY_KIND_LABEL[targetBlock?.kind ?? r.availabilityKind ?? 'available']}{r.targetAvailabilityId != null ? ` (대상 블록 #${r.targetAvailabilityId})` : ' (신규)'}</>
+          ) : isAttendanceCorrection ? (
+            <>요청 내용 — 강사 출결 정정{r.targetSessionId != null ? ` (대상 세션 #${r.targetSessionId})` : ''}</>
           ) : (
             <>요청 내용 — {r.requestKind === 'session_delete' ? `수업 삭제${r.targetSessionId != null ? ` (대상 세션 #${r.targetSessionId})` : ''}` : r.requestKind === 'session_update' ? `수업 변경${r.targetSessionId != null ? ` (대상 세션 #${r.targetSessionId})` : ''}` : '새 수업'}</>
           )}
@@ -252,6 +261,25 @@ export function RequestDetailModal({
               </tbody>
             </table>
           )
+        ) : isAttendanceCorrection ? (
+          <div className="p-3 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+              <MetaRow label="과목">{courseName(r.courseId)}</MetaRow>
+              <MetaRow label="강사">{instructorName(r.instructorId)}</MetaRow>
+              <MetaRow label="날짜"><span className="mono">{r.sessionDate ?? '—'}</span></MetaRow>
+              <MetaRow label="시간"><span className="mono">{r.startTime ?? '—'}{r.endTime ? `~${r.endTime}` : ''}{r.durationMinutes ? ` (${r.durationMinutes}분)` : ''}</span></MetaRow>
+            </div>
+            <table className="table">
+              <thead><tr><th>항목</th><th>요청 전</th><th>요청</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td className="text-fg-muted">강사 출결</td>
+                  <td>{r.instructorAttendanceBefore ? INSTRUCTOR_ATTENDANCE_LABEL[r.instructorAttendanceBefore] ?? r.instructorAttendanceBefore : '미선택'}</td>
+                  <td className="font-semibold text-accent">{r.requestedInstructorAttendance ? INSTRUCTOR_ATTENDANCE_LABEL[r.requestedInstructorAttendance] ?? r.requestedInstructorAttendance : '—'}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         ) : (
           <div className="p-3 grid grid-cols-2 gap-x-4 gap-y-1">
             <MetaRow label="코스">{courseName(r.courseId)}</MetaRow>

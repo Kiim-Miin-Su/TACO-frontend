@@ -16,6 +16,7 @@ export const REQUEST_KIND_LABEL: Record<string, string> = {
   session_delete: "수업 삭제 요청",
   availability_upsert: "가용/불가 변경 요청",
   availability_delete: "가용/불가 삭제 요청",
+  instructor_attendance_correction: "강사 출결 정정 요청",
 };
 
 export const REQUEST_STATUS_LABEL: Record<string, string> = {
@@ -33,6 +34,8 @@ export const REQUEST_FIELD_LABEL: Record<string, string> = {
   availabilityStartTime: "시작", availabilityEndTime: "종료",
   availabilityEffectiveFrom: "적용 시작", availabilityEffectiveTo: "적용 종료",
   impactSessionIds: "영향 수업", changeSummary: "요약",
+  instructorAttendanceBefore: "요청 전 강사 출결",
+  requestedInstructorAttendance: "요청 강사 출결",
   scope: "반복 적용 범위",
 };
 

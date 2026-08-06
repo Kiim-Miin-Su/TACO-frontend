@@ -239,10 +239,13 @@ export function ApprovalsView() {
   const pendingProfileRequests = profileChangeRequests.filter((r) => r.status === 'pending');
   // 승인 — 충돌 409면 force 재시도 확인(세션 생성과 동일 규약: 서버 createSession 재검사)
   const onApproveRequest = (r: ScheduleRequestEx, options: { forceConflicts?: boolean; acknowledgeAccountingImpact?: boolean; expectedAccountingImpactHash?: string } = {}) => {
+    setRequestMsg(null);
     approveRequest.mutate({ id: r.id, ...options }, {
       onSuccess: () => setRequestMsg(
         r.requestKind === 'availability_upsert' || r.requestKind === 'availability_delete'
           ? '승인 — 가용시간 변경이 반영되었습니다.'
+          : r.requestKind === 'instructor_attendance_correction'
+            ? '승인 — 강사 출결과 관련 상태가 갱신되었습니다.'
           : r.requestKind === 'session_update'
             ? '승인 — 수업 변경이 캘린더에 반영되었습니다.'
             : r.requestKind === 'session_delete'
@@ -276,6 +279,13 @@ export function ApprovalsView() {
       },
     });
   };
+  const onRejectRequest = (id: number, reason: string) => {
+    setRequestMsg(null);
+    rejectRequest.mutate({ id, reason }, {
+      onSuccess: () => setRequestMsg('반려 — 신청자에게 사유가 전달되었습니다.'),
+      onError: (error) => setRequestMsg(apiErrorMessage(error, '반려하지 못했습니다. 다시 시도해 주세요.')),
+    });
+  };
   const pendingExpenses = expenseApprovalRows(expenses); // [핫픽스 07-20 ②] 단일 소스(lib/approvals) — 배지·대시보드와 같은 함수
   const pendingPayouts = instructorPayouts.filter((p) => p.status === 'pending');
   // 작성완료(submitted)·미승인 리포트 — 승인 시 시수 적격으로 편입
@@ -294,6 +304,7 @@ export function ApprovalsView() {
     if (r.requestKind === 'availability_delete') return '가용시간 삭제';
     if (r.requestKind === 'session_update') return '수업 변경';
     if (r.requestKind === 'session_delete') return '수업 삭제';
+    if (r.requestKind === 'instructor_attendance_correction') return '강사 출결 정정';
     return r.topic ?? courses.find((x) => x.id === r.courseId)?.name ?? '수업';
   };
   const requestWhen = (r: ScheduleRequestEx) => {
@@ -303,6 +314,7 @@ export function ApprovalsView() {
     if (r.requestKind === 'availability_delete') return `블록 #${r.targetAvailabilityId ?? '-'}`;
     if (r.requestKind === 'session_update') return `${r.sessionDate ?? '-'} ${r.startTime ?? ''}${r.endTime ? `~${r.endTime}` : ''}`;
     if (r.requestKind === 'session_delete') return `${r.sessionDate ?? '-'} ${r.startTime ?? ''}${r.endTime ? `~${r.endTime}` : ''}`;
+    if (r.requestKind === 'instructor_attendance_correction') return `${r.sessionDate ?? '-'} ${r.startTime ?? ''}${r.endTime ? `~${r.endTime}` : ''}`;
     return `${r.sessionDate ?? '-'} ${r.startTime ?? ''}${r.endTime ? `~${r.endTime}` : ''}`;
   };
   const requestDetail = (r: ScheduleRequestEx) => {
@@ -316,6 +328,7 @@ export function ApprovalsView() {
       return `${r.changeSummary ?? `세션 #${r.targetSessionId ?? '-'} 변경`}${scope}${reason}`;
     }
     if (r.requestKind === 'session_delete') return r.changeSummary ?? `세션 #${r.targetSessionId ?? '-'} 삭제`;
+    if (r.requestKind === 'instructor_attendance_correction') return r.changeSummary ?? `세션 #${r.targetSessionId ?? '-'} 출결 정정`;
     return r.kind && r.kind !== 'class' ? (r.kind === 'level_test' ? '진단고사' : '상담') : '수업';
   };
   const approveDetailItem = (item: ApprovalDetailItem) => {
@@ -334,10 +347,10 @@ export function ApprovalsView() {
 
   // 수업·가용시간 변경 요청 승인/반려는 BE가 manager 이상 허용(ADMIN_ROLES) — 섹션 컴포넌트로 분리해 재사용.
   const requestsSection = (
-    <SectionCard title={`수업·가용시간 변경 요청 승인 대기 (${pendingRequests.length})`}>
+    <SectionCard title={`수업·가용시간·출결 요청 승인 대기 (${pendingRequests.length})`}>
       {requestMsg && <div className="px-4 pt-3 text-caption text-accent">{requestMsg}</div>}
       {pendingRequests.length === 0 ? (
-        <EmptyState message="대기 중인 수업·가용시간 변경 요청이 없습니다. 승인 시 캘린더와 가용시간에 반영됩니다(충돌 재검사)." />
+        <EmptyState message="대기 중인 수업·가용시간·출결 요청이 없습니다. 승인 시 각 권위 원장에 반영됩니다." />
       ) : (
         <TableWrap minWidth={720}>
         <table className="table">
@@ -373,9 +386,9 @@ export function ApprovalsView() {
       {requestReject != null && (
         <ReasonModal
           mode="input"
-          title="수업·가용시간 요청 반려 — 사유 필수"
+          title="수업·가용시간·출결 요청 반려 — 사유 필수"
           onClose={() => setRequestReject(null)}
-          onSubmit={(reason) => { rejectRequest.mutate({ id: requestReject, reason }); setRequestReject(null); }}
+          onSubmit={(reason) => { onRejectRequest(requestReject, reason); setRequestReject(null); }}
         />
       )}
       {forceApprove != null && (
@@ -450,7 +463,7 @@ export function ApprovalsView() {
       node: <ProfileChangeRequestsSection requests={pendingProfileRequests} users={users} />,
       label: '프로필 변경 요청',
     },
-    { key: 'requests', count: pendingRequests.length, node: requestsSection, label: '수업·가용시간 요청' },
+    { key: 'requests', count: pendingRequests.length, node: requestsSection, label: '수업·가용시간·출결 요청' },
     {
       key: 'reports', count: pendingReports.length, label: '수업 보고서',
       node: (
@@ -577,7 +590,7 @@ export function ApprovalsView() {
         </div>
       )}
 
-      <p className="text-caption text-fg-subtle">프로필·수업·가용시간 변경 요청과 보고서는 매니저 이상이 처리합니다. 가입 신청은 매니저(강사), 관리자(강사·매니저), 대표(대표 외)가 처리하며 지출·강사 페이는 대표만 처리합니다.</p>
+      <p className="text-caption text-fg-subtle">프로필·수업·가용시간·출결 정정 요청과 보고서는 매니저 이상이 처리합니다. 가입 신청은 매니저(강사), 관리자(강사·매니저), 대표(대표 외)가 처리하며 지출·강사 페이는 대표만 처리합니다.</p>
 
       {detailItem && (
         <ApprovalItemDetailModal

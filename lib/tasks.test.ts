@@ -53,6 +53,39 @@ describe('scheduleRequests — 배지·To-do 동일 모집단(R1)', () => {
     expect(navBadges(s, 'instructor', 1)['/calendar']).toBe(1); // 반려 1건 = 캘린더 탭 배지
   });
 
+  it('출결 정정 요청은 관리자 승인 항목과 강사 대기·반려·승인 결과를 같은 원장으로 표시한다', () => {
+    const attendanceRequest = (id: number, status: ScheduleRequest['status'], reason?: string) => req({
+      id,
+      status,
+      reason,
+      requestKind: 'instructor_attendance_correction',
+      targetSessionId: 71,
+      instructorAttendanceBefore: 'present',
+      requestedInstructorAttendance: 'late',
+      changeSummary: '강사 출결 정정 요청 · 출석 → 지각',
+    });
+    const admin = buildTasks({ ...emptySlice, scheduleRequests: [attendanceRequest(11, 'pending')] }, 'manager');
+    expect(admin.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'schedule-request-11', title: expect.stringContaining('출결 정정 승인 대기'), href: '/admin/approvals' }),
+    ]));
+
+    const instructor = buildTasks({
+      ...emptySlice,
+      currentRole: 'instructor' as const,
+      scheduleRequests: [
+        attendanceRequest(11, 'pending'),
+        attendanceRequest(12, 'rejected', '출입 기록과 일치하지 않습니다.'),
+        attendanceRequest(13, 'approved'),
+      ],
+    }, 'instructor', 1);
+    expect(instructor.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'my-request-11', title: '출결 정정 승인 대기 중', href: '/attendance', counts: false }),
+      expect.objectContaining({ id: 'my-request-12', title: '출결 정정 반려', href: '/attendance', counts: true }),
+      expect.objectContaining({ id: 'my-request-13', title: '출결 정정 승인됨', href: '/attendance', counts: false }),
+    ]));
+    expect(navBadges({ ...emptySlice, currentRole: 'instructor' as const, scheduleRequests: [attendanceRequest(12, 'rejected')] }, 'instructor', 1)['/attendance']).toBe(1);
+  });
+
   it('강사 식별자가 없으면 데모 강사로 폴백하지 않는다', () => {
     const s = { ...emptySlice, currentRole: 'instructor' as const, scheduleRequests: [req({ id: 1, status: 'rejected' })] };
     expect(buildTasks(s, 'instructor').items).toEqual([]);

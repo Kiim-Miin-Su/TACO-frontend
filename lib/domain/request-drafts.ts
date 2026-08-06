@@ -1,4 +1,4 @@
-import type { RecurrenceScope } from '@kms545487/contracts';
+import type { InstructorAttendanceStatus, RecurrenceScope } from '@kms545487/contracts';
 import type {
   AvailabilityUpsertBody,
   CreateScheduleRequestBody,
@@ -47,6 +47,19 @@ export function buildSessionDeleteRequestBody(
     targetSessionId,
     requestReason: requestReason.trim(),
     scope,
+  };
+}
+
+export function buildInstructorAttendanceCorrectionRequestBody(
+  targetSessionId: number,
+  requestedInstructorAttendance: InstructorAttendanceStatus,
+  requestReason: string,
+): CreateScheduleRequestBody {
+  return {
+    requestKind: 'instructor_attendance_correction',
+    targetSessionId,
+    requestedInstructorAttendance,
+    requestReason: requestReason.trim(),
   };
 }
 

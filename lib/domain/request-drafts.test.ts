@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAvailabilityRequestBody,
+  buildInstructorAttendanceCorrectionRequestBody,
   buildSessionCreateRequestBatch,
   buildSessionCreateRequestBody,
   buildSessionDeleteRequestBody,
@@ -50,6 +51,15 @@ describe('request draft builders', () => {
       targetSessionId: 9,
       requestReason: '반복 수업 종료',
       scope: 'this_and_following',
+    });
+  });
+
+  it('강사 출결 정정 요청은 대상·목표 출결·trim 사유만 전송한다', () => {
+    expect(buildInstructorAttendanceCorrectionRequestBody(91, 'late', '  실제로는 지각했습니다.  ')).toEqual({
+      requestKind: 'instructor_attendance_correction',
+      targetSessionId: 91,
+      requestedInstructorAttendance: 'late',
+      requestReason: '실제로는 지각했습니다.',
     });
   });
 

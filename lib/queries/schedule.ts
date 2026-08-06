@@ -363,7 +363,7 @@ export const useApproveScheduleRequest = () => {
       upsertScheduleRequestCache(qc, scope, data.request);
       const kind = data.request.requestKind;
       await refreshScheduleRequestLifecycle(qc, {
-        schedule: kind == null || kind === "session_create" || kind === "session_update" || kind === "session_delete",
+        schedule: kind == null || kind === "session_create" || kind === "session_update" || kind === "session_delete" || kind === "instructor_attendance_correction",
         availability: kind === "availability_upsert" || kind === "availability_delete",
       });
     },

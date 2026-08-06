@@ -17,6 +17,7 @@ import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 import { internalRoute } from "@/lib/navigation-security";
 import { StaffAttendanceLedgerView } from "./StaffAttendanceLedgerView";
 import { InstructorAttendanceClearModal } from "./InstructorAttendanceClearModal";
+import { InstructorAttendanceCorrectionModal } from "./InstructorAttendanceCorrectionModal";
 
 // 상태 배지(셀) — LMS 관례: P/L/A/E 원형 + 색
 const CELL: Record<AttendanceStatus, { label: string; bg: string }> = {
@@ -59,6 +60,7 @@ export function AttendanceBookView() {
   const [ym, setYm] = useState(thisYm());
   const [courseId, setCourseId] = useState<number | null>(null);
   const [clearInstructorSessionId, setClearInstructorSessionId] = useState<number | null>(null);
+  const [correctionSession, setCorrectionSession] = useState<ScheduleRow | null>(null);
 
   // [TBO-21 P1] 로그인 강사의 도메인 강사 id(=JWT sub)만 신뢰한다. 해석 실패 시 전체 코스 폴백 금지.
   const myInstId = access.instructorId;
@@ -404,6 +406,15 @@ export function AttendanceBookView() {
                                 onMark={(st) => markInstructor(s.id, st)}
                                 onClear={() => clearInstructor(s.id)}
                               />
+                              {instructorSelf && Number(s.instructorId) === myInstId && (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm h-6 px-1.5 text-micro"
+                                  onClick={() => setCorrectionSession(s)}
+                                >
+                                  정정 요청
+                                </button>
+                              )}
                             </span>
                           ))}
                         </div>
@@ -457,6 +468,12 @@ export function AttendanceBookView() {
       <InstructorAttendanceClearModal sessionId={clearInstructorSessionId}
         onClose={() => setClearInstructorSessionId(null)}
         onSubmit={(id, reason) => { setClearInstructorSessionId(null); attendanceCommand.clearAttendance(id, reason); }} />
+      {correctionSession && (
+        <InstructorAttendanceCorrectionModal
+          session={correctionSession}
+          onClose={() => setCorrectionSession(null)}
+        />
+      )}
       <AccountingImpactModal prompt={attendanceCommand.accountingPrompt} onClose={attendanceCommand.dismissAccountingPrompt} onConfirm={attendanceCommand.confirmAccountingImpact} />
       {/* [TBO-79 B4] 출결 초기화도 held → scheduled 역전이라 정산 예상액이 바뀐다 — 같은 확인 모달. */}
       <AccountingImpactModal prompt={clearAttendance.accountingPrompt} onClose={clearAttendance.dismissAccountingPrompt} onConfirm={clearAttendance.confirmAccountingImpact} />

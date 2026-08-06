@@ -217,11 +217,17 @@ function adminTasks(s: StoreSlice): TaskItem[] {
     //  요청자 표기 폴백은 승인센터(ApprovalsView)와 동일 규칙(instructorId ?? owner ?? requesterId).
     const isAvail = r.requestKind === 'availability_upsert' || r.requestKind === 'availability_delete';
     const isUpdate = r.requestKind === 'session_update';
-    const requestLabel = isAvail ? '가용시간 변경 승인 대기' : isUpdate ? '수업 변경 승인 대기' : '수업 요청 승인 대기';
+    const isAttendanceCorrection = r.requestKind === 'instructor_attendance_correction';
+    const requestLabel = isAvail ? '가용시간 변경 승인 대기'
+      : isAttendanceCorrection ? '출결 정정 승인 대기'
+        : isUpdate ? '수업 변경 승인 대기' : '수업 요청 승인 대기';
     out.push({
       id: `schedule-request-${r.id}`, group: 'schedule', tone: 'attention', counts: true,
       title: `${requestLabel} — ${iname(r.instructorId ?? r.availabilityOwnerId ?? r.requesterId)}`,
-      detail: isAvail ? (r.changeSummary ?? '가용/불가 변경 요청') : isUpdate ? (r.changeSummary ?? `${r.sessionDate} ${r.startTime} · 수업 변경`) : `${r.sessionDate} ${r.startTime} · ${r.topic ?? '수업'}`,
+      detail: isAvail ? (r.changeSummary ?? '가용/불가 변경 요청')
+        : isAttendanceCorrection ? (r.changeSummary ?? `${r.sessionDate} ${r.startTime} · 출결 정정`)
+          : isUpdate ? (r.changeSummary ?? `${r.sessionDate} ${r.startTime} · 수업 변경`)
+            : `${r.sessionDate} ${r.startTime} · ${r.topic ?? '수업'}`,
       href: '/admin/approvals',
     });
   }
@@ -294,21 +300,31 @@ function instructorTasks(s: StoreSlice, instructorId: number): TaskItem[] {
   for (const r of s.scheduleRequests) {
     const isAvail = r.requestKind === 'availability_upsert' || r.requestKind === 'availability_delete';
     const isUpdate = r.requestKind === 'session_update';
-    const what = isAvail ? (r.changeSummary ?? '가용/불가 변경') : isUpdate ? (r.changeSummary ?? `${r.sessionDate} ${r.startTime}`) : `${r.sessionDate} ${r.startTime}`;
+    const isAttendanceCorrection = r.requestKind === 'instructor_attendance_correction';
+    const what = isAvail ? (r.changeSummary ?? '가용/불가 변경')
+      : isAttendanceCorrection ? (r.changeSummary ?? `${r.sessionDate} ${r.startTime} · 출결 정정`)
+        : isUpdate ? (r.changeSummary ?? `${r.sessionDate} ${r.startTime}`) : `${r.sessionDate} ${r.startTime}`;
     if (r.status === 'rejected') {
       out.push({
         id: `my-request-${r.id}`, group: 'schedule', tone: 'danger', counts: true,
-        title: `${isAvail ? '가용시간 변경 반려' : isUpdate ? '수업 변경 반려' : '수업 요청 반려'} — ${isAvail || isUpdate ? '' : r.topic ?? '수업'}`.replace(/ — $/, ''),
+        title: `${isAvail ? '가용시간 변경 반려' : isAttendanceCorrection ? '출결 정정 반려' : isUpdate ? '수업 변경 반려' : '수업 요청 반려'} — ${isAvail || isUpdate || isAttendanceCorrection ? '' : r.topic ?? '수업'}`.replace(/ — $/, ''),
         // [핫픽스 07-20 ③] 반려 사유(rejectedReason)를 표기 — 종전엔 요청 사유(r.reason)를 보여줬다.
         detail: `${what} · 사유: ${(r as { rejectedReason?: string }).rejectedReason ?? r.reason ?? '-'}`,
-        href: '/calendar',
+        href: isAttendanceCorrection ? '/attendance' : '/calendar',
       });
     } else if (r.status === 'pending') {
       out.push({
         id: `my-request-${r.id}`, group: 'schedule', tone: 'neutral', counts: false,
-        title: `${isAvail ? '가용시간 변경 승인 대기 중' : isUpdate ? '수업 변경 승인 대기 중' : `수업 요청 승인 대기 중 — ${r.topic ?? '수업'}`}`,
+        title: `${isAvail ? '가용시간 변경 승인 대기 중' : isAttendanceCorrection ? '출결 정정 승인 대기 중' : isUpdate ? '수업 변경 승인 대기 중' : `수업 요청 승인 대기 중 — ${r.topic ?? '수업'}`}`,
         detail: what,
-        href: '/calendar',
+        href: isAttendanceCorrection ? '/attendance' : '/calendar',
+      });
+    } else if (r.status === 'approved' && isAttendanceCorrection) {
+      out.push({
+        id: `my-request-${r.id}`, group: 'attendance', tone: 'success', counts: false,
+        title: '출결 정정 승인됨',
+        detail: what,
+        href: '/attendance',
       });
     }
   }
@@ -375,14 +391,17 @@ export function navBadges(
     // 보강 필요 + 반려된 내 수업 요청(재요청 필요) — 캘린더 탭
     const myMakeup = makeupNeeds(s, instructorId).filter((m) => !m.resolved);
     const myRejected = s.scheduleRequests.filter((r) => r.status === 'rejected');
+    const rejectedAttendanceCorrections = myRejected.filter((r) => r.requestKind === 'instructor_attendance_correction');
+    const rejectedCalendarRequests = myRejected.filter((r) => r.requestKind !== 'instructor_attendance_correction');
     const readinessIssues = (s.payReadiness?.issues ?? []).filter((row) => row.instructorId === instructorId);
     const attendanceDue = s.classSessions.filter(
       (row) => row.attendanceRequired && Number(row.instructorId) === instructorId,
     );
-    put('/attendance', attendanceDue.length, readinessActivityMs(attendanceDue));
+    put('/attendance', attendanceDue.length + rejectedAttendanceCorrections.length,
+      Math.max(readinessActivityMs(attendanceDue), latestActivityMs(rejectedAttendanceCorrections)));
     const executionIssues = readinessIssues.filter((row) => row.type === 'session_execution_missing' || row.type === 'session_roster_missing');
-    put('/calendar', myMakeup.length + myRejected.length + executionIssues.length,
-      Math.max(latestActivityMs(myMakeup.map((m) => m.session)), latestActivityMs(myRejected), readinessActivityMs(executionIssues)));
+    put('/calendar', myMakeup.length + rejectedCalendarRequests.length + executionIssues.length,
+      Math.max(latestActivityMs(myMakeup.map((m) => m.session)), latestActivityMs(rejectedCalendarRequests), readinessActivityMs(executionIssues)));
     // [핫픽스 2026-07-20 ③] 반려 사유 배지 — 내 정산 반려/회수(/payouts), 보고서 반려는 위 /reports
     //  모집단과 별개 상태(approvalStatus rejected — status는 submitted 유지)라 여기서 합산.
     const reportIssues = readinessIssues.filter((row) => REPORT_READINESS_TYPES.has(row.type));
