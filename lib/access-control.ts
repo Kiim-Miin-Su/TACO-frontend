@@ -32,8 +32,16 @@ export function accountScopeKey(account: Pick<VerifiedAccount, "id" | "role" | "
   return account ? `${account.id}:${account.role}:v${account.accessVersion}` : "anon";
 }
 
-export function instructorIdFor(account: Pick<VerifiedAccount, "id" | "role"> | null): number | null {
-  return account?.role === "instructor" ? account.id : null;
+// [TBO-87] 겸직(강사+매니저) — 강사 정체성은 role 단독이 아니라 instructor.self capability가 권위다.
+//  BE가 활성 강사원부를 보유한 manager/admin에 roles=['role','instructor']를 합성해 effective에
+//  instructor.self가 포함된다. 겸직 매니저도 본인 세션 어포던스(인라인 리포트·내 출석 스코프)에서
+//  instructorId=본인 id를 얻는다. 제한(순수 강사 스코프 강제)은 이 값이 아니라 role/관리 capability로 판정.
+export function instructorIdFor(
+  account: (Pick<VerifiedAccount, "id" | "role"> & Partial<Pick<VerifiedAccount, "effectiveCapabilities">>) | null,
+): number | null {
+  if (!account) return null;
+  const teaching = account.role === "instructor" || account.effectiveCapabilities?.includes("instructor.self") === true;
+  return teaching ? account.id : null;
 }
 
 // [TBO-65 P2 FE-8 2026-07-26] super_admin 판정 단일 진실원 — 컴포넌트 리터럴 비교 5곳 수렴.

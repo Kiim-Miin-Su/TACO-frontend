@@ -9,6 +9,7 @@ import { Badge, ClickableTableRow, EmptyState, LoadingState, SectionCard, StatCa
 import { MultiPick } from "@/features/calendar/CalendarFilterBar";
 import { apiErrorMessage } from "@/lib/api-error";
 import {
+  staffAttendanceStatusTone,
   filterLedgerByInstructors,
   groupAttendanceLedger,
   LESSON_ATTENDANCE_LABEL,
@@ -25,12 +26,6 @@ import { useAccountAccess } from "@/lib/useAccountAccess";
 const statusLabel = (entry: InstructorAttendanceLedgerEntry): string => entry.source === "staff_day"
   ? STAFF_ATTENDANCE_LABEL[entry.status as keyof typeof STAFF_ATTENDANCE_LABEL]
   : LESSON_ATTENDANCE_LABEL[entry.status as keyof typeof LESSON_ATTENDANCE_LABEL];
-
-const statusTone = (status: string): "success" | "attention" | "danger" | "neutral" =>
-  status === "present" || status === "remote_work" ? "success"
-    : status === "late" || status === "paid_leave" || status === "sick_leave" ? "attention"
-      : status === "absent" || status === "unpaid_leave" ? "danger"
-        : "neutral";
 
 export function StaffAttendanceLedgerView() {
   const canManageAttendance = useAccountAccess().can("attendance.manage");
@@ -164,7 +159,7 @@ export function StaffAttendanceLedgerView() {
                         <td>{entry.source === "class_session" ? "수업 출결" : "근무·휴가"}</td>
                         <td>{entry.subjectName ?? "—"}{entry.courseName ? <span className="text-fg-muted"> · {entry.courseName}</span> : null}</td>
                         <td className="mono text-fg-muted">{entry.startTime ?? "—"}{entry.endTime ? `~${entry.endTime}` : ""}</td>
-                        <td><Badge tone={statusTone(entry.status)}>{statusLabel(entry)}</Badge></td>
+                        <td><Badge tone={staffAttendanceStatusTone(entry.status)}>{statusLabel(entry)}</Badge></td>
                         <td className="text-right mono">{entry.teachingMinutes ? `${Math.round((entry.teachingMinutes / 60) * 10) / 10}h` : "—"}</td>
                       </>
                     );
@@ -186,7 +181,7 @@ export function StaffAttendanceLedgerView() {
 
       {canManageAttendance && editRecord && (
         <StaffAttendanceRecordModal
-          instructors={instructors}
+          staffOptions={instructors}
           record={editRecord === "new" ? undefined : editRecord}
           defaultDate={todayKst()}
           onClose={() => setEditRecord(null)}

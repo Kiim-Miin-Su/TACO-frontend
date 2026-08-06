@@ -184,9 +184,15 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   const access = useAccountAccess();
   const canManage = access.can("calendar.manage");
   const [showEventForm, setShowEventForm] = useState(false); // [B5] 학원 일정 인라인 발행 토글
-  const isInstructor = access.can("instructor.self");
-  const instructorRequestMode = isInstructor && !canManage;
+  // [TBO-87] 겸직(강사+매니저) — instructor.self는 겸직 매니저에도 참(roles 합성)이므로, 캘린더의
+  //  "강사 제한 모드"(본인 스코프 강제·요청 흐름·스플릿 차원 제한)는 관리 권한이 없는 순수 강사에만
+  //  적용한다(BE isInstructorOnly 동형 — 겸직은 합성이지 축소가 아니다). 겸직 매니저는 매니저 전체
+  //  캘린더를 유지하고, 본인 세션 어포던스(인라인 리포트 게이트 등)만 myInstructorId로 추가된다.
+  const isInstructor = access.can("instructor.self") && !canManage;
+  const instructorRequestMode = isInstructor;
   const myInstructorId = access.instructorId ?? undefined;
+  // 본인 스코프 클라 방어는 제한 모드에서만 — 겸직 매니저에 걸면 전체 뷰가 본인 수업만으로 준다.
+  const scopeInstructorId = isInstructor ? myInstructorId : undefined;
   const canAdd = canManage || (isInstructor && myInstructorId != null);
   // start가 있으면 그 시각으로 프리필(빈 곳 더블클릭 — 피드백 2026-07-02 #4).
   // [유저별 추가 2026-07-03] 전역 "+ 스케줄 추가"(현행)와 별개로, 스플릿 컬럼(유저)에서 그 유저
@@ -224,7 +230,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
     enumPreferenceCodec<ColorBy>(["subject", "instructor", "room", "student"]),
   );
   const [fInstructors, setFInstructors] = useState<Set<number>>(
-    () => myInstructorId != null ? new Set([myInstructorId]) : new Set(initialSelection?.instructorIds ?? []),
+    () => isInstructor && myInstructorId != null ? new Set([myInstructorId]) : new Set(initialSelection?.instructorIds ?? []),
   );
   const [fSubjects, setFSubjects] = useState<Set<string>>(new Set());
   const [fRooms, setFRooms] = useState<Set<number>>(new Set());
@@ -558,8 +564,8 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   //    → 출석부/상세에서 강사 출결을 바꿔도 캘린더가 자동 갱신(M1 invalidate 단절 근본 해소).
   const scheduleQ = useCalendarSchedule({ ...fetchRange, ...selQuery });
   useEffect(() => {
-    if (scheduleQ.data) setRows(scopeCalendarRowsToInstructor(scheduleQ.data, myInstructorId));
-  }, [scheduleQ.data, myInstructorId]);
+    if (scheduleQ.data) setRows(scopeCalendarRowsToInstructor(scheduleQ.data, scopeInstructorId));
+  }, [scheduleQ.data, scopeInstructorId]);
   useEffect(() => {
     if (scheduleQ.isError) setMsg("백엔드 API에 연결할 수 없습니다. 서버 상태를 확인하세요.");
   }, [scheduleQ.isError]);
@@ -606,8 +612,8 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
 
   // ── 필터 적용 ──
   const visibleRows = useMemo(
-    () => scopeCalendarRowsToInstructor(rows, myInstructorId),
-    [rows, myInstructorId],
+    () => scopeCalendarRowsToInstructor(rows, scopeInstructorId),
+    [rows, scopeInstructorId],
   );
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -632,7 +638,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
     fStatuses.size || fModes.size || groupOnly || period != null || pickedDates.length || country != null;
   const clearFilters = () => {
     setQ("");
-    setFInstructors(myInstructorId != null ? new Set([myInstructorId]) : new Set());
+    setFInstructors(isInstructor && myInstructorId != null ? new Set([myInstructorId]) : new Set());
     setFSubjects(new Set());
     setFRooms(new Set());
     setFStudents(new Set());

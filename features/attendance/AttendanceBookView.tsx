@@ -2,7 +2,9 @@
 // [참조/처리] 출석부(/attendance, LMS형 — 피드백 2026-07-03). Moodle Attendance·대학 LMS 패턴:
 //  행=학생 · 열=회차(날짜·분) 매트릭스, 셀 클릭=상태 순환(PUT /attendance 재사용), 열 헤더 클릭=일괄 출석,
 //  행 끝 누적(출석/지각/결석·출석률·**누적 시수/총 시수 진도바**). 계산은 lib/domain/attendanceBook 단일 소스.
-//  권한: 강사=본인 담당 코스만(마킹 가능) · 매니저/관리자=[학생 출석]+[강사 출석](강사 시수=teachingHours 재사용).
+//  권한: 강사=본인 담당 코스만(마킹 가능) · 매니저/관리자=[학생 출석]+[강사 출석]+[직원 근태].
+//  [TBO-87] 강사|직원(매니저+) 탭 분리(대표 지시) — 강사 탭=가르치는 사람(겸직 매니저 포함, resources.instructors 모집단),
+//   직원 근태 탭=매니저 이상 근무·휴가(StaffDayAttendanceView). 겸직자는 양쪽 탭에 모두 보인다.
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { AttendanceStatus, InstructorAttendanceStatus, ScheduleRow } from "@/types";
@@ -16,6 +18,7 @@ import { EmptyState, HelpPopover, LoadingState, PageHeader, SectionCard, TableWr
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 import { internalRoute } from "@/lib/navigation-security";
 import { StaffAttendanceLedgerView } from "./StaffAttendanceLedgerView";
+import { StaffDayAttendanceView } from "./StaffDayAttendanceView";
 import { InstructorAttendanceClearModal } from "./InstructorAttendanceClearModal";
 import { InstructorAttendanceCorrectionModal } from "./InstructorAttendanceCorrectionModal";
 
@@ -55,7 +58,7 @@ export function AttendanceBookView() {
   // 강사 계약은 금액 자산이므로 대표에게만 조회·표시한다.
   const { data: contracts = [] } = useInstructorContracts();
 
-  const [tab, setTab] = useState<"student" | "instructor">("instructor");
+  const [tab, setTab] = useState<"student" | "instructor" | "staff">("instructor");
   const [instructorView, setInstructorView] = useState<"ledger" | "matrix">("ledger");
   const [ym, setYm] = useState(thisYm());
   const [courseId, setCourseId] = useState<number | null>(null);
@@ -64,9 +67,10 @@ export function AttendanceBookView() {
 
   // [TBO-21 P1] 로그인 강사의 도메인 강사 id(=JWT sub)만 신뢰한다. 해석 실패 시 전체 코스 폴백 금지.
   const myInstId = access.instructorId;
+  // [TBO-87] 본인 코스 제한은 순수 강사만 — 겸직 매니저는 instructor.self가 참이어도 매니저 전체 범위 유지.
   const visibleCourses = useMemo(
-    () => (instructorSelf ? (myInstId != null ? courses.filter((c) => Number(c.instructorId) === myInstId) : []) : courses),
-    [courses, myInstId, instructorSelf],
+    () => (instructorSelf && !manager ? (myInstId != null ? courses.filter((c) => Number(c.instructorId) === myInstId) : []) : courses),
+    [courses, myInstId, instructorSelf, manager],
   );
   const curCourse = visibleCourses.find((c) => Number(c.id) === courseId) ?? visibleCourses[0];
 
@@ -181,12 +185,17 @@ export function AttendanceBookView() {
         sub="회차별 출결 체크와 누적 시수"
         actions={
           <>
-            {/* [TBO-19] 강사도 '내 출석' 탭 접근(본인 읽기 전용). 매니저는 '강사 출석'(전 강사 편집). */}
+            {/* [TBO-19] 강사도 '내 출석' 탭 접근(본인 읽기 전용). 매니저는 '강사 출석'(전 강사 편집).
+                [TBO-87] 매니저 이상에게만 '직원 근태' 탭 추가 — 강사와 직원(매니저+)을 탭 자체로 분리. */}
             {(manager || instructorSelf) && (
               <div className="flex rounded-md overflow-hidden border">
-                {(["student", "instructor"] as const).map((t) => (
-                  <button key={t} className={`btn btn-sm rounded-none border-0 ${tab === t ? "badge-accent" : ""}`} onClick={() => setTab(t)}>
-                    {t === "student" ? "학생 출석" : manager ? "강사 출석" : "내 출석"}
+                {([
+                  { key: "student" as const, label: "학생 출석" },
+                  { key: "instructor" as const, label: manager ? "강사 출석" : "내 출석" },
+                  ...(manager ? [{ key: "staff" as const, label: "직원 근태" }] : []),
+                ]).map((t) => (
+                  <button key={t.key} className={`btn btn-sm rounded-none border-0 ${tab === t.key ? "badge-accent" : ""}`} onClick={() => setTab(t.key)}>
+                    {t.label}
                   </button>
                 ))}
               </div>
@@ -197,7 +206,8 @@ export function AttendanceBookView() {
                 <button className={`btn btn-sm rounded-none border-0 ${instructorView === "matrix" ? "badge-accent" : ""}`} onClick={() => setInstructorView("matrix")}>회차표</button>
               </div>
             )}
-            {(tab === "student" || !manager || instructorView === "matrix") && (
+            {/* [TBO-87] 직원 근태 탭은 자체 기간 컨트롤(DateRangeControl) — ym 네비 숨김. */}
+            {tab !== "staff" && (tab === "student" || !manager || instructorView === "matrix") && (
               <>
                 <button className="btn btn-sm" onClick={() => navYm(-1)}>◀</button>
                 <span className="mono text-body">{ym}</span>
@@ -328,6 +338,8 @@ export function AttendanceBookView() {
             시수 인정: 출석·지각 = 회차 시간 인정 · 결석·공결·미체크 = 0 (강사 정산 시수 규칙과 대칭). 예정 회차는 집계 제외.
           </p>
         </SectionCard>
+      ) : tab === "staff" && manager ? (
+        <StaffDayAttendanceView />
       ) : manager && instructorView === "ledger" ? (
         <StaffAttendanceLedgerView />
       ) : (
@@ -406,7 +418,8 @@ export function AttendanceBookView() {
                                 onMark={(st) => markInstructor(s.id, st)}
                                 onClear={() => clearInstructor(s.id)}
                               />
-                              {instructorSelf && Number(s.instructorId) === myInstId && (
+                              {/* [TBO-87] 정정 요청은 직접 편집 권한이 없는 본인 회차에만 — 겸직 매니저는 직접 변경. */}
+                              {instructorSelf && !canEditInstructorAtt && Number(s.instructorId) === myInstId && (
                                 <button
                                   type="button"
                                   className="btn btn-sm h-6 px-1.5 text-micro"

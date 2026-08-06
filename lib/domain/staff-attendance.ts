@@ -12,6 +12,13 @@ export const STAFF_ATTENDANCE_LABEL: Record<StaffAttendanceStatus, string> = {
   remote_work: "재택",
 };
 
+/** [TBO-87] 근태 상태 배지 톤 — 강사 탭·직원 탭 공용(사본 금지). */
+export const staffAttendanceStatusTone = (status: string): "success" | "attention" | "danger" | "neutral" =>
+  status === "present" || status === "remote_work" ? "success"
+    : status === "late" || status === "paid_leave" || status === "sick_leave" ? "attention"
+      : status === "absent" || status === "unpaid_leave" ? "danger"
+        : "neutral";
+
 export const LESSON_ATTENDANCE_LABEL = {
   present: "출석",
   late: "지각",

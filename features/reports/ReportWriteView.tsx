@@ -46,14 +46,17 @@ function InstructorReportWriteSurface() {
   const { data: enrollments = [] } = useEnrollments();
   const { data: students = [] } = useStudents();
   const [filters, setFilters] = useState<ReportWorklistQuery>({});
+  // [TBO-87] 본인 강제 스코프는 순수 강사만 — 겸직 매니저는 instructor.self가 참(roles 합성)이어도
+  //  매니저 대리 작성 표면(강사 필터 포함 전체 워크리스트)을 유지한다(합성은 축소가 아니다).
+  const selfScopeInstructorId = access.can('admin.area') ? null : access.instructorId;
   const effectiveFilters = useMemo<ReportWorklistQuery>(
-    () => access.instructorId == null ? filters : { ...filters, instructorId: undefined },
-    [access.instructorId, filters],
+    () => selfScopeInstructorId == null ? filters : { ...filters, instructorId: undefined },
+    [selfScopeInstructorId, filters],
   );
   const { data: sessionReports = [] } = useReports(effectiveFilters);
   const { data: worklist } = useReportWorklist(effectiveFilters);
   const hasFilters = hasActiveReportFilters(effectiveFilters);
-  const instructorId = access.instructorId ?? filters.instructorId;
+  const instructorId = selfScopeInstructorId ?? filters.instructorId;
   const instructorName = instructorId == null
     ? '전체 강사'
     : `${instructors.find((i) => i.id === instructorId)?.name ?? '선택한 강사'} 강사`;

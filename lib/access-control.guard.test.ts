@@ -30,6 +30,9 @@ const TARGET_ROLE_EXCEPTIONS: Record<string, string> = {
   "lib/domain/signup-form.ts": "가입 신청서가 **요청한** role 검증 — BE canDecideSignupRole 대칭",
   "lib/domain/schedule-resources.ts": "일정 리소스 소유자의 role 표시 라벨 — 인가 아님",
   "lib/queries/schedule.ts": "리소스 목록 필터(소유자 role) — 인가 아님",
+  // [TBO-87] 직원 근태 탭 모집단 = 목록에 실릴 **대상 사용자**의 role(매니저 이상) 필터.
+  //  actor 인가는 attendance.manage capability(can)로 별도 판정 — 인가 아님.
+  "features/attendance/StaffDayAttendanceView.tsx": "직원 근태 탭 모집단 필터(대상 사용자 role 매니저+) — actor 인가는 capability",
 };
 
 /**

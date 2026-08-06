@@ -145,7 +145,9 @@ export function DashboardView() {
 
   // 강사: 내 수업·리포트 중심 To-do 대시보드
   // [B6 C3 2026-07-16] role 비교 → capability(instructor.self는 instructor 역할에만 부여 — 동치).
-  if (access.can('instructor.self')) {
+  // [TBO-87] 겸직 매니저는 instructor.self가 참이 되지만(roles 합성) 대시보드는 매니저 운영 화면이
+  //  일차 정체성이다 — 순수 강사(관리 영역 없음)에만 To-do 대시보드를 준다(합성은 축소가 아니다).
+  if (access.can('instructor.self') && !admin) {
     const reportTasks = tasks.filter((t) => t.group === 'report');
     const classTasks = tasks.filter((t) => t.group === 'class' || t.group === 'schedule'); // [UX H2] 내 수업 요청(반려·대기)도 수업 카드에
     const instructorName = (id?: number) => id != null ? appData.instructors.find((i) => i.id === id)?.name ?? '—' : '—';

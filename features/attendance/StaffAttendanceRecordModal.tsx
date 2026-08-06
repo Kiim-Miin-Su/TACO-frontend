@@ -21,14 +21,17 @@ const kstInstant = (date: string, time: string): string | null =>
   time ? new Date(`${date}T${time}:00+09:00`).toISOString() : null;
 
 export function StaffAttendanceRecordModal({
-  instructors,
+  staffOptions,
+  staffFieldLabel = "강사",
   record,
   defaultDate,
   onClose,
   onSaved,
   onDelete,
 }: {
-  instructors: InstructorOption[];
+  staffOptions: InstructorOption[]; // [TBO-87] 강사 탭·직원 탭 공용 — 대상 직원 목록(라벨만 다름)
+  /** [TBO-87] 대상 필드 라벨 — 강사 탭 "강사"(기본) / 직원 근태 탭 "직원". */
+  staffFieldLabel?: string;
   record?: StaffAttendanceRecord;
   defaultDate: string;
   onClose: () => void;
@@ -36,7 +39,7 @@ export function StaffAttendanceRecordModal({
   onDelete?: (record: StaffAttendanceRecord) => void;
 }) {
   const upsert = useUpsertStaffAttendance();
-  const [staffId, setStaffId] = useState(String(record?.staffId ?? instructors[0]?.id ?? ""));
+  const [staffId, setStaffId] = useState(String(record?.staffId ?? staffOptions[0]?.id ?? ""));
   const [workDate, setWorkDate] = useState(record?.workDate ?? defaultDate);
   const [status, setStatus] = useState<StaffAttendanceStatus>(record?.status ?? "present");
   const [checkInTime, setCheckInTime] = useState(instantToKstTime(record?.checkInAt));
@@ -82,9 +85,9 @@ export function StaffAttendanceRecordModal({
       )}
     >
       <div className="space-y-3">
-        <Field label="강사 *">
+        <Field label={`${staffFieldLabel} *`}>
           <select className="input w-full" value={staffId} onChange={(event) => setStaffId(event.target.value)} disabled={!!record}>
-            {instructors.map((instructor) => <option key={instructor.id} value={instructor.id}>{instructor.name}</option>)}
+            {staffOptions.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
           </select>
         </Field>
         <div className="grid grid-cols-2 gap-3">
