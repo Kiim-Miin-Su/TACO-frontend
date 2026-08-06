@@ -8,7 +8,7 @@ import { addDaysISO } from "@/lib/format"; // [TBO-69 C4]
 import type { AvailabilityUpsertBody, ScheduleCreateBody, ScheduleSeriesCreateBody } from "@/lib/api";
 import type { Room, ScheduleResource, ScheduleResources } from "@/types";
 import type { SessionStatus } from "@kms545487/contracts";
-import { courseRosterFromScheduleResources, scheduleResourceName } from "@/lib/domain/schedule-resources";
+import { courseRosterFromScheduleResources, courseStudentOptionsFromScheduleResources, scheduleResourceName } from "@/lib/domain/schedule-resources";
 // [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
 import { Field, ModalShell, SearchableCheckList } from "@/components/ui";
 import { ColorPicker } from "./SessionEditFields";
@@ -16,7 +16,8 @@ import { MANUAL_SESSION_STATUSES, STATUS_LABEL } from "@/lib/domain/lantiv";
 import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
 
 const isCanceledStatus = (s?: string) => s === "canceled" || s === "no_show";
-import { useAllAvailability } from "@/lib/queries";
+import { useAllAvailability, useCreateEnrollment } from "@/lib/queries";
+import { apiErrorMessage } from "@/lib/api-error";
 // [B4 2026-07-16 대표 결정 ②] 강의실 관리 — 수업탭(CoursesView)과 같은 공용 컴포넌트 재사용(사설 사본 금지)
 import { RoomManagerPanel } from "@/features/rooms/RoomManagerPanel";
 import { weekdayOf, toMin, fromMin, durationMinutesBetween, ownerAvailabilityForSlot } from "@/lib/domain/schedule";
@@ -36,6 +37,7 @@ export function ScheduleCreateModal({
   requestMode, // [UX H1] 강사=승인 요청 모드 — 버튼·안내 문구를 실제 동작과 일치
   defaultDate,
   defaultStart,
+  defaultEnd,
   lockInstructorId,
   defaultInstructorId,
   defaultOwner,
@@ -51,6 +53,7 @@ export function ScheduleCreateModal({
   requestMode?: boolean; // 강사(비관리자) — 수업 탭 제출이 승인 요청으로 전송됨
   defaultDate: string;
   defaultStart?: string; // 빈 곳 더블클릭 시 그 시각으로 프리필
+  defaultEnd?: string; // 빈 시간 범위 drag 시 선택한 종료 시각으로 프리필
   lockInstructorId?: number; // 강사 본인만 추가 가능할 때 — 본인 ID로 고정
   defaultInstructorId?: number; // 유저별 추가(스플릿 강사 컬럼) — 프리필(변경 가능)
   defaultOwner?: ScheduleResource | null;
@@ -82,7 +85,7 @@ export function ScheduleCreateModal({
   const courseDur = course?.durationMinutes ?? 90;
   // [R-9] 심야 시작(예: 23:30) + 진행시간이 자정을 넘으면 %1440 래핑('25:00' 금지) — end<start는
   //  익일 종료(자정 크로스)로 저장된다(아래 crossesMidnight 안내·BE 해석 규칙).
-  const [end, setEnd] = useState(fromMin((toMin(defaultStart ?? "16:00") + (myCourses[0]?.durationMinutes ?? 90)) % 1440));
+  const [end, setEnd] = useState(defaultEnd ?? fromMin((toMin(defaultStart ?? "16:00") + (myCourses[0]?.durationMinutes ?? 90)) % 1440));
   const [memo, setMemo] = useState("");
   // [v0.1.14] 종류(수업/진단고사/상담 — 캘린더 필터 축) + 상담 등 단건 가격(Q1: 담당자=강사 재사용)
   const [kind, setKind] = useState<"class" | "level_test" | "counsel">("class");
@@ -165,6 +168,34 @@ export function ScheduleCreateModal({
   const pickedStudents = pickedStudentState?.courseId === courseId ? pickedStudentState.ids : null;
   const setPickedStudents = (ids: Set<number> | null) => setPickedStudentState({ courseId, ids });
   const effPicked = pickedStudents ?? new Set(courseRoster.map((r) => r.id));
+  const studentOptions = useMemo(
+    () => courseStudentOptionsFromScheduleResources(resources, courseId),
+    [resources, courseId],
+  );
+  const unlinkedStudents = useMemo(
+    () => studentOptions.filter((student) => !student.enrolled),
+    [studentOptions],
+  );
+  const createEnrollment = useCreateEnrollment();
+  const [showStudentLinker, setShowStudentLinker] = useState(false);
+  const [studentLinkQuery, setStudentLinkQuery] = useState("");
+  const [studentLinkMessage, setStudentLinkMessage] = useState("");
+  const visibleUnlinkedStudents = useMemo(() => {
+    const needle = studentLinkQuery.trim().toLocaleLowerCase("ko");
+    return unlinkedStudents.filter((student) => !needle || student.name.toLocaleLowerCase("ko").includes(needle));
+  }, [studentLinkQuery, unlinkedStudents]);
+
+  function linkStudent(studentId: number) {
+    setStudentLinkMessage("");
+    createEnrollment.mutate({ studentId, courseId }, {
+      onSuccess: () => {
+        const student = studentOptions.find((candidate) => candidate.id === studentId);
+        setPickedStudents(new Set([...effPicked, studentId]));
+        setStudentLinkMessage(`${student?.name ?? "학생"} 학생을 과목에 연결했습니다.`);
+      },
+      onError: (error) => setStudentLinkMessage(apiErrorMessage(error, "학생을 과목에 연결하지 못했습니다.")),
+    });
+  }
 
   // ── 가용/불가 대상(오너) — 시간·날짜·반복은 수업과 공유 ──
   const lockOwner = lockInstructorId != null;
@@ -283,9 +314,9 @@ export function ScheduleCreateModal({
         {type === "session" ? (
           <>
             {lockedInstructorName && <div className="text-caption text-fg-muted">{lockedInstructorName} (내 수업)</div>}
-            <Field label="코스">
+            <Field label="과목">
               <select className="input" value={courseId} onChange={(e) => pickCourse(Number(e.target.value))}>
-                {myCourses.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.subjectName}</option>)}
+                {myCourses.map((c) => <option key={c.id} value={c.id}>{c.subjectName} · {c.name}</option>)}
               </select>
             </Field>
             <Field label={`담당자 ${instructorId && !instAvailable(Number(instructorId)) ? `· ⚠ ${instAvailabilityLabel(Number(instructorId))}` : ""}`}>
@@ -327,10 +358,11 @@ export function ScheduleCreateModal({
                 일부 해제 시 그 학생들만의 명시 코호트로 저장(개별·소그룹 수업). */}
             {/* [이슈1] 학생 검색 리스트 — 인원이 많아도 검색으로 좁혀 선택. 전체/해제 빠른 버튼. */}
             <Field label={`학생 (${effPicked.size}/${courseRoster.length}명 — 기본 전원)`}>
-              {courseRoster.length === 0 ? (
-                <p className="text-caption text-fg-subtle">이 코스의 활성 수강생이 없습니다 — 수강 등록 후 선택 가능</p>
-              ) : (
-                <div className="space-y-1">
+              <div className="space-y-2">
+                {courseRoster.length === 0 ? (
+                  <p className="text-caption text-fg-subtle">이 과목의 활성 수강생이 없습니다.</p>
+                ) : (
+                  <div className="space-y-1">
                   <div className="flex gap-1">
                     <button type="button" className="btn btn-sm" onClick={() => setPickedStudents(new Set(courseRoster.map((r) => r.id)))}>전체</button>
                     <button type="button" className="btn btn-sm" onClick={() => setPickedStudents(new Set())}>해제</button>
@@ -341,8 +373,53 @@ export function ScheduleCreateModal({
                     placeholder="학생 이름 검색"
                     onToggle={(id) => { const n = new Set(effPicked); if (n.has(id)) n.delete(id); else n.add(id); setPickedStudents(n); }}
                   />
-                </div>
-              )}
+                  </div>
+                )}
+                {!requestMode && (
+                  <div className="border-t pt-2 space-y-2" style={{ borderColor: "var(--color-line-muted)" }}>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      aria-expanded={showStudentLinker}
+                      onClick={() => { setShowStudentLinker((current) => !current); setStudentLinkMessage(""); }}
+                    >
+                      {showStudentLinker ? "학생 연결 접기" : "+ 재원생 연결"}
+                    </button>
+                    {showStudentLinker && (
+                      <div className="space-y-1.5">
+                        <input
+                          className="input w-full"
+                          value={studentLinkQuery}
+                          placeholder="전체 재원생 검색"
+                          onChange={(event) => setStudentLinkQuery(event.target.value)}
+                        />
+                        <div className="max-h-32 overflow-y-auto border rounded-md divide-y" style={{ borderColor: "var(--color-line-muted)" }}>
+                          {!visibleUnlinkedStudents.length ? (
+                            <p className="p-2 text-caption text-fg-subtle">연결할 재원생이 없습니다.</p>
+                          ) : visibleUnlinkedStudents.map((student) => (
+                            <div key={student.id} className="flex items-center justify-between gap-2 p-2">
+                              <span className="text-caption truncate" title={student.name}>{student.name}</span>
+                              <button
+                                type="button"
+                                className="btn btn-sm shrink-0"
+                                disabled={createEnrollment.isPending}
+                                onClick={() => linkStudent(student.id)}
+                              >
+                                연결
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {studentLinkMessage && (
+                      <p className={`text-caption ${createEnrollment.isError ? "text-danger" : "text-success"}`} role="status">
+                        {studentLinkMessage}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             </Field>
             <ScheduleDateField value={date} onChange={setDate} />
             <ScheduleTimeRangeFields start={start} end={end} onStartChange={changeStart} onEndChange={setEnd} endHint={`진행 ${courseDur}분`} />

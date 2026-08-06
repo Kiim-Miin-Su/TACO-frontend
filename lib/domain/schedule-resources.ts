@@ -27,6 +27,19 @@ export function courseRosterFromScheduleResources(
   }));
 }
 
+/** 생성 모달용 전체 활성 학생과 선택 과목 수강 여부. 학생과 수강 관계의 의미를 섞지 않는다. */
+export function courseStudentOptionsFromScheduleResources(
+  resources: ScheduleResources,
+  courseId: number,
+): Array<{ id: number; name: string; enrolled: boolean }> {
+  const enrolledIds = new Set(courseRosterFromScheduleResources(resources, courseId).map((student) => student.id));
+  return resources.students.map((student) => ({
+    id: Number(student.id),
+    name: student.name,
+    enrolled: enrolledIds.has(Number(student.id)),
+  }));
+}
+
 /** 붙여넣기 코스 재배정용 최소 enrollment 투영. 원천은 course.studentIds 한 곳이다. */
 export function calendarEnrollmentRows(resources?: ScheduleResources | null) {
   return calendarScheduleCourses(resources).flatMap((course) =>

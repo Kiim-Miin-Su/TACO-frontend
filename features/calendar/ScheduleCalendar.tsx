@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { ScheduleRow, Conflict, ScheduleResource, AvailabilityBlock, Attendance } from "@/types";
 // [B6 C4] api 값 import 제거 — 이 화면의 쓰기는 전부 중앙 mutation 훅 경유(타입만 사용).
 import type { SchedulePatchBody, ScheduleCreateBody, ScheduleSeriesCreateBody, AvailabilityUpsertBody, CreateScheduleRequestBody } from "@/lib/api";
@@ -99,6 +99,7 @@ import type {
 import { useAutoClear, useElementWidth, useMounted, useWindowKeydown } from "@/lib/hooks/browser-sync";
 import { EventForm } from "@/features/admin/EventsView"; // [B5] 학원 일정 인라인 발행 — 단일 폼 재사용
 import type { CalendarCompareSelection } from "@/lib/navigation-security";
+import { calendarMinuteAtPointer, calendarRangeBetween, type CalendarMinuteRange } from "@/lib/domain/calendar-range";
 
 // [TBO-69 C4] 그리드 상수·순수 헬퍼·상호작용 타입은 calendar-grid.ts로 분리(본문 이동 — 값 무변).
 import {
@@ -188,10 +189,29 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   // [유저별 추가 2026-07-03] 전역 "+ 스케줄 추가"(현행)와 별개로, 스플릿 컬럼(유저)에서 그 유저
   //  프리필로 추가 — owner(가용/불가 소유자)·defaultInstructorId(세션 강사) 프리필.
   const [creating, setCreating] = useState<{
-    date: string; start?: string;
+    date: string; start?: string; end?: string;
     owner?: ScheduleResource | null; defaultInstructorId?: number;
     tz?: CountryInfo | null; // [이슈1] 비KST 컬럼에서 추가 시 — 입력은 현지 시각, 저장 시 KST 역변환
   } | null>(null);
+
+  type EmptyRangeDraft = CalendarMinuteRange & {
+    colKey: string;
+    date: string;
+  };
+  const [emptyRangeDraft, setEmptyRangeDraft] = useState<EmptyRangeDraft | null>(null);
+  const emptyRangeRef = useRef<{
+    pointerId: number;
+    startClientY: number;
+    moved: boolean;
+    rectTop: number;
+    anchorMin: number;
+    gridMin: number;
+    gridMax: number;
+    range: CalendarMinuteRange;
+    col: Col;
+    tz?: CountryInfo | null;
+  } | null>(null);
+  const suppressEmptyClickRef = useRef(false);
 
   // ── 필터(Lantiv형) ──
   const [q, setQ] = useState("");
@@ -1394,6 +1414,92 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   // ── 드래그 이동(포인터 기반 라이브 프리뷰, 30분 스냅 — 구글/애플 캘린더식) ──
   const SNAP_MOVE = 30;
   const snapMove = (m: number) => Math.round(m / SNAP_MOVE) * SNAP_MOVE;
+  const onEmptyRangeMove = (event: PointerEvent) => {
+    const drag = emptyRangeRef.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (!drag.moved && Math.abs(event.clientY - drag.startClientY) < 4) return;
+    drag.moved = true;
+    event.preventDefault();
+    const currentMin = calendarMinuteAtPointer({
+      clientY: event.clientY,
+      rectTop: drag.rectTop,
+      hourHeight: HOUR_H,
+      gridMin: drag.gridMin,
+      gridMax: drag.gridMax,
+      snapMinutes: SNAP_MOVE,
+    });
+    drag.range = calendarRangeBetween({
+      anchorMin: drag.anchorMin,
+      currentMin,
+      gridMin: drag.gridMin,
+      gridMax: drag.gridMax,
+      snapMinutes: SNAP_MOVE,
+    });
+    setEmptyRangeDraft({ colKey: drag.col.key, date: drag.col.date, ...drag.range });
+  };
+  const onEmptyRangeUp = (event: PointerEvent) => {
+    window.removeEventListener("pointermove", onEmptyRangeMove);
+    window.removeEventListener("pointerup", onEmptyRangeUp);
+    window.removeEventListener("pointercancel", cancelEmptyRange);
+    const drag = emptyRangeRef.current;
+    emptyRangeRef.current = null;
+    const selectedRange = drag?.range;
+    setEmptyRangeDraft(null);
+    if (!drag || event.pointerId !== drag.pointerId || !drag.moved || !selectedRange) return;
+    suppressEmptyClickRef.current = true;
+    setCreating({
+      date: drag.col.date,
+      start: fromMin(selectedRange.startMin),
+      end: fromMin(selectedRange.endMin),
+      owner: drag.col.resType && drag.col.resId != null
+        ? ({ type: drag.col.resType, id: drag.col.resId, name: drag.col.label } as ScheduleResource)
+        : undefined,
+      defaultInstructorId: drag.col.resType === "instructor" ? drag.col.resId : undefined,
+      tz: drag.tz ?? undefined,
+    });
+  };
+  const cancelEmptyRange = () => {
+    window.removeEventListener("pointermove", onEmptyRangeMove);
+    window.removeEventListener("pointerup", onEmptyRangeUp);
+    window.removeEventListener("pointercancel", cancelEmptyRange);
+    emptyRangeRef.current = null;
+    setEmptyRangeDraft(null);
+  };
+  const beginEmptyRange = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    col: Col,
+    gridMin: number,
+    gridMax: number,
+    tz?: CountryInfo | null,
+  ) => {
+    if (event.target !== event.currentTarget || !canAdd || event.button !== 0 || event.pointerType !== "mouse") return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const anchorMin = calendarMinuteAtPointer({
+      clientY: event.clientY,
+      rectTop: rect.top,
+      hourHeight: HOUR_H,
+      gridMin,
+      gridMax,
+      snapMinutes: SNAP_MOVE,
+    });
+    const range = { startMin: anchorMin, endMin: anchorMin + SNAP_MOVE };
+    emptyRangeRef.current = {
+      pointerId: event.pointerId,
+      startClientY: event.clientY,
+      moved: false,
+      rectTop: rect.top,
+      anchorMin,
+      gridMin,
+      gridMax,
+      range,
+      col,
+      tz,
+    };
+    setEmptyRangeDraft({ colKey: col.key, date: col.date, ...range });
+    window.addEventListener("pointermove", onEmptyRangeMove, { passive: false });
+    window.addEventListener("pointerup", onEmptyRangeUp, { once: true });
+    window.addEventListener("pointercancel", cancelEmptyRange, { once: true });
+  };
   const [moveDrag, setMoveDrag] = useState<{ id: number; colKey: string; start: number; dur: number; color: string; copy: boolean } | null>(null);
   const moveRef = useRef<{
     id: number; row: ScheduleRow; dur: number; grab: number; startClientY: number; moved: boolean;
@@ -1859,7 +1965,9 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
                               height: gridH,
                               backgroundImage: `repeating-linear-gradient(to bottom, var(--color-line) 0, var(--color-line) 1px, transparent 1px, transparent ${HOUR_H}px), repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_H / 2}px, var(--color-line-muted) ${HOUR_H / 2}px, var(--color-line-muted) ${HOUR_H / 2 + 1}px, transparent ${HOUR_H / 2 + 1}px, transparent ${HOUR_H}px)`,
                             }}
+                            onPointerDown={(event) => beginEmptyRange(event, c, gridMin, gridMax, colTz ? colTzc : null)}
                             onClick={(e) => {
+                              if (suppressEmptyClickRef.current) { suppressEmptyClickRef.current = false; return; }
                               if (e.target !== e.currentTarget) return;
                               setSelEvent(null); setSelBand(null);
                               // [이슈2] 시차 컬럼도 커서 허용 — 현지 좌표(tz)를 저장, 붙여넣기 시 KST 변환.
@@ -1884,6 +1992,21 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
                               });
                             }}
                           >
+                            {emptyRangeDraft?.colKey === c.key && (
+                              <div
+                                data-calendar-range-preview
+                                className="absolute left-0.5 right-0.5 z-[1] pointer-events-none border border-accent"
+                                style={{
+                                  top: ((emptyRangeDraft.startMin - gridMin) / 60) * HOUR_H,
+                                  height: Math.max(2, ((emptyRangeDraft.endMin - emptyRangeDraft.startMin) / 60) * HOUR_H),
+                                  background: "color-mix(in srgb, var(--color-accent) 16%, transparent)",
+                                }}
+                              >
+                                <span className="block px-1 py-0.5 text-micro font-semibold text-accent truncate">
+                                  {fromMin(emptyRangeDraft.startMin)}–{fromMin(emptyRangeDraft.endMin)}
+                                </span>
+                              </div>
+                            )}
                             {/* 가용(초록)/불가(회색) 밴드 — 클릭=선택 · 끝 드래그=시간 조절 · ✕=삭제 (스케줄처럼 관리) */}
                             {bands.map((b) => {
                               const on = selBand === b.id;
@@ -2747,6 +2870,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
           requestMode={isInstructor} // [UX H1] 강사=수업 탭 제출이 승인 요청
           defaultDate={creating.date}
           defaultStart={creating.start}
+          defaultEnd={creating.end}
           lockInstructorId={isInstructor ? myInstructorId : undefined}
           defaultInstructorId={creating.defaultInstructorId}
           defaultOwner={creating.owner ?? selected}

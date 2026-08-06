@@ -5,6 +5,7 @@ import {
   calendarScheduleCourses,
   calendarSubjectOptions,
   courseRosterFromScheduleResources,
+  courseStudentOptionsFromScheduleResources,
   isInstructorScheduleResource,
   scheduleResourceName,
 } from './schedule-resources';
@@ -41,6 +42,10 @@ describe('scheduleResourceName', () => {
 describe('schedule resources calendar SSOT', () => {
   it('코스별 roster를 resource student와 조인하고 다른 코스 학생을 섞지 않는다', () => {
     expect(courseRosterFromScheduleResources(resources, 100)).toEqual([{ id: 10, name: '김학생' }]);
+    expect(courseStudentOptionsFromScheduleResources(resources, 100)).toEqual([
+      { id: 10, name: '김학생', enrolled: true },
+      { id: 11, name: '박학생', enrolled: false },
+    ]);
   });
 
   it('과목과 활성 enrollment 투영을 같은 scoped course 집합에서 만든다', () => {
