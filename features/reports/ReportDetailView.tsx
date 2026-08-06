@@ -7,14 +7,22 @@ import { useState } from 'react';
 import { reportApprovalBadge } from '@/lib/domain/reports'; // [P2 FE-4]
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Badge, ConfirmModal, DetailStates, SectionCard, type Tone } from '@/components/ui';
-import { useReport, useApproveReport, useRejectReport, useRemoveReport } from '@/lib/queries';
+import { Badge, ConfirmModal, DetailStates, PromptModal, SectionCard, type Tone } from '@/components/ui';
+import {
+  useReport,
+  useApproveReport,
+  useRejectReport,
+  useRemoveReport,
+  useReportRevisions,
+  useReviseReport,
+} from '@/lib/queries';
 import { AccountingImpactModal } from '@/components/AccountingImpactModal'; // [TBO-79 B5]
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { ReasonModal } from '@/components/ReasonModal';
-import { shortDate } from '@/lib/format';
+import { kstDateTime, shortDate } from '@/lib/format';
 import { internalRoute } from '@/lib/navigation-security';
 import { ReportBundleCopyButton } from './ReportBundleCopyButton';
+import { apiErrorMessage } from '@/lib/api-error';
 
 // [P2 FE-4] 라벨 진실원 = lib/domain/reports(사본 제거)
 
@@ -22,12 +30,16 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
   const access = useAccountAccess();
   const admin = access.can('approval.manage');
   const reportQuery = useReport(reportId);
+  const revisionsQuery = useReportRevisions(reportId);
   const router = useRouter();
   const approveReport = useApproveReport();
   const rejectReport = useRejectReport();
   const removeReport = useRemoveReport();
+  const reviseReport = useReviseReport();
   const [rejecting, setRejecting] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [revising, setRevising] = useState(false);
+  const [revisionError, setRevisionError] = useState<string | null>(null);
 
   return (
     <div className="p-6 max-w-[760px] mx-auto space-y-5">
@@ -68,6 +80,9 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
                   {report.homework && (
                     <p className="text-caption text-fg-muted border-t border-line-muted pt-3">숙제: {report.homework}</p>
                   )}
+                  <p className="border-t border-line-muted pt-3 text-micro text-fg-subtle">
+                    본문 v{report.version ?? 1}{report.updatedAt ? ` · 최근 저장 ${kstDateTime(report.updatedAt)}` : ''}
+                  </p>
                 </div>
               </SectionCard>
 
@@ -78,15 +93,57 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
                   <button className="btn btn-danger" disabled={rejectReport.isPending} onClick={() => setRejecting(true)}>반려</button>
                 </div>
               )}
+              {admin && report.approvalStatus === 'approved' && (
+                <button className="btn btn-primary" disabled={reviseReport.isPending} onClick={() => {
+                  setRevisionError(null);
+                  setRevising(true);
+                }}>
+                  승인 내용 수정
+                </button>
+              )}
               {canRemove && (
                 <button className="btn btn-danger" disabled={removeReport.isPending} onClick={() => setRemoving(true)}>
                   draft 철회
                 </button>
               )}
-              <p className="text-caption text-fg-subtle">
-                수정은 <Link href={internalRoute.session(report.sessionId)} className="underline">세션 상세의 피드백 폼</Link>에서 —
-                이 페이지와 같은 데이터(단일 소스)입니다.
-              </p>
+              {report.approvalStatus !== 'approved' && (
+                <p className="text-caption text-fg-subtle">
+                  승인 전 수정은 <Link href={internalRoute.session(report.sessionId)} className="underline">세션 상세의 피드백 폼</Link>에서 처리합니다.
+                </p>
+              )}
+              {revisionError && <p className="text-caption text-danger" role="alert">{revisionError}</p>}
+
+              {admin && (revisionsQuery.data?.length ?? 0) > 0 && (
+                <SectionCard title={`수정 이력 ${revisionsQuery.data?.length ?? 0}건`}>
+                  <div className="divide-y border-line-muted">
+                    {revisionsQuery.data?.map((revision) => (
+                      <details key={revision.id} className="px-4 py-3">
+                        <summary className="cursor-pointer text-body font-medium">
+                          v{revision.beforeVersion} → v{revision.afterVersion} · {revision.editedByName ?? `사용자 #${revision.editedBy}`}
+                          <span className="ml-2 text-caption font-normal text-fg-subtle">{kstDateTime(revision.createdAt)}</span>
+                        </summary>
+                        <div className="mt-3 space-y-3 text-caption">
+                          <p><span className="font-medium">수정 사유:</span> {revision.reason}</p>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="min-w-0">
+                              <p className="mb-1 font-medium text-fg-muted">수정 전</p>
+                              <p className="break-words whitespace-pre-wrap">{revision.beforeContent}</p>
+                              {revision.beforeProgressPage && <p className="mt-2 text-fg-muted">진도: {revision.beforeProgressPage}</p>}
+                              {revision.beforeHomework && <p className="text-fg-muted">숙제: {revision.beforeHomework}</p>}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="mb-1 font-medium text-fg-muted">수정 후</p>
+                              <p className="break-words whitespace-pre-wrap">{revision.afterContent}</p>
+                              {revision.afterProgressPage && <p className="mt-2 text-fg-muted">진도: {revision.afterProgressPage}</p>}
+                              {revision.afterHomework && <p className="text-fg-muted">숙제: {revision.afterHomework}</p>}
+                            </div>
+                          </div>
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                </SectionCard>
+              )}
 
               {rejecting && (
                 <ReasonModal
@@ -94,6 +151,38 @@ export function ReportDetailView({ reportId }: { reportId: number }) {
                   title="리포트 반려"
                   onClose={() => setRejecting(false)}
                   onSubmit={(reason) => { rejectReport.mutate({ id: report.id, reason }); setRejecting(false); }}
+                />
+              )}
+              {revising && (
+                <PromptModal
+                  title="승인된 리포트 수정"
+                  submitLabel={reviseReport.isPending ? '저장 중...' : '수정 저장'}
+                  fields={[
+                    { name: 'reason', label: '수정 사유', required: true, placeholder: '수정 이유를 남겨 주세요.' },
+                    { name: 'content', label: '수업 내용', type: 'textarea', required: true, initial: report.content },
+                    { name: 'progressPage', label: '진도 페이지', initial: report.progressPage ?? '' },
+                    { name: 'homework', label: '숙제', type: 'textarea', initial: report.homework ?? '' },
+                  ]}
+                  onClose={() => setRevising(false)}
+                  onSubmit={(values) => {
+                    setRevisionError(null);
+                    reviseReport.mutate({
+                      id: report.id,
+                      input: {
+                        expectedVersion: report.version ?? 1,
+                        reason: values.reason,
+                        content: values.content,
+                        progressPage: values.progressPage,
+                        homework: values.homework,
+                      },
+                    }, {
+                      onSuccess: () => setRevising(false),
+                      onError: (error) => {
+                        setRevisionError(apiErrorMessage(error, '승인된 리포트를 수정하지 못했습니다.'));
+                        setRevising(false);
+                      },
+                    });
+                  }}
                 />
               )}
               {/* [TBO-79 B5] 승인 리포트 반려 시 회계 영향 확인. */}

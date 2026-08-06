@@ -12,6 +12,7 @@ const report = (overrides: Partial<SessionReportView> = {}): SessionReportView =
   homework: '단어 암기',
   status: 'submitted',
   approvalStatus: 'approved',
+  version: 1,
   context: {
     student: { id: 1, name: '고은성', grade: 7 },
     session: {

@@ -8,7 +8,7 @@ import { useAccountAccess } from "@/lib/useAccountAccess";
 import { logger } from "@/lib/log";
 import { detailRetry, useInvalidator } from "./shared";
 import { toStoreReport } from "@/lib/domain/report-view";
-import type { ReportListQuery, ReportWorklistQuery } from '@kms545487/contracts';
+import type { ReportListQuery, ReportWorklistQuery, ReviseApprovedSessionReportInput } from '@kms545487/contracts';
 
 // [TBO-54 C2 대표 지시 콘솔 로깅] 머니 액션 관측 — id·금액·결과만(PII 0).
 const moneyLog = logger("money");
@@ -120,6 +120,14 @@ export const useReport = (id: number | null) =>
     queryFn: async () => toStoreReport(await api.reports.get(id!)),
     enabled: id != null,
   });
+export const useReportRevisions = (id: number | null) => {
+  const { can } = useAccountAccess();
+  return useQuery({
+    queryKey: qk.reports.revisions(id ?? -1),
+    queryFn: () => api.reports.revisions(id!),
+    enabled: id != null && can('approval.manage'),
+  });
+};
 
 // 결제
 // [TBO-56 C2b] 생성·정정도 매출 보고(미수금 포함) 입력이 바뀐다 — qk.revenue 무효화 누락(TBO-55 확정 갭 ①) 해소.
@@ -187,6 +195,11 @@ export const useRemoveReport = () => {
 };
 export const useApproveReport = () =>
   useMutation({ mutationFn: (v: { id: number }) => api.reports.approve(v.id), onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all, qk.audit.all]) });
+export const useReviseReport = () =>
+  useMutation({
+    mutationFn: (v: { id: number; input: ReviseApprovedSessionReportInput }) => api.reports.revise(v.id, v.input),
+    onSuccess: useInvalidator([qk.reports.all, qk.payouts.all, qk.schedule.all, qk.audit.all]),
+  });
 // [TBO-79 B5] 승인 리포트 반려는 세션을 정산 적격에서 빼낸다 — 서버가 영향 확인을 요구한다.
 type RejectReportVars = {
   id: number;

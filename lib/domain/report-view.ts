@@ -26,6 +26,7 @@ export function toStoreReport(report: ApiReport): JoinedSessionReport {
     approvedAt: report.approvedAt,
     approvedBy: report.approvedBy,
     rejectedReason: report.rejectedReason,
+    version: report.version ?? 1,
     context: report.context,
     createdAt: report.createdAt,
     updatedAt: report.updatedAt,

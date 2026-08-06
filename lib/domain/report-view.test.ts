@@ -13,6 +13,7 @@ const apiReport = (overrides: Partial<ApiReport> = {}): ApiReport => ({
   homework: '단어 암기',
   status: 'submitted',
   approvalStatus: 'submitted',
+  version: 1,
   createdAt: '2026-07-29T00:00:00.000Z',
   updatedAt: '2026-07-29T01:00:00.000Z',
   context: {

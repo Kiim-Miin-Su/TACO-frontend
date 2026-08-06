@@ -54,6 +54,7 @@ export const qk = {
     list: (query: ReportListQuery = {}, scope = "global") => ["reports", "list", scope, query] as const,
     worklist: (query: ReportWorklistQuery = {}, scope = "global") => ["reports", "worklist", scope, query] as const,
     detail: (id: number) => ["reports", "detail", id] as const,
+    revisions: (id: number) => ["reports", "detail", id, "revisions"] as const,
   },
   students: {
     all: ["students"] as const,

@@ -15,6 +15,8 @@ import type {
   ReportListQuery,
   ReportWorklist,
   ReportWorklistQuery,
+  ReviseApprovedSessionReportInput,
+  SessionReportRevision,
   PayReadiness,
   SessionReport as SessionReportContract,
   SessionReportView as SessionReportViewContract,
@@ -116,6 +118,8 @@ export const financeApi = {
     worklist: (query: ReportWorklistQuery = {}) =>
       http.get<ReportWorklist>("/reports/worklist", { params: query }).then((r) => r.data),
     get: (id: number) => http.get<SessionReport>(`/reports/${id}`).then((r) => r.data), // [TBO-58 P2] 상세 딥링크
+    revisions: (id: number) =>
+      http.get<SessionReportRevision[]>(`/reports/${id}/revisions`).then((r) => r.data),
     create: (body: { sessionId: number; studentId: number; instructorId?: number; content: string; progressPage?: string; homework?: string; status?: "draft" | "submitted" }) =>
       http.post<SessionReportRecord>("/reports", body).then((r) => r.data),
     // [TBO-76 76D] 기존 보고서 작성값 수정 — 조인 헤더는 입력받지 않는다.
@@ -125,6 +129,8 @@ export const financeApi = {
     // [TBO-79 C2] 승인 actor는 서버 토큰이 권위 — body로 보내지 않는다.
     approve: (id: number) =>
       http.post<SessionReportRecord>(`/reports/${id}/approve`, {}).then((r) => r.data),
+    revise: (id: number, body: ReviseApprovedSessionReportInput) =>
+      http.post<SessionReportRecord>(`/reports/${id}/revise`, body).then((r) => r.data),
     // [TBO-79 B5] 반려 body는 RejectReportInput 계약 — 회계 확인 필드를 포함한다.
     reject: (id: number, body: RejectReportInput = {}) =>
       http.post<SessionReportRecord>(`/reports/${id}/reject`, body).then((r) => r.data),

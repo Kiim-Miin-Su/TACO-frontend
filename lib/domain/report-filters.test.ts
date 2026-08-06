@@ -13,7 +13,7 @@ const courses: Course[] = [
 const enrollments: Enrollment[] = [];
 const reports: SessionReport[] = [{
   id: 20, sessionId: 1, studentId: 7, instructorId: 3, subjectId: 1,
-  content: '작성 당시 영어', status: 'submitted', approvalStatus: 'approved',
+  content: '작성 당시 영어', status: 'submitted', approvalStatus: 'approved', version: 1,
 }];
 
 describe('filterReportSessions', () => {
