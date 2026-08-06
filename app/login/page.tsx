@@ -63,8 +63,22 @@ function LoginForm() {
     }
   }
 
+  // [TBO-86I-5] 터미널 세션 만료(401+refresh 실패 → /logout 경유) 가시성 — 조용한 콘솔 로그 대신
+  //  로그인 화면에서 이유를 명시한다. redirect 파라미터로 재로그인 후 원 화면 복귀(sanitize는
+  //  resolvePostLoginDestination 담당).
+  const sessionExpired = params.get("expired") === "1";
+
   return (
     <AuthShell title="로그인" subtitle="사내 담당자 전용 백오피스">
+      {sessionExpired && !err && (
+        <p
+          className="text-caption rounded-md px-3 py-2 mb-1"
+          role="status"
+          style={{ background: "color-mix(in srgb, var(--color-accent) 10%, transparent)", color: "var(--color-accent)" }}
+        >
+          세션이 만료되어 자동 로그아웃되었습니다. 다시 로그인하면 보던 화면으로 돌아갑니다.
+        </p>
+      )}
       <form onSubmit={submit} className="space-y-3.5">
         <AuthField label="아이디">
           <input className="input w-full" value={webId} onChange={(e) => setWebId(e.target.value)} autoFocus />

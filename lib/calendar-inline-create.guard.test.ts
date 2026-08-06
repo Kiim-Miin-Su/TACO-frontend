@@ -83,6 +83,17 @@ describe('[TBO-86 C] 캘린더 인라인 등록 공용 컴포넌트', () => {
     expect(read('features/reports/ReportsCalendarView.tsx')).toContain("access.can('report.write')");
   });
 
+  // [TBO-86I-5] 터미널 세션 만료는 /logout 경유 명시 로그아웃 + 로그인 화면 안내가 계약이다.
+  //  (/login 직행은 stale cookie 미들웨어 bounce로 화면이 죽은 채 콘솔 401만 쌓이는 결함 재발.)
+  it('세션 만료는 /logout 경유·로그인 화면 안내·갱신 예정 401은 debug 로깅', () => {
+    const client = read('lib/api/client.ts');
+    expect(client).toContain('sessionExpiredLogoutUrl');
+    expect(client).not.toContain('window.location.assign("/login?expired=1")');
+    expect(client).toContain('willAttemptRefresh');
+    expect(read('app/login/page.tsx')).toContain('세션이 만료되어 자동 로그아웃되었습니다');
+    expect(read('app/logout/route.ts')).toContain('isInternalRedirectPath');
+  });
+
   it('과거 완료 이관은 전용 command를 쓰고 일반 held 주입을 열지 않는다', () => {
     expect(scheduleModal).toContain('historicalCompletedInput');
     expect(scheduleModal).toContain('onCreateHistorical');

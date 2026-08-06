@@ -4,7 +4,7 @@
 import axios, { type AxiosRequestConfig } from "axios";
 import { logger } from "../log";
 import { safeLogValue, safeUrlForLog } from "../log-redaction";
-import { isPublicRoute } from "../auth-routes";
+import { isPublicRoute, sessionExpiredLogoutUrl } from "../auth-routes";
 import { resetPreferences } from "../storage/preferences";
 import { isSudoRequiredError } from "../sudo";
 
@@ -64,25 +64,30 @@ http.interceptors.response.use(
     const errRid = String(err?.response?.headers?.["x-request-id"] ?? "");
     const responseData = err?.response?.data;
     const expectedSudoChallenge = isSudoRequiredError(err);
-    apiLog[expectedSudoChallenge ? "warn" : "error"](
-      `✗ ${status} ${err?.config?.method?.toUpperCase() ?? ""} ${safeUrlForLog(err?.config?.url)} ${meta ? `${Date.now() - meta.start}ms #${meta.seq}` : ""}${errRid ? ` rid=${errRid}` : ""}`,
-      safeLogValue(responseData ?? err?.message),
-    );
     // [대표 지시 ④] 401 → refresh 회전으로 조용한 갱신 시도(1회) — 성공 시 원 요청 재실행.
     //  auth 계열 엔드포인트 자신·이미 재시도한 요청은 제외(무한 루프 방지).
     const cfg = err?.config as (AxiosRequestConfig & { _retried?: boolean }) | undefined;
-    if (
-      status === 401 && cfg && !cfg._retried &&
+    const willAttemptRefresh =
+      status === 401 && !!cfg && !cfg._retried &&
       typeof window !== "undefined" &&
-      !AUTH_ENDPOINTS.test(String(cfg.url ?? ""))
-    ) {
+      !AUTH_ENDPOINTS.test(String(cfg.url ?? ""));
+    // [TBO-86I-5] 갱신 예정인 401은 예상 흐름(1h access 만료마다 발생) — error 대신 debug로 낮춰
+    //  "요청이 방어만 되고 콘솔 디버깅만 남는" 소음을 없앤다. 실제 오류만 error 레벨 유지.
+    apiLog[expectedSudoChallenge || willAttemptRefresh ? "debug" : "error"](
+      `✗ ${status} ${err?.config?.method?.toUpperCase() ?? ""} ${safeUrlForLog(err?.config?.url)} ${meta ? `${Date.now() - meta.start}ms #${meta.seq}` : ""}${errRid ? ` rid=${errRid}` : ""}${willAttemptRefresh ? " → 세션 갱신 시도" : ""}`,
+      safeLogValue(responseData ?? err?.message),
+    );
+    if (willAttemptRefresh && cfg) {
       const renewed = await refreshAccessToken();
       if (renewed) {
         cfg._retried = true;
         return http.request(cfg);
       }
     }
-    // 401(토큰 없음/만료 + 갱신 실패): 조용히 실패하지 않고 로그인으로 유도 — 세션이 끊긴 걸 사용자에게 알림.
+    // 401(토큰 없음/만료 + 갱신 실패): 조용히 실패하지 않고 명시 로그아웃으로 유도.
+    // [TBO-86I-5] /login 직행이 아니라 /logout 경유 — stale access cookie가 남아 있으면 미들웨어의
+    //  존재-기반 낙관 가드가 로그인 화면을 앱으로 되튕겨(무한 bounce) 화면이 죽은 채 유지되던 결함
+    //  수정. /logout이 세션 쿠키를 만료시킨 뒤 expired 안내·복귀 경로와 함께 /login을 연다.
     // 단, 로그인 시도 자체의 401(잘못된 자격)이나 공개 경로에선 리다이렉트하지 않음.
     if (
       status === 401 &&
@@ -93,7 +98,8 @@ http.interceptors.response.use(
     ) {
       expiredRedirectStarted = true;
       resetPreferences(); // [E0 storage 감사] 세션 만료 경로도 취향 preference 정리(계정 간 누출 차단)
-      window.location.assign("/login?expired=1");
+      apiLog.warn("세션 만료(갱신 불가) — 명시 로그아웃 후 로그인 화면으로 이동합니다.");
+      window.location.assign(sessionExpiredLogoutUrl(window.location.pathname, window.location.search));
     }
     return Promise.reject(err);
   },
