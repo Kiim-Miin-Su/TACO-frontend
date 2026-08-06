@@ -34,7 +34,7 @@ const thisYm = () => todayKst().slice(0, 7);
 export function AttendanceBookView() {
   const access = useAccountAccess();
   const manager = access.can("admin.area");
-  const canManageAttendance = access.can("attendance.manage");
+  const canManageAttendance = access.can("session-attendance.manage");
   const finance = access.can("finance.access");
   // [B6 C3 2026-07-16] role 비교 → capability(instructor.self는 instructor 역할에만 부여 — 동치).
   const instructorSelf = access.can("instructor.self");
@@ -257,7 +257,7 @@ export function AttendanceBookView() {
                       <th key={c.sessionId} className="text-center min-w-[64px]">
                         <button
                           className={`block w-full ${c.held ? "hover:text-accent" : "opacity-60"}`}
-                          title={!canManageAttendance ? "출결 변경은 대표자만 가능합니다." : c.held ? `${c.no}회차 전체 출석 처리` : "예정 회차(집계 제외)"}
+                          title={!canManageAttendance ? "수업 출결 관리 권한이 필요합니다." : c.held ? `${c.no}회차 전체 출석 처리` : "예정 회차(집계 제외)"}
                           disabled={!canManageAttendance || upsert.isPending}
                           onClick={() => c.held && markAll(c.sessionId)}
                         >
@@ -284,7 +284,7 @@ export function AttendanceBookView() {
                             <button
                               className="inline-grid place-items-center w-6 h-6 rounded-full text-micro font-semibold text-white disabled:opacity-40"
                               style={{ background: cell.status ? CELL[cell.status].bg : "var(--color-line)" }}
-                              title={!canManageAttendance ? "출결 변경은 대표자만 가능합니다." : cell.held ? "클릭 = 출석→지각→결석→공결 순환" : "예정 회차 — 미리 체크 가능"}
+                              title={!canManageAttendance ? "수업 출결 관리 권한이 필요합니다." : cell.held ? "클릭 = 출석→지각→결석→공결 순환" : "예정 회차 — 미리 체크 가능"}
                               disabled={!canManageAttendance || upsert.isPending}
                               onClick={() => mark(cell.sessionId, r.studentId, cell.status)}
                             >

@@ -96,7 +96,7 @@ export function PayoutWorksheetAmountCell({ row }: { row: PayoutWorksheetRow }) 
 }
 
 export function PayoutWorksheet({ instructorId, from, to }: { instructorId: number | null; from: string; to: string }) {
-  const canManageAttendance = useAccountAccess().can('attendance.manage');
+  const canManageAttendance = useAccountAccess().can('session-attendance.manage');
   const ws = usePayoutWorksheet(instructorId, from, to);
   const attendanceCommand = useInstructorAttendanceCommand();
   const upsert = useUpsertAttendance();

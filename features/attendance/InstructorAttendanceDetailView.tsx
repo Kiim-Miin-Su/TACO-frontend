@@ -24,9 +24,9 @@ import { InstructorAttendanceClearModal } from './InstructorAttendanceClearModal
 export function InstructorAttendanceDetailView({ instructorId }: { instructorId: number }) {
   const access = useAccountAccess();
   const admin = access.can('admin.area');
-  const canManageAttendance = access.can('attendance.manage');
+  const canManageAttendance = access.can('session-attendance.manage');
   const { data: instructors = [], isLoading: loadingInst } = useInstructors();
-  // 강사 출결은 attendance.manage 전용 command, 학생 출결은 attendance upsert를 사용한다.
+  // 강사·학생 수업 출결은 session-attendance.manage 전용 command를 사용한다.
   const attendanceCommand = useInstructorAttendanceCommand();
   const { data: attendance = [] } = useAttendance();
   const upsert = useUpsertAttendance();
@@ -183,7 +183,7 @@ export function InstructorAttendanceDetailView({ instructorId }: { instructorId:
                         <td>{s.subjectName} · <span className="text-fg-muted">{s.courseName}</span></td>
                         <td className="text-fg-muted">{s.roomName ?? '—'}</td>
                         <td className="text-center">
-                          {/* 강사 출결 CRUD는 attendance.manage 권한에서만 노출한다. */}
+                          {/* 강사 출결 CRUD는 session-attendance.manage 권한에서만 노출한다. */}
                           <AttMarker value={s.instructorAttendance} options={INSTRUCTOR_ATT_OPTIONS} canEdit={canManageAttendance} pending={attendanceCommand.isPending} onMark={(st) => markInst(s.id, st)} onClear={() => clearInst(s.id)} />
                         </td>
                         <td className="text-center">

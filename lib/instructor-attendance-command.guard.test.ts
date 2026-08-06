@@ -30,6 +30,7 @@ describe('강사 출결 전용 command 배선', () => {
     for (const file of files) {
       const source = read(file);
       expect(source, file).toContain('useInstructorAttendanceCommand');
+      expect(source, file).toContain('session-attendance.manage');
       expect(source, file).not.toMatch(/body:\s*\{\s*instructorAttendance:/);
       expect(source, file).not.toMatch(/body:\s*\{\s*clearInstructorAttendance:/);
     }

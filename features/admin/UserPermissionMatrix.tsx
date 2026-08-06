@@ -68,6 +68,7 @@ export function UserPermissionMatrix({ userId }: { userId: number }) {
                           <p className="mt-0.5 text-micro text-fg-subtle">
                             역할 기본값 {permission.roleDefault ? "허용" : "제한"}
                             {permission.capability === "attendance.manage" ? " · 대표자만 변경 가능" : ""}
+                            {permission.capability === "session-attendance.manage" ? " · 운영 역할 내 설정 가능" : ""}
                           </p>
                         </div>
                         <button

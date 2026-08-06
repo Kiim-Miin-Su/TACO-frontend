@@ -32,7 +32,7 @@ import { SESSION_STATUS_LABEL as SESSION_STATUS_LABEL_ENTRIES, sessionStatusLabe
 export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
   const access = useAccountAccess();
   const admin = access.can("calendar.manage");
-  const canManageAttendance = access.can("attendance.manage");
+  const canManageAttendance = access.can("session-attendance.manage");
   const myId = access.instructorId;
   const sessionQuery = useScheduleSession(sessionId);
   const { data: students = [] } = useStudents();
@@ -120,7 +120,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                 <StatCard label="시수 인정" value={paid ? hoursLabel(session.durationMinutes) : "제외"} tone={paid ? "accent" : undefined} />
               </div>
 
-              {/* 강사 출결은 attendance.manage 전용 command와 AttMarker를 재사용한다. */}
+              {/* 강사 출결은 session-attendance.manage 전용 command와 AttMarker를 재사용한다. */}
               <SectionCard title="강사 출결">
                 <div className="p-4 flex items-center gap-3 flex-wrap">
                   <AttMarker value={session.instructorAttendance} options={INSTRUCTOR_ATT_OPTIONS} canEdit={canManageAttendance} pending={attendanceCommand.isPending} onMark={markInst} onClear={canManageAttendance ? clearInst : undefined} />
@@ -129,7 +129,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                   </span>
                   {!canManageAttendance && (
                     <span className="text-caption text-fg-subtle ml-auto">
-                      열람 전용 (출결 변경은 대표자만 가능)
+                      열람 전용 (수업 출결 관리 권한 필요)
                     </span>
                   )}
                 </div>
