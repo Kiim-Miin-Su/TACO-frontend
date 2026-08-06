@@ -42,6 +42,11 @@ describe("queryKeys", () => {
     expect(qk.reports.revisions(12)).toEqual(['reports', 'detail', 12, 'revisions']);
   });
 
+  it("keys effective report templates by target instructor", () => {
+    expect(qk.reportTemplates.effective(3)).toEqual(['reportTemplates', 'effective', 3]);
+    expect(qk.reportTemplates.effective()).toEqual(['reportTemplates', 'effective', null]);
+  });
+
   it("isolates counsel aggregate by verified account scope", () => {
     expect(qk.counsel.aggregate(7, "3:super_admin")).toEqual(["counsel", "aggregate", "3:super_admin", 7]);
     expect(qk.counsel.aggregate(7, "4:manager")).not.toEqual(qk.counsel.aggregate(7, "3:super_admin"));

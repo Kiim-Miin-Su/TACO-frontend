@@ -21,6 +21,10 @@ export const miscApi = {
   // 리포트 템플릿(자산화) — zustand → DB 컬렉션.
   reportTemplates: {
     list: () => http.get<ReportTemplate[]>("/report-templates").then((r) => r.data),
+    effective: (instructorId?: number | null) =>
+      http.get<ReportTemplate | null>("/report-templates/effective", {
+        params: instructorId == null ? undefined : { instructorId },
+      }).then((r) => r.data),
     create: (input: CreateReportTemplateInput) =>
       http.post<ReportTemplate>("/report-templates", input).then((r) => r.data),
     update: (id: number, input: UpdateReportTemplateInput) =>

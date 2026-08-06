@@ -3,15 +3,17 @@
 //  기존 ReportWriteView의 StudentReportRow·FeedbackFormView의 폼이 이원화 → 하나로 통합.
 //  재사용처: ReportWriteView(인라인 목록)·FeedbackFormView(전용 페이지)·세션 상세 허브(20-3).
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiErrorMessage } from '@/lib/api-error';
 import { reportApprovalBadge } from '@/lib/domain/reports'; // [P2 FE-4]
-import { Badge, ModalShell, PromptModal, type Tone } from '@/components/ui';
-import { useReports, useReportTemplates, useCreateReportTemplate, useUpdateReportTemplate, useRemoveReportTemplate, useCreateReport, useSubmitReport, useUpdateReport } from '@/lib/queries';
+import { Badge, ModalShell, type Tone } from '@/components/ui';
+import { useReports, useReportTemplates, useEffectiveReportTemplate, useRemoveReportTemplate, useCreateReport, useSubmitReport, useUpdateReport } from '@/lib/queries';
 import type { ClassSession, ReportStatus, Student } from '@/types';
 import type { ReportTemplate } from '@kms545487/contracts';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { ReportBundleCopyButton } from './ReportBundleCopyButton';
+import { ReportTemplateEditorModal } from './ReportTemplateEditorModal';
+import { canAutoApplyReportTemplate } from '@/lib/domain/report-template';
 
 const reportTone: Record<ReportStatus, Tone> = { draft: 'neutral', submitted: 'accent', sent: 'success' };
 const reportLabel: Record<ReportStatus, string> = { draft: '작성중', submitted: '작성완료', sent: '발송됨' };
@@ -21,10 +23,11 @@ const reportLabel: Record<ReportStatus, string> = { draft: '작성중', submitte
  * @param canEdit 권한 가드(강사 본인/매니저). false면 읽기 전용(20-1 정합).
  */
 export function SessionFeedbackForm({ session, student, canEdit = true }: { session: ClassSession; student: Student; canEdit?: boolean }) {
-  const { data: sessionReports = [] } = useReports();
+  const reportsQuery = useReports();
+  const sessionReports = reportsQuery.data ?? [];
   // 템플릿은 DB 컬렉션(report_templates) — 강사 공용 자산(브라우저 휘발 제거).
   const { data: templates = [] } = useReportTemplates();
-  const createTemplate = useCreateReportTemplate();
+  const { data: effectiveTemplate } = useEffectiveReportTemplate(session.instructorId);
   const createReport = useCreateReport();
   const updateReport = useUpdateReport();
   const submitReport = useSubmitReport();
@@ -40,27 +43,49 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
   const lockedByApproval = report?.approvalStatus === 'approved';
   const enrichedSession = session as ClassSession & { courseName?: string; subjectName?: string };
   const context = report?.context;
+  const autoAppliedTemplateId = useRef<number | null>(null);
+  const userEdited = useRef(false);
+
+  useEffect(() => {
+    autoAppliedTemplateId.current = null;
+    userEdited.current = false;
+  }, [session.id, student.id]);
 
   // 서버 목록이 늦게 도착하거나 다른 화면에서 수정된 뒤 무효화되면 DB 값을 폼에 다시 투영한다.
   useEffect(() => {
     if (!report) return;
+    userEdited.current = false;
     setContent(report.content ?? '');
     setProgressPage(report.progressPage ?? '');
     setHomework(report.homework ?? '');
   }, [report]);
 
+  // 서버 effective 우선순위를 한 번만 적용한다. DB/로컬 본문이나 사용자가 입력한 값을 덮지 않는다.
+  useEffect(() => {
+    if (!effectiveTemplate || !canAutoApplyReportTemplate({
+      reportsPending: reportsQuery.isPending,
+      reportExists: !!report,
+      templateId: effectiveTemplate.id,
+      appliedTemplateId: autoAppliedTemplateId.current,
+      userEdited: userEdited.current,
+      draft: { content, progressPage, homework },
+    })) return;
+    autoAppliedTemplateId.current = effectiveTemplate.id;
+    setContent(effectiveTemplate.content);
+    setProgressPage(effectiveTemplate.progressPage ?? '');
+    setHomework(effectiveTemplate.homework ?? '');
+  }, [content, effectiveTemplate, homework, progressPage, report, reportsQuery.isPending]);
+
   const applyTemplate = (id: number) => {
     const t = templates.find((x) => x.id === id);
     if (!t) return;
+    userEdited.current = true;
     setContent((c) => (c.trim() ? c + '\n' + t.content : t.content));
+    if (t.progressPage) setProgressPage((progress) => progress || t.progressPage!);
     if (t.homework) setHomework((h) => h || t.homework!);
   };
   const [templateOpen, setTemplateOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false); // [TBO-58 P2] 템플릿 삭제 모달
-  const saveTemplate = (name: string) => {
-    setTemplateOpen(false);
-    if (name.trim() && content.trim()) createTemplate.mutate({ name: name.trim(), content, homework: homework || undefined });
-  };
 
   // [E0.6 H1 2026-07-15] 저장 신뢰성 수정 — 종전엔 (1) 기존 보고서 '임시 저장'이 저장 경로 자체가
   //  없었고 (2) '제출'이 편집한 본문을 보내지 않았고 (3) 결과와 무관하게 "저장됨"이 표시됐다.
@@ -149,21 +174,21 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
             placeholder="오늘 수업 내용·태도·성취 (학부모 발송용)"
             value={content}
             disabled={lockedByApproval}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(e) => { userEdited.current = true; setContent(e.target.value); }}
           />
           <input
             className="input mt-2"
             placeholder="진도 페이지"
             value={progressPage}
             disabled={lockedByApproval}
-            onChange={(e) => setProgressPage(e.target.value)}
+            onChange={(e) => { userEdited.current = true; setProgressPage(e.target.value); }}
           />
           <input
             className="input mt-2"
             placeholder="숙제 (다음 수업 전까지)"
             value={homework}
             disabled={lockedByApproval}
-            onChange={(e) => setHomework(e.target.value)}
+            onChange={(e) => { userEdited.current = true; setHomework(e.target.value); }}
           />
           {saveError && <p className="mt-2 text-caption text-danger" role="alert">{saveError}</p>}
           {lockedByApproval && <p className="mt-2 text-caption text-fg-subtle">승인된 보고서는 수정할 수 없습니다(시수 반영됨).</p>}
@@ -174,12 +199,10 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
             <button className="btn btn-sm btn-primary" disabled={!content.trim() || saving || lockedByApproval} onClick={() => save(true)}>제출</button>
           </div>
           {templateOpen && (
-            <PromptModal
-              title="템플릿으로 저장"
-              fields={[{ name: 'name', label: '템플릿 이름', required: true, placeholder: '예: 정규수업 기본' }]}
-              submitLabel="저장"
+            <ReportTemplateEditorModal
+              initial={{ content, progressPage, homework }}
               onClose={() => setTemplateOpen(false)}
-              onSubmit={(v) => saveTemplate(v.name)}
+              onSaved={() => setTemplateOpen(false)}
             />
           )}
           {manageOpen && <TemplateManageModal onClose={() => setManageOpen(false)} />}
@@ -189,45 +212,23 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
   );
 }
 
-// 공용 템플릿은 모두 적용할 수 있지만 수정/삭제는 작성자 또는 관리자만 가능하다.
-// 레거시·기본(createdBy 없음) 템플릿은 관리자만 변경한다.
+// 강사는 본인 personal, manager+는 모든 scope를 관리한다. 서버 owner 검증이 최종 권위다.
 function TemplateManageModal({ onClose }: { onClose: () => void }) {
   const access = useAccountAccess();
   const { data: templates = [] } = useReportTemplates();
-  const updateTemplate = useUpdateReportTemplate();
   const removeTemplate = useRemoveReportTemplate();
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [editing, setEditing] = useState<ReportTemplate | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const canMutate = (template: ReportTemplate) =>
-    access.can('approval.manage') || template.createdBy === access.account?.id;
+    access.can('approval.manage') || template.ownerUserId === access.account?.id;
   if (editing) {
     return (
-      <PromptModal
-        title="리포트 템플릿 수정"
-        fields={[
-          { name: 'name', label: '템플릿 이름', initial: editing.name, required: true },
-          { name: 'content', label: '수업 내용', type: 'textarea', initial: editing.content, required: true },
-          { name: 'homework', label: '숙제', type: 'textarea', initial: editing.homework ?? '' },
-        ]}
+      <ReportTemplateEditorModal
+        template={editing}
+        initial={{ content: editing.content, progressPage: editing.progressPage, homework: editing.homework }}
         onClose={() => setEditing(null)}
-        onSubmit={(values) => {
-          setMutationError(null);
-          updateTemplate.mutate({
-            id: editing.id,
-            input: {
-              name: values.name,
-              content: values.content,
-              homework: values.homework || undefined,
-            },
-          }, {
-            onSuccess: () => setEditing(null),
-            onError: (error) => {
-              setMutationError(apiErrorMessage(error, '템플릿을 수정하지 못했습니다.'));
-              setEditing(null);
-            },
-          });
-        }}
+        onSaved={() => setEditing(null)}
       />
     );
   }
@@ -241,6 +242,10 @@ function TemplateManageModal({ onClose }: { onClose: () => void }) {
             <div className="min-w-0 flex-1">
               <div className="text-body font-medium truncate">{t.name}</div>
               <div className="text-caption text-fg-subtle truncate">{t.content}</div>
+              <div className="text-micro text-fg-subtle">
+                {t.ownerUserId == null ? '전체 강사' : '개인'}
+                {t.isEnforced ? ' · 강제' : t.isDefault ? ' · 기본' : ''}
+              </div>
             </div>
             {!canMutate(t) ? (
               <span className="text-micro text-fg-subtle">공용</span>
@@ -268,7 +273,7 @@ function TemplateManageModal({ onClose }: { onClose: () => void }) {
         ))}
       </div>
       {mutationError && <p className="px-4 pb-2 text-caption text-danger" role="alert">{mutationError}</p>}
-      <p className="px-4 pb-3 text-caption text-fg-subtle">모든 직원이 템플릿을 적용할 수 있습니다. 수정·삭제는 작성자 또는 관리자만 가능하며 이미 작성된 리포트에는 영향이 없습니다.</p>
+      <p className="px-4 pb-3 text-caption text-fg-subtle">이미 작성된 리포트 내용은 템플릿 변경의 영향을 받지 않습니다.</p>
     </ModalShell>
   );
 }

@@ -124,6 +124,11 @@ export const useCreateViewPreset = () => useMutation({ mutationFn: api.viewPrese
 export const useUpdateViewPreset = () => useMutation({ mutationFn: (v: { id: number; input: Parameters<typeof api.viewPresets.update>[1] }) => api.viewPresets.update(v.id, v.input), onSuccess: useInvalidator([qk.viewPresets.all]) });
 export const useRemoveViewPreset = () => useMutation({ mutationFn: api.viewPresets.remove, onSuccess: useInvalidator([qk.viewPresets.all]) });
 export const useReportTemplates = () => useQuery({ queryKey: qk.reportTemplates.list(), queryFn: () => api.reportTemplates.list(), staleTime: CATALOG_STALE });
+export const useEffectiveReportTemplate = (instructorId?: number | null) => useQuery({
+  queryKey: qk.reportTemplates.effective(instructorId),
+  queryFn: () => api.reportTemplates.effective(instructorId),
+  staleTime: CATALOG_STALE,
+});
 export const useCreateReportTemplate = () => useMutation({ mutationFn: api.reportTemplates.create, onSuccess: useInvalidator([qk.reportTemplates.all]) });
 export const useUpdateReportTemplate = () =>
   useMutation({
