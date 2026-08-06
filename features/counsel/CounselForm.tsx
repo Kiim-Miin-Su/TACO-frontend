@@ -122,7 +122,8 @@ export function CounselForm({
 
       {mode === 'new' && (
         <div className="space-y-6 border-t border-line-muted pt-6">
-          <StudentRegistrationFields draft={draft} courses={courses} showStatus={false} />
+          {/* [TBO-86I-4] 상담 접수도 표준 등록과 같은 input 전체(가족 연결 포함 — input≡DTO 일치) */}
+          <StudentRegistrationFields draft={draft} courses={courses} students={students} />
         </div>
       )}
 

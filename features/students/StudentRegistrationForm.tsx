@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import type { RegistrationResult } from '@/types';
-import { useCourses, useRegisterStudent } from '@/lib/queries';
+import { useCourses, useRegisterStudent, useStudents } from '@/lib/queries';
 import { StudentRegistrationFields } from './StudentRegistrationFields';
 import { serverStudentErrors } from './student-form-model';
 import { useStudentRegistrationDraft } from './useStudentRegistrationDraft';
@@ -18,6 +18,8 @@ export function StudentRegistrationForm({
 }) {
   const register = useRegisterStudent();
   const { data: courses = [] } = useCourses();
+  // [TBO-86I-4] "기존에 다니는 가족" 연결 선택지 — 활성 재원생 목록(단일 학생 캐시 재사용).
+  const { data: students = [] } = useStudents();
   const draft = useStudentRegistrationDraft(initialCourseId);
   const [message, setMessage] = useState('');
   const [failed, setFailed] = useState(false);
@@ -44,8 +46,9 @@ export function StudentRegistrationForm({
   };
 
   return (
+    // [TBO-86I-4] compact는 여백 스타일만 — 입력 필드 집합은 표준 등록 화면과 항상 동일(input≡DTO).
     <form onSubmit={submit} className={`space-y-6 ${compact ? '' : 'p-4'}`}>
-      <StudentRegistrationFields draft={draft} courses={courses} showStatus={!compact} showOptionalSections={!compact} />
+      <StudentRegistrationFields draft={draft} courses={courses} students={students} />
       <div className="flex flex-wrap items-center justify-end gap-3">
         {message && <span className={`text-caption ${failed ? 'text-danger' : 'text-success'}`} role={failed ? 'alert' : 'status'}>{message}</span>}
         <button type="submit" className="btn btn-primary" disabled={register.isPending}>{register.isPending ? 'DB 검증·등록 중…' : '학생 등록'}</button>

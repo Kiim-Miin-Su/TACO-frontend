@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  familyRelationInputsOf,
   guardianInputsOf,
   interestInputsOf,
   studentInputOf,
   validateStudentForm,
+  type FamilyRelationFormValue,
   type GuardianFormValue,
   type InterestFormValue,
   type StudentProfileFormValue,
@@ -70,5 +72,34 @@ describe('student aggregate form SSOT', () => {
     expect(studentGradeLabel(13)).toBe('G13');
     expect(validateStudentForm({ ...profile, grade: '13' }, interests).grade).toBeUndefined();
     expect(validateStudentForm({ ...profile, grade: '14' }, interests).grade).toContain('G13');
+  });
+});
+
+// [TBO-86I-4] "기존에 다니는 가족" 등록 행 — 검증과 계약 매핑(input≡DTO 일치 규약)
+describe('registration family relations', () => {
+  const profile: StudentProfileFormValue = {
+    name: '가족 학생', englishName: '', gender: 'undisclosed', birthDate: '2013-03-15', grade: '7',
+    country: 'KR', address: '서울시', addressDetail: '', schoolName: 'TACO School', phone: '010-1',
+    kakaoId: '', counselTopic: '상담', status: 'new_inquiry', memo: '',
+  };
+  const row = (patch: Partial<FamilyRelationFormValue> = {}): FamilyRelationFormValue => ({
+    clientId: 'f1', relatedStudentId: '10', relationType: 'sibling', relationLabel: '', linkGuardians: true, ...patch,
+  });
+
+  it('상대 미선택·기타 라벨 누락·같은 상대 중복을 막는다(BE 검증과 동형)', () => {
+    expect(validateStudentForm(profile, [], [], [row({ relatedStudentId: '' })]).familyRelations).toContain('선택');
+    expect(validateStudentForm(profile, [], [], [row({ relationType: 'other', relationLabel: ' ' })]).familyRelations).toContain('관계 이름');
+    expect(validateStudentForm(profile, [], [], [row(), row({ clientId: 'f2' })]).familyRelations).toContain('중복');
+    expect(validateStudentForm(profile, [], [], [row()]).familyRelations).toBeUndefined();
+  });
+
+  it('계약 매핑 — 빈 배열은 미전송(undefined), sibling 라벨 제거, linkGuardians는 true일 때만 전송', () => {
+    expect(familyRelationInputsOf([])).toBeUndefined();
+    expect(familyRelationInputsOf([row({ relationLabel: '무시' })])).toEqual([
+      { relatedStudentId: 10, relationType: 'sibling', linkGuardians: true },
+    ]);
+    expect(familyRelationInputsOf([row({ relationType: 'other', relationLabel: ' 사촌 ', linkGuardians: false })])).toEqual([
+      { relatedStudentId: 10, relationType: 'other', relationLabel: '사촌' },
+    ]);
   });
 });

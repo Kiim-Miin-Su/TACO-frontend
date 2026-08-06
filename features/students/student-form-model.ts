@@ -1,4 +1,5 @@
 import type {
+  CreateStudentFamilyRelationInput,
   CreateStudentInput,
   ParentLinkInput,
   Student,
@@ -44,10 +45,19 @@ export type GuardianFormValue = {
   kakaoAvailable?: boolean;
 };
 
-export type StudentFormErrors = Partial<Record<keyof StudentProfileFormValue | 'interests' | 'guardians', string>>;
+// [TBO-86I-4] 등록 시점 "기존에 다니는 가족" 연결 행 — 계약 CreateStudentFamilyRelationInput과 1:1.
+export type FamilyRelationFormValue = {
+  clientId: string;
+  relatedStudentId: string; // select 값 — 빈 문자열 = 미선택
+  relationType: 'sibling' | 'other';
+  relationLabel: string;
+  linkGuardians: boolean;
+};
+
+export type StudentFormErrors = Partial<Record<keyof StudentProfileFormValue | 'interests' | 'guardians' | 'familyRelations', string>>;
 
 let clientSequence = 0;
-export function newClientId(prefix: 'interest' | 'guardian'): string {
+export function newClientId(prefix: 'interest' | 'guardian' | 'family'): string {
   clientSequence += 1;
   return `${prefix}-${clientSequence}`;
 }
@@ -93,7 +103,12 @@ export function interestFormsOf(interests: StudentInterest[]): InterestFormValue
     }));
 }
 
-export function validateStudentForm(profile: StudentProfileFormValue, interests: InterestFormValue[], guardians: GuardianFormValue[] = []): StudentFormErrors {
+export function validateStudentForm(
+  profile: StudentProfileFormValue,
+  interests: InterestFormValue[],
+  guardians: GuardianFormValue[] = [],
+  familyRelations: FamilyRelationFormValue[] = [],
+): StudentFormErrors {
   const errors: StudentFormErrors = {};
   if (!profile.name.trim()) errors.name = '학생 이름을 입력해 주세요.';
   if (!profile.gender) errors.gender = '성별을 선택해 주세요.';
@@ -119,7 +134,25 @@ export function validateStudentForm(profile: StudentProfileFormValue, interests:
   if (guardians.filter((guardian) => guardian.isPrimary).length > 1) errors.guardians = '주보호자는 한 명만 선택할 수 있습니다.';
   const guardianKeys = guardians.map((guardian) => guardianKey(guardian.name, guardian.phone)); // [P2 4-B] BE와 동형 진실원(lib/domain/identity)
   if (guardianKeys.some(Boolean) && new Set(guardianKeys).size !== guardianKeys.length) errors.guardians = '중복된 보호자 입력이 있습니다.';
+  // [TBO-86I-4] 가족 연결 — 상대 학생 필수, 기타 관계는 라벨 필수, 같은 상대 중복 금지(BE 409와 동형).
+  if (familyRelations.some((relation) => !relation.relatedStudentId)) errors.familyRelations = '연결할 기존 재원생을 선택해 주세요.';
+  else if (familyRelations.some((relation) => relation.relationType === 'other' && !relation.relationLabel.trim())) {
+    errors.familyRelations = '기타 관계는 관계 이름을 입력해 주세요.';
+  } else if (new Set(familyRelations.map((relation) => relation.relatedStudentId)).size !== familyRelations.length) {
+    errors.familyRelations = '같은 학생과의 가족 연결이 중복됐습니다.';
+  }
   return errors;
+}
+
+// [TBO-86I-4] 폼 행 → 계약 입력 매핑 — 빈 배열은 undefined(미전송)로 payload를 늘리지 않는다.
+export function familyRelationInputsOf(relations: FamilyRelationFormValue[]): CreateStudentFamilyRelationInput[] | undefined {
+  if (!relations.length) return undefined;
+  return relations.map((relation) => ({
+    relatedStudentId: Number(relation.relatedStudentId),
+    relationType: relation.relationType,
+    ...(relation.relationType === 'other' && relation.relationLabel.trim() ? { relationLabel: relation.relationLabel.trim() } : {}),
+    ...(relation.linkGuardians ? { linkGuardians: true } : {}),
+  }));
 }
 
 export function studentInputOf(profile: StudentProfileFormValue): CreateStudentInput {
