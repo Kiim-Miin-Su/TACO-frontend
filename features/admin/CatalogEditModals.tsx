@@ -23,7 +23,7 @@ export function CourseEditModal({
   const [form, setForm] = useState({
     name: course.name,
     subjectId: String(course.subjectId),
-    instructorId: String(course.instructorId),
+    instructorId: course.instructorId == null ? 'unassigned' : String(course.instructorId),
     price: String(course.price),
     color: course.color ?? '',
   });
@@ -43,7 +43,7 @@ export function CourseEditModal({
       patch: {
         name: form.name.trim(),
         subjectId: Number(form.subjectId),
-        instructorId: Number(form.instructorId),
+        instructorId: form.instructorId === 'unassigned' ? null : Number(form.instructorId),
         price: Number(form.price) || 0,
         hourlyRateOverride: pay.hourlyRateOverride ? Number(pay.hourlyRateOverride) : null,
         isKinder: pay.isKinder,
@@ -73,6 +73,7 @@ export function CourseEditModal({
         </Field>
         <Field label="담당 강사 *">
           <select className="input" value={form.instructorId} onChange={(e) => setForm({ ...form, instructorId: e.target.value })}>
+            <option value="unassigned">배정중</option>
             {instructors.map((instructor) => <option key={instructor.id} value={instructor.id}>{instructor.name}</option>)}
           </select>
         </Field>

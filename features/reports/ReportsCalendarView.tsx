@@ -58,7 +58,7 @@ export function ReportsCalendarView() {
   };
 
   const courseName = (id: number) => courses.find((c) => c.id === id)?.name ?? '수업';
-  const instructorName = (id: number) => instructors.find((i) => i.id === id)?.name ?? '—';
+  const instructorName = (id: number | null) => id == null ? '배정중' : (instructors.find((i) => i.id === id)?.name ?? '—');
 
   const session = selected != null ? classSessions.find((s) => s.id === selected) : undefined;
   // 로스터 = 명시 세션 코호트 우선, 없으면 활성 수강(contracts 순수 함수).

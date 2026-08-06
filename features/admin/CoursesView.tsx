@@ -57,7 +57,7 @@ export function CoursesView() {
                     <Link href={internalRoute.adminCourse(c.id)} className="text-accent hover:underline">{c.name}</Link>
                   </td>
                   <td className="text-fg-muted">{subjectNames.get(c.subjectId) ?? '—'}</td>
-                  <td className="text-fg-muted">{instructorNames.get(c.instructorId) ?? '—'}</td>
+                  <td className="text-fg-muted">{c.instructorId == null ? '배정중' : (instructorNames.get(c.instructorId) ?? '—')}</td>
                   <td className="mono">{won(c.hourlyRate)} <span className="text-micro text-fg-subtle">{c.hourlyRateOverride == null ? '기본' : 'override'}</span></td>
                   <td>{c.isKinder ? '예' : '아니오'}</td>
                   <td className="text-right mono">{won(c.price)}</td>

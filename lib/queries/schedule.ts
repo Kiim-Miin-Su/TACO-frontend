@@ -164,6 +164,14 @@ export const useCreateHistoricalCompletedSchedule = () =>
     onSuccess: useCalendarCommandInvalidator(),
   });
 export const useCreateScheduleSeries = () => useMutation({ mutationFn: api.schedule.createSeries, onSuccess: useCalendarCommandInvalidator() }); // [C2/C4] 반복 bulk
+export const useUpdateInstructorAssignment = () => {
+  const invalidate = useCalendarCommandInvalidator();
+  return useMutation({
+    mutationFn: (variables: { id: number; body: Parameters<typeof api.schedule.updateInstructorAssignment>[1] }) =>
+      api.schedule.updateInstructorAssignment(variables.id, variables.body),
+    onSuccess: () => invalidate(),
+  });
+};
 export const useOpenClass = () => {
   const queryClient = useQueryClient();
   return useMutation({ mutationFn: api.schedule.openClass, onSuccess: () => invalidateClassOpening(queryClient) });

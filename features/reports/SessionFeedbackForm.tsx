@@ -81,6 +81,10 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
           await submitReport.mutateAsync(report.id);
         }
       } else {
+        if (session.instructorId == null) {
+          setSaveError('담당 강사를 배정한 뒤 리포트를 작성할 수 있습니다.');
+          return;
+        }
         await createReport.mutateAsync({
           sessionId: session.id,
           studentId: student.id,

@@ -99,4 +99,13 @@ describe('request draft builders', () => {
     expect(batch.requests.every((request) =>
       request.requestKind === 'session_create' && request.instructorId === 1)).toBe(true);
   });
+
+  it('강사 승인 요청은 배정중 회차를 가짜 ID로 변환하지 않고 차단한다', () => {
+    expect(() => buildSessionCreateRequestBody({
+      courseId: 10,
+      instructorId: null,
+      sessionDate: '2026-08-03',
+      startTime: '16:00',
+    })).toThrow('담당 강사가 필요');
+  });
 });

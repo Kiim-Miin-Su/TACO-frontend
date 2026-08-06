@@ -234,7 +234,7 @@ function adminTasks(s: StoreSlice): TaskItem[] {
   for (const m of makeupNeeds(s).filter((x) => !x.resolved)) {
     out.push({
       id: `makeup-${m.session.id}`, group: 'class', tone: 'danger', counts: true,
-      title: `보강 미배정 — ${iname(m.session.instructorId)}`,
+      title: `보강 미배정 — ${m.session.instructorId == null ? '배정중' : iname(m.session.instructorId)}`,
       detail: `${m.session.sessionDate} ${m.session.startTime ?? ''} · ${MAKEUP_REASON_LABEL[m.reason]} · 보강 일정 필요`,
       href: '/calendar',
     });

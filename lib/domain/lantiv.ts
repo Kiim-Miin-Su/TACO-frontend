@@ -113,7 +113,7 @@ export function groupSessions(rows: ScheduleRow[], by: ListGroupBy): ListGroup[]
       if (!ids.length) put('s-none', '학생 미배정', r);
       else ids.forEach((id, i) => put(`s${id}`, r.studentNames?.[i] ?? `학생#${id}`, r));
     } else if (by === 'instructor') {
-      put(`i${r.instructorId}`, r.instructorName, r);
+      if (r.instructorId != null) put(`i${r.instructorId}`, r.instructorName ?? `강사 #${r.instructorId}`, r);
     } else {
       put(`r${r.roomId ?? 0}`, r.roomName ?? '강의실 미지정', r);
     }

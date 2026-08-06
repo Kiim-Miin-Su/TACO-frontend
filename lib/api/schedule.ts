@@ -39,6 +39,8 @@ import type {
   OpenClassSeriesResult,
   CreateHistoricalCompletedSessionInput,
   HistoricalCompletedSessionResult,
+  UpdateSessionInstructorAssignmentInput,
+  UpdateSessionInstructorAssignmentResult,
 } from "@kms545487/contracts";
 
 // 기존 "@/lib/api" import 표면을 보존하되 wire 필드는 contracts 0.2.32만 소유한다.
@@ -112,6 +114,8 @@ export const scheduleApi = {
     // 이동·리사이즈·편집 → { row, conflicts }. 충돌 시 409(서버) → force로 재시도.
     update: (id: number, body: SchedulePatchBody) =>
       http.patch<ScheduleMutationResult<ScheduleRow, Conflict>>(`/schedule/${id}`, body).then((r) => r.data),
+    updateInstructorAssignment: (id: number, body: UpdateSessionInstructorAssignmentInput) =>
+      http.put<UpdateSessionInstructorAssignmentResult>(`/schedule/${id}/instructor-assignment`, body).then((r) => r.data),
     conflicts: (body: ConflictCheckBody) =>
       http.post<Conflict[]>("/schedule/conflicts", body).then((r) => r.data),
     // 세션 삭제(soft delete — v9). [TBO-29C C3] scope(this/this_and_following/all) + series CAS 지원.

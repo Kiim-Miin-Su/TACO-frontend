@@ -37,7 +37,7 @@ const moneyOrUndefined = (value: string): number | undefined => value === '' ? u
 function catalogInput(draft: ClassOpeningDraft) {
   return {
     subjectName: draft.subjectName.trim(),
-    instructorId: draft.instructorId as number,
+    instructorId: draft.instructorId,
     studentIds: [...draft.studentIds],
     hourlyRateOverride: draft.hourlyRateOverride === '' ? null : Number(draft.hourlyRateOverride),
     coursePrice: moneyOrUndefined(draft.coursePrice),

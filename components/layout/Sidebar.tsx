@@ -34,7 +34,8 @@ const groups: { title: string; items: Item[] }[] = [
       { label: "캘린더", icon: IconCalendar, href: "/calendar" },
       { label: "상담", icon: IconChat, href: "/counsel", counselOnly: true },
       { label: "학생 · 부모", icon: IconUsers, href: "/students" },
-      { label: "수업 (강사)", icon: IconBook, href: "/sessions" },
+      { label: "수업", icon: IconBook, href: "/sessions" },
+      { label: "강사", icon: IconUsers, href: "/admin/instructors", adminOnly: true },
     ],
   },
   {

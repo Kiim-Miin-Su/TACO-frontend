@@ -83,7 +83,11 @@ export function ScheduleCreateModal({
   const myCourses = lockInstructorId != null ? resources.courses.filter((c) => c.instructorId === lockInstructorId) : resources.courses;
   const [courseId, setCourseId] = useState<number>(myCourses[0]?.id ?? 0);
   const course = resources.courses.find((c) => c.id === courseId);
-  const [instructorId, setInstructorId] = useState<number | "">(lockInstructorId ?? defaultInstructorId ?? course?.instructorId ?? "");
+  type InstructorSelection = number | "unassigned" | "";
+  const initialInstructor: InstructorSelection = lockInstructorId
+    ?? defaultInstructorId
+    ?? (course ? (course.instructorId ?? "unassigned") : "");
+  const [instructorId, setInstructorId] = useState<InstructorSelection>(initialInstructor);
   const [roomId, setRoomId] = useState<number | "">("");
   type InlineCreator = "course" | "instructor" | "room" | "student";
   const [inlineCreator, setInlineCreator] = useState<InlineCreator | null>(null);
@@ -129,7 +133,7 @@ export function ScheduleCreateModal({
     setCourseId(id);
     const c = resources.courses.find((x) => x.id === id);
     if (c) {
-      if (lockInstructorId == null) setInstructorId(c.instructorId);
+      if (lockInstructorId == null) setInstructorId(c.instructorId ?? "unassigned");
       setEnd(fromMin((toMin(start) + c.durationMinutes) % 1440)); // 코스 진행시간으로 종료 자동([R-9] 자정 래핑)
       setColor(c.color); // 코스 색을 기본 색으로
     }
@@ -275,9 +279,11 @@ export function ScheduleCreateModal({
     const studentIds =
       pickedStudents != null && effPicked.size !== courseRoster.length ? [...effPicked] : undefined;
     // [이슈1] 각 발생일(현지)을 KST로 변환해 저장 — 종료는 시작과 같은 현지날짜 기준으로 변환.
+    const selectedInstructorId = lockInstructorId
+      ?? (instructorId === "unassigned" ? null : (instructorId || undefined));
     const mk = (dLocal: string): ScheduleCreateBody => {
       const ks = toKst(dLocal, start), ke = toKst(dLocal, end);
-      return { courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, sessionDate: ks.date, startTime: ks.time, endTime: ke.time, durationMinutes: durationMinutesBetween(start, end), memo: memo || undefined, color, studentIds,
+      return { courseId, instructorId: selectedInstructorId, roomId: roomId || undefined, sessionDate: ks.date, startTime: ks.time, endTime: ke.time, durationMinutes: durationMinutesBetween(start, end), memo: memo || undefined, color, studentIds,
         kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined, mode: sessionMode,
         ...(!requestMode ? { status, isPublic } : {}) }; // 상태·공개 여부는 관리자 확정 일정에만 적용
     };
@@ -285,7 +291,7 @@ export function ScheduleCreateModal({
     if (days.length <= 1) {
       const single = mk(days[0] ?? date);
       if (historicalImport) {
-        const pickedInstructorId = lockInstructorId ?? (instructorId || undefined);
+        const pickedInstructorId = selectedInstructorId;
         if (!historicalImportEligible || !historicalSessionEnded(single)) {
           setBlockError("종료된 과거 수업만 완료 상태로 이관할 수 있습니다.");
           return;
@@ -312,7 +318,7 @@ export function ScheduleCreateModal({
     // 관리자 — KST 정규화 규칙만 전송(occurrence 날짜는 서버가 재계산·발급)
     const rule = seriesRuleToKst({ date, untilDate, repeat: repeat === "none" ? "weekly" : repeat, customWds, toKst, start, end });
     onCreateSeriesCommand({
-      courseId, instructorId: lockInstructorId ?? (instructorId || undefined), roomId: roomId || undefined, studentIds,
+      courseId, instructorId: selectedInstructorId, roomId: roomId || undefined, studentIds,
       repeat: { kind: repeat === "weekly" ? "weekly" : "custom", weekdays: rule.weekdays, startsOn: rule.startsOn, endsOn: rule.endsOn },
       startTime: rule.startTime, endTime: rule.endTime,
       memo: memo || undefined, color, status,
@@ -381,11 +387,11 @@ export function ScheduleCreateModal({
                   <CourseCreateForm
                     compact
                     initialSubjectId={inlineSubjectId}
-                    initialInstructorId={instructorId === "" ? undefined : Number(instructorId)}
+                    initialInstructorId={instructorId === "" ? undefined : instructorId === "unassigned" ? null : instructorId}
                     submitLabel="수업 과정 등록"
                     onCreated={(created) => {
                       setCourseId(created.id);
-                      setInstructorId(created.instructorId);
+                      setInstructorId(created.instructorId ?? "unassigned");
                       setColor(created.color);
                     }}
                   />
@@ -393,13 +399,14 @@ export function ScheduleCreateModal({
               </div>
             </InlineCreateField>
             <InlineCreateField
-              label={`담당자 ${instructorId && !instAvailable(Number(instructorId)) ? `· ⚠ ${instAvailabilityLabel(Number(instructorId))}` : ""}`}
+              label={`담당자 ${typeof instructorId === "number" && !instAvailable(instructorId) ? `· ⚠ ${instAvailabilityLabel(instructorId)}` : ""}`}
               createLabel="새 강사 등록"
               expanded={inlineCreator === "instructor"}
               onToggle={() => toggleInlineCreator("instructor")}
               canCreate={!requestMode && lockInstructorId == null && access.can("executive.manage")}
               controls={lockInstructorId == null ? (
-                <select className="input" value={instructorId} onChange={(event) => setInstructorId(event.target.value ? Number(event.target.value) : "")}>
+                <select className="input" value={instructorId} onChange={(event) => setInstructorId(event.target.value === "unassigned" ? "unassigned" : event.target.value ? Number(event.target.value) : "")}>
+                  <option value="unassigned">배정중</option>
                   {sortedInstructors.map((candidate) => (
                     <option key={candidate.id} value={candidate.id}>{scheduleResourceName(candidate)} · {instAvailabilityLabel(candidate.id)}</option>
                   ))}

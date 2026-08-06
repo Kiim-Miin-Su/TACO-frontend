@@ -18,7 +18,7 @@ export function CourseCreateForm({
 }: {
   compact?: boolean;
   initialSubjectId?: number;
-  initialInstructorId?: number;
+  initialInstructorId?: number | null;
   submitLabel?: string;
   onCreated?: (course: Course) => void;
 }) {
@@ -27,7 +27,7 @@ export function CourseCreateForm({
   const addCourse = useCreateCourse();
   const [name, setName] = useState('');
   const [subjectId, setSubjectId] = useState(initialSubjectId ? String(initialSubjectId) : '');
-  const [instructorId, setInstructorId] = useState(initialInstructorId ? String(initialInstructorId) : '');
+  const [instructorId, setInstructorId] = useState(initialInstructorId === null ? 'unassigned' : initialInstructorId ? String(initialInstructorId) : '');
   const [price, setPrice] = useState('');
   const [pay, setPay] = useState<CoursePayForm>({ hourlyRateOverride: '', isKinder: false });
   const [color, setColor] = useState<string>(COURSE_PALETTE[0]);
@@ -38,7 +38,7 @@ export function CourseCreateForm({
     if (initialSubjectId != null) setSubjectId(String(initialSubjectId));
   }, [initialSubjectId]);
   useEffect(() => {
-    if (initialInstructorId != null) setInstructorId(String(initialInstructorId));
+    if (initialInstructorId !== undefined) setInstructorId(initialInstructorId === null ? 'unassigned' : String(initialInstructorId));
   }, [initialInstructorId]);
 
   const submit = (event: FormEvent) => {
@@ -47,11 +47,11 @@ export function CourseCreateForm({
     setSuccess('');
     if (!name.trim()) { setFormError('코스명을 입력해 주세요.'); return; }
     if (!subjectId) { setFormError('과목을 선택해 주세요.'); return; }
-    if (!instructorId) { setFormError('담당 강사를 선택해 주세요.'); return; }
+    if (!instructorId) { setFormError('담당 강사 또는 배정중을 선택해 주세요.'); return; }
     addCourse.mutate({
       name: name.trim(),
       subjectId: Number(subjectId),
-      instructorId: Number(instructorId),
+      instructorId: instructorId === 'unassigned' ? null : Number(instructorId),
       price: Number(price) || 0,
       hourlyRateOverride: pay.hourlyRateOverride ? Number(pay.hourlyRateOverride) : null,
       isKinder: pay.isKinder,
@@ -83,6 +83,7 @@ export function CourseCreateForm({
       <Field label="담당 강사 *">
         <select className="input" value={instructorId} onChange={(event) => setInstructorId(event.target.value)}>
           <option value="">선택</option>
+          <option value="unassigned">배정중</option>
           {instructors.map((instructor) => <option key={instructor.id} value={instructor.id}>{instructor.name}</option>)}
         </select>
       </Field>

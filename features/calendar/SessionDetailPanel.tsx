@@ -107,13 +107,17 @@ export function SessionDetailPanel({
           <dd>{row.subjectName}</dd>
           <dt className="text-fg-muted">강사</dt>
           <dd>
-            <button
-              className="text-accent hover:underline"
-              title={`${row.instructorName} 개인 스케줄 보기`}
-              onClick={() => onPickInstructor?.(Number(row.instructorId), row.instructorName)}
-            >
-              {row.instructorName}
-            </button>
+            {row.instructorId == null ? (
+              <span className="text-attention font-medium">배정중</span>
+            ) : (
+              <button
+                className="text-accent hover:underline"
+                title={`${row.instructorName ?? "강사"} 개인 스케줄 보기`}
+                onClick={() => onPickInstructor?.(row.instructorId!, row.instructorName ?? "강사")}
+              >
+                {row.instructorName ?? `강사 #${row.instructorId}`}
+              </button>
+            )}
             {(() => {
               const inst = allInstructors.find((i) => Number(i.id) === Number(row.instructorId));
               return inst?.subjectName ? <span className="ml-1 text-micro text-fg-subtle">{inst.subjectName}</span> : null;

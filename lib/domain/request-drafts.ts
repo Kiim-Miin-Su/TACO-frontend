@@ -55,10 +55,12 @@ export function buildSessionCreateRequestBody(
   body: ScheduleCreateBody,
   instructorId?: number,
 ): CreateScheduleRequestBody {
+  const resolvedInstructorId = instructorId ?? body.instructorId;
+  if (resolvedInstructorId == null) throw new Error('강사 수업 요청에는 담당 강사가 필요합니다.');
   return {
     requestKind: 'session_create',
     courseId: body.courseId,
-    instructorId: instructorId ?? body.instructorId,
+    instructorId: resolvedInstructorId,
     roomId: body.roomId,
     sessionDate: body.sessionDate,
     startTime: body.startTime,

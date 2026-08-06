@@ -60,6 +60,14 @@ describe('subject-first class opening', () => {
     expect(input.memo).toBeUndefined();
   });
 
+  it('배정중은 가짜 강사 ID 없이 단건·반복 command의 null로 보존한다', () => {
+    expect(buildOpenClassInput(draft({ instructorId: null })).instructorId).toBeNull();
+    expect(buildOpenClassSeriesInput(
+      draft({ instructorId: null }),
+      { kind: 'weekly', weekdays: [1], endsOn: '2026-08-31' },
+    ).instructorId).toBeNull();
+  });
+
   it('반복 command는 중복 요일을 정렬하고 KST bulk 규칙으로 보낸다', () => {
     const input = buildOpenClassSeriesInput(draft(), { kind: 'custom', weekdays: [5, 1, 5], endsOn: '2026-08-31' });
     expect(input.repeat).toEqual({ kind: 'custom', weekdays: [1, 5], startsOn: '2026-07-27', endsOn: '2026-08-31' });

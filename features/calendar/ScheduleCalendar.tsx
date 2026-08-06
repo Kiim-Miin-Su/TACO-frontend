@@ -579,7 +579,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
         : colorBy === "subject"
           ? (r.color ?? hashColor(r.subjectName))
           : colorBy === "instructor"
-            ? PALETTE[r.instructorId % PALETTE.length]
+            ? (r.instructorId == null ? hashColor("배정중") : PALETTE[r.instructorId % PALETTE.length])
             : colorBy === "room"
               ? (rooms.find((x) => x.id === r.roomId)?.color ?? hashColor(r.roomName ?? "—"))
               : hashColor((r.studentNames ?? []).join(",") || "—"),
@@ -590,7 +590,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
       colorBy === "subject"
         ? r.courseName
         : colorBy === "instructor"
-          ? r.instructorName
+          ? (r.instructorName ?? "배정중")
           : colorBy === "room"
             ? (r.roomName ?? "—")
             : (r.studentNames ?? []).join(", ") || r.courseName,
@@ -1124,6 +1124,10 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
 
   async function submitScheduleChangeApproval(draft: ScheduleChangeApprovalDraft, requestReason: string, scope: RecurrenceScope) {
     const merged = applyScheduleRowPatch(draft.row, draft.patch);
+    if (merged.instructorId == null) {
+      setMsg("배정중 수업은 담당 강사를 먼저 지정해야 변경 요청을 보낼 수 있습니다.");
+      return;
+    }
     const body: CreateScheduleRequestBody = {
       requestKind: "session_update",
       targetSessionId: draft.row.id,
@@ -1564,6 +1568,9 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
     const newRoom = d.roomId ?? orig.roomId;
     // 스플릿(강사) 컬럼으로 드롭 → 강사 재배정(백엔드 FK·충돌 검증).
     const newInstructor = d.resType === "instructor" && d.resId != null ? d.resId : orig.instructorId;
+    const instructorPatch = newInstructor != null && newInstructor !== orig.instructorId
+      ? { instructorId: newInstructor }
+      : {};
     // [개방 2026-07-06] 학생 컬럼 드롭 → 1:1 수업이면 그 학생으로 재배정(studentIds 교체 —
     //  BE가 "그 코스 활성 수강생의 부분집합" 검증, 아니면 400 롤백+메시지).
     //  단체(코호트 2명+)는 임의 재배정 방지 — 코호트 유지, 시간만 이동(안내 토스트).
@@ -1581,7 +1588,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
       orig,
       {
         sessionDate: kst.date, startTime: fromMin(kst.startMin), durationMinutes: d.dur, roomId: newRoom,
-        ...(newInstructor !== orig.instructorId ? { instructorId: newInstructor } : {}),
+        ...instructorPatch,
         ...(reassignStudent ? { studentIds: [dropStudent] } : {}),
       },
       reassignStudent

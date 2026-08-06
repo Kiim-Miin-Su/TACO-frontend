@@ -6,7 +6,7 @@
 //  권한(20-1 정합): 강사 출결 CRUD=매니저만 / 학생 출결·피드백=매니저 or 담당 강사(본인 세션).
 //  그 외 읽기 전용 — 강사의 타인 세션은 서버 403 → DetailStates 기본 문구.
 "use client";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { apiErrorMessage } from "@/lib/api-error";
 import Link from "next/link";
 import { Badge, ConfirmModal, DetailStates, EmptyState, Field, ModalShell, SectionCard, StatCard, type Tone } from "@/components/ui";
@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import {
   useScheduleSession, useStudents, useRooms,
   useAttendance, useInstructorAttendanceCommand, useUpdateSchedule, useRemoveSchedule, useUpsertAttendance,
+  useScheduleResources, useUpdateInstructorAssignment,
 } from "@/lib/queries";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { countsForPay } from "@/lib/domain/schedule";
@@ -79,7 +80,7 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                   <Badge tone={statusToneOf(session.status) ?? "neutral"}>{statusLabelOf(session.status) ?? session.status}</Badge>
                 </div>
                 <p className="text-body text-fg-muted mt-0.5">
-                  강사 {session.instructorName || "—"} · {session.startTime ?? "시간 미정"} · {session.durationMinutes}분 · {session.topic ?? "주제 미정"}
+                  강사 {session.instructorName ?? "배정중"} · {session.startTime ?? "시간 미정"} · {session.durationMinutes}분 · {session.topic ?? "주제 미정"}
                 </p>
               </div>
 
@@ -100,6 +101,12 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
                   <button type="button" className="btn btn-sm" onClick={() => setManageModal('edit')}>수업 정보 수정</button>
                   <button type="button" className="btn btn-sm text-danger" onClick={() => setManageModal('remove')}>수업 삭제</button>
                 </div>
+              )}
+              {admin && (
+                <InstructorAssignmentPanel
+                  sessionId={session.id}
+                  currentInstructorId={session.instructorId}
+                />
               )}
               {manageModal === 'edit' && <SessionEditModal session={session} onClose={() => setManageModal(null)} />}
               {manageModal === 'remove' && (
@@ -123,11 +130,15 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
               {/* 강사 출결은 session-attendance.manage 전용 command와 AttMarker를 재사용한다. */}
               <SectionCard title="강사 출결">
                 <div className="p-4 flex items-center gap-3 flex-wrap">
-                  <AttMarker value={session.instructorAttendance} options={INSTRUCTOR_ATT_OPTIONS} canEdit={canManageAttendance} pending={attendanceCommand.isPending} onMark={markInst} onClear={canManageAttendance ? clearInst : undefined} />
+                  {session.instructorId == null ? (
+                    <span className="text-body text-attention">담당 강사를 배정한 뒤 출결을 입력할 수 있습니다.</span>
+                  ) : (
+                    <AttMarker value={session.instructorAttendance} options={INSTRUCTOR_ATT_OPTIONS} canEdit={canManageAttendance} pending={attendanceCommand.isPending} onMark={markInst} onClear={canManageAttendance ? clearInst : undefined} />
+                  )}
                   <span className="text-caption text-fg-subtle">
                     {paid ? "시수 인정(진행·결석 아님)" : `시수 제외${session.instructorAttendance === "absent" ? "(결석)" : session.status === "makeup" ? "(보강)" : session.status !== "held" ? `(${statusLabelOf(session.status) ?? session.status})` : ""}`}
                   </span>
-                  {!canManageAttendance && (
+                  {session.instructorId != null && !canManageAttendance && (
                     <span className="text-caption text-fg-subtle ml-auto">
                       열람 전용 (수업 출결 관리 권한 필요)
                     </span>
@@ -137,7 +148,9 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
 
               {/* ② 학생 출결 · 피드백 — AttMarker + SessionFeedbackForm 재사용 */}
               <SectionCard title={`학생 출결 · 피드백 (${roster.length}명)`}>
-                {!roster.length ? (
+                {session.instructorId == null ? (
+                  <EmptyState message="담당 강사를 배정한 뒤 출결과 리포트를 작성할 수 있습니다." />
+                ) : !roster.length ? (
                   <EmptyState message="수강생이 없습니다." />
                 ) : (
                   <div className="divide-y border-line-muted">
@@ -181,6 +194,78 @@ export function ClassSessionDetailView({ sessionId }: { sessionId: number }) {
         onConfirm={() => removeSchedule.confirmAccountingImpact({ onSuccess: () => router.push('/sessions') })}
       />
     </div>
+  );
+}
+
+function InstructorAssignmentPanel({ sessionId, currentInstructorId }: {
+  sessionId: number;
+  currentInstructorId: number | null;
+}) {
+  const { data: resources } = useScheduleResources();
+  const updateAssignment = useUpdateInstructorAssignment();
+  const [selection, setSelection] = useState(currentInstructorId == null ? 'unassigned' : String(currentInstructorId));
+  const [reason, setReason] = useState('');
+  const [setCourseDefault, setSetCourseDefault] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState('');
+  useEffect(() => {
+    setSelection(currentInstructorId == null ? 'unassigned' : String(currentInstructorId));
+  }, [currentInstructorId]);
+  const targetInstructorId = selection === 'unassigned' ? null : Number(selection);
+  const changed = targetInstructorId !== currentInstructorId;
+  const valid = changed && reason.trim().length >= 5 && Number.isFinite(targetInstructorId ?? 0);
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!valid || updateAssignment.isPending) return;
+    setError(null);
+    setSuccess('');
+    updateAssignment.mutate({
+      id: sessionId,
+      body: {
+        instructorId: targetInstructorId,
+        expectedInstructorId: currentInstructorId,
+        reason: reason.trim(),
+        setCourseDefault: targetInstructorId == null ? false : setCourseDefault,
+      },
+    }, {
+      onSuccess: (result) => {
+        setReason('');
+        setSuccess(result.row.instructorId == null ? '담당자를 배정중으로 변경했습니다.' : `${result.row.instructorName ?? '강사'} 배정을 저장했습니다.`);
+      },
+      onError: (caught) => setError(apiErrorMessage(caught, '담당 강사를 변경하지 못했습니다.')),
+    });
+  };
+
+  return (
+    <SectionCard title="담당 강사 배정">
+      <form onSubmit={submit} className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="담당 강사">
+          <select className="input" value={selection} onChange={(event) => { setSelection(event.target.value); setSuccess(''); }}>
+            <option value="unassigned">배정중</option>
+            {(resources?.instructors ?? []).map((instructor) => (
+              <option key={instructor.id} value={instructor.id}>{instructor.name}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="변경 사유 *">
+          <input className="input" minLength={5} maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="예: 담당 가능 강사 확정" />
+        </Field>
+        {targetInstructorId != null && (
+          <label className="sm:col-span-2 flex items-center gap-2 text-body">
+            <input type="checkbox" checked={setCourseDefault} onChange={(event) => setSetCourseDefault(event.target.checked)} />
+            이 과목의 기본 담당 강사도 함께 변경
+          </label>
+        )}
+        <div className="sm:col-span-2 flex flex-wrap items-center justify-end gap-3">
+          {error && <span className="text-caption text-danger mr-auto" role="alert">{error}</span>}
+          {success && <span className="text-caption text-success mr-auto" role="status">{success}</span>}
+          <button type="submit" className="btn btn-primary" disabled={!valid || updateAssignment.isPending}>
+            {updateAssignment.isPending ? '저장 중...' : '담당 강사 저장'}
+          </button>
+        </div>
+      </form>
+    </SectionCard>
   );
 }
 
