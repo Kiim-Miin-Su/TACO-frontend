@@ -13,3 +13,21 @@ export async function clearAccountScopedClientState(
   queryClient.clear();
   if (options.preferences !== false) resetPreferences();
 }
+
+/**
+ * 로그아웃 중간에 account=null을 렌더링하면 현재 화면 query가 익명 scope로 다시 시작될 수 있다.
+ * 서버 상태를 먼저 취소·폐기하고 cookie logout 뒤 hard navigation만 수행한다.
+ */
+export async function endBrowserAccountSession(
+  queryClient: QueryClient,
+  logoutRequest: () => Promise<unknown>,
+  navigate: () => void,
+): Promise<void> {
+  await clearAccountScopedClientState(queryClient);
+  try {
+    await logoutRequest();
+  } catch {
+    // fallback route가 access/refresh cookie를 다시 만료하므로 이동은 항상 계속한다.
+  }
+  navigate();
+}

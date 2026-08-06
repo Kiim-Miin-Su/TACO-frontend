@@ -13,7 +13,7 @@ import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
-import { clearAccountScopedClientState } from "@/lib/auth-session";
+import { clearAccountScopedClientState, endBrowserAccountSession } from "@/lib/auth-session";
 import { PageHeader, Field } from "@/components/ui";
 import { api, type ProfileVerification } from "@/lib/api";
 import { useTacoStore } from "@/lib/store";
@@ -67,10 +67,7 @@ export default function SecuritySettingsView() {
   const emailVerifiedForCurrentTarget = otpVerified && otpTarget === emailNormalized;
 
   async function logout() {
-    await clearAccountScopedClientState(queryClient);
-    setCurrentAccount(null);
-    try { await api.auth.logout(); } catch { /* fallback route에서 두 인증 cookie를 다시 만료한다. */ }
-    window.location.replace("/logout");
+    await endBrowserAccountSession(queryClient, api.auth.logout, () => window.location.replace("/logout"));
   }
 
   async function sendOtp() {

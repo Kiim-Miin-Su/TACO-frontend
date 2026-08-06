@@ -8,15 +8,13 @@ import { roleLabel } from '@/lib/roles';
 import { buildTasks } from '@/lib/tasks';
 import { api } from '@/lib/api';
 import { useAccountAccess } from '@/lib/useAccountAccess';
-import { useTacoStore } from '@/lib/store';
-import { clearAccountScopedClientState } from '@/lib/auth-session';
+import { endBrowserAccountSession } from '@/lib/auth-session';
 
 export default function Topbar() {
   const queryClient = useQueryClient();
   const access = useAccountAccess();
   const currentRole = access.role;
   const currentAccount = access.account;
-  const setCurrentAccount = useTacoStore((state) => state.setCurrentAccount);
 
   // 알림 항목 — 서버 데이터는 TanStack Query(useAppData) 단일 소스에서 조립.
   const taskData = useTaskData();
@@ -27,14 +25,7 @@ export default function Topbar() {
   const ref = useRef<HTMLDivElement>(null);
 
   const logout = async () => {
-    // 쿠키를 비우기 전에 활성 query를 멈춰 logout 직후 기존 화면 요청이 401로 쏟아지는 경쟁을 막는다.
-    await clearAccountScopedClientState(queryClient);
-    setCurrentAccount(null);
-    // [TBO-28B] backend logout은 refresh/access cookie 폐기와 auth_events 기록을 담당한다.
-    // 실패해도 fallback route의 쿠키 만료와 이동은 계속한다.
-    try { await api.auth.logout(); } catch { /* 백엔드 미기동 등 — 로그아웃은 계속 */ }
-    // /logout route handler도 access/refresh cookie를 방어적으로 만료시킨 뒤 hard navigation한다.
-    window.location.replace('/logout');
+    await endBrowserAccountSession(queryClient, api.auth.logout, () => window.location.replace('/logout'));
   };
 
   // [TBO-29] 클라이언트 계정 전환은 폐지했다. 다른 계정은 로그아웃 후 실제 로그인한다.
