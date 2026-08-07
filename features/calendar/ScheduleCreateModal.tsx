@@ -211,12 +211,10 @@ export function ScheduleCreateModal({
   function linkStudent(studentId: number) {
     setStudentLinkMessage("");
     createEnrollment.mutate({ studentId, courseId }, {
-      onSuccess: () => {
-        const student = studentPickerItems.find((candidate) => candidate.id === studentId);
-        setPickedStudents(new Set([...effPicked, studentId]));
-        setStudentLinkMessage(`${student?.name ?? "학생"} 학생을 과목에 연결했습니다.`);
-      },
-      onError: (error) => setStudentLinkMessage(apiErrorMessage(error, "학생을 과목에 연결하지 못했습니다.")),
+      // [TBO-87D owner 지시] 성공은 조용히(체크만) — "미수강/자동 연결" 안내·성공 문구 제거.
+      //  실패만 인라인 표면화(조용한 실패는 체크가 안 되는 유령 상태로 보이므로 유지).
+      onSuccess: () => setPickedStudents(new Set([...effPicked, studentId])),
+      onError: (error) => setStudentLinkMessage(apiErrorMessage(error, "학생을 이 수업에 넣지 못했습니다.")),
     });
   }
 
@@ -445,8 +443,9 @@ export function ScheduleCreateModal({
             </InlineCreateField>
             {/* [TBO-86I-3] 학생 선택(단체) — 재원생 전체 단일 검색 리스트(수강생 먼저). 기본은 아무도
                 선택 안 됨·분모는 보이는 재원생 전체 수. 미수강생도 같은 리스트에서 검색·선택 — 선택 시
-                서버 enrollment 자동 생성 후 코호트 포함(성공/실패 인라인 표시). 수강생 전체 버튼은
-                수강생만 일괄 체크(자동 연결 아님). 수업은 학생 1명 이상 선택해야 추가된다. */}
+                서버 enrollment 자동 생성 후 코호트 포함. [TBO-87D owner 지시] 미수강 표기·성공 문구는
+                제거(조용한 자동 등록 — 실패만 인라인). 수강생 전체 버튼은 수강생만 일괄 체크.
+                수업은 학생 1명 이상 선택해야 추가된다. */}
             <InlineCreateField
               label={`학생 (${effPicked.size}/${studentPickerItems.length}명 선택)`}
               createLabel="새 학생 등록"
@@ -474,9 +473,7 @@ export function ScheduleCreateModal({
                   </div>
                 )}
                 {studentLinkMessage && (
-                  <p className={`text-caption ${createEnrollment.isError ? "text-danger" : "text-success"}`} role="status">
-                    {studentLinkMessage}
-                  </p>
+                  <p className="text-caption text-danger" role="alert">{studentLinkMessage}</p>
                 )}
               </div>}
             >

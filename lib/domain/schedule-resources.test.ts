@@ -52,14 +52,17 @@ describe('schedule resources calendar SSOT', () => {
   });
 
   // [TBO-86I Grace ver.2 2.2] 스케줄 추가 모달 학생 리스트가 roster로 좁혀져 재원생이 안 보이던 결함.
-  //  선택지는 항상 재원생 전체(수강생 먼저)여야 하고 미수강생은 자동 연결 안내를 달고 같은 리스트에 나온다.
-  it('생성 모달 학생 선택지는 재원생 전체를 한 리스트로 — 수강생 먼저, 미수강생은 자동 연결 표기', () => {
+  //  선택지는 항상 재원생 전체(수강생 먼저)여야 한다. [TBO-87D owner 지시 2026-08-07] "미수강 —
+  //  자동 연결" 표기는 제거(조용한 자동 등록) — description을 되살리면 이 단언이 실패한다.
+  it('생성 모달 학생 선택지는 재원생 전체 한 리스트 — 수강생 먼저, 미수강 표기 없음(조용한 자동 등록)', () => {
     expect(studentPickerItemsFromScheduleResources(resources, 101)).toEqual([
       { id: 11, name: '박학생', enrolled: true },
-      { id: 10, name: '김학생', enrolled: false, description: '미수강 — 선택하면 이 과목에 자동 연결' },
+      { id: 10, name: '김학생', enrolled: false },
     ]);
     // 미수강생을 숨기지 않는다: 어떤 코스를 골라도 항목 수 = 재원생 전체 수.
     expect(studentPickerItemsFromScheduleResources(resources, 100)).toHaveLength(2);
+    // 표기 금지 — 어떤 항목에도 description이 붙지 않는다.
+    expect(studentPickerItemsFromScheduleResources(resources, 101).some((item) => 'description' in item && item.description)).toBe(false);
   });
 
   // [TBO-86I-3] 운영 리포트: 원부 삭제/퇴원 후에도 카운트·선택에 유령이 남고, 분모가 수강 roster로
