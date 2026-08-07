@@ -96,10 +96,10 @@ function InstructorReportWriteSurface() {
     [worklist],
   );
   // 작성 필요 목록과 배지는 같은 서버 worklist 응답을 사용한다.
+  // [TBO-89 owner 지시] "작성 필요만" 토글 제거 — 미작성이 곧 이 화면의 기본 목록이다(전체 보기 폐지).
   const needSessions = useMemo(() => sessions.filter((session) => worklistSessionIds.has(session.id)), [sessions, worklistSessionIds]);
   const needItemCount = worklist?.itemCount ?? 0;
-  const [needOnly, setNeedOnly] = useState(true);
-  const listSessions = needOnly ? needSessions : sessions;
+  const listSessions = needSessions;
 
   // 기본 선택: 리포트가 필요한 첫 진행완료 수업 (단일 소스: 서버 worklist 파생 needSessions)
   const firstNeed = needSessions[0];
@@ -127,16 +127,9 @@ function InstructorReportWriteSurface() {
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 items-start">
-        {/* 좌: 내 수업 목록 — 기본은 배지와 동일 기준(작성 필요)만 */}
+        {/* 좌: 작성 필요 목록 — 배지와 동일 서버 worklist 기준. 필터바(기간·학생·과목·강사)가 그대로 적용된다. */}
         <SectionCard
-          title={needOnly
-            ? `작성 필요 — 수업 ${needSessions.length}개 · 보고서 ${needItemCount}건 (${hasFilters ? '필터 결과' : '배지 기준'})`
-            : `내 수업 (${sessions.length})`}
-          action={
-            <button className="btn btn-sm" onClick={() => setNeedOnly((v) => !v)}>
-              {needOnly ? '전체 보기' : '작성 필요만'}
-            </button>
-          }
+          title={`작성 필요 — 수업 ${needSessions.length}개 · 보고서 ${needItemCount}건 (${hasFilters ? '필터 결과' : '배지 기준'})`}
         >
           <ul className="divide-y max-h-[68vh] overflow-y-auto border-line-muted">
             {listSessions.map((s) => {
@@ -163,9 +156,7 @@ function InstructorReportWriteSurface() {
               );
             })}
             {listSessions.length === 0 && (
-              <li className="p-4 text-body text-fg-subtle">
-                {needOnly ? '작성할 리포트가 없습니다. (진행완료·지난 수업 모두 작성됨)' : '담당 수업이 없습니다.'}
-              </li>
+              <li className="p-4 text-body text-fg-subtle">작성할 리포트가 없습니다. (진행완료·지난 수업 모두 작성됨)</li>
             )}
           </ul>
         </SectionCard>

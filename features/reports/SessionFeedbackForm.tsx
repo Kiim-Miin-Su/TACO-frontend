@@ -13,7 +13,7 @@ import type { ReportTemplate } from '@kms545487/contracts';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { ReportBundleCopyButton } from './ReportBundleCopyButton';
 import { ReportTemplateEditorModal } from './ReportTemplateEditorModal';
-import { canAutoApplyReportTemplate } from '@/lib/domain/report-template';
+import { canAutoApplyReportTemplate, composeReportText, DEFAULT_REPORT_SCAFFOLD } from '@/lib/domain/report-template';
 
 const reportTone: Record<ReportStatus, Tone> = { draft: 'neutral', submitted: 'accent', sent: 'success' };
 const reportLabel: Record<ReportStatus, string> = { draft: '작성중', submitted: '작성완료', sent: '발송됨' };
@@ -27,14 +27,15 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
   const sessionReports = reportsQuery.data ?? [];
   // 템플릿은 DB 컬렉션(report_templates) — 강사 공용 자산(브라우저 휘발 제거).
   const { data: templates = [] } = useReportTemplates();
-  const { data: effectiveTemplate } = useEffectiveReportTemplate(session.instructorId);
+  const { data: effectiveTemplate, isSuccess: effectiveResolved } = useEffectiveReportTemplate(session.instructorId);
+  const effectiveResolvedEmpty = effectiveResolved && !effectiveTemplate; // 서버 기본 템플릿 없음 확정 → 내장 양식
   const createReport = useCreateReport();
   const updateReport = useUpdateReport();
   const submitReport = useSubmitReport();
   const report = sessionReports.find((r) => r.sessionId === session.id && r.studentId === student.id);
-  const [content, setContent] = useState(report?.content ?? '');
-  const [progressPage, setProgressPage] = useState(report?.progressPage ?? '');
-  const [homework, setHomework] = useState(report?.homework ?? '');
+  // [TBO-89] 단일 텍스트 박스 — 레거시 진도/숙제 필드는 로드 시 본문으로 합성(compose)해 보여주고,
+  //  이 폼이 저장하면 본문이 단일 표현이 된다(별도 input 제거 — owner 지시).
+  const [content, setContent] = useState(report ? composeReportText(report) : '');
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const status: ReportStatus = report?.status ?? 'draft';
@@ -55,34 +56,32 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
   useEffect(() => {
     if (!report) return;
     userEdited.current = false;
-    setContent(report.content ?? '');
-    setProgressPage(report.progressPage ?? '');
-    setHomework(report.homework ?? '');
+    setContent(composeReportText(report));
   }, [report]);
 
   // 서버 effective 우선순위를 한 번만 적용한다. DB/로컬 본문이나 사용자가 입력한 값을 덮지 않는다.
+  //  [TBO-89] 템플릿의 진도/숙제 필드도 본문 안에 합성(scaffold — 빈 항목은 기본 양식 라인).
+  //  서버 기본 템플릿이 없으면(effective null 확정) 내장 기본 양식을 제공한다.
   useEffect(() => {
-    if (!effectiveTemplate || !canAutoApplyReportTemplate({
+    const eligible = canAutoApplyReportTemplate({
       reportsPending: reportsQuery.isPending,
       reportExists: !!report,
-      templateId: effectiveTemplate.id,
+      templateId: effectiveTemplate ? effectiveTemplate.id : effectiveResolvedEmpty ? -1 : null,
       appliedTemplateId: autoAppliedTemplateId.current,
       userEdited: userEdited.current,
-      draft: { content, progressPage, homework },
-    })) return;
-    autoAppliedTemplateId.current = effectiveTemplate.id;
-    setContent(effectiveTemplate.content);
-    setProgressPage(effectiveTemplate.progressPage ?? '');
-    setHomework(effectiveTemplate.homework ?? '');
-  }, [content, effectiveTemplate, homework, progressPage, report, reportsQuery.isPending]);
+      draft: { content },
+    });
+    if (!eligible) return;
+    autoAppliedTemplateId.current = effectiveTemplate ? effectiveTemplate.id : -1;
+    setContent(effectiveTemplate ? composeReportText(effectiveTemplate, { scaffold: true }) : DEFAULT_REPORT_SCAFFOLD);
+  }, [content, effectiveTemplate, effectiveResolvedEmpty, report, reportsQuery.isPending]);
 
   const applyTemplate = (id: number) => {
     const t = templates.find((x) => x.id === id);
     if (!t) return;
     userEdited.current = true;
-    setContent((c) => (c.trim() ? c + '\n' + t.content : t.content));
-    if (t.progressPage) setProgressPage((progress) => progress || t.progressPage!);
-    if (t.homework) setHomework((h) => h || t.homework!);
+    const merged = composeReportText(t, { scaffold: true });
+    setContent((c) => (c.trim() ? c + '\n' + merged : merged));
   };
   const [templateOpen, setTemplateOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false); // [TBO-58 P2] 템플릿 삭제 모달
@@ -102,7 +101,9 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
     try {
       if (report) {
         // 편집 내용 저장(승인 전) → 제출이면 상태 전환까지. 어느 단계든 실패 시 에러 표시.
-        await updateReport.mutateAsync({ id: report.id, content, progressPage, homework });
+        // [TBO-89] 본문이 단일 표현 — 레거시 진도/숙제 컬럼은 ''로 비움(BE가 null 정규화,
+        //  로드 시 본문에 이미 합성됐으므로 이중 표현·복사 중복을 막는다).
+        await updateReport.mutateAsync({ id: report.id, content, progressPage: '', homework: '' });
         if (submit && report.approvalStatus !== 'submitted' && report.approvalStatus !== 'approved') {
           await submitReport.mutateAsync(report.id);
         }
@@ -116,8 +117,6 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
           studentId: student.id,
           instructorId: session.instructorId,
           content,
-          progressPage: progressPage || undefined,
-          homework: homework || undefined,
           status: submit ? 'submitted' : 'draft',
         });
       }
@@ -158,37 +157,25 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
         </div>
       ) : (
         <>
-          {/* 템플릿 적용/저장/관리 — [TBO-58 P2] 삭제 UI(BE DELETE 기구현, 훅·버튼만 부재였던 갭) */}
-          <div className="flex items-center gap-2 mb-2">
-            <select className="input h-8 w-44 text-caption" value="" onChange={(e) => e.target.value && applyTemplate(Number(e.target.value))}>
+          {/* 템플릿 적용/저장/관리 — [TBO-58 P2] 삭제 UI(BE DELETE 기구현, 훅·버튼만 부재였던 갭)
+              [TBO-89] 좁은 패널(캘린더 상세)에서 버튼이 잘리던 결함 → flex-wrap + select 축소 허용. */}
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <select className="input h-8 w-44 min-w-0 shrink text-caption" value="" onChange={(e) => e.target.value && applyTemplate(Number(e.target.value))}>
               <option value="">템플릿 적용…</option>
               {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
-            <button type="button" className="btn btn-sm" onClick={() => setTemplateOpen(true)} disabled={!content.trim()}>현재 내용을 템플릿으로</button>
+            <button type="button" className="btn btn-sm whitespace-nowrap" onClick={() => setTemplateOpen(true)} disabled={!content.trim()}>현재 내용을 템플릿으로</button>
             {templates.length > 0 && (
-              <button type="button" className="btn btn-sm" onClick={() => setManageOpen(true)}>템플릿 관리</button>
+              <button type="button" className="btn btn-sm whitespace-nowrap" onClick={() => setManageOpen(true)}>템플릿 관리</button>
             )}
           </div>
+          {/* [TBO-89] 단일 텍스트 박스 — 내용·이해도·특이사항·진도·숙제를 기본 양식 라인으로 한 곳에서. */}
           <textarea
-            className="input h-24 py-2 leading-relaxed"
-            placeholder="오늘 수업 내용·태도·성취 (학부모 발송용)"
+            className="input h-40 py-2 leading-relaxed"
+            placeholder={DEFAULT_REPORT_SCAFFOLD}
             value={content}
             disabled={lockedByApproval}
             onChange={(e) => { userEdited.current = true; setContent(e.target.value); }}
-          />
-          <input
-            className="input mt-2"
-            placeholder="진도 페이지"
-            value={progressPage}
-            disabled={lockedByApproval}
-            onChange={(e) => { userEdited.current = true; setProgressPage(e.target.value); }}
-          />
-          <input
-            className="input mt-2"
-            placeholder="숙제 (다음 수업 전까지)"
-            value={homework}
-            disabled={lockedByApproval}
-            onChange={(e) => { userEdited.current = true; setHomework(e.target.value); }}
           />
           {saveError && <p className="mt-2 text-caption text-danger" role="alert">{saveError}</p>}
           {lockedByApproval && <p className="mt-2 text-caption text-fg-subtle">승인된 보고서는 수정할 수 없습니다(시수 반영됨).</p>}
@@ -200,7 +187,7 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
           </div>
           {templateOpen && (
             <ReportTemplateEditorModal
-              initial={{ content, progressPage, homework }}
+              initial={{ content, progressPage: '', homework: '' }}
               onClose={() => setTemplateOpen(false)}
               onSaved={() => setTemplateOpen(false)}
             />

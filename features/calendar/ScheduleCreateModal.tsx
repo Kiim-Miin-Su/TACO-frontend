@@ -153,7 +153,6 @@ export function ScheduleCreateModal({
     durationMinutes: durationMinutesBetween(start, end),
   });
   const historicalImportEligible = historicalImportEnded && repeat === "none" && kind !== "counsel";
-  const historicalImportVisible = !requestMode && (historicalImportEligible || historicalImport);
 
   // ── #2: 선택 시간대에 가용한 강사 안내(가용 강사 먼저) ──
   const { data: blocks = [] } = useAllAvailability();
@@ -348,7 +347,7 @@ export function ScheduleCreateModal({
           <button className="btn" onClick={onClose}>취소</button>
           {type === "session" ? (
             <button className="btn btn-primary" disabled={!sessionValid || !cohortValid || (repeat !== "none" && occurrences().length === 0)} onClick={submitSession}>
-              {requestMode ? "승인 요청 보내기" : historicalImport ? "완료 수업 이관" : repeat === "none" ? "수업 추가" : `반복 추가 (${occurrences().length}회)`}
+              {requestMode ? "승인 요청 보내기" : historicalImport ? "완료 수업 저장" : repeat === "none" ? "수업 추가" : `반복 추가 (${occurrences().length}회)`}
             </button>
           ) : (
             <button className="btn btn-primary" disabled={!blockValid} onClick={submitBlocks}>
@@ -505,15 +504,28 @@ export function ScheduleCreateModal({
               <Field label="상태">
                 {requestMode ? (
                   <input className="input" value="예정 (승인 후 확정)" disabled readOnly />
-                ) : historicalImport ? (
-                  <input className="input" value="완료 (출결 자동 확정)" disabled readOnly />
                 ) : (
-                  <select className="input" value={status} onChange={(e) => setStatus(e.target.value as SessionStatus)}>
+                  /* [TBO-89 owner 지시] "완료"를 상태 선택지에 통합 — 선택 시 과거 완료 이관 명령
+                     (강사·학생 출결 자동 정상 등록 + held 확정 → 시수 측정 반영)으로 라우팅한다.
+                     held 직접 주입은 여전히 불가(77E-0 정책) — 전용 command 경로만 사용. */
+                  <select
+                    className="input"
+                    value={historicalImport ? "completed_import" : status}
+                    onChange={(e) => {
+                      setBlockError(null);
+                      if (e.target.value === "completed_import") { setHistoricalImport(true); return; }
+                      setHistoricalImport(false);
+                      setStatus(e.target.value as SessionStatus);
+                    }}
+                  >
                     {MANUAL_SESSION_STATUSES.map((s) => (
                       <option key={s} value={s}>
                         {STATUS_LABEL[s]}{isCanceledStatus(s) ? " (시수 미측정)" : ""}
                       </option>
                     ))}
+                    <option value="completed_import" disabled={!historicalImportEligible && !historicalImport}>
+                      완료 — 출결 자동 정상·시수 반영{historicalImportEligible || historicalImport ? "" : " (지난 단건 수업만)"}
+                    </option>
                   </select>
                 )}
               </Field>
@@ -534,22 +546,15 @@ export function ScheduleCreateModal({
                 </Field>
               )}
             </div>
-            {historicalImportVisible && (
+            {/* [TBO-89] 완료 선택 시에만 사유 패널 — 종전 별도 체크박스는 상태 선택지로 통합(발견성). */}
+            {historicalImport && (
                 <div className="rounded-md border p-3 space-y-2" style={{ borderColor: "var(--color-line-muted)" }}>
-                  <label className="flex items-start gap-2 text-body-sm">
-                    <input
-                      type="checkbox"
-                      checked={historicalImport}
-                      disabled={!historicalImportEligible && !historicalImport}
-                      onChange={(event) => { setHistoricalImport(event.target.checked); setBlockError(null); }}
-                    />
-                    <span>
-                      <b>완료 수업으로 이관</b>
-                      <span className="block text-caption text-fg-muted">강사와 선택 학생의 출결을 정상으로 저장하고 완료 상태를 자동 확정합니다.</span>
-                    </span>
-                  </label>
+                  <p className="text-body-sm">
+                    <b>완료 수업으로 저장</b>
+                    <span className="block text-caption text-fg-muted">담당 강사와 선택한 학생 전원의 출결을 정상(출석)으로 저장하고 완료 상태를 자동 확정합니다 — 시수 측정에 반영됩니다.</span>
+                  </p>
                   {historicalImport && (
-                    <Field label="이관 사유">
+                    <Field label="사유">
                       <textarea
                         className="input min-h-[52px] py-1.5"
                         rows={2}
@@ -560,7 +565,7 @@ export function ScheduleCreateModal({
                       />
                     </Field>
                   )}
-                  {!historicalImportEligible && <p className="text-caption text-danger" role="alert">과거의 단건 수업만 완료 상태로 이관할 수 있습니다. 완료 이관을 해제해 주세요.</p>}
+                  {!historicalImportEligible && <p className="text-caption text-danger" role="alert">지난 시간대의 단건 수업만 완료 상태로 저장할 수 있습니다. 상태를 예정으로 되돌리거나 시간을 조정해 주세요.</p>}
                 </div>
             )}
             <Field label="메모"><textarea className="input min-h-[52px] py-1.5" rows={2} placeholder="선택 — 메모" value={memo} onChange={(e) => setMemo(e.target.value)} /></Field>
