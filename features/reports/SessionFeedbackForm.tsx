@@ -12,6 +12,7 @@ import type { ClassSession, ReportStatus, Student } from '@/types';
 import type { ReportTemplate } from '@kms545487/contracts';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { ReportBundleCopyButton } from './ReportBundleCopyButton';
+import { ReportContentTextarea } from './ReportContentTextarea';
 import { ReportTemplateEditorModal } from './ReportTemplateEditorModal';
 import { canAutoApplyReportTemplate, composeReportText, DEFAULT_REPORT_SCAFFOLD } from '@/lib/domain/report-template';
 
@@ -169,13 +170,11 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
               <button type="button" className="btn btn-sm whitespace-nowrap" onClick={() => setManageOpen(true)}>템플릿 관리</button>
             )}
           </div>
-          {/* [TBO-89] 단일 텍스트 박스 — 내용·이해도·특이사항·진도·숙제를 기본 양식 라인으로 한 곳에서. */}
-          <textarea
-            className="input h-40 py-2 leading-relaxed"
-            placeholder={DEFAULT_REPORT_SCAFFOLD}
+          {/* [TBO-89b] 단일 텍스트 박스 — 템플릿 편집 모달과 같은 공용 컴포넌트(ReportContentTextarea). */}
+          <ReportContentTextarea
             value={content}
             disabled={lockedByApproval}
-            onChange={(e) => { userEdited.current = true; setContent(e.target.value); }}
+            onChange={(value) => { userEdited.current = true; setContent(value); }}
           />
           {saveError && <p className="mt-2 text-caption text-danger" role="alert">{saveError}</p>}
           {lockedByApproval && <p className="mt-2 text-caption text-fg-subtle">승인된 보고서는 수정할 수 없습니다(시수 반영됨).</p>}
@@ -187,7 +186,7 @@ export function SessionFeedbackForm({ session, student, canEdit = true }: { sess
           </div>
           {templateOpen && (
             <ReportTemplateEditorModal
-              initial={{ content, progressPage: '', homework: '' }}
+              initial={{ content }}
               onClose={() => setTemplateOpen(false)}
               onSaved={() => setTemplateOpen(false)}
             />
@@ -210,10 +209,10 @@ function TemplateManageModal({ onClose }: { onClose: () => void }) {
   const canMutate = (template: ReportTemplate) =>
     access.can('approval.manage') || template.ownerUserId === access.account?.id;
   if (editing) {
+    // [TBO-89b] 레거시 분리 필드 합성은 모달 내부(composeReportText)가 담당 — initial 불필요.
     return (
       <ReportTemplateEditorModal
         template={editing}
-        initial={{ content: editing.content, progressPage: editing.progressPage, homework: editing.homework }}
         onClose={() => setEditing(null)}
         onSaved={() => setEditing(null)}
       />
@@ -230,8 +229,8 @@ function TemplateManageModal({ onClose }: { onClose: () => void }) {
               <div className="text-body font-medium truncate">{t.name}</div>
               <div className="text-caption text-fg-subtle truncate">{t.content}</div>
               <div className="text-micro text-fg-subtle">
-                {t.ownerUserId == null ? '전체 강사' : '개인'}
-                {t.isEnforced ? ' · 강제' : t.isDefault ? ' · 기본' : ''}
+                {t.ownerUserId == null ? '전체 강사 적용' : '개인'}
+                {t.isDefault ? ' · 기본' : ''}
               </div>
             </div>
             {!canMutate(t) ? (

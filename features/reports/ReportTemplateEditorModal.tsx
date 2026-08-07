@@ -1,20 +1,21 @@
 'use client';
-
+// [TBO-89b owner 지시 2026-08-07] 템플릿 편집도 **단일 텍스트 박스**(작성 폼과 같은
+//  ReportContentTextarea 재사용 — 내용·진도·숙제를 한 본문으로, 레거시 분리 필드는 열 때 합성).
+//  적용 범위도 통합: 종전 [적용 범위 select + 전체 강제 체크]가 사실상 같은 기능이라
+//  **"전체 강사에게 적용" 체크 하나**로 — 체크 = 전역 저장(전 강사 템플릿 리스트 노출) + 강제
+//  적용(effective 최우선). 해제 = 개인 템플릿(서버 규칙: 활성 강사 원부 필요 — 매니저 본인이
+//  강사가 아니면 서버 400이 인라인 표면화된다). 강사는 항상 개인(서버가 본인으로 강제).
 import { useState } from 'react';
 import type { CreateReportTemplateInput, ReportTemplate } from '@kms545487/contracts';
 import { ModalShell } from '@/components/ui';
 import { apiErrorMessage } from '@/lib/api-error';
-import {
-  useCreateReportTemplate,
-  useInstructors,
-  useUpdateReportTemplate,
-} from '@/lib/queries';
+import { useCreateReportTemplate, useUpdateReportTemplate } from '@/lib/queries';
 import { useAccountAccess } from '@/lib/useAccountAccess';
+import { composeReportText } from '@/lib/domain/report-template';
+import { ReportContentTextarea } from './ReportContentTextarea';
 
 export type ReportTemplateDraft = {
   content: string;
-  progressPage?: string;
-  homework?: string;
 };
 
 export function ReportTemplateEditorModal({
@@ -23,25 +24,21 @@ export function ReportTemplateEditorModal({
   onClose,
   onSaved,
 }: {
-  initial: ReportTemplateDraft;
+  initial?: ReportTemplateDraft;
   template?: ReportTemplate | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const access = useAccountAccess();
   const canManageScopes = access.can('approval.manage');
-  const { data: instructors = [] } = useInstructors();
   const createTemplate = useCreateReportTemplate();
   const updateTemplate = useUpdateReportTemplate();
   const [name, setName] = useState(template?.name ?? '');
-  const [content, setContent] = useState(template?.content ?? initial.content);
-  const [progressPage, setProgressPage] = useState(template?.progressPage ?? initial.progressPage ?? '');
-  const [homework, setHomework] = useState(template?.homework ?? initial.homework ?? '');
-  const [ownerValue, setOwnerValue] = useState(
-    template?.ownerUserId == null ? 'global' : String(template.ownerUserId),
-  );
+  // 레거시 템플릿(분리 진도/숙제)은 열 때 본문으로 합성 — 저장하면 본문이 단일 표현이 된다.
+  const [content, setContent] = useState(template ? composeReportText(template) : initial?.content ?? '');
+  // 전체 강사 적용(전역+강제) 단일 레버 — 관리자 기본값은 신규=전체, 수정=현재 scope 유지.
+  const [applyAll, setApplyAll] = useState(template ? template.ownerUserId == null : canManageScopes);
   const [isDefault, setIsDefault] = useState(template?.isDefault ?? false);
-  const [isEnforced, setIsEnforced] = useState(template?.isEnforced ?? false);
   const [error, setError] = useState<string | null>(null);
   const pending = createTemplate.isPending || updateTemplate.isPending;
   const invalid = !name.trim() || !content.trim();
@@ -49,17 +46,13 @@ export function ReportTemplateEditorModal({
   const save = async () => {
     if (invalid || pending) return;
     setError(null);
-    const ownerUserId = canManageScopes
-      ? ownerValue === 'global' ? null : Number(ownerValue)
-      : undefined;
+    // progressPage/homework는 보내지 않는다 — 본문이 단일 표현(update는 미전송 필드를 비움).
     const input: CreateReportTemplateInput = {
       name: name.trim(),
       content: content.trim(),
-      progressPage: progressPage.trim() || undefined,
-      homework: homework.trim() || undefined,
-      ownerUserId,
+      ownerUserId: canManageScopes ? (applyAll ? null : access.account?.id) : undefined,
       isDefault,
-      isEnforced: canManageScopes && ownerUserId == null ? isEnforced : false,
+      isEnforced: canManageScopes && applyAll,
     };
     try {
       if (template) await updateTemplate.mutateAsync({ id: template.id, input });
@@ -89,48 +82,22 @@ export function ReportTemplateEditorModal({
         <input className="input" value={name} maxLength={40} onChange={(event) => setName(event.target.value)} />
       </label>
       <label className="block">
-        <span className="mb-1 block text-caption font-medium text-fg-muted">수업 내용 *</span>
-        <textarea className="input min-h-28 py-2" value={content} maxLength={2000} onChange={(event) => setContent(event.target.value)} />
+        <span className="mb-1 block text-caption font-medium text-fg-muted">템플릿 내용 * — 내용·진도·숙제를 한 본문으로</span>
+        <ReportContentTextarea value={content} onChange={setContent} maxLength={2000} className="input min-h-40 py-2 leading-relaxed" />
       </label>
-      <label className="block">
-        <span className="mb-1 block text-caption font-medium text-fg-muted">진도 페이지</span>
-        <input className="input" value={progressPage} maxLength={1000} onChange={(event) => setProgressPage(event.target.value)} />
-      </label>
-      <label className="block">
-        <span className="mb-1 block text-caption font-medium text-fg-muted">숙제</span>
-        <textarea className="input min-h-20 py-2" value={homework} maxLength={1000} onChange={(event) => setHomework(event.target.value)} />
-      </label>
-      {canManageScopes ? (
-        <label className="block">
-          <span className="mb-1 block text-caption font-medium text-fg-muted">적용 범위</span>
-          <select
-            className="input"
-            value={ownerValue}
-            onChange={(event) => {
-              setOwnerValue(event.target.value);
-              if (event.target.value !== 'global') setIsEnforced(false);
-            }}
-          >
-            <option value="global">전체 강사</option>
-            {instructors.map((instructor) => (
-              <option key={instructor.id} value={instructor.id}>{instructor.name}</option>
-            ))}
-          </select>
-        </label>
-      ) : (
-        <p className="text-caption text-fg-muted">적용 범위: 개인</p>
-      )}
       <div className="flex flex-wrap gap-x-5 gap-y-2">
+        {canManageScopes ? (
+          <label className="flex items-center gap-2 text-caption">
+            <input type="checkbox" checked={applyAll} onChange={(event) => setApplyAll(event.target.checked)} />
+            전체 강사에게 적용 (전 강사 템플릿 리스트에 저장)
+          </label>
+        ) : (
+          <p className="text-caption text-fg-muted">적용 범위: 개인</p>
+        )}
         <label className="flex items-center gap-2 text-caption">
           <input type="checkbox" checked={isDefault} onChange={(event) => setIsDefault(event.target.checked)} />
           기본 템플릿
         </label>
-        {canManageScopes && ownerValue === 'global' && (
-          <label className="flex items-center gap-2 text-caption">
-            <input type="checkbox" checked={isEnforced} onChange={(event) => setIsEnforced(event.target.checked)} />
-            전체 강제 적용
-          </label>
-        )}
       </div>
       {error && <p className="text-caption text-danger" role="alert">{error}</p>}
     </ModalShell>
