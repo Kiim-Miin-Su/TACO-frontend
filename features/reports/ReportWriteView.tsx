@@ -101,7 +101,7 @@ function InstructorReportWriteSurface() {
   const [needOnly, setNeedOnly] = useState(true);
   const listSessions = needOnly ? needSessions : sessions;
 
-  // 기본 선택: 리포트가 필요한 첫 진행완료 수업 (단일 소스: lib/reports)
+  // 기본 선택: 리포트가 필요한 첫 진행완료 수업 (단일 소스: 서버 worklist 파생 needSessions)
   const firstNeed = needSessions[0];
   const [selId, setSelId] = useState<number | undefined>();
   const effectiveSelId = selId ?? firstNeed?.id ?? sessions[0]?.id;

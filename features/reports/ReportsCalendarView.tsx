@@ -1,6 +1,6 @@
 // [참조/처리] 수업 보고서 캘린더/리스트 — 읽기 전용. 모든 서버 데이터는 TanStack Query 단일 소스
 //  (useSchedule·useCourses·useInstructors·useEnrollments·useStudents·useReports·useAttendance).
-//  sessionNeedsReport(lib/reports)는 {classSessions,enrollments,sessionReports} slice를 받으므로 조립해 넘긴다.
+//  미작성 판정은 서버 worklist(items)가 단일 진실원 — 클라 재계산 없음(SSOT 감사 2026-08-07 주석 정정).
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
