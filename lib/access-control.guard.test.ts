@@ -55,6 +55,11 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+// [TBO-90 후속] 소스 전체 워크 2회 + 라인별 정규식 검사는 콜드 캐시·풀 스위트 CPU 경합에서
+//  기본 5s를 넘길 수 있다(2026-08-07 Mac 릴리스 게이트 실측 타임아웃). 판정 로직 무변경,
+//  워크 기반 테스트에만 여유 타임아웃을 준다.
+const WALK_TEST_TIMEOUT_MS = 30_000;
+
 describe("[TBO-79 G5] actor 권한 판정은 capability로만", () => {
   it("raw role 리터럴 비교는 헬퍼 정의부와 문서화된 대상-role 예외에만 존재한다", () => {
     const offenders: string[] = [];
@@ -78,12 +83,12 @@ describe("[TBO-79 G5] actor 권한 판정은 capability로만", () => {
       });
     }
     expect(offenders).toEqual([]);
-  });
+  }, WALK_TEST_TIMEOUT_MS);
 
   it("예외 목록은 실제 파일만 가리킨다(삭제된 파일이 면제로 남지 않게)", () => {
     const existing = new Set(sourceFiles(ROOT).map((file) => file.slice(ROOT.length + 1)));
     for (const relative of [...Object.keys(TARGET_ROLE_EXCEPTIONS), ...HELPER_FILES]) {
       expect(existing.has(relative)).toBe(true);
     }
-  });
+  }, WALK_TEST_TIMEOUT_MS);
 });
