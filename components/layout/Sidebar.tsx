@@ -95,17 +95,22 @@ export default function Sidebar() {
   return (
     <aside className={`${collapsed ? "w-14" : "w-14 sm:w-60"} shrink-0 border-r flex flex-col bg-canvas transition-[width] duration-200`}>
       <div className={`h-14 flex items-center border-b ${collapsed ? "justify-center px-0" : "justify-center px-0 sm:justify-start sm:gap-2.5 sm:px-4"}`}>
-        <Link href="/" aria-label="TACO ERP 홈" className="w-7 h-7 rounded-md shrink-0">
-          <BrandMark size={28} className="rounded-md" priority />
-        </Link>
-        {!collapsed && (
-          <>
-            <div className="hidden leading-tight flex-1 sm:block">
+        <Link
+          href="/"
+          aria-label="TACO ERP 홈으로 이동"
+          title="홈으로 이동"
+          className={`flex min-w-0 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg ${collapsed ? "" : "sm:flex-1 sm:gap-2.5"}`}
+        >
+          <BrandMark size={28} className="rounded-md shrink-0" priority />
+          {!collapsed && (
+            <div className="hidden min-w-0 leading-tight sm:block">
               <div className="font-semibold text-section">TACO ERP</div>
               <div className="text-micro text-fg-subtle">TN Academy</div>
             </div>
-            <button onClick={toggle} title="네비 접기" className="hidden w-6 h-6 place-items-center rounded text-fg-subtle hover:bg-canvas-subtle text-section sm:grid">«</button>
-          </>
+          )}
+        </Link>
+        {!collapsed && (
+          <button onClick={toggle} title="네비 접기" className="hidden w-6 h-6 place-items-center rounded text-fg-subtle hover:bg-canvas-subtle text-section sm:grid">«</button>
         )}
       </div>
 
