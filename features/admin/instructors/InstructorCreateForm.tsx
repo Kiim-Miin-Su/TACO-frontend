@@ -8,6 +8,7 @@ import { useCreateInstructor } from '@/lib/queries';
 import { useSudoAction } from '@/lib/hooks/useSudoAction';
 import { WEB_ID_MIN, passwordLengthError } from '@/lib/validation';
 import { emptyInstructorProfileForm, InstructorProfileFields, type InstructorProfileForm } from './InstructorProfileFields';
+import { useAccountAccess } from '@/lib/useAccountAccess';
 
 export function InstructorCreateForm({
   compact = false,
@@ -18,13 +19,16 @@ export function InstructorCreateForm({
 }) {
   const create = useCreateInstructor();
   const sudoAction = useSudoAction();
+  const { can } = useAccountAccess();
+  const canManageFinance = can('finance.access');
   const [account, setAccount] = useState({ webId: '', password: '', passwordConfirm: '' });
   const [profile, setProfile] = useState<InstructorProfileForm>(() => emptyInstructorProfileForm());
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState('');
   const passwordError = account.password ? passwordLengthError(account.password) : null;
   const canSubmit = account.webId.trim().length >= WEB_ID_MIN && profile.name.trim().length > 0
-    && account.password === account.passwordConfirm && !passwordError && Number(profile.defaultHourlyRate) >= 0;
+    && account.password === account.passwordConfirm && !passwordError
+    && (!canManageFinance || Number(profile.defaultHourlyRate) >= 0);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -42,7 +46,7 @@ export function InstructorCreateForm({
       ...(profile.birthYear ? { birthYear: Number(profile.birthYear) } : {}),
       ...(profile.countryCode.trim() ? { countryCode: profile.countryCode.trim() } : {}),
       ...(profile.timeZone.trim() ? { timeZone: profile.timeZone.trim() } : {}),
-      defaultHourlyRate: Number(profile.defaultHourlyRate) || 0,
+      ...(canManageFinance ? { defaultHourlyRate: Number(profile.defaultHourlyRate) || 0 } : {}),
       canTeachKinder: profile.canTeachKinder,
     };
     void sudoAction.run(() => create.mutateAsync(input), {
@@ -64,13 +68,13 @@ export function InstructorCreateForm({
       </div>
       {passwordError && <p className="text-caption text-danger" role="alert">{passwordError}</p>}
       {!!account.passwordConfirm && account.password !== account.passwordConfirm && <p className="text-caption text-danger" role="alert">비밀번호가 일치하지 않습니다.</p>}
-      <InstructorProfileFields value={profile} onChange={setProfile} />
+      <InstructorProfileFields value={profile} onChange={setProfile} showHourlyRate={canManageFinance} />
       <div className="flex flex-wrap items-center justify-end gap-3">
         {error && <span className="text-caption text-danger" role="alert">{error}</span>}
         {success && <span className="text-caption text-success" role="status">{success}</span>}
         <button type="submit" className="btn btn-primary" disabled={!canSubmit || create.isPending || sudoAction.isPending}>{create.isPending || sudoAction.isPending ? '등록 중…' : '강사 등록'}</button>
       </div>
-      {!compact && <p className="text-caption text-fg-subtle">강사별 기본 시급과 Kinder 가능 여부는 강사 프로필이 원본입니다. 생성·변경·삭제는 감사 이력에 남습니다.</p>}
+      {!compact && <p className="text-caption text-fg-subtle">강사 프로필의 생성·변경·삭제는 감사 이력에 남습니다.</p>}
     </form>
     {sudoAction.modal}
     </>

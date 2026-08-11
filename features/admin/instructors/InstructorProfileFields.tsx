@@ -24,16 +24,18 @@ export function InstructorProfileFields({
   value,
   onChange,
   disabled = false,
+  showHourlyRate = true,
 }: {
   value: InstructorProfileForm;
   onChange: (next: InstructorProfileForm) => void;
   disabled?: boolean;
+  showHourlyRate?: boolean;
 }) {
   const set = (key: keyof InstructorProfileForm, next: string | boolean) => onChange({ ...value, [key]: next });
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <Field label="이름"><input className="input w-full" value={value.name} onChange={(e) => set('name', e.target.value)} disabled={disabled} required maxLength={50} /></Field>
-      <Field label="기본 시급(원/시간)"><input className="input w-full" type="number" min={0} max={100000000} value={value.defaultHourlyRate} onChange={(e) => set('defaultHourlyRate', e.target.value)} disabled={disabled} required /></Field>
+      {showHourlyRate && <Field label="기본 시급(원/시간)"><input className="input w-full" type="number" min={0} max={100000000} value={value.defaultHourlyRate} onChange={(e) => set('defaultHourlyRate', e.target.value)} disabled={disabled} required /></Field>}
       <Field label="이메일"><input className="input w-full" type="email" value={value.email} onChange={(e) => set('email', e.target.value)} disabled={disabled} maxLength={320} /></Field>
       <Field label="연락처"><input className="input w-full" type="tel" value={value.phone} onChange={(e) => set('phone', e.target.value)} disabled={disabled} maxLength={20} /></Field>
       <Field label="대학교"><input className="input w-full" value={value.university} onChange={(e) => set('university', e.target.value)} disabled={disabled} maxLength={100} /></Field>

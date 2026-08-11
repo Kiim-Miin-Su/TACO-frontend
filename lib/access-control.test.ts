@@ -28,10 +28,10 @@ describe("access-control", () => {
     expect(hasCapability("instructor", "counsel.manage")).toBe(false);
   });
 
-  it("keeps student registry deletion out of the manager surface", () => {
+  it("allows operations roles to use sudo-protected student soft deletion", () => {
     expect(hasCapability("super_admin", "student.hard-delete")).toBe(true);
     expect(hasCapability("admin", "student.hard-delete")).toBe(true);
-    expect(hasCapability("manager", "student.hard-delete")).toBe(false);
+    expect(hasCapability("manager", "student.hard-delete")).toBe(true);
     expect(hasCapability("instructor", "student.hard-delete")).toBe(false);
   });
 

@@ -5,8 +5,10 @@ import {
   calendarScheduleCourses,
   calendarSubjectOptions,
   courseRosterFromScheduleResources,
+  coursesForInstructor,
   courseStudentOptionsFromScheduleResources,
   explicitCohortForSubmit,
+  instructorScheduleRequestEmptyState,
   isInstructorScheduleResource,
   pruneStudentSelection,
   scheduleResourceName,
@@ -49,6 +51,17 @@ describe('schedule resources calendar SSOT', () => {
       { id: 10, name: '김학생', enrolled: true },
       { id: 11, name: '박학생', enrolled: false },
     ]);
+  });
+
+  it('강사 요청 scope와 수업·학생 빈 상태를 같은 resource projection에서 구분한다', () => {
+    expect(coursesForInstructor(resources, 1).map((course) => course.id)).toEqual([100, 101]);
+    expect(instructorScheduleRequestEmptyState(resources, 2, 0)).toMatchObject({ kind: 'no_courses' });
+    const emptyRoster = {
+      ...resources,
+      courses: [{ ...resources.courses[0], studentIds: [] }],
+    } as ScheduleResources;
+    expect(instructorScheduleRequestEmptyState(emptyRoster, 1, 100)).toMatchObject({ kind: 'no_students' });
+    expect(instructorScheduleRequestEmptyState(resources, 1, 100)).toBeNull();
   });
 
   // [TBO-86I Grace ver.2 2.2] 스케줄 추가 모달 학생 리스트가 roster로 좁혀져 재원생이 안 보이던 결함.

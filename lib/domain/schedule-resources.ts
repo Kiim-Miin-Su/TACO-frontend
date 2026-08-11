@@ -14,6 +14,14 @@ export function calendarScheduleCourses(resources?: ScheduleResources | null): C
   }));
 }
 
+/** 강사 요청 모드의 수업 scope. `/schedule/resources`가 이미 actor 기준으로 좁힌 값을 다시 명시적으로 결속한다. */
+export function coursesForInstructor(
+  resources: ScheduleResources,
+  instructorId: number,
+): CalendarScheduleCourse[] {
+  return calendarScheduleCourses(resources).filter((course) => Number(course.instructorId) === Number(instructorId));
+}
+
 /** 생성 모달의 학생 선택지는 별도 학생/수강 전량 query 없이 해당 코스의 DB roster에서만 만든다. */
 export function courseRosterFromScheduleResources(
   resources: ScheduleResources,
@@ -25,6 +33,33 @@ export function courseRosterFromScheduleResources(
     id: Number(studentId),
     name: students.get(Number(studentId)) ?? `학생 ${studentId}`,
   }));
+}
+
+export type InstructorScheduleRequestEmptyState = {
+  kind: 'no_courses' | 'no_students';
+  message: string;
+};
+
+/** 강사 승인 요청의 서로 다른 빈 상태를 한 곳에서 판정한다. 화면은 이 값을 안내와 submit 방어에 함께 쓴다. */
+export function instructorScheduleRequestEmptyState(
+  resources: ScheduleResources,
+  instructorId: number,
+  courseId: number,
+): InstructorScheduleRequestEmptyState | null {
+  const courses = coursesForInstructor(resources, instructorId);
+  if (courses.length === 0) {
+    return {
+      kind: 'no_courses',
+      message: '본인에게 연결된 수업이 없습니다. 관리자에게 수업 과정과 담당 강사 연결을 요청해 주세요.',
+    };
+  }
+  if (courseRosterFromScheduleResources(resources, courseId).length === 0) {
+    return {
+      kind: 'no_students',
+      message: '선택한 수업에 연결된 학생이 없습니다. 관리자에게 학생 수강 등록을 요청해 주세요.',
+    };
+  }
+  return null;
 }
 
 /** 생성 모달용 전체 활성 학생과 선택 과목 수강 여부. 학생과 수강 관계의 의미를 섞지 않는다. */

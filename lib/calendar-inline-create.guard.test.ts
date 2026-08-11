@@ -29,7 +29,8 @@ describe('[TBO-86 C] 캘린더 인라인 등록 공용 컴포넌트', () => {
   it('캘린더 모달은 전체 강의실 관리 화면을 중첩하지 않는다', () => {
     expect(scheduleModal).not.toContain('RoomManagerPanel');
     expect(scheduleModal).toContain('<InlineCreateField');
-    expect(scheduleModal).toContain('access.can("executive.manage")');
+    expect(scheduleModal).toContain('access.can("admin.area")');
+    expect(scheduleModal).toContain('<EmptyState');
   });
 
   // [TBO-86I Grace ver.2 2.2] "스케줄 추가 시 학생이 한 명밖에 안 뜸" — 학생 선택이 코스 roster로

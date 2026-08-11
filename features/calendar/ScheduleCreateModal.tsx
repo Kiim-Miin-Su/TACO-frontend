@@ -8,9 +8,9 @@ import { addDaysISO } from "@/lib/format"; // [TBO-69 C4]
 import type { AvailabilityUpsertBody, ScheduleCreateBody, ScheduleSeriesCreateBody } from "@/lib/api";
 import type { Room, ScheduleResource, ScheduleResources } from "@/types";
 import type { CreateHistoricalCompletedSessionInput, SessionStatus } from "@kms545487/contracts";
-import { courseRosterFromScheduleResources, explicitCohortForSubmit, pruneStudentSelection, scheduleResourceName, studentPickerItemsFromScheduleResources } from "@/lib/domain/schedule-resources";
+import { courseRosterFromScheduleResources, coursesForInstructor, explicitCohortForSubmit, instructorScheduleRequestEmptyState, pruneStudentSelection, scheduleResourceName, studentPickerItemsFromScheduleResources } from "@/lib/domain/schedule-resources";
 // [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
-import { Field, ModalShell, SearchableCheckList } from "@/components/ui";
+import { EmptyState, Field, ModalShell, SearchableCheckList } from "@/components/ui";
 import { InlineCreateField } from "@/components/InlineCreateField";
 import { ColorPicker } from "./SessionEditFields";
 import { MANUAL_SESSION_STATUSES, STATUS_LABEL } from "@/lib/domain/lantiv";
@@ -80,7 +80,7 @@ export function ScheduleCreateModal({
   const [type, setType] = useState<ScheduleEntryType>("session");
 
   // ── 수업 탭 ──
-  const myCourses = lockInstructorId != null ? resources.courses.filter((c) => c.instructorId === lockInstructorId) : resources.courses;
+  const myCourses = lockInstructorId != null ? coursesForInstructor(resources, lockInstructorId) : resources.courses;
   const [courseId, setCourseId] = useState<number>(myCourses[0]?.id ?? 0);
   const course = resources.courses.find((c) => c.id === courseId);
   type InstructorSelection = number | "unassigned" | "";
@@ -195,6 +195,9 @@ export function ScheduleCreateModal({
         : studentPickerItemsFromScheduleResources(resources, courseId),
     [requestMode, resources, courseId],
   );
+  const requestEmptyState = requestMode && lockInstructorId != null
+    ? instructorScheduleRequestEmptyState(resources, lockInstructorId, courseId)
+    : null;
   // [TBO-86I-3] 기본은 아무도 선택 안 됨(운영 지시 — 구 전원 자동 체크 폐지). 학생 컬럼/카드에서 연
   //  경우만 그 학생 1명 프리필. 선택 상태는 화면에 보이는 재원생으로만 파생(prune — 원부 삭제·퇴원·
   //  과목 전환 시 유령 선택/카운트 자동 정리, 등록 직후 refetch 도착 시 자동 복원되는 비파괴 파생).
@@ -380,9 +383,13 @@ export function ScheduleCreateModal({
               onToggle={() => toggleInlineCreator("course")}
               canCreate={!requestMode}
               controls={(
-                <select className="input" value={courseId} onChange={(event) => pickCourse(Number(event.target.value))}>
-                  {myCourses.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.subjectName} · {candidate.name}</option>)}
-                </select>
+                myCourses.length === 0 ? (
+                  <EmptyState compact message={requestEmptyState?.message ?? '등록된 수업 과정이 없습니다. 새 수업 과정을 등록해 주세요.'} />
+                ) : (
+                  <select className="input" value={courseId} onChange={(event) => pickCourse(Number(event.target.value))}>
+                    {myCourses.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.subjectName} · {candidate.name}</option>)}
+                  </select>
+                )
               )}
             >
               <div className="space-y-4">
@@ -411,7 +418,7 @@ export function ScheduleCreateModal({
               createLabel="새 강사 등록"
               expanded={inlineCreator === "instructor"}
               onToggle={() => toggleInlineCreator("instructor")}
-              canCreate={!requestMode && lockInstructorId == null && access.can("executive.manage")}
+              canCreate={!requestMode && lockInstructorId == null && access.can("admin.area")}
               controls={lockInstructorId == null ? (
                 <select className="input" value={instructorId} onChange={(event) => setInstructorId(event.target.value === "unassigned" ? "unassigned" : event.target.value ? Number(event.target.value) : "")}>
                   <option value="unassigned">배정중</option>
@@ -453,7 +460,12 @@ export function ScheduleCreateModal({
               canCreate={!requestMode}
               controls={<div className="space-y-2">
                 {studentPickerItems.length === 0 ? (
-                  <p className="text-caption text-fg-subtle">선택할 수 있는 재원생이 없습니다. 아래에서 새 학생을 등록해 주세요.</p>
+                  <EmptyState
+                    compact
+                    message={requestMode
+                      ? requestEmptyState?.message ?? '요청에 사용할 수 있는 학생이 없습니다. 관리자에게 수업 연결 상태를 확인해 달라고 요청해 주세요.'
+                      : '선택할 수 있는 재원생이 없습니다. 아래에서 새 학생을 등록해 주세요.'}
+                  />
                 ) : (
                   <div className="space-y-1">
                   <div className="flex gap-1">
