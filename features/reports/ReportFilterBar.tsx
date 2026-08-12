@@ -23,7 +23,7 @@ export function ReportFilterBar({
   showInstructor,
 }: ReportFilterBarProps) {
   return (
-    <div className="grid grid-cols-1 gap-3 border-y border-line-muted py-3 sm:grid-cols-2 lg:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 border-y border-line-muted py-3 lg:grid-cols-6">
       <Field label="시작일">
         <input
           type="date"
@@ -74,7 +74,7 @@ export function ReportFilterBar({
           </select>
         </Field>
       )}
-      <div className="flex items-end">
+      <div className={`flex items-end ${showInstructor ? 'col-span-1' : 'col-span-2 lg:col-span-1'}`}>
         <button type="button" className="btn w-full" onClick={() => onChange({})}>필터 초기화</button>
       </div>
     </div>

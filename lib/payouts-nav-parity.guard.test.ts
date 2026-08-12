@@ -17,15 +17,15 @@ const read = (rel: string) => readFileSync(resolve(__dirname, '..', rel), 'utf8'
 
 describe('강사 /payouts 배지 ↔ 메뉴 정합 (TBO-80 80G)', () => {
   const tasks = read('lib/tasks.ts');
-  const sidebar = read('components/layout/Sidebar.tsx');
+  const navigation = read('components/layout/navigation.ts');
   const payoutsView = read('features/payouts/PayoutsView.tsx');
 
   it('전제: tasks.ts는 강사 대상 /payouts 링크를 만든다(이 전제가 사라지면 이 가드도 재검토)', () => {
     expect(tasks).toMatch(/forInstructor \? '\/payouts'|put\('\/payouts'/);
   });
 
-  it('Sidebar에 instructor 가시 /payouts 항목이 있다(캘린더 캐퍼빌리티 매트릭스와 일치)', () => {
-    expect(sidebar).toMatch(/href: "\/payouts", capability: "instructor\.self"/);
+  it('공용 내비게이션 정의에 instructor 가시 /payouts 항목이 있다(캐퍼빌리티 매트릭스와 일치)', () => {
+    expect(navigation).toMatch(/href: "\/payouts", capability: "instructor\.self"/);
     // 계약 매트릭스 자체 검증 — instructor.self는 instructor 역할에서 참
     expect(roleHasCapability('instructor', 'instructor.self')).toBe(true);
     expect(roleHasCapability('super_admin', 'instructor.self')).toBe(false);

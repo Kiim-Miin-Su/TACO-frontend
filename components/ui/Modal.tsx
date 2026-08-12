@@ -7,7 +7,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
  * 금지: window.prompt / window.confirm / window.alert 신규 사용, 모달 안에서 모달 열기.
  */
 
-const widths = { sm: "w-[400px]", md: "w-[560px]", lg: "w-[720px]" } as const;
+const widths = { sm: "sm:w-[400px]", md: "sm:w-[560px]", lg: "sm:w-[720px]" } as const;
 type ModalSize = keyof typeof widths;
 
 const focusableSelector = [
@@ -92,7 +92,7 @@ export function ModalShell({
 
   return (
     <div
-      className="fixed inset-0 z-[55] grid place-items-center bg-black/35 p-4"
+      className="fixed inset-0 z-[55] flex items-end justify-center bg-black/35 p-0 sm:grid sm:place-items-center sm:p-4"
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
     >
       <div
@@ -101,11 +101,11 @@ export function ModalShell({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`card card-pad ${widths[size]} max-w-[95vw] max-h-[85vh] flex flex-col gap-3`}
+        className={`card card-pad ${widths[size]} flex max-h-[92dvh] w-full max-w-none flex-col gap-3 rounded-b-none pb-[calc(1rem+env(safe-area-inset-bottom))] sm:max-h-[85vh] sm:max-w-[95vw] sm:rounded-md sm:pb-4`}
       >
         <div id={titleId} className="font-semibold shrink-0">{title}</div>
         <div className={`min-h-0 overflow-y-auto ${bodyClassName}`}>{children}</div>
-        {footer && <div className="flex justify-end gap-2 pt-1 shrink-0">{footer}</div>}
+        {footer && <div className="modal-footer flex shrink-0 justify-end gap-2 pt-1">{footer}</div>}
       </div>
     </div>
   );

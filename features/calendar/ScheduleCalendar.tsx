@@ -2306,7 +2306,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
     : undefined;
 
   return (
-    <div className="p-6 max-w-page-wide mx-auto">
+    <div className="mx-auto max-w-page-wide p-3 sm:p-6">
       {/* [DESIGN §5.5] 조작 설명서는 부제에서 제거 → ⓘ 팝오버. 부제는 상태 정보만. */}
       <PageHeader
         title="스케줄 캘린더"
@@ -2390,7 +2390,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
         }
       />
 
-      <div className="flex gap-4 items-start">
+      <div className="flex flex-col items-stretch gap-4 lg:flex-row lg:items-start">
         {/* 좌측 추천 패널 제거(피드백 2026-07-02 #5) — 스플릿뷰로 강사·학생 스케줄을 직접 비교·배치. */}
         {/* 본문 */}
         <div ref={mainRef} className="flex-1 min-w-0 space-y-4">
@@ -2549,7 +2549,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
 
           {msg && (
             <div
-              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg shadow-lg text-body text-white flex items-center gap-2"
+              className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-1/2 z-[60] flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-md px-4 py-2 text-body text-white shadow-lg md:bottom-6"
               style={{ background: /(실패|없습니다|수 없|연결할 수|올바)/.test(msg) ? "var(--color-danger)" : "var(--color-success)" }}
               role="status"
             >
@@ -2721,7 +2721,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
         </div>
 
         {/* 우측 컬럼(Lantiv): 유저별 스케줄(단일 선택) + 수업 리스트(날짜순·그룹 토글) + 선택 수업 상세(DTO) */}
-        <div className="w-64 shrink-0 space-y-3 self-start sticky top-4">
+        <div className="w-full shrink-0 space-y-3 self-start lg:sticky lg:top-4 lg:w-64">
           {/* 우측 리스트: row 버튼 = 필터 토글, ⓘ 버튼 = 상세 카드만. 두 동작을 분리해 "상세 카드 열기(뷰는 그대로)" 계약을 지킨다. */}
           {resources && (
             <ResourcePanel

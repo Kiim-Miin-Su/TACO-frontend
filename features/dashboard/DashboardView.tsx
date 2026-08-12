@@ -153,7 +153,7 @@ export function DashboardView() {
     const instructorName = (id?: number) => id != null ? appData.instructors.find((i) => i.id === id)?.name ?? '—' : '—';
     const courseName = (id?: number) => id != null ? appData.courses.find((c) => c.id === id)?.name ?? '—' : '—';
     return (
-      <div className="p-6 max-w-page-form mx-auto space-y-6">
+      <div className="mx-auto max-w-page-form space-y-4 p-3 sm:space-y-6 sm:p-6">
         <PageHeader
           title="내 할 일"
           sub="오늘·다가오는 수업과 작성할 리포트"
@@ -183,7 +183,7 @@ export function DashboardView() {
   // 학생/학부모는 운영 대시보드 대신 본인 일정으로 안내
   if (!admin) {
     return (
-      <div className="p-6 max-w-page-form mx-auto">
+      <div className="mx-auto max-w-page-form p-3 sm:p-6">
         <PageHeader title={`안녕하세요 (${roleLabel[role]})`} sub="학원 일정과 내 수업을 캘린더에서 확인하세요." />
         <SectionCard title="바로가기">
           <div className="p-4 flex gap-2">
@@ -223,7 +223,7 @@ export function DashboardView() {
   const idleGroups = grouped.filter((g) => g.items.length === 0);
 
   return (
-    <div className="p-6 max-w-page mx-auto">
+    <div className="mx-auto max-w-page p-3 sm:p-6">
       <PageHeader
         title="대시보드"
         sub={`${monthLabel} · 이번 달 운영 현황`}
@@ -239,7 +239,7 @@ export function DashboardView() {
       />
 
       {/* 지표 행 — 운영 중립 지표 4개(경영 금액 지표는 /insights로 분리 유지) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:mb-6 sm:gap-4 lg:grid-cols-4">
         <StatCard label="수강 등록" value={`${appData.enrollments.length}건`} tone="accent" icon={<IconBook />} sub={`활성 ${activeEnrollments}건`} />
         <StatCard label="학생" value={`${appData.students.length}명`} tone="success" icon={<IconUsers />} sub={`학부모 ${appData.parents.length}명`} />
         <StatCard label="이번 주 수업" value={`${weekSessions}회`} tone="done" icon={<IconCalendar />} sub={`${iso(monday).slice(5)} ~ ${iso(sunday).slice(5)}`} />

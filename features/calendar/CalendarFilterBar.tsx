@@ -245,9 +245,9 @@ export function CalendarFilterBar({
   }, [resources, rooms, fInstructors, fStudents, fRooms, visibleResourceDims]);
 
   return (
-    <div className="card card-pad space-y-2">
+    <div className="card space-y-2 p-3 sm:p-4">
       {/* 1행: 리소스 다중선택 + 상태/그룹 + 기간 */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="calendar-filter-row -mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
         {hideResourceFilters ? (
           resourceFilterNotice ?? <span className="badge text-micro">스플릿 표에서 리소스 선택</span>
         ) : (
@@ -304,7 +304,7 @@ export function CalendarFilterBar({
         )}
       </div>
       {/* 2행: 뷰 도구(tools 슬롯) + 검색 + 색 기준 + 선택 칩 */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="calendar-filter-row -mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
         {tools}
         <input
           className="input h-7 w-56"

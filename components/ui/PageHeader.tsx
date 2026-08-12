@@ -15,12 +15,16 @@ type PageHeaderProps = {
 
 export function PageHeader({ title, sub, actions }: PageHeaderProps) {
   return (
-    <div className="flex items-end justify-between flex-wrap gap-3 mb-5">
+    <div className="mb-4 flex flex-wrap items-start justify-between gap-3 sm:mb-5 sm:items-end">
       <div className="min-w-0">
         <h1 className="text-title font-bold">{title}</h1>
-        {sub && <p className="text-caption text-fg-muted mt-0.5">{sub}</p>}
+        {sub && <p className="mt-0.5 break-keep text-caption text-fg-muted">{sub}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2 flex-wrap">{actions}</div>}
+      {actions && (
+        <div className="page-header-actions -mx-1 flex w-[calc(100%+0.5rem)] items-center gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+          {actions}
+        </div>
+      )}
     </div>
   );
 }

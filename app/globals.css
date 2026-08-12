@@ -84,6 +84,7 @@
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
@@ -92,6 +93,7 @@
     font-family: var(--font-sans);
     font-size: 14px;
     line-height: 1.5;
+    overscroll-behavior-y: none;
   }
 
   a {
@@ -262,5 +264,42 @@
   .mono {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-main > .p-6 {
+    padding: 0.75rem;
+  }
+
+  .btn {
+    min-height: 44px;
+  }
+
+  .btn-sm {
+    min-height: 38px;
+  }
+
+  .input {
+    min-height: 44px;
+  }
+
+  .page-header-actions > * {
+    flex-shrink: 0;
+  }
+
+  .calendar-filter-row > * {
+    flex-shrink: 0;
+  }
+
+  .modal-footer > * {
+    min-width: 0;
+    flex: 1 1 0%;
+  }
+
+  .table thead th,
+  .table tbody td {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
   }
 }

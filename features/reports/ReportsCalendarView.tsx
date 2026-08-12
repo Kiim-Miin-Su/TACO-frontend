@@ -81,7 +81,7 @@ export function ReportsCalendarView() {
     : [];
 
   return (
-    <div className="p-6 max-w-page mx-auto space-y-6">
+    <div className="mx-auto max-w-page space-y-4 p-3 sm:space-y-6 sm:p-6">
       <PageHeader
         title="수업 보고서"
         sub="캘린더·리스트에서 수업을 선택해 확인하거나, 한 페이지에서 바로 작성하세요."
@@ -110,7 +110,7 @@ export function ReportsCalendarView() {
       >
         <div className="grid grid-cols-7 border-b">
           {WEEK.map((w, i) => (
-            <div key={w} className={`px-3 py-2 text-caption font-semibold ${i === 0 ? 'text-danger' : i === 6 ? 'text-accent' : 'text-fg-muted'}`}>
+            <div key={w} className={`px-1 py-2 text-center text-caption font-semibold sm:px-3 sm:text-left ${i === 0 ? 'text-danger' : i === 6 ? 'text-accent' : 'text-fg-muted'}`}>
               {w}
             </div>
           ))}
@@ -121,7 +121,7 @@ export function ReportsCalendarView() {
             return (
               <div
                 key={idx}
-                className="min-h-[92px] border-b border-r p-1.5 border-line-muted"
+                className="min-h-[72px] min-w-0 border-b border-r p-1 border-line-muted sm:min-h-[92px] sm:p-1.5"
               >
                 {day && <div className="text-caption text-fg-subtle mb-1 px-1">{day}</div>}
                 <div className="space-y-1">
@@ -131,7 +131,8 @@ export function ReportsCalendarView() {
                       <button
                         key={cs.id}
                         onClick={() => setSelected(cs.id)}
-                        className="w-full text-left rounded px-1.5 py-1 text-micro font-medium truncate"
+                        aria-label={`${day}일 ${courseName(cs.courseId)}${pendingIds.has(cs.id) ? ', 리포트 미작성' : ''}`}
+                        className="w-full truncate rounded px-1 py-1 text-left text-micro font-medium sm:px-1.5"
                         style={{
                           backgroundColor: active ? 'var(--color-accent)' : 'var(--color-accent-subtle)',
                           color: active ? '#fff' : 'var(--color-accent)',
@@ -142,7 +143,8 @@ export function ReportsCalendarView() {
                         {pendingIds.has(cs.id) && (
                           <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle bg-danger" />
                         )}
-                        {courseName(cs.courseId)}
+                        <span className="hidden sm:inline">{courseName(cs.courseId)}</span>
+                        <span className="sm:hidden" aria-hidden="true">수업</span>
                       </button>
                     );
                   })}
@@ -169,7 +171,35 @@ export function ReportsCalendarView() {
               /* [B6 C3 2026-07-16] 자체 div 빈 상태 → EmptyState 규격 */
               <EmptyState message="작성할 리포트가 없습니다. (진행완료·지난 수업 모두 작성됨)" />
             ) : (
-              <table className="table">
+              <>
+                <div className="divide-y border-line-muted md:hidden">
+                  {needSessions.map((s) => {
+                    const ids = rosterStudentIds({ enrollments }, s)
+                      .filter((id) => filters.studentId == null || id === filters.studentId);
+                    const done = sessionReports.filter((r) => r.sessionId === s.id && ids.includes(r.studentId) && r.status !== 'draft').length;
+                    return (
+                      <button
+                        type="button"
+                        key={s.id}
+                        className={`flex min-h-20 w-full items-center gap-3 px-3 py-3 text-left ${s.id === selected ? 'bg-accent-subtle' : 'bg-canvas'}`}
+                        onClick={() => setSelected(s.id)}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-body font-semibold text-fg">{courseName(s.courseId)}</span>
+                          <span className="block text-caption text-fg-muted">{s.sessionDate} {s.startTime ?? ''}</span>
+                          <span className="block truncate text-caption text-fg-subtle">{instructorName(s.instructorId)}</span>
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span className="block text-caption font-semibold text-fg">{done}/{ids.length}</span>
+                          <span className="block text-micro text-fg-subtle">작성 완료</span>
+                        </span>
+                        <span className="shrink-0 text-fg-subtle" aria-hidden="true">›</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="hidden md:block">
+                  <table className="table">
                 <thead><tr><th>날짜</th><th>수업</th><th>강사</th><th className="text-right">리포트</th><th></th></tr></thead>
                 <tbody>
                   {needSessions.map((s) => {
@@ -190,7 +220,9 @@ export function ReportsCalendarView() {
                     );
                   })}
                 </tbody>
-              </table>
+                  </table>
+                </div>
+              </>
             )}
           </SectionCard>
         );

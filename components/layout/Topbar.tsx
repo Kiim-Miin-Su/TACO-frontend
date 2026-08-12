@@ -9,6 +9,7 @@ import { buildTasks } from '@/lib/tasks';
 import { api } from '@/lib/api';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import { endBrowserAccountSession } from '@/lib/auth-session';
+import BrandMark from '@/components/brand/BrandMark';
 
 export default function Topbar() {
   const queryClient = useQueryClient();
@@ -40,7 +41,11 @@ export default function Topbar() {
   }, []);
 
   return (
-    <header className="h-14 shrink-0 border-b bg-canvas flex items-center gap-2 px-3 sm:gap-3 sm:px-5">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-canvas px-3 sm:gap-3 sm:px-5">
+      <Link href="/" className="flex min-w-0 items-center gap-2 no-underline md:hidden" aria-label="TACO ERP 홈">
+        <BrandMark size={28} className="shrink-0 rounded-md" priority />
+        <span className="truncate text-section font-semibold text-fg">TACO ERP</span>
+      </Link>
       <div className="relative hidden w-80 max-w-[40vw] md:block">
         <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-subtle" />
         <input className="input pl-8" placeholder="학생, 등록, 결제 검색…" aria-label="검색" />
@@ -52,7 +57,10 @@ export default function Topbar() {
         </Link>
       )}
       {currentAccount && (
-        <button className="btn btn-sm" onClick={logout} title="로그아웃">로그아웃</button>
+        <button className="btn btn-sm px-2 sm:px-2.5" onClick={logout} title="로그아웃" aria-label="로그아웃">
+          <span className="hidden sm:inline">로그아웃</span>
+          <span className="sm:hidden" aria-hidden="true">나가기</span>
+        </button>
       )}
 
       {/* 알림 — 앱 알림식 빨간 원 배지(대기 task 수) + 클릭 시 목록 팝오버 */}
@@ -73,13 +81,13 @@ export default function Topbar() {
         </button>
 
         {open && (
-          <div className="absolute right-0 top-[calc(100%+6px)] w-[340px] max-h-[420px] overflow-y-auto rounded-lg border bg-canvas shadow-lg z-50 border-line-muted">
+          <div className="absolute right-0 top-[calc(100%+6px)] z-50 max-h-[min(420px,calc(100dvh-5rem))] w-[calc(100vw-1.5rem)] max-w-[340px] overflow-y-auto rounded-md border border-line-muted bg-canvas shadow-lg">
             <div className="flex items-center justify-between px-3 py-2.5 border-b border-line-muted">
               <span className="text-body font-semibold">알림 · 대기 중인 할 일</span>
               <span className="badge badge-neutral">{count}</span>
             </div>
             {items.length === 0 ? (
-              <div className="px-3 py-6 text-body text-fg-subtle text-center">대기 중인 할 일이 없습니다 🎉</div>
+              <div className="px-3 py-6 text-center text-body text-fg-subtle">대기 중인 할 일이 없습니다.</div>
             ) : (
               <ul className="divide-y border-line-muted">
                 {items.map((t) => (
