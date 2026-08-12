@@ -2,7 +2,7 @@
 //  같은 카운트를 봐야 한다(가입 승인·프로필 변경 누락 결함 회귀 방지).
 import { describe, expect, it } from 'vitest';
 import { approvalCenterCounts } from './approvals';
-import { buildTasks, navBadges } from './tasks';
+import { buildTasks, navBadges, sumTaskBadges } from './tasks';
 
 const emptySlice = {
   currentRole: 'manager' as const,
@@ -37,10 +37,15 @@ describe('승인센터 모집단 통일 (핫픽스 07-20 ②③)', () => {
     const badges = navBadges(s as never, 'manager');
     expect(badges['/admin']).toBe(3); // 종전 결함: 가입·프로필 변경 제외로 0이었다
 
-    const { items } = buildTasks(s as never, 'manager');
+    const { items, count, badges: projection } = buildTasks(s as never, 'manager');
     const accountItems = items.filter((t) => t.group === 'account');
     expect(accountItems).toHaveLength(3);
     expect(accountItems.every((t) => t.href === '/admin/approvals')).toBe(true);
+    expect(projection.byDestination['/admin/approvals']).toBe(3);
+    expect(projection.byNavigation['/admin']).toBe(3);
+    expect(sumTaskBadges(projection.byNavigation)).toBe(count);
+    // 열람 시각이 미해결 가입 승인을 숨기지 않는다.
+    expect(navBadges(s as never, 'manager', undefined, { admin: '2099-01-01T00:00:00.000Z' })['/admin']).toBe(3);
     // 미인증 가입 대기는 재발송 안내가 detail에 노출된다
     expect(accountItems.find((t) => t.id === 'signup-approve-2')!.detail).toContain('미인증');
   });
@@ -55,6 +60,23 @@ describe('승인센터 모집단 통일 (핫픽스 07-20 ②③)', () => {
     expect(rejected).toBeDefined();
     expect(rejected!.detail).toContain('증빙 필요');
     expect(rejected!.href).toBe('/account');
+  });
+
+  it('제출 보고서는 승인센터 목록·Topbar·관리자/승인 버튼에 같은 1건으로 투영한다', () => {
+    const s = {
+      ...emptySlice,
+      sessionReports: [{
+        id: 31, sessionId: 91, studentId: 4, instructorId: 7,
+        status: 'submitted', approvalStatus: 'submitted', content: '수업 내용',
+      }] as never[],
+    };
+    const counts = approvalCenterCounts(s as never);
+    const tasks = buildTasks(s as never, 'manager');
+    expect(counts.reports).toBe(1);
+    expect(tasks.items.filter((item) => item.href === '/admin/approvals')).toHaveLength(1);
+    expect(tasks.badges.byDestination['/admin/approvals']).toBe(1);
+    expect(tasks.badges.byNavigation['/admin']).toBe(1);
+    expect(tasks.count).toBe(1);
   });
 
   it('강사: 정산 반려·지급 회수가 사유와 함께 항목·/payouts 배지로 뜬다', () => {

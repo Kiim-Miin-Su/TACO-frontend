@@ -7,17 +7,11 @@ import { IconGrid } from "@/components/ui/icons";
 import { ModalShell } from "@/components/ui";
 import { isNavigationItemActive, type NavigationItem } from "./navigation";
 import { useAppNavigation } from "./useAppNavigation";
+import TaskCountBadge from "./TaskCountBadge";
+import { sumTaskBadges } from "@/lib/tasks";
 
 const PRIMARY_HREFS = ["/", "/calendar", "/attendance", "/reports"] as const;
-
-function NavigationBadge({ count }: { count: number }) {
-  if (count <= 0) return null;
-  return (
-    <span className="absolute right-[calc(50%-18px)] top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold leading-none text-white">
-      {count > 99 ? "99+" : count}
-    </span>
-  );
-}
+const PRIMARY_HREF_SET = new Set<string>(PRIMARY_HREFS);
 
 export default function MobileNavigation() {
   const pathname = usePathname();
@@ -27,6 +21,10 @@ export default function MobileNavigation() {
   const primaryItems = PRIMARY_HREFS
     .map((href) => allItems.find((item) => item.href === href))
     .filter((item): item is NavigationItem => Boolean(item));
+  const overflowBadgeCount = sumTaskBadges(
+    badges,
+    allItems.filter((item) => !PRIMARY_HREF_SET.has(item.href)).map((item) => item.href),
+  );
 
   useEffect(() => setMenuOpen(false), [pathname]);
   if (!account || !role) return null;
@@ -53,7 +51,7 @@ export default function MobileNavigation() {
               >
                 <Icon className="h-5 w-5" aria-hidden="true" />
                 <span className="max-w-full truncate">{item.label === "수업 보고서" ? "리포트" : item.label}</span>
-                <NavigationBadge count={count} />
+                <TaskCountBadge count={count} className="absolute right-[calc(50%-18px)] top-1.5" />
               </Link>
             );
           })}
@@ -68,6 +66,7 @@ export default function MobileNavigation() {
           >
             <IconGrid className="h-5 w-5" aria-hidden="true" />
             <span>전체</span>
+            <TaskCountBadge count={overflowBadgeCount} className="absolute right-[calc(50%-18px)] top-1.5" />
           </button>
         </div>
       </nav>
@@ -99,7 +98,7 @@ export default function MobileNavigation() {
                     >
                       <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
                       <span className="min-w-0 truncate">{item.label}</span>
-                      {count > 0 && <span className="badge badge-danger ml-auto shrink-0">{count > 99 ? "99+" : count}</span>}
+                      <TaskCountBadge count={count} className="ml-auto shrink-0" />
                     </Link>
                   );
                 })}

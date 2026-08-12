@@ -4,6 +4,8 @@ import { usePathname } from 'next/navigation';
 import { roleLabel } from '@/lib/roles';
 import { useAccountAccess } from '@/lib/useAccountAccess';
 import type { InternalHref } from '@/lib/navigation-security';
+import { useAppNavigation } from '@/components/layout/useAppNavigation';
+import TaskCountBadge from '@/components/layout/TaskCountBadge';
 
 // 관리자 전용 가드 (매니저/관리자/대표만)
 export function AdminGuard({ children }: { children: React.ReactNode }) {
@@ -32,6 +34,7 @@ const TABS: [InternalHref, string][] = [
 
 export function AdminHeader() {
   const path = usePathname();
+  const { destinationBadges } = useAppNavigation();
   return (
     <div className="flex items-end justify-between flex-wrap gap-3">
       <div>
@@ -40,7 +43,10 @@ export function AdminHeader() {
       </div>
       <div className="flex gap-1.5">
         {TABS.map(([href, label]) => (
-          <Link key={href} href={href} className={`btn btn-sm ${path === href ? 'badge-accent' : ''}`}>{label}</Link>
+          <Link key={href} href={href} className={`btn btn-sm gap-1.5 ${path === href ? 'badge-accent' : ''}`}>
+            <span>{label}</span>
+            <TaskCountBadge count={destinationBadges[href]} />
+          </Link>
         ))}
       </div>
     </div>

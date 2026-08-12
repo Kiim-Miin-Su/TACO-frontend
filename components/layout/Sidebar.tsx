@@ -7,6 +7,7 @@ import { roleLabel } from "@/lib/roles";
 import { usePersistedState } from "@/lib/usePersistedState";
 import { isNavigationItemActive } from "./navigation";
 import { useAppNavigation } from "./useAppNavigation";
+import TaskCountBadge from "./TaskCountBadge";
 
 const SIDEBAR_PREFERENCE_OPTIONS = { legacyKeys: ["sidebarCollapsed"] } as const;
 
@@ -71,14 +72,11 @@ export default function Sidebar() {
                   <Icon className="text-fg-subtle" />
                   {!collapsed && <span className="hidden flex-1 sm:block">{it.label}</span>}
                   {/* 역할별 이벤트 빨간 배지(navBadges). 접힘 상태에선 점만. */}
-                  {(badges[it.href] ?? 0) > 0 && (
-                    <span
-                      className={`grid place-items-center rounded-full bg-danger text-[10px] font-bold text-white leading-none ${collapsed ? "absolute top-1 right-1 w-2 h-2" : "absolute top-1 right-1 w-2 h-2 sm:static sm:min-w-[16px] sm:h-[16px] sm:w-auto sm:px-1"}`}
-                      title={`${badges[it.href]}건`}
-                    >
-                      <span className={collapsed ? "hidden" : "hidden sm:inline"}>{badges[it.href]}</span>
-                    </span>
-                  )}
+                  <TaskCountBadge
+                    count={badges[it.href]}
+                    dot={collapsed}
+                    className={collapsed ? "absolute right-1 top-1" : "absolute right-1 top-1 sm:static"}
+                  />
                 </Link>
               );
             })}

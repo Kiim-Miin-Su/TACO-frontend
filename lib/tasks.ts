@@ -25,7 +25,7 @@ import { isAdmin, isInstructorSelf } from '@/lib/roles';
 import type { ReportSlice } from '@/lib/reports';
 import { makeupNeeds, MAKEUP_REASON_LABEL } from '@/lib/makeup';
 // [핫픽스 2026-07-20 ②] 승인센터 모집단 단일 소스 — 대시보드·배지·승인센터가 같은 술어를 공유.
-import { approvalCenterCounts, expenseApprovalRows, payoutApprovalRows, profileChangeApprovalRows, reportApprovalRows, scheduleRequestApprovalRows } from '@/lib/approvals';
+import { profileChangeApprovalRows, reportApprovalRows } from '@/lib/approvals';
 import type { PendingAccount, ProfileChangeRequest } from '@/lib/api';
 import { internalRoute, type InternalHref } from '@/lib/navigation-security';
 
@@ -68,10 +68,6 @@ type StoreSlice = Omit<ReportSlice, 'classSessions'> & {
 const REPORT_READINESS_TYPES = new Set<PayReadinessIssue['type']>([
   'report_missing', 'report_draft', 'report_pending_approval', 'report_rejected',
 ]);
-
-// 미해결 준비 항목은 단순 열람으로 숨기지 않는다. 조건이 해소되어 서버 issue가 사라질 때만 배지가 내려간다.
-const readinessActivityMs = (rows: readonly unknown[]): number =>
-  rows.length ? Number.POSITIVE_INFINITY : 0;
 
 function readinessTask(s: StoreSlice, row: PayReadinessIssue | ReportWorklistItem, forInstructor: boolean): TaskItem {
   const student = row.studentId == null ? null : s.students.find((item) => item.id === row.studentId);
@@ -144,6 +140,22 @@ function adminTasks(s: StoreSlice): TaskItem[] {
       id: `profile-change-approve-${r.id}`, group: 'account', tone: 'attention', counts: true,
       title: `프로필 변경 승인 대기 — ${profileChangeSummary(r)}`,
       detail: r.reason || '사유 미기재',
+      href: '/admin/approvals',
+    });
+  }
+  // 승인센터가 직접 렌더링하는 제출 보고서도 같은 업무 원장에 포함한다. reportWorklist는
+  // 작성/수정 필요 상태만 담으므로 승인 대기 보고서와 모집단이 겹치지 않는다.
+  for (const report of reportApprovalRows(s.sessionReports)) {
+    const session = s.classSessions.find((row) => row.id === report.sessionId);
+    out.push({
+      id: `report-approve-${report.id}`,
+      group: 'report',
+      tone: 'attention',
+      counts: true,
+      title: `수업 보고서 승인 대기 — ${sname(report.studentId)}`,
+      detail: session
+        ? `${session.sessionDate} ${session.startTime ?? ''} · ${iname(report.instructorId)}`
+        : `${iname(report.instructorId)} · 보고서 #${report.id}`,
       href: '/admin/approvals',
     });
   }
@@ -354,106 +366,78 @@ function instructorTasks(s: StoreSlice, instructorId: number): TaskItem[] {
   return out;
 }
 
-export function buildTasks(s: StoreSlice, role: AccountRole = s.currentRole, instructorId?: number): { items: TaskItem[]; count: number } {
+export type TaskBadgeProjection = {
+  /** 배지에 포함되는 미해결 업무 총계. Topbar 알림 숫자의 권위다. */
+  total: number;
+  /** 실제 도착 화면별 개수. 관리자 내부 탭/버튼이 사용한다. */
+  byDestination: Record<string, number>;
+  /** 최상위 네비게이션별 개수. 모든 값의 합은 total과 같다. */
+  byNavigation: Record<string, number>;
+};
+
+function taskDestination(href: InternalHref): string {
+  if (href === '/schedule' || href.startsWith('/calendar')) return '/calendar';
+  if (href.startsWith('/reports')) return '/reports';
+  if (href.startsWith('/admin/approvals')) return '/admin/approvals';
+  if (href.startsWith('/admin/instructors')) return '/admin/instructors';
+  if (href.startsWith('/admin/users')) return '/admin/users';
+  if (href.startsWith('/admin/courses')) return '/admin/courses';
+  if (href.startsWith('/admin/roadmaps')) return '/admin/roadmaps';
+  if (href.startsWith('/admin/events')) return '/admin/events';
+  if (href.startsWith('/admin')) return '/admin';
+  const firstSegment = href.split('/').filter(Boolean)[0];
+  return firstSegment ? `/${firstSegment}` : '/';
+}
+
+function taskNavigation(destination: string): string {
+  // 강사 원부는 최상위 독립 탭이고, 나머지 관리자 하위 화면은 관리자 탭으로 모은다.
+  if (destination === '/admin/instructors') return destination;
+  if (destination.startsWith('/admin')) return '/admin';
+  return destination;
+}
+
+export function projectTaskBadges(items: readonly TaskItem[]): TaskBadgeProjection {
+  const byDestination: Record<string, number> = {};
+  const byNavigation: Record<string, number> = {};
+  let total = 0;
+  for (const item of items) {
+    if (!item.counts) continue;
+    total += 1;
+    const destination = taskDestination(item.href);
+    const navigation = taskNavigation(destination);
+    byDestination[destination] = (byDestination[destination] ?? 0) + 1;
+    byNavigation[navigation] = (byNavigation[navigation] ?? 0) + 1;
+  }
+  return { total, byDestination, byNavigation };
+}
+
+export function sumTaskBadges(badges: Readonly<Record<string, number>>, destinations?: readonly string[]): number {
+  const keys = destinations ?? Object.keys(badges);
+  return keys.reduce((sum, key) => sum + (badges[key] ?? 0), 0);
+}
+
+export function buildTasks(
+  s: StoreSlice,
+  role: AccountRole = s.currentRole,
+  instructorId?: number,
+): { items: TaskItem[]; count: number; badges: TaskBadgeProjection } {
   let items: TaskItem[] = [];
   // [TBO-79 G5] actor 권한 판정은 capability로 — role 리터럴 비교는 CAPABILITY_ROLES가 바뀌어도
   //  따라오지 않는다(같은 함수 한 줄 위 isAdmin은 이미 capability 기반이었다).
   if (isAdmin(role)) items = adminTasks(s);
   else if (isInstructorSelf(role) && instructorId != null) items = instructorTasks(s, instructorId);
   // 학생/학부모는 운영 할 일 없음(일정은 캘린더에서)
-  const count = items.filter((t) => t.counts).length;
-  return { items, count };
+  const badges = projectTaskBadges(items);
+  return { items, count: badges.total, badges };
 }
 
-// 사이드바 탭별 빨간 배지 개수 — 탭마다 명시적 기준(권한 반영). 0인 탭은 키 없음.
-// 기준(요구사항): 상담=다음 만남 날짜 미정 / 결제=미수 / 강사페이=미정산 / 지출=승인대기 /
-//   수업보고서=미작성(작성해야 할 세션당 1) / 관리자=미승인(승인 대기) 모두.
-// [B3 2026-07-16 대표 결정 ①] seen(탭별 마지막 열람 시각) — 열람 이후 새 활동이 없으면 뱃지를 숨긴다.
-//  각 항목의 활동 시각(updatedAt ?? createdAt, 보고서 대기는 세션 종료 시각)과 대조 — 탭 진입 시
-//  FE가 서버에 last-seen을 upsert(useMarkNavSeen)하므로 기기 간에도 동일하게 사라진다.
-const latestActivityMs = (rows: ReadonlyArray<unknown>): number =>
-  rows.reduce<number>((max, r) => {
-    const row = r as { updatedAt?: string; createdAt?: string };
-    return Math.max(max, Date.parse(row.updatedAt ?? row.createdAt ?? '') || 0);
-  }, 0);
-
+// 호환 API. 뱃지는 buildTasks의 미해결 업무에서만 투영한다. 열람 시각은 업무 해결 상태가 아니므로
+// 더 이상 카운트를 숨기지 않는다. 승인/반려/입력 완료 뒤 서버 모집단에서 빠질 때만 내려간다.
 export function navBadges(
   s: StoreSlice,
   role: AccountRole = s.currentRole,
   instructorId?: number,
-  seen?: Record<string, string>,
+  _seen?: Record<string, string>,
 ): Record<string, number> {
-  const out: Record<string, number> = {};
-  const put = (nav: string, n: number, latestMs = Number.POSITIVE_INFINITY) => {
-    if (n <= 0) return;
-    // 열람 게이트 — nav 키는 슬래시 제거('/admin'→'admin'). 열람 시각 ≥ 마지막 활동이면 숨김.
-    const seenAt = seen?.[nav.replace(/^\//, '')];
-    if (seenAt && Date.parse(seenAt) >= latestMs) return;
-    out[nav] = n;
-  };
-
-  // 강사: 본인 수업보고서 미작성(보고서 건수) + 취소·미진행 보강 필요(캘린더 탭)
-  // ⚠ 배지와 To-do는 백엔드 pay-readiness의 같은 학생별 모집단을 공유한다.
-  if (isInstructorSelf(role)) {
-    if (instructorId == null) return out;
-    // /reports 배지는 아래에서 미작성+반려를 합산해 한 번만 계산한다([핫픽스 07-20 ③]).
-    // 보강 필요 + 반려된 내 수업 요청(재요청 필요) — 캘린더 탭
-    const myMakeup = makeupNeeds(s, instructorId).filter((m) => !m.resolved);
-    const myRejected = s.scheduleRequests.filter((r) => r.status === 'rejected');
-    const rejectedAttendanceCorrections = myRejected.filter((r) => r.requestKind === 'instructor_attendance_correction');
-    const rejectedCalendarRequests = myRejected.filter((r) => r.requestKind !== 'instructor_attendance_correction');
-    const readinessIssues = (s.payReadiness?.issues ?? []).filter((row) => row.instructorId === instructorId);
-    const attendanceDue = s.classSessions.filter(
-      (row) => row.attendanceRequired && Number(row.instructorId) === instructorId,
-    );
-    put('/attendance', attendanceDue.length + rejectedAttendanceCorrections.length,
-      Math.max(readinessActivityMs(attendanceDue), latestActivityMs(rejectedAttendanceCorrections)));
-    const executionIssues = readinessIssues.filter((row) => row.type === 'session_execution_missing' || row.type === 'session_roster_missing');
-    put('/calendar', myMakeup.length + rejectedCalendarRequests.length + executionIssues.length,
-      Math.max(latestActivityMs(myMakeup.map((m) => m.session)), latestActivityMs(rejectedCalendarRequests), readinessActivityMs(executionIssues)));
-    // [핫픽스 2026-07-20 ③] 반려 사유 배지 — 내 정산 반려/회수(/payouts), 보고서 반려는 위 /reports
-    //  모집단과 별개 상태(approvalStatus rejected — status는 submitted 유지)라 여기서 합산.
-    put('/reports', s.reportWorklist?.itemCount ?? 0, readinessActivityMs(s.reportWorklist?.items ?? []));
-    const myRejectedPayouts = s.instructorPayouts.filter((p) => p.status === 'rejected');
-    const rateIssues = readinessIssues.filter((row) => row.type === 'rate_missing');
-    put('/payouts', myRejectedPayouts.length + rateIssues.length,
-      Math.max(latestActivityMs(myRejectedPayouts), readinessActivityMs(rateIssues)));
-    return out;
-  }
-  if (!isAdmin(role)) return out; // 학생/학부모 등은 알림 없음
-
-  // 관리자/매니저
-  // [대표 지시 ⑭] 보강 미배정(결강인데 보강 날짜 미정) — 강사 배지와 같은 단일 정의(lib/makeup) 전체 집계.
-  const adminMakeup = makeupNeeds(s).filter((m) => !m.resolved);
-  const attendanceDue = s.classSessions.filter((row) => row.attendanceRequired);
-  put('/attendance', attendanceDue.length, readinessActivityMs(attendanceDue));
-  const adminExecutionIssues = (s.payReadiness?.issues ?? []).filter((row) =>
-    row.type === 'session_execution_missing' || row.type === 'session_roster_missing');
-  put('/calendar', adminMakeup.length + adminExecutionIssues.length,
-    Math.max(latestActivityMs(adminMakeup.map((m) => m.session)), readinessActivityMs(adminExecutionIssues)));
-  const counselRows = s.counselForms.filter((c) => c.status !== 'dropped' && !c.nextContactAt);
-  put('/counsel', counselRows.length, latestActivityMs(counselRows)); // 다음 만남 날짜 미정(이탈 제외)
-  const paymentRows = s.payments.filter((p) => p.status === 'pending');
-  put('/payments', paymentRows.length, latestActivityMs(paymentRows)); // 미수(미납)
-  const payoutRows = s.instructorPayouts.filter((p) => p.status === 'pending' || p.status === 'confirmed');
-  const rateIssues = (s.payReadiness?.issues ?? []).filter((row) => row.type === 'rate_missing');
-  put('/payouts', payoutRows.length + rateIssues.length, Math.max(latestActivityMs(payoutRows), readinessActivityMs(rateIssues)));
-  const expenseRows = s.expenses.filter((e) => e.status === 'requested');
-  put('/expenses', expenseRows.length, latestActivityMs(expenseRows)); // 승인 대기
-  put('/reports', s.reportWorklist?.itemCount ?? 0, readinessActivityMs(s.reportWorklist?.items ?? []));
-
-  // [핫픽스 2026-07-20 ②] 관리자(승인 센터) — lib/approvals 단일 소스로 통일: 보고서+지출+정산+
-  //  수업 요청+**가입 승인+프로필 변경**(종전엔 뒤 2종이 빠져 승인센터에는 보이는데 배지·대시보드에
-  //  안 뜨는 불일치 — 대표 실사용 보고). 승인센터 화면 카운트와 같은 함수다.
-  const centerCounts = approvalCenterCounts(s);
-  put('/admin', centerCounts.total, Math.max(
-    latestActivityMs(reportApprovalRows(s.sessionReports)),
-    latestActivityMs(expenseApprovalRows(s.expenses)),
-    latestActivityMs(payoutApprovalRows(s.instructorPayouts)),
-    latestActivityMs(scheduleRequestApprovalRows(s.scheduleRequests)),
-    latestActivityMs(s.pendingAccounts),
-    latestActivityMs(profileChangeApprovalRows(s.profileChangeRequests)),
-  ));
-
-  return out;
+  return buildTasks(s, role, instructorId).badges.byNavigation;
 }

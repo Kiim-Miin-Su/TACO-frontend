@@ -1,10 +1,10 @@
 // [참조/처리] 전역 TanStack Query Provider(layout이 AppShell을 이 안에 래핑).
-//  - QueryClient 기본 옵션(staleTime 30s·retry 1·포커스 재패칭 off)을 여기서 1회 생성해 전 컴포넌트가 공유.
+//  - QueryClient 기본 옵션(활성 업무 15s 재검증·포커스/재연결 즉시 조회)을 여기서 1회 생성해 전 컴포넌트가 공유.
 //  - AppShell의 useQuery/useMutation, EventsView 발행 폼 등이 이 클라이언트로 캐시·무효화를 공유.
 "use client";
 import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { shouldRetryQuery } from "@/lib/query-policy";
+import { serverStateRefetchInterval, shouldRetryQuery } from "@/lib/query-policy";
 
 // [TBO-58 P2 2026-07-24] 전역 미처리 에러 수집 — 종전엔 unhandledrejection(비동기 실패)이 무기록.
 //  콘솔 1줄([fe] unhandled…)만 — PII·스택 원문 미전송, 같은 메시지 연속 중복은 억제.
@@ -40,7 +40,11 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           queries: {
             staleTime: 30_000, // 30초 동안은 캐시를 신선한 것으로 간주(불필요한 재요청 억제)
             retry: shouldRetryQuery,
-            refetchOnWindowFocus: false,
+            // 다른 매니저/기기에서 완료한 CRUD도 서버(DB) 응답으로 수렴한다.
+            refetchInterval: (query) => serverStateRefetchInterval(query.queryKey),
+            refetchIntervalInBackground: false,
+            refetchOnWindowFocus: 'always',
+            refetchOnReconnect: 'always',
           },
         },
       }),

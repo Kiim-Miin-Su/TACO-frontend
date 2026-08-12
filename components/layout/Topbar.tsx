@@ -3,25 +3,16 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { IconSearch, IconBell } from '../ui/icons';
-import { useTaskData } from '@/lib/queries';
 import { roleLabel } from '@/lib/roles';
-import { buildTasks } from '@/lib/tasks';
 import { api } from '@/lib/api';
-import { useAccountAccess } from '@/lib/useAccountAccess';
 import { endBrowserAccountSession } from '@/lib/auth-session';
 import BrandMark from '@/components/brand/BrandMark';
+import TaskCountBadge from '@/components/layout/TaskCountBadge';
+import { useAppNavigation } from '@/components/layout/useAppNavigation';
 
 export default function Topbar() {
   const queryClient = useQueryClient();
-  const access = useAccountAccess();
-  const currentRole = access.role;
-  const currentAccount = access.account;
-
-  // 알림 항목 — 서버 데이터는 TanStack Query(useAppData) 단일 소스에서 조립.
-  const taskData = useTaskData();
-  const { items, count } = currentRole
-    ? buildTasks({ ...taskData, currentRole }, currentRole, access.instructorId ?? undefined)
-    : { items: [], count: 0 };
+  const { account: currentAccount, taskItems: items, taskCount: count } = useAppNavigation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -71,13 +62,7 @@ export default function Topbar() {
           onClick={() => setOpen((v) => !v)}
         >
           <IconBell />
-          {count > 0 && (
-            <span
-              className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full grid place-items-center text-[10px] font-bold text-white leading-none bg-danger"
-            >
-              {count > 99 ? '99+' : count}
-            </span>
-          )}
+          <TaskCountBadge count={count} className="absolute -right-0.5 -top-0.5" />
         </button>
 
         {open && (
