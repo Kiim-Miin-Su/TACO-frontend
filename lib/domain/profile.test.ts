@@ -6,6 +6,7 @@ const profile: MyProfile = {
   id: 7,
   webId: "teacher7",
   name: "박지훈",
+  englishName: "Jihoon Park",
   email: "teacher@example.com",
   phone: "010-1111-2222",
   role: "instructor",
@@ -32,6 +33,7 @@ const request: ProfileChangeRequest = {
 
 const baseDraft = {
   name: profile.name,
+  englishName: profile.englishName,
   webId: profile.webId, // [E0] 아이디 변경 — 승인제 필드 편입
   email: profile.email ?? "",
   phone: profile.phone ?? "",
@@ -41,6 +43,13 @@ const baseDraft = {
 };
 
 describe("buildProfileChangePayload", () => {
+  it("영문 이름 변경을 정규화하고 비영문 값은 거부한다", () => {
+    expect(buildProfileChangePayload(profile, { ...baseDraft, englishName: "  Jihoon   Park Jr.  " })).toEqual({
+      payload: { englishName: "Jihoon Park Jr.", reason: "변경 사유입니다" },
+    });
+    expect(buildProfileChangePayload(profile, { ...baseDraft, englishName: "박지훈" }).error).toContain("영문 이름");
+  });
+
   it("sends only changed flat fields and trims the required reason", () => {
     const result = buildProfileChangePayload(profile, {
       ...baseDraft,

@@ -36,6 +36,7 @@ export function useAuthoritativeAccess(pathname: string, publicRoute: boolean): 
       setCurrentAccount({
         id: claims.sub,
         name: claims.name,
+        englishName: claims.englishName,
         role,
         mustChangePassword: claims.mustChangePassword === true,
         accessVersion: claims.accessVersion,

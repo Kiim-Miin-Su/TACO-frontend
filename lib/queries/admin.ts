@@ -128,7 +128,7 @@ export const useAuthEvents = (query: AuthEventQuery) => {
 export const useAdminUpdateUser = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: number; patch: { name?: string; phone?: string; email?: string; role?: string } }) => api.users.adminUpdate(v.id, v.patch),
+    mutationFn: (v: { id: number; patch: { name?: string; englishName?: string; phone?: string; email?: string; role?: string } }) => api.users.adminUpdate(v.id, v.patch),
     // 이름·역할 변경은 강사 선택 자원과 담당 스케줄 렌더링에도 전파된다.
     onSuccess: () => invalidateInstructorAggregate(queryClient),
     // [TBO-34 C2-C] 서버 sudo 창 만료(403 SUDO_REQUIRED) → FE 세션 상태 초기화(게이트가 재인증 재출력)

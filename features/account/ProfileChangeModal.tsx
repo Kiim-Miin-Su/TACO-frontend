@@ -68,6 +68,7 @@ export default function ProfileChangeModal({
 
   const [draft, setDraft] = useState<ProfileChangeDraft>({
     name: profile.name,
+    englishName: profile.englishName,
     webId: profile.webId, // [E0] 아이디 변경 — 승인제(대표는 즉시 적용), 적용 시 재로그인 필요
     email: profile.email ?? "",
     phone: profile.phone ?? "",
@@ -439,6 +440,7 @@ export default function ProfileChangeModal({
           <ProfileDetailsFields
             values={{
               name: draft.name,
+              englishName: draft.englishName,
               email: draft.email,
               phone: draft.phone,
               countryCode: draft.countryCode,

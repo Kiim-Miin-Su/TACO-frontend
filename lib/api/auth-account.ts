@@ -29,7 +29,7 @@ export type LoginResult = StaffLoginResult;
 //  본인 이메일 OTP(verificationChallengeId) 소비 필수.
 export type ChangeCredentialsBody = {
   currentPassword: string; newWebId?: string; newPassword?: string;
-  name?: string; email?: string; phone?: string;
+  name?: string; englishName?: string; email?: string; phone?: string;
   // [대표 추가요청 2026-07-16] 첫 로그인 통합 설정 — users 수정 가능 컬럼 전부(강제 변경 흐름 전용).
   //  이메일은 설정할 새 이메일의 OTP verified challenge 소비 필수(verificationChallengeId).
   countryCode?: string; timeZone?: string; university?: string; major?: string; birthYear?: number;
@@ -40,7 +40,7 @@ export type ChangeCredentialsBody = {
 //  형식은 lib/validation.isValidRrn 단일 소스)·emailChallengeId(가입 전 이메일 OTP verified challenge —
 //  가입 tx에서 일회 소비, 계정은 emailVerified=true로 생성) 필수.
 export type SignupBody = {
-  webId: string; name: string; email: string; password: string; role?: string;
+  webId: string; name: string; englishName: string; email: string; password: string; role?: string;
   rrn: string; emailChallengeId: number;
   // [TBO-57] SENS 설정 시 서버가 필수 강제(signup-config 단일 진실원) — verified challenge id.
   phoneChallengeId?: number;
@@ -116,7 +116,7 @@ export const authAccountApi = {
       http.get<{ ok: boolean; message: string }>("/auth/verify-email", { params: { token } }).then((r) => r.data),
     // 토큰 검증(서버에서 claims 반환)
     me: () =>
-      http.get<{ sub: number; name: string; roles: string[]; accessVersion: number; effectiveCapabilities: RoleCapability[]; mustChangePassword?: boolean }>("/auth/me").then((r) => r.data),
+      http.get<{ sub: number; name: string; englishName: string; roles: string[]; accessVersion: number; effectiveCapabilities: RoleCapability[]; mustChangePassword?: boolean }>("/auth/me").then((r) => r.data),
     // [TBO-28B] 로그아웃 — auth_events 보안 기록(베스트에포트 호출, 토큰 폐기는 클라이언트).
     logout: () => http.post<{ ok: boolean }>("/auth/logout", {}).then((r) => r.data),
     // [유저 관리 2026-07-20] 재인증 게이트 — 민감 화면 진입 전 비밀번호 재확인(5회/분 스로틀).
@@ -176,9 +176,9 @@ export const authAccountApi = {
       http.get<UserPermissionsProjection>(`/users/${id}/permissions`).then((r) => r.data),
     setPermission: (id: number, capability: RoleCapability, input: SetUserCapabilityInput) =>
       http.put<UserPermissionsProjection>(`/users/${id}/permissions/${encodeURIComponent(capability)}`, input).then((r) => r.data),
-    adminUpdate: (id: number, patch: { name?: string; phone?: string; email?: string; role?: string }) =>
+    adminUpdate: (id: number, patch: { name?: string; englishName?: string; phone?: string; email?: string; role?: string }) =>
       http.patch<UserProfileSummary>(`/users/${id}`, patch).then((r) => r.data),
-    createStaff: (input: { webId: string; name: string; password: string; role?: string; email?: string; phone?: string; university?: string; major?: string; birthYear?: number }) =>
+    createStaff: (input: { webId: string; name: string; englishName: string; password: string; role?: string; email?: string; phone?: string; university?: string; major?: string; birthYear?: number }) =>
       http.post<UserProfileSummary>("/users/instructors", input).then((r) => r.data),
     terminate: (id: number, reason: string) =>
       http.delete<UserProfileSummary>(`/users/${id}`, { data: { reason } }).then((r) => r.data),

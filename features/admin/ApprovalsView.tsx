@@ -50,6 +50,7 @@ import { internalRoute } from '@/lib/navigation-security';
 import { useSudoAction } from '@/lib/hooks/useSudoAction'; // [TBO-80 80A] sudo 명령 공용 상태기계(ExpenseDetailView와 동일 패턴 — 사본 금지)
 import { isSudoRequiredError } from '@/lib/sudo';
 import type { SessionAccountingImpactConflict } from '@kms545487/contracts';
+import { staffDisplayName } from '@/lib/domain/accounts';
 
 // 가입 승인 대기 — 서버가 actor 역할에 맞는 행만 반환하며 요청 역할은 승인 시 변경하지 않는다.
 function MemberApprovals({ canManagePendingAccount }: { canManagePendingAccount: boolean }) {
@@ -102,11 +103,12 @@ function MemberApprovals({ canManagePendingAccount }: { canManagePendingAccount:
         <TableWrap minWidth={980}>
         <table className="table">
           {/* [E0.5 ④b] 지원자 제공 정보(전화·대학/전공·출생연도) — 승인 판단 근거 표시 */}
-          <thead><tr><th>아이디</th><th>이름</th><th>이메일</th><th>연락처</th><th>대학 (전공)</th><th>출생연도</th><th>이메일 인증</th><th>신청 역할</th><th className="text-right"></th></tr></thead>
+          <thead><tr><th>아이디</th><th>영문 이름</th><th>한글 이름</th><th>이메일</th><th>연락처</th><th>대학 (전공)</th><th>출생연도</th><th>이메일 인증</th><th>신청 역할</th><th className="text-right"></th></tr></thead>
           <tbody>
             {rows.map((r) => (
-              <ClickableTableRow key={r.id} href={internalRoute.adminUser(r.id)} label={`${r.name} 가입 신청 상세`}>
+              <ClickableTableRow key={r.id} href={internalRoute.adminUser(r.id)} label={`${staffDisplayName(r)} 가입 신청 상세`}>
                 <td className="font-medium">{r.webId}</td>
+                <td className="font-medium">{r.englishName}</td>
                 <td>{r.name}</td>
                 <td className="text-fg-muted">{r.email}</td>
                 <td className="mono text-fg-muted whitespace-nowrap">{r.phone || "—"}</td>
@@ -191,7 +193,7 @@ export function ApprovalsView() {
   // [TBO-79 G5] 로그인 actor의 권한 판정이므로 raw role 리터럴이 아니라 capability를 쓴다.
   //  이 값은 지출·강사페이 승인 섹션과 가입 삭제 어포던스를 가린다 — finance.access 와 같은 축이다.
   const isSuper = can('finance.access');
-  const instructorName = (id?: number) => id != null ? instructors.find((i) => i.id === id)?.name ?? '—' : '—';
+  const instructorName = (id?: number) => id != null ? staffDisplayName(instructors.find((i) => i.id === id)) : '—';
 
   const [reportReject, setReportReject] = useState<number | null>(null);
   const [expenseReject, setExpenseReject] = useState<number | null>(null);

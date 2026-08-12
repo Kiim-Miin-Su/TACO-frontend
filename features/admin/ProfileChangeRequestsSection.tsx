@@ -18,6 +18,7 @@ import {
   useProfileChangeRequest,
   useRejectProfileChangeRequest,
 } from "@/lib/queries";
+import { staffDisplayName } from '@/lib/domain/accounts';
 
 // [75A] lib/api-error 단일 진실원 위임(로컬 파싱 재구현 제거)
 const errorMessage = (caught: unknown, fallback: string) => apiErrorMessage(caught, fallback);
@@ -69,7 +70,7 @@ function ProfileRequestDetailModal({
         {detailQuery.isPending && <p className="text-caption text-fg-muted">최신 요청 정보를 확인하는 중...</p>}
         {detailQuery.isError && <p className="text-caption text-danger" role="alert">최신 상세를 불러오지 못해 목록 정보를 표시합니다.</p>}
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-body">
-          <div><dt className="text-caption text-fg-subtle">신청자</dt><dd className="mt-0.5 font-medium">{requester?.name ?? `사용자 #${request.requesterId}`}</dd></div>
+          <div><dt className="text-caption text-fg-subtle">신청자</dt><dd className="mt-0.5 font-medium">{staffDisplayName(requester, `사용자 #${request.requesterId}`)}</dd></div>
           <div><dt className="text-caption text-fg-subtle">상태</dt><dd className="mt-0.5"><Badge tone={PROFILE_STATUS_TONE[request.status]}>{PROFILE_STATUS_LABEL[request.status]}</Badge></dd></div>
           <div><dt className="text-caption text-fg-subtle">요청 시각</dt><dd className="mt-0.5 mono text-fg-muted">{formatProfileDate(request.createdAt)}</dd></div>
           <div><dt className="text-caption text-fg-subtle">수정 시각</dt><dd className="mt-0.5 mono text-fg-muted">{formatProfileDate(request.updatedAt)}</dd></div>
@@ -98,7 +99,7 @@ function ProfileRequestDetailModal({
 
         {request.status !== "pending" && (
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 border-t pt-3 text-body">
-            <div><dt className="text-caption text-fg-subtle">처리자</dt><dd className="mt-0.5">{decider?.name ?? (request.decidedBy ? `사용자 #${request.decidedBy}` : "—")}</dd></div>
+            <div><dt className="text-caption text-fg-subtle">처리자</dt><dd className="mt-0.5">{staffDisplayName(decider, request.decidedBy ? `사용자 #${request.decidedBy}` : "—")}</dd></div>
             <div><dt className="text-caption text-fg-subtle">처리 시각</dt><dd className="mt-0.5 mono text-fg-muted">{formatProfileDate(request.decidedAt)}</dd></div>
             {request.rejectionReason && <div className="sm:col-span-2"><dt className="text-caption text-fg-subtle">반려 사유</dt><dd className="mt-0.5 text-danger whitespace-pre-wrap break-words">{request.rejectionReason}</dd></div>}
           </dl>
@@ -131,11 +132,11 @@ export function ProfileChangeRequestsSection({ requests, users }: { requests: Pr
                   <ClickableTableRow
                     key={request.id}
                     onActivate={() => setSelected(request)}
-                    label={`${requester?.name ?? `사용자 ${request.requesterId}`} 프로필 변경 요청 상세`}
+                    label={`${staffDisplayName(requester, `사용자 ${request.requesterId}`)} 프로필 변경 요청 상세`}
                     className="hover:bg-canvas-subtle"
                     title="클릭 — 프로필 변경 요청 상세"
                   >
-                    <td className="font-medium">{requester?.name ?? `사용자 #${request.requesterId}`}</td>
+                    <td className="font-medium">{staffDisplayName(requester, `사용자 #${request.requesterId}`)}</td>
                     <td>{profileRequestedSummary(request)}</td>
                     <td className="text-fg-muted max-w-[240px] truncate" title={request.reason}>{request.reason}</td>
                     <td className="mono text-fg-muted whitespace-nowrap">{formatProfileDate(request.createdAt)}</td>

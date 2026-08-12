@@ -42,7 +42,7 @@ const apiErrorDetails = (caught: unknown): { message: string; status: number | n
 export default function SignupPage() {
   // [E0.5 ④b] 대표 기대 필드 확장 — 전화·대학·전공(승인 판단 근거, 2026-07-15 QA에서 부재 확인).
   const [form, setForm] = useState({
-    webId: "", name: "", email: "", password: "", passwordConfirm: "", role: "instructor",
+    webId: "", name: "", englishName: "", email: "", password: "", passwordConfirm: "", role: "instructor",
     phone: "", university: "", major: "", rrn: "",
   });
   // [TBO-31 C2] 가입 전 이메일 OTP — 인증 완료 challenge id(이메일 수정 시 EmailOtpField가 무효화).
@@ -111,7 +111,7 @@ export default function SignupPage() {
     signupLog.debug("submit_started", { emailVerified: true });
     signup.mutate(
       {
-        webId: form.webId, name: form.name, email: form.email, password: form.password, role: form.role,
+        webId: form.webId, name: form.name, englishName: form.englishName, email: form.email, password: form.password, role: form.role,
         rrn: form.rrn.trim(),
         emailChallengeId,
         ...(phoneChallengeId != null ? { phoneChallengeId } : {}), // [TBO-57] verified challenge — 가입 tx 소비
@@ -174,6 +174,10 @@ export default function SignupPage() {
         <AuthField label="이름">
           <input className="input w-full" name="name" value={form.name} onChange={set("name")} placeholder="김지원" required maxLength={50} aria-invalid={formError?.field === "name"} aria-describedby="signup-form-error" />
         </AuthField>
+        <AuthField label="영문 이름">
+          <input className="input w-full" name="englishName" value={form.englishName} onChange={set("englishName")} placeholder="Jiwon Kim" required maxLength={80} autoComplete="name" aria-invalid={formError?.field === "englishName"} aria-describedby="signup-english-name-help signup-form-error" />
+        </AuthField>
+        <p id="signup-english-name-help" className="text-caption text-fg-subtle">학부모에게 전달하는 시간표에 표시됩니다.</p>
         {/* [TBO-31 C2] 가입 전 이메일 OTP — 인증 완료 시 challengeId 확보, 이메일 수정하면 무효화 */}
         <EmailOtpField
           email={form.email}

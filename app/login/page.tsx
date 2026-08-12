@@ -35,6 +35,7 @@ function LoginForm() {
       setCurrentAccount({
         id: claims.sub,
         name: claims.name,
+        englishName: claims.englishName,
         role: accountRole,
         mustChangePassword: claims.mustChangePassword === true,
         accessVersion: claims.accessVersion,

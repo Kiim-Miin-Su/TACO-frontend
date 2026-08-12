@@ -5,10 +5,12 @@ import {
   isValidRrn,
   passwordLengthError,
 } from "@/lib/validation";
+import { staffEnglishNameError } from '@kms545487/contracts';
 
 export type SignupField =
   | "webId"
   | "name"
+  | "englishName"
   | "email"
   | "password"
   | "passwordConfirm"
@@ -23,6 +25,7 @@ export type SignupIssueCode =
   | "web_id_required"
   | "web_id_taken"
   | "name_required"
+  | "english_name_invalid"
   | "email_invalid"
   | "email_unverified"
   | "password_invalid"
@@ -64,6 +67,8 @@ export function firstSignupIssue(input: {
     return issue("webId", "web_id_taken", "이미 사용 중인 아이디입니다. 다른 아이디를 입력해 주세요.");
   }
   if (!form.name.trim()) return issue("name", "name_required", "이름을 입력해 주세요.");
+  const englishNameError = staffEnglishNameError(form.englishName);
+  if (englishNameError) return issue("englishName", "english_name_invalid", englishNameError);
   if (!isValidEmailFormat(form.email.trim().toLowerCase())) {
     return issue("email", "email_invalid", "이메일 형식이 올바르지 않습니다.");
   }
@@ -107,6 +112,7 @@ export function signupFieldForApiMessage(message: string): SignupField | null {
   if (/(주민|rrn)/i.test(message)) return "rrn";
   if (/(대학교|출신교|university)/i.test(message)) return "university";
   if (/(전공|major)/i.test(message)) return "major";
+  if (/(영문.?이름|english.?name)/i.test(message)) return "englishName";
   if (/(이름|name)/i.test(message)) return "name";
   if (/(역할|role)/i.test(message)) return "role";
   return null;

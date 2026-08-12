@@ -8,9 +8,11 @@
 //  · extended=true면 users 테이블의 나머지 수정 가능 컬럼(출신교·전공·출생연도)까지 렌더.
 import { Field } from "@/components/ui";
 import type { CatalogCountry } from "@/lib/api";
+import { STAFF_ENGLISH_NAME_MAX_LENGTH } from '@kms545487/contracts';
 
 export type ProfileDetailsValues = {
   name: string;
+  englishName: string;
   email: string;
   phone: string;
   countryCode: string;
@@ -60,6 +62,10 @@ export function ProfileDetailsFields({
       <Field label={requireAll ? "이름 *" : "이름"}>
         <input className="input w-full" required={requireAll} maxLength={50} value={values.name}
           onChange={(e) => onPatch({ name: e.target.value })} placeholder="김민선" />
+      </Field>
+      <Field label="영문 이름 *" hint="학부모에게 전달하는 시간표에 표시됩니다.">
+        <input className="input w-full" required maxLength={STAFF_ENGLISH_NAME_MAX_LENGTH} value={values.englishName}
+          onChange={(e) => onPatch({ englishName: e.target.value })} placeholder="Minseon Kim" autoComplete="name" />
       </Field>
       {roleLabel && (
         <Field label="직책" hint="직책(역할)은 본인이 변경할 수 없습니다.">

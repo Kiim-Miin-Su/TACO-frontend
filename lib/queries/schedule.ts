@@ -92,6 +92,7 @@ export const useInstructors = () => {
       .map((i) => ({
       id: i.id,
       name: i.name,
+      englishName: i.englishName ?? i.name,
       subjectName: i.sub,
       defaultHourlyRate: 0,
       canTeachKinder: false,

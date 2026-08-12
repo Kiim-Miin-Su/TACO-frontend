@@ -25,13 +25,13 @@ describe("calendar export naming", () => {
   it("uses visible users, current date, and view name", () => {
     expect(calendarExportFilename({
       people: [
-        { role: "instructor", name: "박지훈" },
+        { role: "instructor", name: "Jihoon Park" },
         { role: "student", name: "김서연" },
       ],
       currentDate: "2026-07-13",
       view: "week",
       ext: "png",
-    })).toBe("강사-박지훈_학생-김서연_260713_weekly.png");
+    })).toBe("강사-JihoonPark_학생-김서연_260713_weekly.png");
   });
 
   it("falls back to the whole schedule and sanitizes forbidden characters", () => {

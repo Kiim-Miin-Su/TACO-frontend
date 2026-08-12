@@ -8,6 +8,7 @@ import {
 const validForm: SignupFormValues = {
   webId: "new_staff",
   name: "신규 강사",
+  englishName: "New Instructor",
   email: "new@example.com",
   password: "password123",
   passwordConfirm: "password123",
@@ -19,6 +20,13 @@ const validForm: SignupFormValues = {
 };
 
 describe("회원가입 폼 첫 오류", () => {
+  it("영문 이름을 필수로 받고 한글 등 허용되지 않은 문자를 거부한다", () => {
+    expect(firstSignupIssue({ form: { ...validForm, englishName: "" }, emailChallengeId: 7, webIdVerdict: true }))
+      .toMatchObject({ field: "englishName", code: "english_name_invalid" });
+    expect(firstSignupIssue({ form: { ...validForm, englishName: "신규 강사" }, emailChallengeId: 7, webIdVerdict: true }))
+      .toMatchObject({ field: "englishName", code: "english_name_invalid" });
+  });
+
   it("화면 순서의 첫 오류와 포커스 필드를 반환한다", () => {
     expect(firstSignupIssue({ form: { ...validForm, webId: "ab", name: "" }, emailChallengeId: null, webIdVerdict: null }))
       .toMatchObject({ field: "webId", code: "web_id_required" });

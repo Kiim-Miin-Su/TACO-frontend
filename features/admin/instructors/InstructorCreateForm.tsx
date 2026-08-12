@@ -9,6 +9,7 @@ import { useSudoAction } from '@/lib/hooks/useSudoAction';
 import { WEB_ID_MIN, passwordLengthError } from '@/lib/validation';
 import { emptyInstructorProfileForm, InstructorProfileFields, type InstructorProfileForm } from './InstructorProfileFields';
 import { useAccountAccess } from '@/lib/useAccountAccess';
+import { staffEnglishNameError } from '@kms545487/contracts';
 
 export function InstructorCreateForm({
   compact = false,
@@ -26,7 +27,9 @@ export function InstructorCreateForm({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState('');
   const passwordError = account.password ? passwordLengthError(account.password) : null;
+  const englishNameError = profile.englishName ? staffEnglishNameError(profile.englishName) : null;
   const canSubmit = account.webId.trim().length >= WEB_ID_MIN && profile.name.trim().length > 0
+    && profile.englishName.trim().length > 0 && !englishNameError
     && account.password === account.passwordConfirm && !passwordError
     && (!canManageFinance || Number(profile.defaultHourlyRate) >= 0);
 
@@ -39,6 +42,7 @@ export function InstructorCreateForm({
       webId: account.webId.trim(),
       password: account.password,
       name: profile.name.trim(),
+      englishName: profile.englishName.trim(),
       ...(profile.email.trim() ? { email: profile.email.trim() } : {}),
       ...(profile.phone.trim() ? { phone: profile.phone.trim() } : {}),
       ...(profile.university.trim() ? { university: profile.university.trim() } : {}),
@@ -69,6 +73,7 @@ export function InstructorCreateForm({
       {passwordError && <p className="text-caption text-danger" role="alert">{passwordError}</p>}
       {!!account.passwordConfirm && account.password !== account.passwordConfirm && <p className="text-caption text-danger" role="alert">비밀번호가 일치하지 않습니다.</p>}
       <InstructorProfileFields value={profile} onChange={setProfile} showHourlyRate={canManageFinance} />
+      {englishNameError && <p className="text-caption text-danger" role="alert">{englishNameError}</p>}
       <div className="flex flex-wrap items-center justify-end gap-3">
         {error && <span className="text-caption text-danger" role="alert">{error}</span>}
         {success && <span className="text-caption text-success" role="status">{success}</span>}

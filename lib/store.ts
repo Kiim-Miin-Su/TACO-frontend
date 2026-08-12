@@ -14,6 +14,7 @@ type TacoState = {
   currentAccount: {
     id: number;
     name: string;
+    englishName: string;
     role: AccountRole;
     mustChangePassword: boolean;
     accessVersion: number;

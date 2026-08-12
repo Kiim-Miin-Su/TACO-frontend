@@ -4,6 +4,7 @@ import { Field } from '@/components/ui';
 
 export type InstructorProfileForm = {
   name: string;
+  englishName: string;
   email: string;
   phone: string;
   university: string;
@@ -16,7 +17,7 @@ export type InstructorProfileForm = {
 };
 
 export const emptyInstructorProfileForm = (): InstructorProfileForm => ({
-  name: '', email: '', phone: '', university: '', major: '', birthYear: '',
+  name: '', englishName: '', email: '', phone: '', university: '', major: '', birthYear: '',
   countryCode: 'KR', timeZone: 'Asia/Seoul', defaultHourlyRate: '0', canTeachKinder: false,
 });
 
@@ -35,6 +36,7 @@ export function InstructorProfileFields({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <Field label="이름"><input className="input w-full" value={value.name} onChange={(e) => set('name', e.target.value)} disabled={disabled} required maxLength={50} /></Field>
+      <Field label="영문 이름" hint="학부모 전달 시간표에 표시됩니다."><input className="input w-full" value={value.englishName} onChange={(e) => set('englishName', e.target.value)} disabled={disabled} required maxLength={80} placeholder="Jihoon Park" /></Field>
       {showHourlyRate && <Field label="기본 시급(원/시간)"><input className="input w-full" type="number" min={0} max={100000000} value={value.defaultHourlyRate} onChange={(e) => set('defaultHourlyRate', e.target.value)} disabled={disabled} required /></Field>}
       <Field label="이메일"><input className="input w-full" type="email" value={value.email} onChange={(e) => set('email', e.target.value)} disabled={disabled} maxLength={320} /></Field>
       <Field label="연락처"><input className="input w-full" type="tel" value={value.phone} onChange={(e) => set('phone', e.target.value)} disabled={disabled} maxLength={20} /></Field>

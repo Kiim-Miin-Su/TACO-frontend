@@ -6,6 +6,7 @@ import { useAccountAccess } from '@/lib/useAccountAccess';
 import { useInstructorAdminList } from '@/lib/queries';
 import { internalRoute } from '@/lib/navigation-security';
 import { CreateInstructorModal } from './instructors/CreateInstructorModal';
+import { staffDisplayName } from '@/lib/domain/accounts';
 
 export function InstructorsView() {
   const { can } = useAccountAccess();
@@ -22,11 +23,12 @@ export function InstructorsView() {
       {query.isLoading ? <LoadingState rows={6} /> : rows.length === 0 ? <EmptyState message="등록된 활성 강사가 없습니다." /> : (
         <TableWrap minWidth={canViewFinance ? 820 : 720}>
           <table className="table">
-            <thead><tr><th>이름</th><th>아이디</th><th>연락처</th><th>학력</th>{canViewFinance && <th>기본 시급</th>}<th>Kinder</th></tr></thead>
+            <thead><tr><th>영문 이름</th><th>한글 이름</th><th>아이디</th><th>연락처</th><th>학력</th>{canViewFinance && <th>기본 시급</th>}<th>Kinder</th></tr></thead>
             <tbody>
               {rows.map((instructor) => (
-                <ClickableTableRow key={instructor.id} href={internalRoute.adminInstructor(instructor.id)} label={`${instructor.name} 강사 상세`}>
-                  <td className="font-medium">{instructor.name}</td>
+                <ClickableTableRow key={instructor.id} href={internalRoute.adminInstructor(instructor.id)} label={`${staffDisplayName(instructor)} 강사 상세`}>
+                  <td className="font-medium">{instructor.englishName}</td>
+                  <td>{instructor.name}</td>
                   <td className="mono text-fg-muted">{instructor.webId}</td>
                   <td>{instructor.phone ?? instructor.email ?? '—'}</td>
                   <td>{[instructor.university, instructor.major].filter(Boolean).join(' · ') || '—'}</td>

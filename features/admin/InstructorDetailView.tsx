@@ -8,7 +8,8 @@ import { useInstructorAdminDetail, useInstructorContracts, useRemoveInstructor, 
 import { apiErrorMessage } from '@/lib/api-error';
 import { InstructorProfileFields, type InstructorProfileForm } from './instructors/InstructorProfileFields';
 import { InstructorContractModal } from './instructors/InstructorContractModal';
-import type { InstructorContract } from '@kms545487/contracts';
+import { staffEnglishNameError, type InstructorContract } from '@kms545487/contracts';
+import { staffDisplayName } from '@/lib/domain/accounts';
 import { dateOnly, won } from '@/lib/format';
 import { useSudoAction } from '@/lib/hooks/useSudoAction';
 
@@ -36,6 +37,7 @@ export function InstructorDetailView({ instructorId }: { instructorId: number })
       {(instructor) => {
         const view: InstructorProfileForm = edit ?? {
           name: instructor.name,
+          englishName: instructor.englishName,
           email: instructor.email ?? '',
           phone: instructor.phone ?? '',
           university: instructor.university ?? '',
@@ -50,8 +52,10 @@ export function InstructorDetailView({ instructorId }: { instructorId: number })
         const save = () => {
           if (!edit || update.isPending) return;
           setError(null);
+          const englishNameIssue = staffEnglishNameError(edit.englishName);
+          if (englishNameIssue) { setError(englishNameIssue); return; }
           void sudoAction.run(() => update.mutateAsync({ id: instructor.id, patch: {
-            name: edit.name.trim(), email: edit.email.trim() || null, phone: edit.phone.trim(),
+            name: edit.name.trim(), englishName: edit.englishName.trim(), email: edit.email.trim() || null, phone: edit.phone.trim(),
             university: edit.university.trim() || null, major: edit.major.trim() || null,
             birthYear: edit.birthYear ? Number(edit.birthYear) : null,
             countryCode: edit.countryCode.trim() || null, timeZone: edit.timeZone.trim() || null,
@@ -65,7 +69,7 @@ export function InstructorDetailView({ instructorId }: { instructorId: number })
         const contracts = contractsQuery.data ?? [];
         return (
           <div className="space-y-5">
-            <SectionCard title={`${instructor.name} 강사`} action={<Badge tone="success">활성</Badge>}>
+            <SectionCard title={`${staffDisplayName(instructor)} 강사`} action={<Badge tone="success">활성</Badge>}>
               <div className="p-4 space-y-4">
                 <div className="grid grid-cols-2 gap-3 text-body max-w-[720px]">
                   <div><span className="text-fg-subtle">아이디</span><div className="mono">{instructor.webId}</div></div>
@@ -76,7 +80,7 @@ export function InstructorDetailView({ instructorId }: { instructorId: number })
                 {error && <p className="text-caption text-danger" role="alert">{error}</p>}
                 <div className="flex gap-2">
                   {canManage && (edit ? <>
-                    <button type="button" className="btn btn-sm btn-primary" disabled={update.isPending || sudoAction.isPending || !edit.name.trim()} onClick={save}>{update.isPending || sudoAction.isPending ? '저장 중…' : '저장'}</button>
+                    <button type="button" className="btn btn-sm btn-primary" disabled={update.isPending || sudoAction.isPending || !edit.name.trim() || !edit.englishName.trim()} onClick={save}>{update.isPending || sudoAction.isPending ? '저장 중…' : '저장'}</button>
                     <button type="button" className="btn btn-sm" onClick={() => setEdit(null)}>취소</button>
                   </> : <button type="button" className="btn btn-sm btn-primary" onClick={beginEdit}>수정</button>)}
                   {canManage && !edit && <button type="button" className="btn btn-sm btn-danger" onClick={() => setDeleteOpen(true)}>삭제</button>}

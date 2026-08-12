@@ -28,6 +28,7 @@ import { makeupNeeds, MAKEUP_REASON_LABEL } from '@/lib/makeup';
 import { profileChangeApprovalRows, reportApprovalRows } from '@/lib/approvals';
 import type { PendingAccount, ProfileChangeRequest } from '@/lib/api';
 import { internalRoute, type InternalHref } from '@/lib/navigation-security';
+import { staffDisplayName } from '@/lib/domain/accounts';
 
 // 회계상 분리: pay(강사 페이=출금) / expense(지출=출금) / payment(결제·수납=입금) / counsel(상담) / report·class(강사)
 type TaskGroup = 'pay' | 'expense' | 'payment' | 'counsel' | 'report' | 'class' | 'schedule' | 'attendance' | 'account';
@@ -84,7 +85,7 @@ function readinessTask(s: StoreSlice, row: PayReadinessIssue | ReportWorklistIte
     case 'report_rejected':
       return { ...base, group: 'report', tone: 'danger', title: `리포트 반려 — ${student?.name ?? '학생'}`, detail: `${context} · 사유: ${row.rejectedReason ?? '사유 미기재'} · 수정 후 재제출`, href: '/reports/write' };
     case 'rate_missing':
-      return { ...base, group: 'pay', tone: 'danger', title: `강사 페이 단가 미설정 — ${instructor?.name ?? `강사 ${row.instructorId}`}`, detail: context, href: forInstructor ? '/payouts' : internalRoute.adminInstructor(row.instructorId) };
+      return { ...base, group: 'pay', tone: 'danger', title: `강사 페이 단가 미설정 — ${staffDisplayName(instructor, `강사 ${row.instructorId}`)}`, detail: context, href: forInstructor ? '/payouts' : internalRoute.adminInstructor(row.instructorId) };
     case 'session_roster_missing':
       return { ...base, group: 'class', tone: 'danger', title: `수업 대상 학생 미지정 — ${row.topic ?? '수업'}`, detail: context, href: '/calendar' };
     default:
@@ -110,7 +111,7 @@ const todayISO = (): string => todayKst(); // [P2] KST 진실원(lib/format)
 
 // 관리자/매니저: 승인·지급·요청 대기 건 (회계상 그룹 분리)
 function adminTasks(s: StoreSlice): TaskItem[] {
-  const iname = (id: number) => s.instructors.find((i) => i.id === id)?.name ?? `강사 ${id}`;
+  const iname = (id: number) => staffDisplayName(s.instructors.find((i) => i.id === id), `강사 ${id}`);
   const sname = (id?: number) => s.students.find((x) => x.id === id)?.name ?? '학생';
   const today = todayISO();
   const out: TaskItem[] = [];
@@ -130,7 +131,7 @@ function adminTasks(s: StoreSlice): TaskItem[] {
   for (const a of s.pendingAccounts) {
     out.push({
       id: `signup-approve-${a.id}`, group: 'account', tone: 'attention', counts: true,
-      title: `가입 승인 대기 — ${a.name} (${a.webId})`,
+      title: `가입 승인 대기 — ${staffDisplayName(a)} (${a.webId})`,
       detail: `${a.email}${a.emailVerified ? '' : ' · 이메일 미인증(재발송 가능)'}`,
       href: '/admin/approvals',
     });

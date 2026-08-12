@@ -24,6 +24,7 @@ import { isValidEmailFormat } from "@/lib/domain/profile";
 // [B6 C2] 검증 규칙 단일 소스(lib/validation) — OTP·전화·출생연도·비밀번호 byte 기준.
 import { BIRTH_YEAR_MAX, BIRTH_YEAR_MIN, isValidBirthYear, isValidKrPhone, isValidOtpCode, passwordLengthError } from "@/lib/validation";
 import { ProfileDetailsFields, type ProfileDetailsValues } from "./ProfileDetailsFields";
+import { staffEnglishNameError } from '@kms545487/contracts';
 
 export default function SecuritySettingsView() {
   const router = useRouter();
@@ -39,6 +40,7 @@ export default function SecuritySettingsView() {
   // [E0.5 ⑥ + 2026-07-16 확장] 첫 로그인 강제 변경 — users 수정 가능 컬럼 전부를 한 번에.
   const [profileDraft, setProfileDraft] = useState<ProfileDetailsValues>({
     name: account?.name ?? "",
+    englishName: account?.englishName ?? "",
     email: "",
     phone: "",
     countryCode: "KR",
@@ -139,6 +141,8 @@ export default function SecuritySettingsView() {
     // [E0.5 ⑥] 강제 변경 흐름의 프로필 검증 — 가입 폼과 동일 규칙(이메일 형식·전화 010-1234-5678).
     if (forced) {
       if (!profileDraft.name.trim()) return setError("이름을 입력해 주세요.");
+      const englishNameError = staffEnglishNameError(profileDraft.englishName);
+      if (englishNameError) return setError(englishNameError);
       if (!emailNormalized || !isValidEmailFormat(emailNormalized)) return setError("이메일 형식이 올바르지 않습니다.");
       if (!profileDraft.phone.trim() || !isValidKrPhone(profileDraft.phone)) {
         return setError("전화번호는 010-1234-5678 형식으로 입력해 주세요.");
@@ -165,6 +169,7 @@ export default function SecuritySettingsView() {
         ...(forced
           ? {
               name: profileDraft.name.trim(),
+              englishName: profileDraft.englishName.trim(),
               email: emailNormalized,
               phone: profileDraft.phone.trim(),
               ...(profileDraft.countryCode ? { countryCode: profileDraft.countryCode } : {}),

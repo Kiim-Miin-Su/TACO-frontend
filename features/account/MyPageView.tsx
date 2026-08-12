@@ -75,6 +75,7 @@ export default function MyPageView() {
         ) : (
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 px-4 py-4 text-body">
             <div><dt className="text-caption text-fg-subtle">이름</dt><dd className="mt-0.5 font-medium break-words">{profile.name}</dd></div>
+            <div><dt className="text-caption text-fg-subtle">영문 이름</dt><dd className="mt-0.5 font-medium break-words">{profile.englishName}</dd></div>
             <div><dt className="text-caption text-fg-subtle">연락처</dt><dd className="mt-0.5 break-words">{valueOrDash(profile.phone)}</dd></div>
             <div>
               <dt className="text-caption text-fg-subtle">이메일</dt>

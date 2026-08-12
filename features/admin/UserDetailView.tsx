@@ -4,7 +4,7 @@
 //  인증 메일 재발송까지. 재사용: DetailStates(단건 404/403 표준)·ModalShell 계열(ReasonModal)·
 //  validation.ts(전화 형식)·중앙 훅(useUser/useAdminUpdateUser — CLAUDE §18). sudo 상태는
 //  lib/sudo 단일 소스(5분 TTL·저장소 미사용), 검증 권위는 서버 POST /auth/reauth.
-import { ACCOUNT_STATUS_LABEL } from '@/lib/domain/accounts'; // [P2 FE-7]
+import { ACCOUNT_STATUS_LABEL, staffDisplayName } from '@/lib/domain/accounts'; // [P2 FE-7]
 import { useState } from 'react';
 import { apiErrorMessage } from '@/lib/api-error'; // [TBO-34 C3] 오류 파싱 단일 진실원
 import { useRouter } from 'next/navigation';
@@ -21,7 +21,7 @@ import {
 import { isValidKrPhone } from '@/lib/validation';
 import { dateOnly, kstDateTime } from '@/lib/format';
 import type { AccountRole } from '@/types';
-import type { AuthEventType } from '@kms545487/contracts';
+import { staffEnglishNameError, type AuthEventType } from '@kms545487/contracts';
 import { UserPermissionMatrix } from './UserPermissionMatrix';
 
 const STATUS_LABEL = ACCOUNT_STATUS_LABEL; // [P2 FE-7] 진실원(lib/domain/accounts)
@@ -130,7 +130,7 @@ function DetailBody({ userId }: { userId: number }) {
   const remove = useDeletePendingAccount();
   const terminate = useTerminateUser();
   const restore = useRestoreUser();
-  const [edit, setEdit] = useState<{ name: string; phone: string; email: string; role: string } | null>(null);
+  const [edit, setEdit] = useState<{ name: string; englishName: string; phone: string; email: string; role: string } | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [lifecycleAction, setLifecycleAction] = useState<'terminate' | 'restore' | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -141,13 +141,16 @@ function DetailBody({ userId }: { userId: number }) {
       {(u) => {
         const terminated = !!u.deletedAt;
         const editable = isSuper && u.role !== 'super_admin' && !terminated;
-        const form = edit ?? { name: u.name, phone: u.phone ?? '', email: u.email ?? '', role: u.role };
+        const form = edit ?? { name: u.name, englishName: u.englishName, phone: u.phone ?? '', email: u.email ?? '', role: u.role };
         const save = () => {
           if (!edit || update.isPending) return;
           setErr(null); setMsg(null);
+          const englishNameIssue = staffEnglishNameError(edit.englishName);
+          if (englishNameIssue) { setErr(englishNameIssue); return; }
           if (edit.phone && !isValidKrPhone(edit.phone)) { setErr('전화번호는 010-1234-5678 형식으로 입력해 주세요.'); return; }
-          const patch: { name?: string; phone?: string; email?: string; role?: string } = {};
+          const patch: { name?: string; englishName?: string; phone?: string; email?: string; role?: string } = {};
           if (edit.name !== u.name) patch.name = edit.name;
+          if (edit.englishName.trim() !== u.englishName) patch.englishName = edit.englishName.trim();
           if (edit.phone !== (u.phone ?? '')) patch.phone = edit.phone;
           if (edit.email !== (u.email ?? '')) patch.email = edit.email;
           if (edit.role !== u.role) patch.role = edit.role;
@@ -163,7 +166,7 @@ function DetailBody({ userId }: { userId: number }) {
         return (
           <>
           <SectionCard
-            title={`${u.name} (${u.webId})`}
+            title={`${staffDisplayName(u)} (${u.webId})`}
             action={<Badge tone={terminated ? 'neutral' : STATUS_TONE[u.status] ?? 'neutral'}>{terminated ? '종료됨' : STATUS_LABEL[u.status] ?? u.status}</Badge>}
           >
             <div className="p-4 space-y-4">
@@ -173,6 +176,11 @@ function DetailBody({ userId }: { userId: number }) {
                   {editable && edit ? (
                     <input className="input w-full" value={form.name} onChange={(e) => setEdit({ ...form, name: e.target.value })} maxLength={50} />
                   ) : <div className="text-body font-medium">{u.name}</div>}
+                </AuthField>
+                <AuthField label="영문 이름">
+                  {editable && edit ? (
+                    <input className="input w-full" value={form.englishName} onChange={(e) => setEdit({ ...form, englishName: e.target.value })} maxLength={80} required placeholder="Jihoon Park" />
+                  ) : <div className="text-body font-medium">{u.englishName}</div>}
                 </AuthField>
                 <AuthField label="역할">
                   {editable && edit ? (
@@ -208,7 +216,7 @@ function DetailBody({ userId }: { userId: number }) {
                     <button className="btn btn-sm" onClick={() => { setEdit(null); setErr(null); }}>취소</button>
                   </>
                 ) : (
-                  <button className="btn btn-sm btn-primary" onClick={() => { setMsg(null); setEdit({ name: u.name, phone: u.phone ?? '', email: u.email ?? '', role: u.role }); }}>수정</button>
+                  <button className="btn btn-sm btn-primary" onClick={() => { setMsg(null); setEdit({ name: u.name, englishName: u.englishName, phone: u.phone ?? '', email: u.email ?? '', role: u.role }); }}>수정</button>
                 ))}
                 {isSuper && u.status === 'pending' && u.emailVerified === false && (
                   <button className="btn btn-sm" disabled={resend.isPending}

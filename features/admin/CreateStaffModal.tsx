@@ -11,13 +11,14 @@ import { roleLabel } from '@/lib/roles';
 import { useDebouncedValue } from '@/lib/hooks/useDebouncedValue';
 import { useCreateStaffUser, useWebIdAvailable } from '@/lib/queries';
 import { WEB_ID_MIN, isValidKrPhone, passwordLengthError } from '@/lib/validation';
+import { staffEnglishNameError } from '@kms545487/contracts';
 
 const ROLE_OPTS = ['instructor', 'manager', 'admin'] as const;
 
 export function CreateStaffModal({ onClose, onCreated }: { onClose: () => void; onCreated: (name: string) => void }) {
   const create = useCreateStaffUser();
   const [form, setForm] = useState({
-    webId: '', name: '', password: '', passwordConfirm: '', role: 'instructor' as string,
+    webId: '', name: '', englishName: '', password: '', passwordConfirm: '', role: 'instructor' as string,
     email: '', phone: '', university: '', major: '',
   });
   const [err, setErr] = useState<string | null>(null);
@@ -31,8 +32,9 @@ export function CreateStaffModal({ onClose, onCreated }: { onClose: () => void; 
   const webIdVerdict = debouncedWebId === webIdTrimmed && webIdQuery.data ? webIdQuery.data.available : null;
 
   const passwordError = form.password ? passwordLengthError(form.password) : null;
+  const englishNameIssue = staffEnglishNameError(form.englishName);
   const passwordsMatch = !!form.password && form.password === form.passwordConfirm;
-  const canSubmit = webIdTrimmed.length >= WEB_ID_MIN && !!form.name.trim()
+  const canSubmit = webIdTrimmed.length >= WEB_ID_MIN && !!form.name.trim() && !englishNameIssue
     && passwordsMatch && !passwordError && webIdVerdict !== false;
 
   function submit(e: React.FormEvent) {
@@ -45,7 +47,7 @@ export function CreateStaffModal({ onClose, onCreated }: { onClose: () => void; 
     }
     create.mutate(
       {
-        webId: webIdTrimmed, name: form.name.trim(), password: form.password, role: form.role,
+        webId: webIdTrimmed, name: form.name.trim(), englishName: form.englishName.trim(), password: form.password, role: form.role,
         ...(form.email.trim() ? { email: form.email.trim() } : {}),
         ...(form.phone.trim() ? { phone: form.phone.trim() } : {}),
         ...(form.university.trim() ? { university: form.university.trim() } : {}),
@@ -85,6 +87,11 @@ export function CreateStaffModal({ onClose, onCreated }: { onClose: () => void; 
         <AuthField label="이름">
           <input className="input w-full" value={form.name} onChange={set('name')} required maxLength={50} />
         </AuthField>
+        <AuthField label="영문 이름">
+          <input className="input w-full" value={form.englishName} onChange={set('englishName')} required maxLength={80} placeholder="Jihoon Park" />
+        </AuthField>
+        <p className="text-caption text-fg-subtle">학부모 전달 시간표에 표시됩니다.</p>
+        {form.englishName && englishNameIssue && <p className="text-caption text-danger" role="alert">{englishNameIssue}</p>}
         <div className="grid grid-cols-2 gap-2">
           <AuthField label="초기 비밀번호 (8자 이상)">
             <input className="input w-full" type="password" autoComplete="new-password" value={form.password} onChange={set('password')} required maxLength={72} />

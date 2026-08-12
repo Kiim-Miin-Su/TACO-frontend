@@ -8,9 +8,11 @@ import type {
 } from "@/lib/api";
 import type { Tone } from "@/components/ui/tokens";
 import { REASON_MAX, REASON_MIN, WEB_ID_MIN, isValidPhoneAny } from "@/lib/validation";
+import { normalizeStaffEnglishName, staffEnglishNameError } from '@kms545487/contracts';
 
 const PROFILE_FIELD_LABEL: Record<keyof ProfileChangeFields, string> = {
   name: "이름",
+  englishName: "영문 이름",
   webId: "아이디", // [E0] 승인제 — 승인 시 재로그인 필요
   email: "이메일",
   phone: "연락처",
@@ -30,7 +32,7 @@ export const PROFILE_STATUS_TONE: Record<ProfileChangeRequest["status"], Tone> =
   rejected: "danger",
 };
 
-const PROFILE_FIELDS = ["name", "webId", "email", "phone", "countryCode", "timeZone"] as const;
+const PROFILE_FIELDS = ["name", "englishName", "webId", "email", "phone", "countryCode", "timeZone"] as const;
 export type ProfileField = (typeof PROFILE_FIELDS)[number];
 export type ProfileChangeDraft = Record<ProfileField, string> & { reason: string };
 /** currentPassword·verificationChallengeId는 모달(인증 stepper)이 조립 — 빌더는 필드 diff·형식 검증만 담당. */
@@ -46,6 +48,7 @@ const normalize = (field: ProfileField, value?: string | null) => {
   const trimmed = (value ?? "").trim();
   if (field === "countryCode") return trimmed.toUpperCase();
   if (field === "email") return trimmed.toLowerCase();
+  if (field === "englishName") return normalizeStaffEnglishName(trimmed);
   return trimmed;
 };
 
@@ -63,10 +66,12 @@ export function buildProfileChangePayload(
     const current = normalize(field, profile[field]);
     if (next !== current) {
       (changes as Record<ProfileField, string | null | undefined>)[field] =
-        field === "name" || field === "email" || field === "webId" || next ? next : null;
+        field === "name" || field === "englishName" || field === "email" || field === "webId" || next ? next : null;
     }
   }
   if (changes.name === "") return { error: "이름은 비워 둘 수 없습니다." };
+  const englishNameError = staffEnglishNameError(draft.englishName);
+  if (englishNameError) return { error: englishNameError };
   // [E0] 아이디 — 승인제 요청. 서버 최소 규칙(3자)과 동일 1차 방어.
   if (changes.webId !== undefined && changes.webId !== null && changes.webId.length < WEB_ID_MIN) {
     return { error: `아이디는 ${WEB_ID_MIN}자 이상 입력해 주세요.` };
