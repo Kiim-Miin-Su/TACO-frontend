@@ -1,146 +1,85 @@
 # TACO Web (frontend)
 
-Next.js 15(App Router) + React 19 + Tailwind v4 기반 TACO ERP 웹. **독립 repo**로 운영하며,
-배포는 Vercel입니다. 서버 상태는 **TanStack Query 단일 소스**(DB reconciliation 계약),
-브라우저 저장소에 업무 데이터를 두지 않습니다(localStorage는 UI 선호만).
+TN Academy 백오피스 ERP의 모바일 우선 웹 클라이언트입니다. Next.js 15 App Router, React 19,
+TanStack Query 5와 Tailwind CSS 4를 사용하며 Vercel에 독립 배포합니다.
 
-게이트(커밋마다 그린): `npx tsc --noEmit` · `npx vitest run`(48 files / 350+) · `npx next build`.
-전체 설계·운영 문서 입구는 형제 repo [`docs/README.md`](../docs/README.md).
+## 핵심 원칙
+
+- 업무 데이터의 권위는 backend/DB다. 컴포넌트 state나 localStorage에 서버 데이터를 복제하지 않는다.
+- 서버 상태는 `lib/queries/*`와 중앙 query key에서만 조회·무효화한다.
+- access/refresh token은 HttpOnly cookie로 운반하고 브라우저 JS나 localStorage에 저장하지 않는다.
+- 화면의 역할 조건은 UX 투영이며 backend capability/owner 검사가 최종 방어선이다.
+- 대표·강사의 휴대전화 사용을 기본으로 390px부터 데스크톱까지 같은 기능을 제공한다.
+- 공용 폼, modal, badge projection, status/color helper를 재사용해 같은 업무 규칙을 화면마다 다시 쓰지 않는다.
 
 ## 실행
 
 ```bash
-npm install
-npm run dev        # http://localhost:3000
+nvm use                 # Node 22.22.3
+npm ci
+npm run dev             # http://localhost:3000
 ```
 
-백엔드 API는 `next.config.ts`의 same-origin rewrite로 `/api/*` → `http://localhost:3001`에 전달됩니다.
-다른 주소는 `.env.local`의 server-only `API_URL`로 지정합니다. 브라우저는 backend origin이나 access JWT를
-읽지 않으며 backend-set HttpOnly cookie와 `/auth/me`를 사용합니다.
+backend API는 `next.config.ts`의 same-origin rewrite로 `/api/*`를 로컬 `http://localhost:3001` 또는
+server-only `API_URL`로 전달합니다. 브라우저에 backend origin이나 비밀값을 노출하지 않습니다.
+
+## 검증 기준선
+
+2026-08-13 TBO-98 기준입니다.
+
+```bash
+npm run lint            # error 0, warning 0
+npm run typecheck       # TypeScript 0
+npm test -- --run       # 82 files / 558 tests
+npm run build           # 39 routes
+npm audit               # production/full vulnerability 0
+```
+
+대표 로그인→캘린더는 1280x900과 390x844에서 overflow, console error, page error 0을 확인했습니다.
+기술 게이트와 actual 운영 계정 UAT는 별도 증거이며 실제 사용자 데이터 확인은 각 TBO owner 체크리스트를 따릅니다.
+
+## 구조
+
+```text
+app/                       # 39개 App Router route, page는 feature View만 조립
+components/
+├─ ui/                     # Button, Field, ModalShell, EmptyState, badge 등 공용 primitive
+└─ layout/                 # Sidebar, Topbar, MobileBottomNav
+features/
+├─ account / auth / admin
+├─ calendar / schedule / sessions / attendance / reports
+├─ students / counsel / rooms
+└─ payments / expenses / payouts / dashboard
+lib/
+├─ api/                    # Axios same-origin client, refresh single-flight, error parser
+├─ queries/                # TanStack Query 읽기·mutation·fan-out invalidation
+├─ domain/                 # 캘린더, 시차, 충돌, 상태 전이의 순수 projection
+├─ hooks/                  # 공용 브라우저·권한·UI hook
+└─ storage/                # 업무 데이터가 아닌 제한된 UI 선호만
+types/                     # @kms545487/contracts 재노출
+```
+
+## 주요 업무 표면
+
+- 캘린더: KST 저장, 사용자별 시차 표시, 주간/일간/기간/스플릿 뷰, drag 생성·이동·리사이즈,
+  수업·가용·불가·온라인만 가능 충돌 정책, 승인 요청 점선 투영, PNG 내보내기.
+- 수업·출결·리포트: 배정중→강사 배정, 과거 완료 수업 이관, 출결 자동 전이와 정정 승인,
+  리포트 worklist·history·template·revision.
+- 학생·상담: 학생 aggregate 등록/수정/soft-delete, 가족·보호자 조인, 상담→학생/수강 원자 전환.
+- 승인센터: 가입·프로필·스케줄·출결·리포트·재무 요청의 상세 조회와 capability 기반 결정.
+- 정산·재무: 시수/정산 영향 미리보기와 acknowledgement, 수납·지출·지급 상세 및 감사 이력.
+- 알림: 공용 `TaskItem` projection에서 Topbar, 탭, 도착 버튼 배지를 계산하고 focus/reconnect/활성 화면
+  polling으로 다른 직원의 변경을 DB에서 다시 읽는다.
 
 ## 디자인 시스템
 
-GitHub Primer 느낌의 모던 ERP, **밝은 테마** 우선. 토큰은 `app/globals.css`의 CSS 변수 + Tailwind v4 `@theme`로 노출됩니다.
+시맨틱 색상과 밀도는 `app/globals.css`, 공용 primitive는 `components/ui`, TN 브랜드 렌더러는
+`components/brand/BrandMark`가 소유합니다. 모바일 메뉴와 데스크톱 메뉴는 같은 권한 투영을 사용하고,
+modal은 작은 화면에서 bottom sheet로 전환됩니다.
 
-- 색: `canvas / fg / line / accent / success / attention / danger / done` 시맨틱 토큰
-- 컴포넌트 클래스: `.btn(.btn-primary/-danger/-invisible/-sm)`, `.card`, `.badge-*`, `.input`, `.table`, `.mono`
-- 공용 React 컴포넌트: `components/ui/*`(Badge·StatCard·SectionCard·StatusDot·icons), `components/layout/*`(Sidebar·Topbar)
-- TN Academy 브랜드: `public/brand/tn-mark.svg`가 벡터 원본, `components/brand/BrandMark`가 화면 공용 렌더러다.
-  `app/favicon.ico`·`app/icon.png`·`app/apple-icon.png`는 같은 마크의 App Router metadata 파생 자산이다.
-  런타임 외부 이미지/CDN 의존은 없다.
+## 문서
 
-다크 테마는 `globals.css`의 토큰을 `@media (prefers-color-scheme: dark)` 또는 `[data-theme=dark]`로 재정의하면 확장됩니다.
-
-- 차트: `components/ui/Chart`(chart.js 래퍼), 재사용 `MonthCalendar`, `Combobox`(라벨 추천)
-
-## 구조 (feature 기반, 확장형)
-
-```
-app/                 # 라우트는 얇게 (각 page는 feature View 렌더만)
-│  · / · /schedule · /counsel[/id] · /students · /sessions[/id][/feedback/sid]
-│  · /payments[/new|/id] · /payouts · /expenses[/new|/id] · /admin[/courses|/events|/approvals]
-components/
-├─ ui/               # 프리미티브 + Chart·MonthCalendar·Combobox (+ index 배럴)
-└─ layout/           # Sidebar·Topbar(사용자 계정 전환)
-features/            # 도메인 단위 (확장 지점)
-│  dashboard · schedule · counsel · students · sessions
-│  payments · payouts · expenses · admin · system(BackendPanel)
-lib/                 # api(axios same-origin) · store(zustand) · mock/seed · mock/integrity
-│  payroll(시수×시급) · roles(RBAC) · format(결정적)
-types/               # @kms545487/contracts 재노출(단일 소스)
-```
-
-데이터 계층: **서버 상태 = TanStack Query 단일 소스**(`lib/queries.ts` 도메인 훅 — 읽기 `useX`, 쓰기 `useCreateX/useUpdateX`+invalidate, 키는 `lib/queryKeys.ts` 레지스트리). zustand(`lib/store`)는 인증 세션 등 클라이언트 상태만 유지합니다(업무 데이터 0 — 2026-07 전수 감사 실측). 캘린더 엔진(충돌·추천·스플릿·복제)은 `lib/domain/schedule.ts`·`lib/domain/lantiv.ts` 순수 함수로 분리되어 vitest로 검증됩니다.
-
-## 타입 컨벤션
-
-기본적으로 `type`을 사용합니다. `interface`는 선언 병합이나 클래스 implements 계약이 필요할 때만 쓰고, 사유를 주석으로 남깁니다. 도메인 타입은 `@kms545487/contracts`가 단일 소스이며 `@/types`로 재노출합니다.
-
-## 자세한 개발 가이드
-
-폴더 규칙·새 기능 추가 방법은 [CONTRIBUTING.md](./CONTRIBUTING.md) 참고.
-
-## 캘린더(/calendar) — 상세 기능·사용법 (Lantiv형, 2026-07-02 기준)
-
-학원 운영의 중심 탭. 수업 스케줄의 조회·생성·이동·복제·재배정을 한 화면에서 처리합니다.
-구현: `features/calendar/`(ScheduleCalendar + CalendarFilterBar·SessionListPanel·SessionDetailPanel·ResourcePanel), 엔진: `lib/domain/lantiv.ts`·`lib/domain/schedule.ts`.
-
-### 뷰
-
-| 뷰 | 내용 |
-|---|---|
-| 월간 | 날짜별 요약. 날짜 클릭=일간 이동, 빈 칸 더블클릭=일정 추가 |
-| 주간(기본) | 시간 그리드(08–22시). 오늘 강조·현재시각 선 |
-| 일간(강의실) | 하루를 강의실별 컬럼으로 |
-| **데일리 스플릿** | 한 차원(강사/학생) 2명 이상 선택 시 자동 — **요일 열 폭은 주간과 동일**, 그 안이 사람 수만큼 서브열로 분할. 서브열 폭에 따라 텍스트 자동 축소: 가로(제목+시간) → **세로 글씨** → **색상만**(결강·보강=회색) |
-| **표 2개(자동)** | 강사와 학생을 **둘 다** 선택하면 표 2개(강사 표 \| 학생 표). 각 표 헤더에서 리소스 재선택 가능(상단 필터와 단일 상태). ✕로 표를 닫으면 남은 화면은 원래 렌더로 복귀(필터 선택은 유지) |
-| **기간 뷰** | 기간(from~to) 지정 시 **뷰 자체가 그 날짜들로 재구성**(3일 선택=3일 열만, 화면을 채움 · 최대 14일). ◀▶는 기간 길이만큼 이동. 일반·스플릿 모두 적용 |
-
-### 상단 필터 바 (`CalendarFilterBar`)
-
-- **리소스 다중선택**: 👓강사 · 🎓학생 · 🚪강의실 버튼 → 체크박스 팝오버(검색 지원). 선택하면 칩으로 표시(✕ 제거), 2개 이상이면 스플릿 뷰.
-- **상태 필터**: [전체] 출석 / 지각 / 결강 / 보강 — 세션 status + 강사 출결 + 학생 출결 조합으로 판정(`sessionStates`). 복수 선택=합집합("결강만", "결강+보강" 등).
-- **수업 유형**: [전체] / [그룹 수업만](수강생 2명 이상).
-- **기간**: from~to 지정 시 뷰 기간 대신 그 범위를 조회(우측 리스트가 기간 전체를 봄). ✕로 해제.
-- 검색(수업·강사·강의실·학생·주제) · 색 기준(과목/강사/강의실/학생).
-
-### 마우스·키보드 (Lantiv 대응)
-
-| 동작 | 결과 |
-|---|---|
-| 수업 클릭 | 선택(리사이즈 핸들) + 우측 상세 패널 표시 |
-| 수업 더블클릭 | **상세 편집 모달** — 우측 패널과 같은 공통 폼(SessionEditFields), 반복이면 적용 범위(이것만/이 이후/전체) |
-| **빈 시간 더블클릭** | 그 시각으로 **스케줄 추가 모달**(시작시간 프리필) |
-| 드래그 | 이동(30분 스냅, 다른 날/컬럼 가능). 스플릿 강사 컬럼에 놓으면 **강사 재배정** |
-| **Ctrl(⌘)+드래그** | **복제** — 원본 유지, 드롭 지점에 새 수업 |
-| **빈 시간 클릭** | **커서** — 클릭 시각(30분 스냅) 배지 표시. 붙여넣기 대상 |
-| **Ctrl+C** | 선택한 수업 복사(토스트 안내) |
-| **Ctrl+V** | 커서 위치에 붙여넣기 — **시작시간 = 커서 시각**, 길이 유지 |
-| 시작/끝 핸들 드래그 | 시간 조절(15분 스냅) |
-| Esc | 커서·선택 해제 |
-
-복제 무결성 규칙(`cloneSessionBody`): 복제본은 항상 **단건(반복 아님)·예정(scheduled)** 상태로 생성되고, 출결·리포트·정산 연결은 승계하지 않습니다(시수 이중 계상 방지). 스플릿 강사/강의실 컬럼에 붙여넣으면 그 리소스로 재배정되며, 충돌 시 409 → 확인 후 강제 적용을 물어봅니다.
-
-**다른 학생 컬럼에 붙여넣기**(`resolvePasteCourseId`, 2026-07-02): 김서연 세션을 이도현 컬럼에 붙이면 이도현의 **활성 수강 기반으로 코스가 재배정**됩니다 — 원본 코스 수강 중이면 그대로 → 같은 과목의 활성 코스 → 첫 활성 코스, 활성 수강이 없으면 토스트로 중단(코호트=enrollment 파생 무결성 — 유령 세션 방지).
-
-### 국가·시차 뷰 (해외 학생 시간표, 2026-07-02)
-
-한국에서 온라인 수업을 듣는 해외 학생에게 **그 나라 시간 기준 시간표**를 보여주고 이미지로 추출하는 기능입니다.
-
-- **국가 인풋**(`CountryInput`, 상단 컨트롤): 대표 20개국 자동완성(한글·영문·코드) + 최근 검색 5건(localStorage). 선택 시 ① 그 국가 학생이 포함된 세션만 필터 ② 그리드 전체가 그 나라 로컬 시간으로 변환됩니다.
-- **시차 변환**(`lib/domain/tz.ts`): 저장 시간은 항상 **KST(단일 진실원)**, 변환은 표시 전용. KST→UTC(+09:00 고정)→대상 tz(Intl, DST 자동). 날짜가 밀리면 요일·날짜 재계산(KST 수 08:00 = 뉴욕 화 19:00), durationMinutes는 원본 보존(시수 불변).
-- **시간축**: 시차 뷰에선 새벽·심야 이동에 대비해 8~22시 대신 **0~24시 전일 축**으로 전환.
-- **조회 기간 자동 확장(±1일)**: 시차로 날짜가 밀린 세션(예: 월 12:30 KST = 일 23:30 ET)이 주간 경계 밖 데이터라 사라지지 않도록, 시차 뷰에서는 서버 조회만 ±1일 넓힙니다. 우측 수업 리스트·시수·건수는 KST 원래 기간 기준을 유지합니다(그리드=그 나라 달력, 리스트=KST — 모집단 분리).
-- **자정 크로스 잔여 배지**: 그 나라 시간으로 자정을 넘는 수업(예: 23:30~익일 00:30)은 그리드에 23:30–24:00으로 표시되고 블록에 **"+1일 ~00:30"** 배지가 붙습니다(툴팁에도 표기 — 오독 방지). KST 저장 세션 자체는 자정을 넘길 수 없습니다(백엔드 400 — 단일 날짜 세션만).
-- **읽기 전용 잠금**: 비KST 뷰에서는 드래그·리사이즈·더블클릭 생성·커서·붙여넣기가 잠기고 상단 배지에 "보기 전용 · 편집은 한국 시간에서"가 표시됩니다(변환 시각으로 저장되는 사고 방지). 가용/불가 밴드·현재시각 선도 숨김(KST 좌표).
-- **표(스플릿)별 국가**: 표 2개 모드에서 각 표 헤더의 국가 픽커로 표마다 다른 시간대 지정(강사 표=KST, 학생 표=미국 동부처럼). 미지정 표는 전역 국가를 따릅니다.
-- **학생별 개별 시차(2026-07-03)**: 학생 여러 명 스플릿에서 각 학생 컬럼이 **그 학생 국가의 시간으로 자동** 표시됩니다(헤더에 국기, 김서연 🇺🇸 03:00 | 박지민 🇻🇳 14:00 나란히). 우선순위: 전역/표별 국가(명시 선택) > 학생 개별(country) > KST. 해외 시간 컬럼만 편집 잠금.
-- **학생 컬럼 시차 수동 변경(2026-07-03)**: 스플릿 학생 컬럼 헤더의 국기(국내 학생은 🌐)를 클릭하면 그 컬럼만 **자동(학생 국가) / KST 고정 / 다른 국가**로 임시 변경할 수 있습니다(보기 전용 — 영구 변경은 우측 유저 카드의 국가 수정).
-- **우측 유저 상세·편집**(`ResourceDetailCard`, 2026-07-03): 유저별 스케줄에서 유저를 고르면 개인 스케줄 필터에 더해 상세정보가 표시되고, 학생은 **국가(출국/입국)·거주·상태(휴원 등)·학년·연락처를 즉시 수정**할 수 있습니다(PATCH /students/:id — 국가 변경은 시차 뷰에 즉시 반영). 수업 상세의 학생명 클릭으로도 진입.
-- **PNG/JPEG 추출**: 현재 렌더 중인 표를 시차 상태 그대로 캡처합니다. 파일명은 선택된 사람의 역할과 이름을 포함하며, 역할·이름 조합을 중복 제거합니다(예: `강사-박지훈_학생-김서연_260713_weekly.png`). 사람이 없는 강의실/전체 뷰는 현재 뷰 이름만 사용합니다.
-- 학생의 국가는 학생 등록 폼·학생 테이블(국기+코드)에서 관리하며, 미지정은 KR(국내)로 간주합니다. `미국(서부) US-W`는 대표 tz만 다른 US 변형입니다.
-
-### 우측 패널
-
-- **스플릿 컬럼별 가용/불가 밴드(2026-07-03)**: 스플릿 뷰에서는 각 컬럼에 **그 컬럼 유저(강사/학생/강의실)의 가용(초록)/불가(회색 사선)**가 항상 표시됩니다 — 여러 강사의 빈 시간을 나란히 비교하며 배치 가능. **컬럼에서 바로 편집**: 밴드 클릭=선택 → 드래그 이동·끝 드래그 리사이즈·✕ 삭제·더블클릭 수정(반복이면 범위 확인) — 개인 필터 없이도 그 자리에서(owner는 블록 자신이 보유 — selected 의존 제거). 날짜·소유자 매칭은 `blocksOnDate`(lib/domain/schedule) 단일 소스.
-- **유저별 추가(2026-07-03)**: 전역 "+ 스케줄 추가"(현행)와 별개로, ① 스플릿 컬럼 헤더의 **＋ 버튼**/컬럼 빈 공간 더블클릭 ② **유저 상세 카드의 "＋ 스케줄" 버튼**(스케줄 표를 보면서 그 유저의 수업·가용·불가 바로 추가) = **그 유저 프리필**로 같은 추가 모달 재사용 — 강사면 수업 탭 강사 프리필(변경 가능), 가용/불가 탭은 그 유저가 소유자로 프리필.
-- **유저별 스케줄**(`ResourcePanel`): 강사/학생/강의실 단일 선택. **[A안 조정 2026-07-03] 유저 선택 = 정보 카드만(캘린더 뷰 불변)** — 유저를 골라도 그리드·필터는 그대로이고 우측에 상세·편집 카드만 뜹니다. 캘린더를 그 유저 스케줄로 좁히고 싶으면 카드의 **"🔍 이 유저만"** 버튼(명시적) — 그때 필터바 칩 1개로 세팅되고 개인 모드(서버 파라미터·가용/불가 밴드·PNG 파일명)가 켜집니다. "전체 보기"로 필터만 해제(카드 유지). 반대로 필터바에서 어떤 경로로든 리소스 1명이 되면 자동 개인 모드+카드 — 단일 선택 모델은 유지(교집합 혼동 없음).
-- **수업 리스트**(`SessionListPanel`): 필터 결과를 **날짜 오름차순**으로. 그룹 토글(학생 선택 시 학생별 그룹). 클릭=그리드 하이라이트+상세, 기간 밖이면 그 주로 이동.
-- **상세**(`SessionDetailPanel`): 선택 수업의 DTO 전체 표시 + **참여자 정보**(학생별 국기·학년·상태 미니 정보 — 비활성은 주황 강조, 강사 담당 과목). 학생명/강사명 클릭 = 우측에 유저 정보 카드 표시(뷰 불변 — 필터는 카드의 "이 유저만" 버튼). **"편집 — 모든 항목"**으로 날짜·시간·강사·강의실·상태·색·주제·메모 전부 수정(모달과 동일 공통 폼·검증). 학생 코호트는 수강 등록에서 관리(무결성).
-
-### 스케줄 추가·가용/불가
-
-"+ 스케줄 추가"(관리자=전체, 강사=본인 수업) — 수업/가용/불가 3탭, 반복(그날만/매주/커스텀 요일)+종료일, 코스 선택 시 진행시간·색 자동. 가용/불가 블록은 그리드 밴드로 표시되며 클릭=선택·드래그=이동·더블클릭=수정(반복이면 범위 확인).
-
-### 권한
-
-조회는 로그인 사용자 공통, 생성·수정·삭제는 관리자/매니저 전체·강사 본인 수업만(프론트 게이팅 + 백엔드 RolesGuard·FK·충돌 검증이 최종 방어선).
-
-## 변경 이력 — 캘린더 탭 통합 + Lantiv 추천 (2026-06-29)
-
-- **캘린더 일원화**: `/calendar` 단일 탭에 **월간·주간·일간(강의실)·표** 뷰 통합. `/timetable`·`/schedule`는 redirect, 사이드바 "주간 표" 제거. 주간 표(엑셀/CSV·시수)는 "표" 뷰로 흡수.
-- **학생 차원**: 색상/필터 기준에 학생 추가, 블록·표·상세에 학생명(`ScheduleRow.studentNames`).
-- **자원 레일**(`features/calendar/ResourceRail.tsx`): 강사·학생·강의실 → 클릭 시 개인 스케줄 필터.
-- **불가시간 밴드**: 선택 자원의 `unavailable` 블록을 그리드에 회색 사선으로 표시.
-- **가용·추천 드로어**(`features/calendar/AvailabilityPanel.tsx`): 가용/불가 CRUD + **학생 중심 추천**(맞는 수업·강사, 불가 강사는 주황 "조정 배정") + **강사∧학생 가용 슬롯 추천** → `POST /schedule` 배정.
-- 엔진(`lib/domain/schedule.ts`): `suggestPairSlots`·`recommendForStudent`·`ownerWindows` (+Vitest 6).
+- [docs/README.md](../docs/README.md): 문서 지도와 현재 검증 기준선
+- [docs/FABLE.md](../docs/FABLE.md): 운영 불변식과 완료 판정
+- [docs/scheduling.md](../docs/scheduling.md): 캘린더·스케줄 규칙
+- [CONTRIBUTING.md](./CONTRIBUTING.md): 폴더 규칙과 새 기능 추가 방법
