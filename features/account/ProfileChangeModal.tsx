@@ -33,6 +33,7 @@ import {
 import { roleLabel } from "@/lib/roles";
 import { WEB_ID_MIN, isValidOtpCode } from "@/lib/validation"; // [B6 C2] 검증 규칙 단일 소스
 import { ProfileDetailsFields } from "./ProfileDetailsFields";
+import { PROFILE_CHANGE_VERIFICATION_PURPOSE } from '@/lib/domain/verification-purpose';
 
 // 서버가 "초과"(시도/재전송 한도)로 응답하면 이 챌린지는 회복 불가 — 처음부터 다시.
 // [TBO-65 5-C] 잠금 판정 사본 제거 — lib/domain/otp-challenge(code 우선) 단일 진실원 소비
@@ -142,7 +143,7 @@ export default function ProfileChangeModal({
         return;
       }
       createVerification.mutate(
-        { currentPassword, channel: "email", target: ownEmail },
+        { currentPassword, channel: "email", target: ownEmail, purpose: PROFILE_CHANGE_VERIFICATION_PURPOSE },
         {
           onSuccess: (challenge) => {
             setVerify({
@@ -168,7 +169,7 @@ export default function ProfileChangeModal({
       return;
     }
     createVerification.mutate(
-      { currentPassword, channel: plan.channel, target: plan.target },
+      { currentPassword, channel: plan.channel, target: plan.target, purpose: PROFILE_CHANGE_VERIFICATION_PURPOSE },
       {
         onSuccess: (challenge) => {
           setVerify({ challenge, payload, currentPassword, plan, attemptsLeft: challenge.attemptsLeft ?? 5, locked: false });
@@ -198,7 +199,7 @@ export default function ProfileChangeModal({
       return;
     }
     createVerification.mutate(
-      { currentPassword, channel: "email", target },
+      { currentPassword, channel: "email", target, purpose: PROFILE_CHANGE_VERIFICATION_PURPOSE },
       {
         onSuccess: (challenge) => {
           setVerify({ challenge, currentPassword, plan: { channel: "email", target }, attemptsLeft: challenge.attemptsLeft ?? 5, locked: false });

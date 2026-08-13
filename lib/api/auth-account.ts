@@ -18,8 +18,9 @@ import type {
   RoleCapability,
   SetUserCapabilityInput,
   UserPermissionsProjection,
+  ProfileVerificationPurpose,
 } from "@kms545487/contracts";
-export type { ProfileChangeFields, ProfileChangeRequest } from "@kms545487/contracts";
+export type { ProfileChangeFields, ProfileChangeRequest, ProfileVerificationPurpose } from "@kms545487/contracts";
 
 export type LoginBody = { webId: string; password?: string };
 export type LoginResult = StaffLoginResult;
@@ -74,6 +75,7 @@ export type ProfileVerificationChannel = "email" | "sms";
 export type ProfileVerification = {
   id: number;
   channel: ProfileVerificationChannel;
+  purpose: ProfileVerificationPurpose;
   maskedTarget: string;
   status: "pending" | "verified" | "consumed" | "expired" | "locked";
   expiresAt: string;
@@ -84,6 +86,7 @@ export type CreateProfileVerificationBody = {
   currentPassword: string;
   channel: ProfileVerificationChannel;
   target: string;
+  purpose: ProfileVerificationPurpose;
 };
 // GET /users is the admin comparison source. New profile fields are optional while older servers roll forward.
 export type UserProfileSummary = StaffAccountSummary;

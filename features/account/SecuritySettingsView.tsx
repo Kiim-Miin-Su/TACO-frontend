@@ -25,6 +25,7 @@ import { isValidEmailFormat } from "@/lib/domain/profile";
 import { BIRTH_YEAR_MAX, BIRTH_YEAR_MIN, isValidBirthYear, isValidKrPhone, isValidOtpCode, passwordLengthError } from "@/lib/validation";
 import { ProfileDetailsFields, type ProfileDetailsValues } from "./ProfileDetailsFields";
 import { staffEnglishNameError } from '@kms545487/contracts';
+import { credentialVerificationPurposeOf } from '@/lib/domain/verification-purpose';
 
 export default function SecuritySettingsView() {
   const router = useRouter();
@@ -97,6 +98,7 @@ export default function SecuritySettingsView() {
         currentPassword,
         channel: "email",
         target,
+        purpose: credentialVerificationPurposeOf(forced),
       });
       setOtp(challenge);
       setOtpTarget(target.trim().toLowerCase());
