@@ -46,8 +46,8 @@
   /* Neutral chips */
   --color-neutral-subtle: #eaeef2;
 
-  /* Typography — 폰트는 Pretendard(§DESIGN.md R2), 로컬 서빙(layout.tsx에서 import) */
-  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+  /* Typography — Pretendard WOFF2는 layout.tsx의 next/font/local 한 경로로 로드 */
+  --font-sans: var(--font-pretendard), Pretendard, -apple-system, BlinkMacSystemFont,
     "Segoe UI", "Noto Sans KR", "Apple SD Gothic Neo", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;

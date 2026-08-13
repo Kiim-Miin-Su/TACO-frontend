@@ -4,6 +4,8 @@ import { SECURITY_HEADERS } from "./lib/security-headers";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   typedRoutes: true,
+  // 상위 workspace의 빈 lockfile을 root로 오인하면 dev watcher가 모든 sibling repo를 감시해 EMFILE이 난다.
+  outputFileTracingRoot: process.cwd(),
   async headers() {
     return [{ source: '/(.*)', headers: [...SECURITY_HEADERS] }];
   },

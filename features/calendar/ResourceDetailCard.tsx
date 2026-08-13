@@ -63,7 +63,7 @@ export function ResourceDetailCard({
         grade: student.grade != null ? String(student.grade) : "",
         phone: student.phone ?? "",
       });
-  }, [student?.id, student?.country, student?.residenceType, student?.status, student?.birthDate, student?.grade, student?.phone]);
+  }, [student]);
 
   if (selected.type === "instructor" || selected.type === "room") {
     return (

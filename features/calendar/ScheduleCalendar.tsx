@@ -324,7 +324,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   //  커밋 직전 tzCellToKst(R-1b DST 2-패스)로 KST 변환(익일 연속 블록만 표시 전용 유지).
   // 학생 국가·수강·코스·과목은 역할별 `/schedule/resources` 한 query에서만 파생한다.
   // 강사 캘린더가 전역 courses/subjects/enrollments/students cache를 읽지 않으므로 모든 UI 축이 같은 scope다.
-  const allStudents = resources?.students ?? [];
+  const allStudents = useMemo(() => resources?.students ?? [], [resources?.students]);
   const allEnrollments = useMemo(() => calendarEnrollmentRows(resources), [resources]);
   const allCourses = useMemo(() => calendarScheduleCourses(resources), [resources]);
   const subjectOpts = useMemo(() => calendarSubjectOptions(resources), [resources]);
@@ -411,10 +411,10 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   }, [resources]);
   // 유저/리소스 공통 시차(피드백 2026-07-09): 학생만이 아니라 강사도 동일 resolver/override를 사용한다.
   const [resourceTzOverride, setResourceTzOverride] = useState<ResourceTimezoneOverrides>({});
-  const resourceTzFor = (type?: SplitDim, id?: number): CountryInfo | undefined => {
+  const resourceTzFor = useCallback((type?: SplitDim, id?: number): CountryInfo | undefined => {
     if (!type || type === "subject" || id == null) return undefined;
     return resourceTimezoneOf(resourcesByType.get(resourceTimezoneKey(type, Number(id))), resourceTzOverride);
-  };
+  }, [resourceTzOverride, resourcesByType]);
   // [오류4 2026-07-06] x/y = 국기 버튼 뷰포트 좌표 — 팝오버를 fixed로 띄워 컬럼 overflow-hidden
   //  클리핑·옆 컬럼 가림에서 탈출(항상 최상위). 클릭 시점 좌표 고정(스크롤 시 재클릭).
   const [tzPickerFor, setTzPickerFor] = useState<{ colKey: string; type: Exclude<SplitDim, "subject">; id: number; x: number; y: number } | null>(null);
@@ -424,8 +424,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
     () => [...fStudents].some((id) => resourceTzFor("student", id) != null)
       || [...fInstructors].some((id) => resourceTzFor("instructor", id) != null)
       || [...fRooms].some((id) => resourceTzFor("room", id) != null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- resourceTzFor는 resourcesByType·override 파생
-    [fStudents, fInstructors, fRooms, resourcesByType, resourceTzOverride],
+    [fStudents, fInstructors, fRooms, resourceTzFor],
   );
   const anyTzActive = (country != null && country.tz !== KST_TZ)
     || Object.values(paneCountry).some((c) => c != null && c.tz !== KST_TZ)
@@ -719,13 +718,13 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   };
   // [이슈1 2026-07-03] paneDates: 표(패널)별 날짜 배열 — 왼쪽 3일·오른쪽 5일처럼 표마다 기간을 다르게.
   //  미지정 시 전역 dates 사용(기존 동작).
-  const colsFor = (picks: MixedPick[], prefix = "", paneDates: string[] = dates): Col[] =>
+  const colsFor = useCallback((picks: MixedPick[], prefix = "", paneDates: string[] = dates): Col[] =>
     buildMixedSplitColumns(view === "day" ? [anchor] : paneDates, picks).map((c) => ({
       key: prefix + c.key, label: c.label,
       sub: view === "week" || period ? `${WD[weekdayOf(c.date)]} ${c.date.slice(5)}` : undefined,
       date: c.date, roomId: c.roomId, resType: c.resType, resId: c.resId, firstOfDate: c.firstOfDate,
       tzc: c.resType && c.resType !== "subject" ? resourceTzFor(c.resType, c.resId) : undefined,
-    }));
+    })), [anchor, dates, period, resourceTzFor, view]);
   // 표별 날짜 = 그 표의 캘린더 범위(from~to, 최대 14일). 미설정이면 전역 dates.
   const paneDatesOf = (dim: SplitDim): string[] => {
     const picked = panePicked[dim];
@@ -746,8 +745,8 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
           { key: "r-none", label: "미지정", date: anchor, noRoom: true } as Col, // [L1] 강의실 없는 세션도 보이게
         ]
       : dates.map((d) => ({ key: d, label: WD[weekdayOf(d)], sub: d.slice(5), date: d })),
-    // resourceTzOverride·resourcesByType: owner 컬럼 개별 시차(자동 국가·수동 변경)가 컬럼 tzc에 반영되므로 필수
-    [singleSplitPicks, view, rooms, anchor, dates, period, resourceTzOverride, resourcesByType]);
+    // colsFor가 owner 개별 시차와 기간 의존성을 캡슐화하므로 컬럼 계산은 같은 callback을 재사용한다.
+    [singleSplitPicks, view, rooms, anchor, dates, colsFor]);
 
   const picksForManualPane = (mp: ManualPaneState): MixedPick[] => {
     const opts =

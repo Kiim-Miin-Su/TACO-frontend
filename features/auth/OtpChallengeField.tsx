@@ -99,7 +99,7 @@ export function OtpChallengeField({
     // 발송 버튼이 같은 commit에서 disabled가 되며 발생시키는 browser blur보다 한 프레임 뒤에 실행한다.
     const frame = window.requestAnimationFrame(() => codeInputRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
-  }, [challenge?.id, verified]);
+  }, [challenge, verified]);
 
   function handleTargetChange(next: string) {
     onTargetChange(next);
