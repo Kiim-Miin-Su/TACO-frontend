@@ -3,7 +3,7 @@
 > 목적: 가독성·컴팩트함·자연스러운 UX 흐름·오버플로 제로를 코드 수준에서 강제한다.
 > 근거: 2026-07-06 frontend/ 전수 감사(45개 TSX) + 라이브 스크린샷 7장(`docs/ux-qa/design-audit-2026-07-06/`).
 > 레퍼런스: ① Lantiv Scheduling Studio(정보 구조·스케줄링 UX) ② 인프런(시각 언어·타이포·톤 — 색상 제외).
-> 상태: **승인·시행 중** — Phase A(`619eeeb`)·Phase B(`8ff25cf`) 완료, Phase C는 다음 스프린트(docs/TODO.md 🎨 섹션). 이 문서가 프론트 디자인의 단일 기준이다.
+> 상태: **역사적 구현 기준 — TBO-104 Figma v2로 대체됨(2026-08-18)**. 현행 시각·인터랙션 SSOT는 [`docs/TBO-104-CALENDAR-INSTRUCTOR-STUDENT-REDESIGN-2026-08.md`](../docs/TBO-104-CALENDAR-INSTRUCTOR-STUDENT-REDESIGN-2026-08.md)의 Current Figma Node Ledger다. 이 문서는 기존 Phase A/B 코드의 배경과 migration 참고로만 사용하며 신규 화면 판단의 단일 기준으로 사용하지 않는다.
 
 ---
 
