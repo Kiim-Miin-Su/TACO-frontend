@@ -5,6 +5,7 @@ import {
   calendarPaneColumnLabel,
   calendarPaneDates,
   calendarRowsForPane,
+  createCalendarRowsByPaneSelector,
   calendarPanesFetchRange,
   calendarPanesReducer,
   createCalendarPanesState,
@@ -241,6 +242,50 @@ describe("calendar pane state SSOT", () => {
       values: [7],
     });
     expect(calendarRowsForPane([scheduleRow(1)], state.panes[0])).toEqual([]);
+  });
+
+  it("reuses unchanged sibling pane selections and invalidates them when server rows change", () => {
+    const select = createCalendarRowsByPaneSelector();
+    const rows = [scheduleRow(1), scheduleRow(2, { instructorId: 2 })];
+    const split = calendarPanesReducer(createCalendarPanesState("2026-08-18"), {
+      type: "pane/split",
+      paneId: "pane-1",
+    });
+    const first = select(rows, split.panes);
+    const filtered = calendarPanesReducer(split, {
+      type: "pane/set-resource-filter",
+      paneId: "pane-2",
+      filter: "instructorIds",
+      values: [2],
+    });
+    const second = select(rows, filtered.panes);
+
+    expect(second.get("pane-1")).toBe(first.get("pane-1"));
+    expect(second.get("pane-2")).not.toBe(first.get("pane-2"));
+    expect(second.get("pane-2")?.map((row) => row.id)).toEqual([2]);
+
+    const refreshed = select([...rows], filtered.panes);
+    expect(refreshed.get("pane-1")).not.toBe(second.get("pane-1"));
+    expect(refreshed.get("pane-2")).not.toBe(second.get("pane-2"));
+  });
+
+  it("does not rescan rows for label-only edits or pane reorder", () => {
+    const select = createCalendarRowsByPaneSelector();
+    const rows = [scheduleRow(1)];
+    const split = calendarPanesReducer(createCalendarPanesState("2026-08-18"), {
+      type: "pane/split",
+      paneId: "pane-1",
+    });
+    const first = select(rows, split.panes);
+    const labeled = calendarPanesReducer(split, { type: "pane/set-label", paneId: "pane-2", label: "VIP" });
+    const second = select(rows, labeled.panes);
+    const reordered = calendarPanesReducer(labeled, { type: "pane/reorder", paneId: "pane-2", toIndex: 0 });
+    const third = select(rows, reordered.panes);
+
+    expect(second.get("pane-1")).toBe(first.get("pane-1"));
+    expect(second.get("pane-2")).toBe(first.get("pane-2"));
+    expect(third.get("pane-1")).toBe(second.get("pane-1"));
+    expect(third.get("pane-2")).toBe(second.get("pane-2"));
   });
 
   it("rejects impossible dates at the state boundary", () => {

@@ -1,9 +1,73 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type { ScheduleRequestEx } from "./api";
-import type { Student, StudentAggregate } from "@/types";
+import type { ScheduleQuery, ScheduleRequestEx } from "./api";
+import type { ScheduleRow, Student, StudentAggregate } from "@/types";
 import { qk } from "./queryKeys";
 
 export const scheduleRequestListKey = (scope: string) => qk.scheduleRequests.list(scope);
+
+export type ScheduleRowsUpdate = ScheduleRow[] | ((current: ScheduleRow[]) => ScheduleRow[]);
+export type ScheduleRowsRollback = (current: ScheduleRow[], before: ScheduleRow[]) => ScheduleRow[];
+
+export function acceptAuthoritativeScheduleRows(
+  current: ScheduleRow[],
+  query: ScheduleQuery,
+  removeIds: readonly number[],
+  authoritative: readonly ScheduleRow[],
+): ScheduleRow[] {
+  const accepted = authoritative.filter((row) =>
+    (query.from == null || row.sessionDate >= query.from)
+    && (query.to == null || row.sessionDate <= query.to),
+  );
+  const replacedIds = new Set([...removeIds, ...accepted.map((row) => row.id)]);
+  return [
+    ...current.filter((row) => !replacedIds.has(row.id)),
+    ...accepted,
+  ];
+}
+
+/**
+ * Calendar optimistic updates patch the exact bounded list cache that owns the rendered rows.
+ * Other date ranges and authentication scopes remain untouched; the shared mutation invalidator
+ * still reconciles every active schedule consumer with the server after the command settles.
+ */
+export function updateScheduleListCache(
+  queryClient: QueryClient,
+  query: ScheduleQuery,
+  scope: string,
+  update: ScheduleRowsUpdate,
+) {
+  return queryClient.setQueryData<ScheduleRow[]>(qk.schedule.list(query, scope), (previous = []) =>
+    typeof update === "function" ? update(previous) : update,
+  );
+}
+
+/**
+ * Cancels the exact in-flight GET before an optimistic patch and returns a command-scoped
+ * rollback. The rollback receives the latest cache so it can undo only its own rows without
+ * erasing a concurrent command that already succeeded.
+ */
+export async function beginScheduleListCacheTransaction(
+  queryClient: QueryClient,
+  query: ScheduleQuery,
+  scope: string,
+  apply: (current: ScheduleRow[]) => ScheduleRow[],
+  rollback: ScheduleRowsRollback,
+) {
+  const queryKey = qk.schedule.list(query, scope);
+  await queryClient.cancelQueries({ queryKey, exact: true });
+  const before = queryClient.getQueryData<ScheduleRow[]>(queryKey) ?? [];
+  queryClient.setQueryData<ScheduleRow[]>(queryKey, apply(before));
+  let settled = false;
+  return {
+    before,
+    commit: () => { settled = true; },
+    rollback: () => {
+      if (settled) return;
+      queryClient.setQueryData<ScheduleRow[]>(queryKey, (current = []) => rollback(current, before));
+      settled = true;
+    },
+  };
+}
 
 export function upsertScheduleRequestCache(
   queryClient: QueryClient,
@@ -32,10 +96,33 @@ export const CALENDAR_COMMAND_SCOPES = [
   qk.audit.all,
 ] as const;
 
+export const SCHEDULE_COMMAND_MUTATION_KEY = ["schedule-command"] as const;
+const CALENDAR_COMMAND_SIDE_EFFECT_SCOPES = CALENDAR_COMMAND_SCOPES.filter(
+  (key) => key !== qk.schedule.all,
+);
+
 export async function invalidateCalendarCommand(queryClient: QueryClient): Promise<void> {
   await Promise.all(
     CALENDAR_COMMAND_SCOPES.map((key) => queryClient.invalidateQueries({ queryKey: key as unknown as readonly unknown[], refetchType: "active" })),
   );
+}
+
+/**
+ * Concurrent schedule commands keep their optimistic previews until the last command settles.
+ * Each success refreshes dependent domains, while only the final pending command refetches the
+ * shared schedule population so one command cannot overwrite another command's preview.
+ */
+export async function invalidateCalendarCommandSideEffects(queryClient: QueryClient): Promise<void> {
+  await Promise.all(
+    CALENDAR_COMMAND_SIDE_EFFECT_SCOPES.map((key) =>
+      queryClient.invalidateQueries({ queryKey: key as unknown as readonly unknown[], refetchType: "active" }),
+    ),
+  );
+}
+
+export async function reconcileScheduleCommandIfLast(queryClient: QueryClient): Promise<void> {
+  if (queryClient.isMutating({ mutationKey: SCHEDULE_COMMAND_MUTATION_KEY }) > 1) return;
+  await queryClient.invalidateQueries({ queryKey: qk.schedule.all, refetchType: "active" });
 }
 
 // [TBO-35 35A] 학생 aggregate 쓰기는 학생/수강/보호자 화면뿐 아니라 캘린더의 별도

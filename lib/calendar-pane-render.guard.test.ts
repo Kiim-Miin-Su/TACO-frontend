@@ -17,9 +17,22 @@ describe("[TBO-104 Sprint 1B] CalendarPane runtime convergence", () => {
   it("keeps resource changes client-side and fetches one bounding pane range", () => {
     const calendar = read("features/calendar/ScheduleCalendar.tsx");
     expect(calendar).toContain("calendarPanesFetchRange(calendarPanesState)");
-    expect(calendar).toContain("useCalendarSchedule(paneFetchRange)");
+    expect(calendar).toContain("useCalendarSchedule(paneFetchRange, { keepPreviousData: true })");
     expect(calendar.match(/useCalendarSchedule\(/g)).toHaveLength(1);
     expect(calendar).not.toContain("selQuery");
+  });
+
+  it("keeps schedule rows in the bounded Query cache and reuses unchanged pane selections", () => {
+    const calendar = read("features/calendar/ScheduleCalendar.tsx");
+    expect(calendar).toContain("updateScheduleListCache(qc, paneFetchRange, access.scope, update)");
+    expect(calendar).toContain("beginScheduleListCacheTransaction(qc, paneFetchRange, access.scope, apply, rollback)");
+    expect(calendar).toContain("createCalendarRowsByPaneSelector");
+    expect(calendar).toContain("!scheduleQ.isPlaceholderData");
+    expect(calendar).not.toMatch(/const \[rows, setRows\] = useState/);
+    expect(calendar).not.toMatch(/scheduleQ\.data\) setRows/);
+    expect(calendar).toContain("id: --optimisticRowIdRef.current");
+    expect(calendar).toContain("const studentIds = (body.studentIds ?? []).map(Number)");
+    expect(calendar).not.toContain("id: -Date.now()");
   });
 
   it("removes legacy top-filter, view-tab and split component files", () => {

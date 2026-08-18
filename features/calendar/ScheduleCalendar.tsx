@@ -4,9 +4,8 @@ import type { ScheduleRow, Conflict, ScheduleResource, AvailabilityBlock, Attend
 // [B6 C4] api 값 import 제거 — 이 화면의 쓰기는 전부 중앙 mutation 훅 경유(타입만 사용).
 import type { SchedulePatchBody, ScheduleCreateBody, ScheduleSeriesCreateBody, AvailabilityUpsertBody, CreateScheduleRequestBody } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { qk } from "@/lib/queryKeys";
 import { apiErrorMessage } from "@/lib/api-error";
-import { invalidateScheduleLifecycle, invalidateAvailability } from '@/lib/query-cache';
+import { acceptAuthoritativeScheduleRows, beginScheduleListCacheTransaction, invalidateScheduleLifecycle, invalidateAvailability, updateScheduleListCache, type ScheduleRowsRollback } from '@/lib/query-cache';
 // 시간·요일 유틸은 lib/domain/schedule 단일 소스(감사 D — 파일별 중복 toMin/fromMin/pad/WD 제거)
 import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, sessionEndMin, crossMidnightEnd, durationMinutesBetween } from "@/lib/domain/schedule";
 import { useAcademyEvents } from "@/lib/queries"; // [TBO-29D ⑤] 학원 공통 일정(전 직원 공통 표시)
@@ -50,7 +49,7 @@ import {
   calendarPanePeriodLabel,
   calendarPanesFetchRange,
   calendarPanesReducer,
-  calendarRowsForPane,
+  createCalendarRowsByPaneSelector,
   createCalendarPanesState,
   type CalendarPaneState,
   type CalendarPanesState,
@@ -144,7 +143,6 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   // [TBO-21 B2] 현재시각선은 new Date()를 렌더 중 계산 → SSR HTML과 클라 하이드레이션 시각이 달라
   //  React #418(hydration text mismatch)이 났다. mount 후에만 렌더해 서버·클라 첫 렌더를 일치시킴.
   const mounted = useMounted();
-  const [rows, setRows] = useState<ScheduleRow[]>([]);
   const { data: rooms = [] } = useRooms(); // [TBO-14 C2] 강의실 카탈로그 = Query(로컬 state·1회 fetch 대체)
   const [editing, setEditing] = useState<ScheduleRow | null>(null);
   // [이슈1] 편집 대상이 비KST 컬럼(현지 시각 표시)이면 그 tz — 저장 시 현지→KST 역변환 기준. KST면 null.
@@ -187,8 +185,8 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   const qc = useQueryClient(); // [TBO-16] 요청 생성 후 scheduleRequests 무효화(배지·승인센터 동일 모집단)
   const createScheduleRequest = useCreateScheduleRequest();
   const createScheduleRequestBulk = useCreateScheduleRequestBulk();
-  // [B6 C4] 중앙 mutation 훅 — mutateAsync로 기존 낙관적 흐름(setRows 스냅샷/롤백)은 그대로 유지하고
-  //  쓰기 경로와 무효화만 공용 계층으로 통일. useUpdateSchedule의 accountingPrompt 인터셉트는 mutate
+  // [B6 C4] 중앙 mutation 훅 — mutateAsync와 bounded Query-cache snapshot/rollback을 함께 사용한다.
+  //  쓰기 경로와 무효화는 공용 계층으로 통일. useUpdateSchedule의 accountingPrompt 인터셉트는 mutate
   //  전용이라 mutateAsync엔 안 걸림 — 이 화면은 409 회계영향을 자체 모달(accountingAck)로 처리한다.
   const createScheduleM = useCreateSchedule();
   const createHistoricalCompletedM = useCreateHistoricalCompletedSchedule();
@@ -282,6 +280,9 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
 
   // [감사 M4] 시차 변환 결과 캐시 — filtered가 바뀔 때만 초기화, 같은 렌더/리렌더에서 tz별 1회만 변환.
   const tzRowsCacheRef = useRef<{ src: ScheduleRow[] | null; map: Map<string, ScheduleRow[]> }>({ src: null, map: new Map() });
+  // 낙관 생성 row는 서버의 양수 id와 충돌하지 않는 component-local 단조 감소 id를 사용한다.
+  // Date.now()는 series map 한 tick에서 중복될 수 있으므로 사용하지 않는다.
+  const optimisticRowIdRef = useRef(0);
 
   // 학생 출결(GET /attendance) — 상태 필터(지각/결강)의 학생 축. 세션id → 출결행 조인.
   const { data: attendanceRows = [] } = useAttendance();
@@ -335,9 +336,9 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   const [infoTarget, setInfoTarget] = useState<ScheduleResource | null>(null);
   const cardTarget = infoTarget ?? selected; // 카드 표시 대상: 명시 선택 > 파생 개인 모드(필터 1명)
 
-  // [TBO-14] 스케줄 데이터층 = TanStack Query 단일 소스(useCalendarSchedule). 기간·선택자원 키.
-  //  · rows(로컬)는 이 쿼리를 feed 받아 낙관적 편집(드래그·리사이즈·생성·삭제)에만 사용 — 즉시 반영 유지.
-  //  · 세션 변경(PATCH/생성/삭제·강사출결)은 qk.schedule.all 무효화 → 이 쿼리 자동 refetch → rows 재동기화.
+  // [TBO-14] 스케줄 데이터층 = TanStack Query 단일 소스(useCalendarSchedule). 기간만 query key를 바꾼다.
+  //  · 낙관적 편집도 현재 bounded list cache를 직접 patch/rollback하므로 별도 local rows 사본이 없다.
+  //  · 세션 변경(PATCH/생성/삭제·강사출결)은 schedule root 무효화 → 같은 cache가 서버 값으로 수렴한다.
   //    → 출석부/상세에서 강사 출결을 바꿔도 캘린더가 자동 갱신(M1 invalidate 단절 근본 해소).
   const paneFetchRange = useMemo(() => {
     return calendarPanesFetchRange(calendarPanesState);
@@ -345,14 +346,35 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   // Pane resource selection is a client-side intersection over one bounded population.
   // Never narrow the server query to a selected resource: adding/splitting a pane must not
   // require a second resource-shaped cache or hide rows needed by another pane.
-  const scheduleQ = useCalendarSchedule(paneFetchRange);
-  useEffect(() => {
-    if (scheduleQ.data) setRows(scopeCalendarRowsToInstructor(scheduleQ.data, scopeInstructorId));
-  }, [scheduleQ.data, scopeInstructorId]);
+  const scheduleQ = useCalendarSchedule(paneFetchRange, { keepPreviousData: true });
+  const scheduleRows = scheduleQ.data ?? EMPTY_SCHEDULE_ROWS;
+  const rows = useMemo(
+    () => scopeCalendarRowsToInstructor(scheduleRows, scopeInstructorId),
+    [scheduleRows, scopeInstructorId],
+  );
+  const beginRowsTransaction = useCallback(
+    (apply: (current: ScheduleRow[]) => ScheduleRow[], rollback: ScheduleRowsRollback) =>
+      beginScheduleListCacheTransaction(qc, paneFetchRange, access.scope, apply, rollback),
+    [access.scope, paneFetchRange, qc],
+  );
+  const updateRows = useCallback(
+    (update: ScheduleRow[] | ((current: ScheduleRow[]) => ScheduleRow[])) =>
+      updateScheduleListCache(qc, paneFetchRange, access.scope, update),
+    [access.scope, paneFetchRange, qc],
+  );
+  const acceptAuthoritativeRows = useCallback((removeIds: readonly number[], authoritative: readonly ScheduleRow[]) => {
+    updateRows((current) => acceptAuthoritativeScheduleRows(current, paneFetchRange, removeIds, authoritative));
+  }, [paneFetchRange, updateRows]);
+  const scheduleCacheReady = !scheduleQ.isPlaceholderData;
+  const requireScheduleCacheReady = () => {
+    if (scheduleCacheReady) return true;
+    setMsg("변경한 기간의 수업을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.");
+    return false;
+  };
   useEffect(() => {
     if (scheduleQ.isError) setMsg("백엔드 API에 연결할 수 없습니다. 서버 상태를 확인하세요.");
   }, [scheduleQ.isError]);
-  // load() = 스케줄 쿼리 무효화(refetch→위 useEffect가 rows reconcile). 낙관적 커밋 후 서버 확정에 사용.
+  // load() = 스케줄 쿼리 무효화. 낙관적 cache commit 후 서버 확정 또는 stale command 복구에 사용.
   const load = useCallback(async () => {
     await invalidateScheduleLifecycle(qc);
   }, [qc]);
@@ -387,16 +409,14 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   );
 
   // ── 필터 적용 ──
-  const visibleRows = useMemo(
-    () => scopeCalendarRowsToInstructor(rows, scopeInstructorId),
-    [rows, scopeInstructorId],
+  const selectCalendarRowsByPane = useMemo(createCalendarRowsByPaneSelector, []);
+  const calendarRowsByPane = useMemo(
+    () => selectCalendarRowsByPane(rows, calendarPanesState.panes, {
+      attendanceBySession: attBySession,
+      subjectIdOf,
+    }),
+    [selectCalendarRowsByPane, rows, calendarPanesState.panes, attBySession, subjectIdOf],
   );
-  const calendarRowsByPane = useMemo(() => new Map(
-    calendarPanesState.panes.map((pane) => [
-      pane.id,
-      calendarRowsForPane(visibleRows, pane, { attendanceBySession: attBySession, subjectIdOf }),
-    ]),
-  ), [calendarPanesState.panes, visibleRows, attBySession, subjectIdOf]);
   const activeCalendarRows = calendarRowsByPane.get(activeCalendarPane.id) ?? EMPTY_SCHEDULE_ROWS;
   // 컬럼: 데일리 스플릿=(날짜×리소스, 표별 prefix로 key 유일) · week=날짜 · day=강의실
   type Col = {
@@ -689,21 +709,43 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   );
 
   // ── 낙관적 업데이트(렌더 레이턴시 해소) ──
-  // 프론트에서 먼저 화면을 반영하고, 백엔드 응답으로 확정(load)하거나 실패 시 스냅샷으로 롤백.
+  // 프론트에서 먼저 bounded Query cache를 반영하고, 백엔드 응답으로 확정하거나 실패 시
+  // 해당 command가 만든 object/temp row만 롤백한다(동시 성공 command를 whole-array snapshot으로 지우지 않음).
   // ── PATCH 적용(낙관적 + 충돌 시 확인 후 force) ──
   async function applyPatch(id: number, patch: SchedulePatchBody) {
+    if (!requireScheduleCacheReady()) return;
     // [TBO-29C C3] scope 편집은 series edit CAS 자동 회신 — 서버가 stale 명령을 409로 거른다.
     if (patch.scope && patch.scope !== "this" && patch.expectedSeriesVersion == null) {
       const seriesVersion = rows.find((r) => r.id === id)?.seriesVersion;
       if (seriesVersion != null) patch = { ...patch, expectedSeriesVersion: seriesVersion };
     }
-    const snapshot = rows;
-    setRows((rs) => rs.map((r) => (r.id === id ? applyScheduleRowPatch(r, patch) : r))); // 즉시 반영
+    const beginOptimisticPatch = async (body: SchedulePatchBody) => {
+      let beforeRow: ScheduleRow | undefined;
+      let previewRow: ScheduleRow | undefined;
+      const transaction = await beginRowsTransaction(
+        (current) => current.map((row) => {
+          if (row.id !== id) return row;
+          beforeRow = row;
+          previewRow = applyScheduleRowPatch(row, body);
+          return previewRow;
+        }),
+        (current) => current.map((row) => row === previewRow && beforeRow ? beforeRow : row),
+      );
+      return { transaction, beforeRow };
+    };
+    const optimistic = await beginOptimisticPatch(patch);
     try {
-      // [B6 C4] 훅 onSuccess가 캘린더 명령 무효화 → 스케줄 쿼리 refetch → rows reconcile(명시 load 불요)
-      const res = await updateScheduleM.mutateAsync({ id, body: patch });
+      // [B6 C4] 훅 onSuccess가 캘린더 명령 무효화 → 스케줄 query cache reconcile(명시 load 불요)
+      const res = await updateScheduleM.mutateAsync({
+        id,
+        body: patch,
+        undoBefore: optimistic.beforeRow as unknown as Record<string, unknown> | undefined,
+      });
+      if (res.row) acceptAuthoritativeRows([id], [res.row]);
+      optimistic.transaction.commit();
       if (res.updated > 1) setMsg(`반복 일정 ${res.updated}건 함께 수정되었습니다.`);
     } catch (e) {
+      optimistic.transaction.rollback();
       const err = e as {
         response?: {
           status?: number;
@@ -718,33 +760,41 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
         const impact = err.response.data?.impact;
         if (code === "SERIES_VERSION_STALE") {
           // [C3] 다른 변경이 시리즈를 먼저 갱신 — 자동 강행하지 않고 최신 상태로 재동기화 후 재시도 유도.
-          setRows(snapshot);
           setMsg("이 반복 수업이 방금 다른 변경으로 갱신됐습니다 — 최신 상태를 불러왔으니 다시 시도하세요.");
           await load();
           return;
         }
         if (impact && (code === "ACCOUNTING_IMPACT_ACK_REQUIRED" || code === "PAYOUT_REVERSAL_REQUIRED")) {
-          setRows(snapshot);
           setAccountingAck({ id, patch, impact, payoutLocked: code === "PAYOUT_REVERSAL_REQUIRED" });
           return;
         }
         const cs = err.response.data?.conflicts ?? [];
-        setRows(snapshot); // [B6 C1] 모달 결정 대기 중 낙관 상태 유지 금지 — 먼저 롤백, 확인 시 재적용
         setConfirmReq({
           title: "일정 충돌", confirmLabel: "그래도 적용",
           message: conflictMessage(cs, "그래도 적용할까요?"),
           onConfirm: async () => {
-            setRows((rs) => rs.map((r) => (r.id === id ? applyScheduleRowPatch(r, patch) : r)));
+            const retry = await beginOptimisticPatch({ ...patch, force: true });
             // [M4] force 재시도도 실패할 수 있음(네트워크·400) — 미처리 거부/유령 낙관 상태 방지
-            try { await updateScheduleM.mutateAsync({ id, body: { ...patch, force: true } }); }
-            catch { setRows(snapshot); setMsg("수정 실패"); }
+            try {
+              const result = await updateScheduleM.mutateAsync({
+                id,
+                body: { ...patch, force: true },
+                undoBefore: retry.beforeRow as unknown as Record<string, unknown> | undefined,
+              });
+              if (result.row) acceptAuthoritativeRows([id], [result.row]);
+              retry.transaction.commit();
+            } catch {
+              retry.transaction.rollback();
+              setMsg("수정 실패");
+              await load();
+            }
           },
         });
       } else {
-        setRows(snapshot); // 실패 → 롤백
         // [개방 2026-07-06] 서버 사유 표면화 — 예: 학생 재배정 시 "코스 수강생이 아님"(400) 원인 안내
         const detail = apiErrorMessage(e, ""); // [75A]
         setMsg(`수정 실패${detail ? ` — ${detail}` : ""}`);
+        if (!err.response?.status || err.response.status >= 500) await load();
       }
     }
   }
@@ -807,6 +857,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   // 낙관적 생성용 임시 행(음수 id) — resources에서 라벨 파생. load()로 곧 서버 행으로 교체됨.
   function optimisticRow(body: ScheduleCreateBody): ScheduleRow {
     const c = resources?.courses.find((x) => x.id === body.courseId);
+    const studentIds = (body.studentIds ?? []).map(Number);
     const start = body.startTime;
     // [R-9] 자정 크로스: endTime<start = 익일 종료(+1440), 파생 종료가 24:00 이상이면 endTime 미설정
     //  (BE 저장 규칙과 동일 — durationMinutes 파생. '25:00' 같은 무효 문자열 금지).
@@ -815,18 +866,27 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
       : (body.durationMinutes ?? c?.durationMinutes ?? 60);
     const endMin = toMin(start) + dur;
     return {
-      id: -Date.now(), courseId: body.courseId,
+      id: --optimisticRowIdRef.current, courseId: body.courseId,
       instructorId: body.instructorId ?? c?.instructorId ?? 0, roomId: body.roomId,
       sessionDate: body.sessionDate, weekday: weekdayOf(body.sessionDate),
       startTime: start, endTime: endMin >= 1440 ? undefined : fromMin(endMin), durationMinutes: Math.max(1, dur),
       status: (body.status as ScheduleRow["status"]) ?? "scheduled", color: body.color, memo: body.memo,
       courseName: c?.name ?? "수업", subjectName: c?.subjectName ?? "",
       instructorName: c?.instructorName ?? "", roomName: rooms.find((r) => r.id === body.roomId)?.name,
-      studentIds: [], studentNames: [],
+      studentIds,
+      studentNames: studentIds.map((id) => resources?.students.find((student) => Number(student.id) === id)?.name ?? `#${id}`),
       attendanceRequired: false,
       missingAttendance: { instructor: false, studentIds: [] },
     } as ScheduleRow;
   }
+
+  const beginOptimisticCreate = (previewRows: ScheduleRow[]) => {
+    const temporaryIds = new Set(previewRows.map((row) => row.id));
+    return beginRowsTransaction(
+      (current) => [...current, ...previewRows],
+      (current) => current.filter((row) => !temporaryIds.has(row.id)),
+    );
+  };
 
   // 세션 생성(추가, 낙관적). 강사는 본인(myInstructorId)으로 강제 — 권한 게이팅(데모; 실제는 백엔드 가드).
   // [TBO-16 #8·#9] 강사는 직접 배정 불가(BE 403) → **승인 요청(schedule-requests)으로 전환**.
@@ -843,29 +903,40 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
       return;
     }
     const safe: ScheduleCreateBody = body;
-    const snapshot = rows;
-    setRows((rs) => [...rs, optimisticRow(safe)]); // 즉시 반영
+    if (!requireScheduleCacheReady()) return;
+    const previewRows = [optimisticRow(safe)];
+    const optimistic = await beginOptimisticCreate(previewRows);
     setCreating(null);
     try {
-      await createScheduleM.mutateAsync(safe); // [B6 C4] 무효화는 훅 onSuccess(캘린더 명령)
+      const result = await createScheduleM.mutateAsync(safe); // [B6 C4] 무효화는 훅 lifecycle
+      acceptAuthoritativeRows(previewRows.map((row) => row.id), [result.row]);
+      optimistic.commit();
     } catch (e) {
+      optimistic.rollback();
       const err = e as { response?: { status?: number; data?: { conflicts?: Conflict[] } } };
       if (err.response?.status === 409) {
         const cs = err.response.data?.conflicts ?? [];
-        setRows(snapshot); // [B6 C1] 먼저 롤백 — 확인 시 낙관 재적용 후 force
         setConfirmReq({
           title: "일정 충돌", confirmLabel: "그래도 추가",
           message: conflictMessage(cs, "그래도 추가할까요?"),
           onConfirm: async () => {
-            setRows((rs) => [...rs, optimisticRow(safe)]);
+            const retryRows = [optimisticRow(safe)];
+            const retry = await beginOptimisticCreate(retryRows);
             // [M4] force 재시도 실패 시에도 롤백(미처리 거부 방지)
-            try { await createScheduleM.mutateAsync({ ...safe, force: true }); }
-            catch { setRows(snapshot); setMsg("스케줄 추가 실패"); }
+            try {
+              const result = await createScheduleM.mutateAsync({ ...safe, force: true });
+              acceptAuthoritativeRows(retryRows.map((row) => row.id), [result.row]);
+              retry.commit();
+            } catch {
+              retry.rollback();
+              setMsg("스케줄 추가 실패");
+              await load();
+            }
           },
         });
       } else {
-        setRows(snapshot);
         setMsg("스케줄 추가 실패");
+        if (!err.response?.status || err.response.status >= 500) await load();
       }
     }
   }
@@ -885,32 +956,45 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   //  반쪽 시리즈가 남았고 클라이언트 Date.now() seriesId는 규칙·생성자를 설명하지 못했다 — 전부 폐기.
   //  충돌은 자동 force하지 않고 전체 목록을 보여준 뒤 사용자가 감수 여부를 결정한다(단건과 동일 UX).
   async function createSeriesCommand(body: ScheduleSeriesCreateBody, previews: ScheduleCreateBody[]) {
-    const snapshot = rows;
-    setRows((rs) => [...rs, ...previews.map(optimisticRow)]); // 낙관적 반영(스냅샷 롤백)
+    if (!requireScheduleCacheReady()) return;
+    const previewRows = previews.map(optimisticRow);
+    const optimistic = await beginOptimisticCreate(previewRows);
     setCreating(null);
     const send = async (force: boolean) => {
       // [B6 C4] 서버 확정본 재동기화는 훅 onSuccess(캘린더 명령 무효화)가 담당
       const res = await createScheduleSeriesM.mutateAsync(force ? { ...body, force: true } : body);
       setMsg(`반복 일정 ${res.rows.length}건을 추가했습니다${force ? " (충돌 감수)" : ""}.`);
+      return res;
     };
     try {
-      await send(false);
+      const result = await send(false);
+      acceptAuthoritativeRows(previewRows.map((row) => row.id), result.rows);
+      optimistic.commit();
     } catch (e) {
+      optimistic.rollback();
       const err = e as { response?: { status?: number; data?: { conflicts?: Conflict[] } } };
-      setRows(snapshot); // 롤백 후 사용자 결정
       if (err.response?.status === 409) {
         const cs = err.response.data?.conflicts ?? [];
         setConfirmReq({
           title: "일정 충돌", confirmLabel: "그래도 추가",
           message: conflictMessage(cs, "그래도 추가할까요?"),
           onConfirm: async () => {
-            setRows((rs) => [...rs, ...previews.map(optimisticRow)]);
-            try { await send(true); }
-            catch { setRows(snapshot); setMsg("반복 일정 추가 실패"); await load(); }
+            const retryRows = previews.map(optimisticRow);
+            const retry = await beginOptimisticCreate(retryRows);
+            try {
+              const result = await send(true);
+              acceptAuthoritativeRows(retryRows.map((row) => row.id), result.rows);
+              retry.commit();
+            } catch {
+              retry.rollback();
+              setMsg("반복 일정 추가 실패");
+              await load();
+            }
           },
         });
       } else {
         setMsg("반복 일정 추가 실패");
+        if (!err.response?.status || err.response.status >= 500) await load();
       }
     }
   }
@@ -954,9 +1038,23 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   }
 
   async function performDelete(id: number, opts?: { scope?: "this" | "this_and_following" | "all"; expectedSeriesVersion?: number }) {
-    const snapshot = rows;
+    if (!requireScheduleCacheReady()) return;
     const scope = opts?.scope ?? "this";
-    setRows((rs) => rs.filter((r) => r.id !== id)); // 즉시 반영(동반 회차는 서버 확정 후 load로 반영)
+    let removedRow: ScheduleRow | undefined;
+    let removedIndex = -1;
+    const optimistic = await beginRowsTransaction(
+      (current) => {
+        removedIndex = current.findIndex((row) => row.id === id);
+        removedRow = removedIndex >= 0 ? current[removedIndex] : undefined;
+        return current.filter((row) => row.id !== id);
+      },
+      (current) => {
+        if (!removedRow || current.some((row) => row.id === id)) return current;
+        const restored = [...current];
+        restored.splice(Math.min(Math.max(removedIndex, 0), restored.length), 0, removedRow);
+        return restored;
+      },
+    );
     setEditing(null);
     setSelEvent(null);
     try {
@@ -966,10 +1064,12 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
         ...(scope !== "this" ? { scope } : {}),
         ...(opts?.expectedSeriesVersion != null ? { expectedSeriesVersion: opts.expectedSeriesVersion } : {}),
       });
+      updateRows((current) => current.filter((row) => !res.removedIds.includes(row.id)));
+      optimistic.commit();
       setMsg(res.removedIds && res.removedIds.length > 1 ? `반복 일정 ${res.removedIds.length}건을 삭제했습니다.` : "스케줄을 삭제했습니다.");
     } catch (e) {
+      optimistic.rollback();
       const err = e as { response?: { status?: number; data?: { code?: string; message?: string } } };
-      setRows(snapshot); // 실패 → 롤백
       if (err.response?.data?.code === "SERIES_VERSION_STALE") {
         setMsg("이 반복 수업이 방금 다른 변경으로 갱신됐습니다 — 최신 상태를 불러왔으니 다시 시도하세요.");
         await load();
@@ -977,6 +1077,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
         setMsg(err.response.data.message ?? "정산서에 연결된 회차가 있어 삭제할 수 없습니다 — 정산 회수 후 다시 시도하세요.");
       } else {
         setMsg("삭제 실패");
+        if (!err.response?.status || err.response.status >= 500) await load();
       }
     }
   }
@@ -2245,7 +2346,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
         onClose={removeScheduleM.dismissAccountingPrompt}
         onConfirm={() => removeScheduleM.confirmAccountingImpact({
           onSuccess: (res) => {
-            setRows((current) => current.filter((row) => !res.removedIds.includes(row.id)));
+            updateRows((current) => current.filter((row) => !res.removedIds.includes(row.id)));
             setMsg(res.removedIds.length > 1 ? `반복 일정 ${res.removedIds.length}건을 삭제했습니다.` : "스케줄을 삭제했습니다.");
           },
           onError: () => setMsg("삭제 실패"),

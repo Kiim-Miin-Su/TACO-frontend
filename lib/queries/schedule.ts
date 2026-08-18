@@ -1,12 +1,15 @@
 "use client";
 // 캘린더·스케줄·수업요청·강의실·가용성·출결·이벤트 도메인 훅 — lib/queries.ts에서 분할(순수 이동).
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import {
   invalidateCalendarCommand,
+  invalidateCalendarCommandSideEffects,
   invalidateClassOpening,
   invalidateScheduleRequests,
+  reconcileScheduleCommandIfLast,
+  SCHEDULE_COMMAND_MUTATION_KEY,
   refreshScheduleRequestLifecycle,
   scheduleRequestListKey,
   upsertScheduleRequestCache,
@@ -28,9 +31,16 @@ export const useSchedule = () => {
 };
 // [TBO-14] 캘린더 데이터층 — 기간·선택자원 파라미터 스케줄 조회. qk.schedule 하위키라 세션 변경(PATCH/생성/삭제·
 //  강사출결)이 qk.schedule.all 무효화로 자동 반영(M1 invalidate 단절 해소). 뷰는 이 데이터를 rows로 feed.
-export const useCalendarSchedule = (params: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number }) => {
+export const useCalendarSchedule = (
+  params: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number },
+  options: { keepPreviousData?: boolean } = {},
+) => {
   const { scope } = useAccountAccess();
-  return useQuery({ queryKey: qk.schedule.list(params, scope), queryFn: ({ signal }) => api.schedule.list(params, { signal }) });
+  return useQuery({
+    queryKey: qk.schedule.list(params, scope),
+    queryFn: ({ signal }) => api.schedule.list(params, { signal }),
+    placeholderData: options.keepPreviousData ? keepPreviousData : undefined,
+  });
 };
 // [TBO-14 C2] 캘린더 준정적 카탈로그 — 강의실·자원 피커. staleTime 5분(변경 빈도 낮음·쓰기 시 invalidate).
 export const useRooms = () => useQuery({ queryKey: qk.rooms.all(), queryFn: () => api.rooms.list(), staleTime: CATALOG_STALE });
@@ -147,30 +157,54 @@ const useCalendarCommandInvalidator = () => {
   const qc = useQueryClient();
   return () => invalidateCalendarCommand(qc);
 };
+const useScheduleCommandLifecycle = () => {
+  const qc = useQueryClient();
+  return {
+    mutationKey: SCHEDULE_COMMAND_MUTATION_KEY,
+    invalidateSideEffects: () => invalidateCalendarCommandSideEffects(qc),
+    reconcileIfLast: () => reconcileScheduleCommandIfLast(qc),
+  };
+};
 export const useCreateSchedule = () => {
-  const invalidate = useCalendarCommandInvalidator();
+  const lifecycle = useScheduleCommandLifecycle();
   return useMutation({
+    mutationKey: lifecycle.mutationKey,
     mutationFn: api.schedule.create,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       // [TBO-63] 생성의 역연산 = 삭제(단일 회차만 — 반복 bulk는 스택 제외)
       const id = (data as { row?: { id?: number } })?.row?.id;
       if (id) pushScheduleUndo({ label: "수업 생성 되돌리기(삭제)", run: () => api.schedule.remove(id) });
-      return invalidate();
+      await lifecycle.invalidateSideEffects();
     },
+    onSettled: lifecycle.reconcileIfLast,
   });
 };
-export const useCreateHistoricalCompletedSchedule = () =>
-  useMutation({
-    mutationFn: api.schedule.createHistoricalCompleted,
-    onSuccess: useCalendarCommandInvalidator(),
-  });
-export const useCreateScheduleSeries = () => useMutation({ mutationFn: api.schedule.createSeries, onSuccess: useCalendarCommandInvalidator() }); // [C2/C4] 반복 bulk
-export const useUpdateInstructorAssignment = () => {
-  const invalidate = useCalendarCommandInvalidator();
+export const useCreateHistoricalCompletedSchedule = () => {
+  const lifecycle = useScheduleCommandLifecycle();
   return useMutation({
+    mutationKey: lifecycle.mutationKey,
+    mutationFn: api.schedule.createHistoricalCompleted,
+    onSuccess: lifecycle.invalidateSideEffects,
+    onSettled: lifecycle.reconcileIfLast,
+  });
+};
+export const useCreateScheduleSeries = () => {
+  const lifecycle = useScheduleCommandLifecycle();
+  return useMutation({
+    mutationKey: lifecycle.mutationKey,
+    mutationFn: api.schedule.createSeries,
+    onSuccess: lifecycle.invalidateSideEffects,
+    onSettled: lifecycle.reconcileIfLast,
+  });
+}; // [C2/C4] 반복 bulk
+export const useUpdateInstructorAssignment = () => {
+  const lifecycle = useScheduleCommandLifecycle();
+  return useMutation({
+    mutationKey: lifecycle.mutationKey,
     mutationFn: (variables: { id: number; body: Parameters<typeof api.schedule.updateInstructorAssignment>[1] }) =>
       api.schedule.updateInstructorAssignment(variables.id, variables.body),
-    onSuccess: () => invalidate(),
+    onSuccess: lifecycle.invalidateSideEffects,
+    onSettled: lifecycle.reconcileIfLast,
   });
 };
 export const useOpenClass = () => {
@@ -187,19 +221,25 @@ export type { AccountingImpactPrompt } from './accounting-ack';
 import { accountingPromptFromError, useAccountingAck, type AccountingImpactPrompt } from './accounting-ack';
 
 export const useUpdateSchedule = () => {
-  type Variables = { id: number; body: Parameters<typeof api.schedule.update>[1] };
+  type Variables = {
+    id: number;
+    body: Parameters<typeof api.schedule.update>[1];
+    /** Server-backed value captured before a caller applies an optimistic Query-cache patch. */
+    undoBefore?: Record<string, unknown>;
+  };
   const [pending, setPending] = useState<{ variables: Variables; prompt: AccountingImpactPrompt } | null>(null);
   const qc = useQueryClient();
-  const invalidate = useCalendarCommandInvalidator();
+  const lifecycle = useScheduleCommandLifecycle();
   const mutation = useMutation({
+    mutationKey: lifecycle.mutationKey,
     mutationFn: (v: Variables) => {
       // [TBO-63] before 스냅샷은 요청 직전 캐시에서 — 성공 시 역패치를 스택에 적재.
-      (v as Variables & { __undoBefore?: Record<string, unknown> }).__undoBefore = cachedScheduleRow(qc, v.id);
+      v.undoBefore ??= cachedScheduleRow(qc, v.id);
       return api.schedule.update(v.id, v.body);
     },
     onSuccess: (_data, v) => {
       const body = v.body as Record<string, unknown>;
-      const before = (v as Variables & { __undoBefore?: Record<string, unknown> }).__undoBefore;
+      const before = v.undoBefore;
       const scoped = body.scope != null && body.scope !== "this";
       if (before && !scoped) {
         const inverse: Record<string, unknown> = {};
@@ -228,8 +268,9 @@ export const useUpdateSchedule = () => {
             },
           });
       }
-      return invalidate(); // [C4] 단일 무효화 — 시수·정산 미리보기 동시 재계산
+      return lifecycle.invalidateSideEffects(); // schedule refetch는 마지막 동시 command가 settled될 때 한 번
     },
+    onSettled: lifecycle.reconcileIfLast,
   });
   const mutate: typeof mutation.mutate = (variables, options) => mutation.mutate(variables, {
     ...options,
@@ -268,8 +309,9 @@ export const useRemoveSchedule = () => {
   };
   type Result = Awaited<ReturnType<typeof api.schedule.remove>>;
   const [pending, setPending] = useState<{ variables: Variables; prompt: AccountingImpactPrompt } | null>(null);
-  const invalidate = useCalendarCommandInvalidator();
+  const lifecycle = useScheduleCommandLifecycle();
   const mutation = useMutation({
+    mutationKey: lifecycle.mutationKey,
     // [TBO-29C C3] scope/CAS 인자와 TanStack context 인자 충돌 방지 — 명시 래핑
     mutationFn: (vars: Variables) =>
       api.schedule.remove(vars.id, {
@@ -280,7 +322,8 @@ export const useRemoveSchedule = () => {
       }),
     // 삭제는 출결·보고서·반복 시리즈 메타까지 함께 전이한다. aggregate 스냅샷 없는
     // 단일 세션 restore는 종속 행을 누락하므로 undo 스택에 등록하지 않는다.
-    onSuccess: () => invalidate(), // [C4] 단일 무효화
+    onSuccess: lifecycle.invalidateSideEffects,
+    onSettled: lifecycle.reconcileIfLast,
   });
   const rememberPrompt = (error: unknown, variables: Variables): boolean => {
     const prompt = accountingPromptFromError(error);

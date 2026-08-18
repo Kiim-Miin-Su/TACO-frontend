@@ -354,6 +354,65 @@ export function calendarRowsForPane(
   });
 }
 
+/**
+ * Incremental pane selector. Reducer actions preserve unchanged pane object identity, so a filter
+ * edit in one pane only rescans rows for that pane while siblings reuse their prior result arrays.
+ * A server row, attendance or course→subject projection change intentionally invalidates all panes.
+ */
+export function createCalendarRowsByPaneSelector() {
+  let previous: {
+    rows: readonly ScheduleRow[];
+    attendanceBySession: CalendarPaneRowContext["attendanceBySession"];
+    subjectIdOf: CalendarPaneRowContext["subjectIdOf"];
+    entries: Map<string, {
+      dateSelection: CalendarPaneDateSelection;
+      filters: CalendarPaneFilters;
+      sort: CalendarPaneSort;
+      rows: ScheduleRow[];
+    }>;
+  } | null = null;
+
+  return (
+    rows: readonly ScheduleRow[],
+    panes: readonly CalendarPaneState[],
+    context: CalendarPaneRowContext = {},
+  ): Map<string, ScheduleRow[]> => {
+    const canReuse = previous?.rows === rows
+      && previous.attendanceBySession === context.attendanceBySession
+      && previous.subjectIdOf === context.subjectIdOf;
+    const entries = new Map<string, {
+      dateSelection: CalendarPaneDateSelection;
+      filters: CalendarPaneFilters;
+      sort: CalendarPaneSort;
+      rows: ScheduleRow[];
+    }>();
+    const rowsByPane = new Map<string, ScheduleRow[]>();
+
+    for (const pane of panes) {
+      const cached = canReuse ? previous?.entries.get(pane.id) : undefined;
+      const selected = cached?.dateSelection === pane.dateSelection
+        && cached.filters === pane.filters
+        && cached.sort === pane.sort
+        ? cached.rows
+        : calendarRowsForPane(rows, pane, context);
+      entries.set(pane.id, {
+        dateSelection: pane.dateSelection,
+        filters: pane.filters,
+        sort: pane.sort,
+        rows: selected,
+      });
+      rowsByPane.set(pane.id, selected);
+    }
+    previous = {
+      rows,
+      attendanceBySession: context.attendanceBySession,
+      subjectIdOf: context.subjectIdOf,
+      entries,
+    };
+    return rowsByPane;
+  };
+}
+
 export function calendarPanePeriodLabel(pane: CalendarPaneState): string {
   if (pane.dateSelection.mode === "range") {
     return pane.dateSelection.from === pane.dateSelection.to
