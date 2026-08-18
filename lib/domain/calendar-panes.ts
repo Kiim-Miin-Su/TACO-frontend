@@ -1,60 +1,14 @@
-import { todayKst } from "../format";
+import type { Attendance, ScheduleRow } from "@/types";
+import { addDaysISO, todayKst } from "../format";
 import { WEEKDAYS_KO, weekdayOf } from "./schedule";
 import {
+  matchesCalendarFacetFilters,
   MODE_FILTER_LABEL,
+  sortByDateAsc,
   STATUS_FILTER_LABEL,
   type SessionModeFilter,
-  type SplitDim,
   type StatusFilter,
 } from "./lantiv";
-
-export type CalendarPaneSeed = { dim: SplitDim; ids: number[] };
-
-export type ResourceFilterSeedInput = {
-  instructors: Iterable<number>;
-  students: Iterable<number>;
-  rooms: Iterable<number>;
-  visibleInstructorIds?: Iterable<number>;
-  fallbackInstructorId?: number;
-};
-
-const copy = (values: Iterable<number>) => [...values];
-
-export function primaryPaneSeed(input: ResourceFilterSeedInput): CalendarPaneSeed {
-  const instructors = copy(input.instructors);
-  if (instructors.length) return { dim: "instructor", ids: instructors };
-  const students = copy(input.students);
-  if (students.length) return { dim: "student", ids: students };
-  const rooms = copy(input.rooms);
-  if (rooms.length) return { dim: "room", ids: rooms };
-  const visibleInstructors = [...new Set(copy(input.visibleInstructorIds ?? []))];
-  if (visibleInstructors.length) return { dim: "instructor", ids: visibleInstructors };
-  if (input.fallbackInstructorId != null) return { dim: "instructor", ids: [input.fallbackInstructorId] };
-  return { dim: "instructor", ids: [] };
-}
-
-export function currentPaneSeeds(input: ResourceFilterSeedInput): CalendarPaneSeed[] {
-  const panes: CalendarPaneSeed[] = [];
-  const instructors = copy(input.instructors);
-  const students = copy(input.students);
-  const rooms = copy(input.rooms);
-  if (instructors.length) panes.push({ dim: "instructor", ids: instructors });
-  if (students.length) panes.push({ dim: "student", ids: students });
-  if (rooms.length) panes.push({ dim: "room", ids: rooms });
-  return panes.length ? panes : [primaryPaneSeed(input)];
-}
-
-export function companionPaneSeed(seed: CalendarPaneSeed): CalendarPaneSeed {
-  if (seed.ids.length) return { dim: seed.dim, ids: [...seed.ids] };
-  if (seed.dim === "instructor") return { dim: "student", ids: [] };
-  return { dim: "instructor", ids: [] };
-}
-
-export function appendCalendarPane<T extends CalendarPaneSeed & { uid: number }>(panes: T[], uid: number): T[] {
-  const last = panes.at(-1);
-  const seed = last ? companionPaneSeed(last) : { dim: "instructor" as const, ids: [] };
-  return [...panes, { uid, ...seed } as T];
-}
 
 // ── [TBO-104 Sprint 1A] Figma Calendar Pane(7084:2) 상태 정본 ────────────────
 // 화면 분할 여부는 별도 모드가 아니라 panes 개수로만 표현한다. 따라서 기본뷰(1개)와
@@ -300,6 +254,105 @@ export function calendarPanesFetchRange(state: CalendarPanesState): { from: stri
 }
 
 const dateWithWeekday = (date: string) => `${date} ${WEEKDAYS_KO[weekdayOf(date)]}요일`;
+
+/** Figma Date Column header SSOT. Every visible column renders its full ISO date. */
+export const calendarPaneColumnLabel = (date: string) => `${date} (${WEEKDAYS_KO[weekdayOf(date)]})`;
+
+/**
+ * Pane date axis. Range and Ctrl/Cmd-picked dates stay mutually exclusive in the reducer.
+ *
+ * This selector never truncates implicitly. Fetch, labels and visible columns must describe
+ * the same population; preview callers may pass an explicit limit and own its overflow UI.
+ */
+export function calendarPaneDates(pane: CalendarPaneState, limit?: number): string[] {
+  if (pane.dateSelection.mode === "dates") {
+    return limit == null ? [...pane.dateSelection.dates] : pane.dateSelection.dates.slice(0, limit);
+  }
+  const dates: string[] = [];
+  for (
+    let date = pane.dateSelection.from;
+    date <= pane.dateSelection.to && (limit == null || dates.length < limit);
+    date = addDaysISO(date, 1)
+  ) {
+    dates.push(date);
+  }
+  return dates;
+}
+
+export type CalendarPaneRowContext = {
+  attendanceBySession?: ReadonlyMap<number, Attendance[]>;
+  subjectIdOf?: (courseId: number) => number | undefined;
+};
+
+const includesAny = (selected: readonly number[], values: readonly number[]) =>
+  selected.length === 0 || values.some((value) => selected.includes(Number(value)));
+
+const rowSortValue = (row: ScheduleRow, field: CalendarPaneSort["field"]): string => {
+  if (field === "subject") return row.subjectName ?? row.courseName ?? "";
+  if (field === "instructor") return row.instructorName ?? "";
+  if (field === "student") return [...(row.studentNames ?? [])].sort().join(", ");
+  return `${row.sessionDate}T${row.startTime ?? "00:00"}`;
+};
+
+/**
+ * Calendar pane row selector SSOT.
+ * - dimensions are intersected (AND)
+ * - multiple values inside one dimension are unioned (OR)
+ * - subjectId is resolved from the current course projection until Course cutover is complete
+ */
+export function calendarRowsForPane(
+  rows: readonly ScheduleRow[],
+  pane: CalendarPaneState,
+  context: CalendarPaneRowContext = {},
+): ScheduleRow[] {
+  const dates = new Set(calendarPaneDates(pane));
+  const query = pane.filters.query.trim().toLocaleLowerCase("ko-KR");
+  const facetFilters = {
+    subjects: new Set<string>(),
+    statuses: new Set(pane.filters.statuses),
+    modes: new Set(pane.filters.modes),
+    groupOnly: false,
+  };
+  const selected = rows.filter((row) => {
+    if (!dates.has(row.sessionDate)) return false;
+    if (pane.filters.instructorIds.length && !pane.filters.instructorIds.includes(Number(row.instructorId))) return false;
+    if (!includesAny(pane.filters.studentIds, row.studentIds ?? [])) return false;
+    if (pane.filters.roomIds.length && (row.roomId == null || !pane.filters.roomIds.includes(Number(row.roomId)))) return false;
+    if (pane.filters.subjectIds.length) {
+      const subjectId = context.subjectIdOf?.(Number(row.courseId));
+      if (subjectId == null || !pane.filters.subjectIds.includes(subjectId)) return false;
+    }
+    if (!matchesCalendarFacetFilters(
+      row,
+      context.attendanceBySession?.get(Number(row.id)) ?? [],
+      facetFilters,
+    )) return false;
+    if (query) {
+      const haystack = [
+        row.subjectName,
+        row.courseName,
+        row.instructorName,
+        row.roomName,
+        ...(row.studentNames ?? []),
+        row.topic,
+        row.memo,
+        row.status,
+        row.mode,
+      ].filter(Boolean).join(" ").toLocaleLowerCase("ko-KR");
+      if (!haystack.includes(query)) return false;
+    }
+    return true;
+  });
+  if (pane.sort.field === "date") {
+    const sorted = sortByDateAsc([...selected]);
+    return pane.sort.direction === "asc" ? sorted : sorted.reverse();
+  }
+  const direction = pane.sort.direction === "asc" ? 1 : -1;
+  return [...selected].sort((left, right) => {
+    const compared = rowSortValue(left, pane.sort.field).localeCompare(rowSortValue(right, pane.sort.field), "ko");
+    return compared === 0 ? (Number(left.id) - Number(right.id)) * direction : compared * direction;
+  });
+}
 
 export function calendarPanePeriodLabel(pane: CalendarPaneState): string {
   if (pane.dateSelection.mode === "range") {

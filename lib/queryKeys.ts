@@ -91,7 +91,6 @@ export const qk = {
     correlation: (from?: string | null, to?: string | null) => ["counsel", "correlation", from ?? null, to ?? null] as const, // [TBO-30E]
   },
   transactions: { all: ["transactions"] as const, list: () => ["transactions", "list"] as const },
-  viewPresets: { all: ["viewPresets"] as const, list: () => ["viewPresets", "list"] as const },
   reportTemplates: {
     all: ["reportTemplates"] as const,
     list: () => ["reportTemplates", "list"] as const,

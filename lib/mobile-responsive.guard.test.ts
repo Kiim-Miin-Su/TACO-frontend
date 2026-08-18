@@ -43,11 +43,12 @@ describe('[TBO-94] 모바일 우선 공용 셸', () => {
 
   it('캘린더 본문과 보조 패널은 모바일 세로 흐름, 데스크톱 가로 흐름을 쓴다', () => {
     const calendar = read('features/calendar/ScheduleCalendar.tsx');
-    const filters = read('features/calendar/CalendarFilterBar.tsx');
+    const pane = read('features/calendar/CalendarPane.tsx');
+    const controls = read('features/calendar/CalendarFilterControls.tsx');
     expect(calendar).toContain('flex-col items-stretch');
     expect(calendar).toContain('lg:flex-row');
     expect(calendar).toContain('lg:w-64');
-    expect(filters).toContain('calendar-filter-row');
-    expect(filters).toContain('overflow-x-auto');
+    expect(pane).toContain('flex-wrap');
+    expect(controls).toContain('max-h-56 overflow-y-auto');
   });
 });

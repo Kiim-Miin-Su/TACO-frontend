@@ -19,7 +19,7 @@ export const shortDate = (iso: string) => {
 export const dateOnly = (iso?: string | null) => (iso ? iso.slice(0, 10) : '—');
 
 // [TBO-65 P2 2026-07-26] KST '오늘' — BE time.util.todayKst와 동명·동형 규약.
-//  tasks·MonthGrid의 UTC toISOString 사본 수렴(자정~09시 하루 어긋남 해소).
+//  tasks·캘린더 날짜 그리드의 UTC toISOString 사본 수렴(자정~09시 하루 어긋남 해소).
 export const todayKst = (now = new Date()): string => {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
   const value = (type: 'year' | 'month' | 'day') => parts.find((p) => p.type === type)?.value ?? '';

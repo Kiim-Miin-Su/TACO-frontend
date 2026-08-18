@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { ScheduleRow, Conflict, ScheduleResource, AvailabilityBlock, Attendance } from "@/types";
 // [B6 C4] api 값 import 제거 — 이 화면의 쓰기는 전부 중앙 mutation 훅 경유(타입만 사용).
 import type { SchedulePatchBody, ScheduleCreateBody, ScheduleSeriesCreateBody, AvailabilityUpsertBody, CreateScheduleRequestBody } from "@/lib/api";
@@ -11,19 +11,14 @@ import { invalidateScheduleLifecycle, invalidateAvailability } from '@/lib/query
 import { weekDates, weekdayOf, layoutLanes, teachingHours, toMin, fromMin, pad2 as pad, WEEKDAYS_KO as WD, sessionEndMin, crossMidnightEnd, durationMinutesBetween } from "@/lib/domain/schedule";
 import { useAcademyEvents } from "@/lib/queries"; // [TBO-29D ⑤] 학원 공통 일정(전 직원 공통 표시)
 import { ScheduleCreateModal } from "./ScheduleCreateModal";
-import { MonthGrid } from "./MonthGrid"; // [B6 C4/EP9] 월간 그리드 파일 분리(표시 전용)
 import {
-  PALETTE, STATUS_LABEL, MAX_SPLIT,
-  matchesResourceFilter, sortByDateAsc,
-  buildMixedSplitColumns, rowInResource, cloneSessionBody,
-  type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick, densityOf, expandAxis,
-  type SessionModeFilter,
-  matchesCalendarFacetFilters, emptyCalendarFacetFilters, SUBJECT_KIND_OPTIONS,
+  PALETTE, STATUS_LABEL,
+  rowInResource, cloneSessionBody,
+  type SplitDim, type ListGroupBy, type PasteTarget, densityOf, expandAxis,
+  matchesCalendarFacetFilters,
   type CalendarFacetFilters } from "@/lib/domain/lantiv";
 import {
   useAttendance,
-  useCreateViewPreset,
-  useUpdateViewPreset,
   useScheduleRequests,
   useCalendarSchedule,
   useRooms,
@@ -45,13 +40,21 @@ import {
 // 국가·시차(피드백 2026-07-02): KST 단일 진실원 → 표시 전용 변환(lib/domain/tz), 비KST 뷰는 편집 잠금
 import { COUNTRIES, KST_TZ, countryByCode, shiftRowsToTz, tzOffsetFromKst, tzLocalToKst, kstBlockToTzWindow, kstPatchTimes, type CountryInfo, type TzShiftedRow } from "@/lib/domain/tz";
 import { CountryInput } from "./CountryInput";
-import { CalendarViewTabs } from "./CalendarViewTabs";
-import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
 import { formatScheduleConflicts } from "@/lib/domain/conflict-messages";
 import { applyScheduleRowPatch } from "@/lib/domain/schedule-row";
 import { scopeCalendarRowsToInstructor } from "@/lib/domain/calendar-access";
 import { calendarScheduleCourses, calendarSubjectOptions } from "@/lib/domain/schedule-resources";
-import { appendCalendarPane, companionPaneSeed, currentPaneSeeds } from "@/lib/domain/calendar-panes";
+import {
+  calendarPaneColumnLabel,
+  calendarPaneDates,
+  calendarPanePeriodLabel,
+  calendarPanesFetchRange,
+  calendarPanesReducer,
+  calendarRowsForPane,
+  createCalendarPanesState,
+  type CalendarPaneState,
+  type CalendarPanesState,
+} from "@/lib/domain/calendar-panes";
 import { availabilityGhostBandsForColumn } from "@/lib/domain/pending-ghosts";
 import {
   buildAvailabilityRequestBody,
@@ -61,18 +64,15 @@ import {
 } from "@/lib/domain/request-drafts";
 import { calendarExportFilename, resolveExportPeople } from "@/lib/domain/calendar-export";
 import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
-import { axisCompanionTimezone, buildTimezonePaneGroups, resourceTimezoneKey, resourceTimezoneOf, type ResourceTimezoneOverrides } from "@/lib/domain/resource-timezone";
-import type { CalendarViewPreset } from "@/types";
+import { axisCompanionTimezone, resourceTimezoneKey, type ResourceTimezoneOverrides } from "@/lib/domain/resource-timezone";
 import { exportNodeAsImage } from "@/lib/export";
 import { usePersistedState } from "@/lib/usePersistedState";
-import { booleanPreferenceCodec, enumPreferenceCodec, preferenceKeys } from "@/lib/storage/preferences";
+import { enumPreferenceCodec, preferenceKeys } from "@/lib/storage/preferences";
 import { useAccountAccess } from "@/lib/useAccountAccess";
 import { ResourcePanel } from "./ResourcePanel";
 import { ResourceDetailCard } from "./ResourceDetailCard";
 import { ParticipantsCard } from "./ParticipantsCard";
-import { CalendarSplitPane } from "./CalendarSplitPane";
-import { CalendarFilterBar, type Period } from "./CalendarFilterBar";
-import { CalendarPaneFilters } from "./CalendarPaneFilters";
+import { CalendarPane } from "./CalendarPane";
 import { ConfirmModal, HelpPopover, PageHeader } from "@/components/ui";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 // [B6 C1 2026-07-16] 인라인 사설 모달 6종 → ModalShell 계열로 이관·파일 분리(E1 + EP9 선행 절단).
@@ -108,20 +108,39 @@ import {
   INSTRUCTOR_RESOURCE_FILTER_DIMS, INSTRUCTOR_SPLIT_DIMS, INSTRUCTOR_RESOURCE_PANEL_TYPES,
   isCanceledStatus, isSessionCanceled, snap, tzCellToKst, clampToAxis, clampMin, todayISO,
   mondayOf, hashColor, startMinOf, endMinOf,
-  type View, type ColorBy, type ManualPaneState, type Resizing, type Pending,
+  type ColorBy, type Resizing, type Pending,
   type AccountingImpact, type AccountingAck, type ConfirmRequest, type AvailabilityApprovalSeed,
 } from "./calendar-grid";
 import { addDaysISO } from "@/lib/format"; // [TBO-69 C4] 정본 소비(사본 제거)
 
+const EMPTY_SCHEDULE_ROWS: ScheduleRow[] = [];
+
+function initializeCalendarPanes(selection: CalendarCompareSelection | null): CalendarPanesState {
+  let state = createCalendarPanesState(selection?.from ?? todayISO());
+  if (!selection) return state;
+  state = calendarPanesReducer(state, {
+    type: "pane/set-range",
+    paneId: state.activePaneId,
+    anchorDate: selection.from,
+    currentDate: selection.to,
+  });
+  return calendarPanesReducer(state, {
+    type: "pane/set-resource-filter",
+    paneId: state.activePaneId,
+    filter: "instructorIds",
+    values: selection.instructorIds,
+  });
+}
+
 export function ScheduleCalendar({ initialSelection = null }: { initialSelection?: CalendarCompareSelection | null }) {
-  // [C-2 2026-07-06] 뷰 프리셋(월/주/일·색 기준·열 좁게)만 typed preference로 복원 — 새로고침에도 유지.
-  //  anchor(기준일)는 항상 오늘로 시작(과거 날짜 고정 방지). 내용 필터(Set)는 후속(setCodec)으로 확장.
-  const [view, setView] = usePersistedState<View>(
-    preferenceKeys.calendarView,
-    "week",
-    enumPreferenceCodec<View>(["month", "week", "day"]),
+  const [calendarPanesState, dispatchCalendarPanes] = useReducer(
+    calendarPanesReducer,
+    initialSelection,
+    initializeCalendarPanes,
   );
-  const [anchor, setAnchor] = useState(initialSelection?.from ?? todayISO());
+  const activeCalendarPane = calendarPanesState.panes.find((pane) => pane.id === calendarPanesState.activePaneId)
+    ?? calendarPanesState.panes[0];
+  const activeCalendarDates = useMemo(() => calendarPaneDates(activeCalendarPane), [activeCalendarPane]);
   // [TBO-21 B2] 현재시각선은 new Date()를 렌더 중 계산 → SSR HTML과 클라 하이드레이션 시각이 달라
   //  React #418(hydration text mismatch)이 났다. mount 후에만 렌더해 서버·클라 첫 렌더를 일치시킴.
   const mounted = useMounted();
@@ -223,91 +242,13 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   const suppressEmptyClickRef = useRef(false);
 
   // ── 필터(Lantiv형) ──
-  const [q, setQ] = useState("");
   const [colorBy, setColorBy] = usePersistedState<ColorBy>(
     preferenceKeys.calendarColorBy,
     "subject",
     enumPreferenceCodec<ColorBy>(["subject", "instructor", "room", "student"]),
   );
-  const [fInstructors, setFInstructors] = useState<Set<number>>(
-    () => isInstructor && myInstructorId != null ? new Set([myInstructorId]) : new Set(initialSelection?.instructorIds ?? []),
-  );
-  const [fSubjects, setFSubjects] = useState<Set<string>>(new Set());
-  const [fRooms, setFRooms] = useState<Set<number>>(new Set());
-  const [fStudents, setFStudents] = useState<Set<number>>(new Set());
-  // Lantiv 확장: 상태(출석/지각/결강/보강) · 그룹 수업만 · 기간(from/to, 뷰 기간 대신 조회)
-  const [fStatuses, setFStatuses] = useState<Set<StatusFilter>>(new Set());
-  // [오류2 2026-07-06] 수업방식 필터(대면/비대면, class_sessions.mode v0.1.16) — 구 '종류' 카테고리 대체.
-  //  진단고사/상담은 과목 필터의 유사 옵션(SUBJECT_KIND_OPTIONS)으로 이동. 프리셋 편입은 R-7.
-  const [fModes, setFModes] = useState<Set<SessionModeFilter>>(new Set());
-  const [groupOnly, setGroupOnly] = useState(false);
-  const [period, setPeriod] = useState<Period | null>(initialSelection ? { from: initialSelection.from, to: initialSelection.to } : null);
-  // [이슈3] 표(패널)별 날짜 범위 — 캘린더(from/to)로 표마다 다르게(예: 왼쪽 7/6~7/8, 오른쪽 7/6~7/10).
-  //  미설정=전역 기간을 따름. from만 있고 to 없으면 from 하루.
-  // [fit-to-width 2026-07-06] 그리드 폭 = 컨테이너 폭(가로 스크롤 제거 — 대표 지적 2·3, Lantiv 대응).
   const mainRef = useRef<HTMLDivElement>(null);
   const mainW = useElementWidth(mainRef, 1100);
-  // [전역 cherry-pick 2026-07-06] 원하는 날짜만 골라 보기(불연속, 최대 14) — 설정 시 기간(period)보다 우선.
-  //  그리드 축(dates)·조회(range=min~max)·리스트/시수(filtered 날짜 술어)가 같은 집합을 쓴다(모집단 단일).
-  const [pickedDates, setPickedDates] = useState<string[]>([]);
-  // [B-5 2026-07-06] 컴팩트 열 토글(대표 지적 1·3) — 하루 열 128px 고정이 두 표 스플릿에서 과폭.
-  const [compactCols, setCompactCols] = usePersistedState<boolean>(
-    preferenceKeys.calendarCompactCols,
-    false,
-    booleanPreferenceCodec,
-  );
-  const [paneRange, setPaneRange] = useState<Partial<Record<SplitDim, { from: string; to: string }>>>({});
-  // [B-3 #5] 표별 cherry-pick 날짜(불연속 집합, 최대 14) — 설정 시 paneRange(연속 범위)보다 우선.
-  const [panePicked, setPanePicked] = useState<Partial<Record<SplitDim, string[]>>>({});
-  // 표별 과목·상태·수업방식·그룹 필터. 자동/수동 표 모두 안정적인 pane key로 분리한다.
-  const [paneFacets, setPaneFacets] = useState<Record<string, CalendarFacetFilters>>({});
-  // [#2 2026-07-06] 수동 표 빌더 — 강사·학생·강의실·과목 임의 조합(학생×학생 등 동일차원 2표 허용).
-  //  자동 스플릿(강사+학생 필터)과 병행: manualPanes가 있으면 그것을 우선 렌더, 없으면 기존 자동 동작.
-  //  per-pane 필터(국가·수업방식)는 dim이 아닌 **uid 키**(동일차원 중복 시 충돌 방지 — §14 P1 대칭).
-  const [manualPanes, setManualPanes] = useState<ManualPaneState[]>([]);
-  const paneUidRef = useRef(1);
-  const [paneCountryU, setPaneCountryU] = useState<Record<number, CountryInfo | null>>({});
-  const manualFacetKey = (uid: number) => `manual:${uid}`;
-  const dimFacetKey = (dim: SplitDim) => `dimension:${dim}`;
-  const facetOf = (key: string) => paneFacets[key] ?? emptyCalendarFacetFilters();
-  const setFacet = (key: string, value: CalendarFacetFilters) => setPaneFacets((current) => ({ ...current, [key]: value }));
-  const addManualPane = () => {
-    if (!manualPanes.length) {
-      const currentSeeds = isInstructor
-        ? [{ dim: "room" as const, ids: [...fRooms] }]
-        : currentPaneSeeds({
-            instructors: fInstructors,
-            students: fStudents,
-            rooms: fRooms,
-            visibleInstructorIds: [...new Set(filtered.map((row) => Number(row.instructorId)))].slice(0, MAX_SPLIT),
-            fallbackInstructorId: myInstructorId,
-          });
-      const seeds = isInstructor
-        ? [...currentSeeds, { dim: "room" as const, ids: [...currentSeeds[0].ids] }]
-        : [...currentSeeds, companionPaneSeed(currentSeeds.at(-1)!)];
-      const panes = seeds.map((seed) => ({ uid: paneUidRef.current++, ...seed }));
-      setManualPanes(panes);
-      if (country) {
-        setPaneCountryU((cur) => ({
-          ...cur,
-          ...Object.fromEntries(panes.map((pane) => [pane.uid, country])),
-        }));
-      }
-      setFInstructors(isInstructor && myInstructorId != null ? new Set([myInstructorId]) : new Set());
-      setFStudents(new Set());
-      setFRooms(new Set());
-      return;
-    }
-    const last = manualPanes.at(-1)!;
-    const uid = paneUidRef.current++;
-    setManualPanes((prev) => isInstructor
-      ? [...prev, { uid, dim: last.dim === "subject" ? "subject" : "room", ids: [...last.ids] }]
-      : appendCalendarPane(prev, uid));
-    setPaneCountryU((cur) => ({ ...cur, [uid]: cur[last.uid] ?? null }));
-    setPaneFacets((current) => current[manualFacetKey(last.uid)]
-      ? { ...current, [manualFacetKey(uid)]: current[manualFacetKey(last.uid)] }
-      : current);
-  };
   // 우측 패널: 리스트에서 클릭한 세션(아래 상세) + 그룹 토글
   const [detailId, setDetailId] = useState<number | null>(null);
   const [listGrouped, setListGrouped] = useState(false);
@@ -324,120 +265,20 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   //  커밋 직전 tzCellToKst(R-1b DST 2-패스)로 KST 변환(익일 연속 블록만 표시 전용 유지).
   // 학생 국가·수강·코스·과목은 역할별 `/schedule/resources` 한 query에서만 파생한다.
   // 강사 캘린더가 전역 courses/subjects/enrollments/students cache를 읽지 않으므로 모든 UI 축이 같은 scope다.
-  const allStudents = useMemo(() => resources?.students ?? [], [resources?.students]);
   const allCourses = useMemo(() => calendarScheduleCourses(resources), [resources]);
   const subjectOpts = useMemo(() => calendarSubjectOptions(resources), [resources]);
-  const subjectFilterOptions = useMemo(() => [
-    ...[...new Set((resources?.courses ?? []).map((course) => course.subjectName).filter(Boolean))].sort(),
-    ...SUBJECT_KIND_OPTIONS.filter((option) => !isInstructor || option.kind !== "counsel").map((option) => option.value),
-  ], [resources, isInstructor]);
   const subjectIdOf = useMemo(() => {
     const m = new Map(allCourses.map((c) => [Number(c.id), c.subjectId != null ? Number(c.subjectId) : undefined]));
     return (courseId: number) => m.get(courseId);
   }, [allCourses]);
-  const [country, setCountry] = useState<CountryInfo | null>(null);
   // [KST 고정 축 2026-07-07] on=모든 컬럼을 KST 위치로 그림(같은 가로선=같은 실제 순간, 비교 최적).
   //  해외 컬럼은 칩에 현지시각 병기. off=컬럼별 현지 시각(자연스러움). 시차 편집·변환은 off일 때만.
   // 서비스 시간축 계약은 항상 KST다. 사용자/프리셋 상태로 다시 끌어내리지 않는다.
   const kstFixed = true;
-  const [paneCountry, setPaneCountry] = useState<Partial<Record<SplitDim, CountryInfo | null>>>({});
-  const paneTzOf = (dim: SplitDim) => (dim in paneCountry ? (paneCountry[dim] ?? null) : country);
-  // ── 뷰 프리셋(TBO-12 P1) — DB 자산(calendar_view_presets). 직렬화는 lib/domain/presets 단일 소스 ──
-  const [activePresetId, setActivePresetId] = useState<number | null>(null);
-  const createViewPreset = useCreateViewPreset();
-  const updateViewPreset = useUpdateViewPreset();
-  const applyPreset = (p: CalendarViewPreset) => {
-    const st = presetToState(p);
-    setView(st.view); setPeriod(st.period); setQ(st.q); setColorBy(st.colorBy as ColorBy);
-    setFInstructors(isInstructor && myInstructorId != null ? new Set([myInstructorId]) : st.fInstructors);
-    setFStudents(isInstructor ? new Set() : st.fStudents);
-    setFRooms(st.fRooms);
-    // [오류2] 구 프리셋의 kinds → 과목 유사 옵션으로 승계(하위호환). 수업방식(fModes)은 프리셋 미보존(R-7).
-    const subj = new Set(st.fSubjects);
-    SUBJECT_KIND_OPTIONS.forEach((o) => { if (st.fKinds.has(o.kind)) subj.add(o.value); });
-    setFSubjects(subj); setFStatuses(st.fStatuses); setFModes(st.fModes); setGroupOnly(st.groupOnly);
-    setCountry(st.country); setPaneCountry(st.paneCountry);
-    if (typeof st.compactCols === "boolean") setCompactCols(st.compactCols);
-    if (st.manualPanes) {
-      const allowedPanes = isInstructor
-        ? st.manualPanes.filter((pane) => pane.dim === "room" || pane.dim === "subject")
-        : st.manualPanes;
-      const restored = allowedPanes.map((mp) => ({ uid: mp.uid ?? paneUidRef.current++, dim: mp.dim, ids: mp.ids }));
-      setManualPanes(restored);
-      setPaneCountryU(Object.fromEntries(allowedPanes.map((mp, i) => [restored[i].uid, mp.country ?? null])));
-      setPaneFacets(Object.fromEntries(allowedPanes.map((mp, i) => [manualFacetKey(restored[i].uid), {
-        ...emptyCalendarFacetFilters(),
-        modes: new Set(mp.modes),
-      }])));
-      paneUidRef.current = Math.max(paneUidRef.current, ...restored.map((mp) => mp.uid + 1), 1);
-    } else {
-      setManualPanes([]);
-      setPaneCountryU({});
-      setPaneFacets({});
-    }
-    setClosedPanes(new Set()); // 표 닫힘 상태 초기화 — 프리셋의 스플릿 구성을 그대로 복원
-    setActivePresetId(Number(p.id));
-    setMsg(`프리셋 적용 — ${p.name}`);
-  };
-  const saveCurrentPreset = async (name: string, updateId?: number) => {
-    const input = serializeViewPreset(name, {
-      view, period, q, colorBy, fInstructors, fStudents, fRooms, fSubjects, fStatuses,
-      // [오류2] kinds 필드 = 과목 유사 옵션(진단고사/상담) 역직렬화 — 구 스키마로 라운드트립
-      fKinds: new Set(SUBJECT_KIND_OPTIONS.filter((o) => fSubjects.has(o.value)).map((o) => o.kind)),
-      fModes, groupOnly, country, paneCountry, kstFixed, compactCols,
-      manualPanes: manualPanes.map((mp) => ({
-        uid: mp.uid,
-        dim: mp.dim,
-        ids: mp.ids,
-        country: paneCountryU[mp.uid] ?? null,
-        modes: new Set(paneFacets[manualFacetKey(mp.uid)]?.modes ?? []),
-      })),
-    });
-    if (updateId != null) {
-      const updated = await updateViewPreset.mutateAsync({ id: updateId, input });
-      setActivePresetId(Number(updated.id));
-      return;
-    }
-    const created = await createViewPreset.mutateAsync(input);
-    setActivePresetId(Number(created.id));
-  };
-  const resourcesByType = useMemo(() => {
-    const out = new Map<string, ScheduleResource>();
-    for (const r of resources?.instructors ?? []) out.set(resourceTimezoneKey("instructor", Number(r.id)), r);
-    for (const r of resources?.students ?? []) out.set(resourceTimezoneKey("student", Number(r.id)), r);
-    for (const r of resources?.rooms ?? []) out.set(resourceTimezoneKey("room", Number(r.id)), r);
-    return out;
-  }, [resources]);
-  // 유저/리소스 공통 시차(피드백 2026-07-09): 학생만이 아니라 강사도 동일 resolver/override를 사용한다.
   const [resourceTzOverride, setResourceTzOverride] = useState<ResourceTimezoneOverrides>({});
-  const resourceTzFor = useCallback((type?: SplitDim, id?: number): CountryInfo | undefined => {
-    if (!type || type === "subject" || id == null) return undefined;
-    return resourceTimezoneOf(resourcesByType.get(resourceTimezoneKey(type, Number(id))), resourceTzOverride);
-  }, [resourceTzOverride, resourcesByType]);
   // [오류4 2026-07-06] x/y = 국기 버튼 뷰포트 좌표 — 팝오버를 fixed로 띄워 컬럼 overflow-hidden
   //  클리핑·옆 컬럼 가림에서 탈출(항상 최상위). 클릭 시점 좌표 고정(스크롤 시 재클릭).
   const [tzPickerFor, setTzPickerFor] = useState<{ colKey: string; type: Exclude<SplitDim, "subject">; id: number; x: number; y: number } | null>(null);
-
-  // 필터에 해외(비KR) owner가 포함되면 조회 ±1일 확장이 필요(날짜 밀림). 학생/강사 공통.
-  const anyResourceColTz = useMemo(
-    () => [...fStudents].some((id) => resourceTzFor("student", id) != null)
-      || [...fInstructors].some((id) => resourceTzFor("instructor", id) != null)
-      || [...fRooms].some((id) => resourceTzFor("room", id) != null),
-    [fStudents, fInstructors, fRooms, resourceTzFor],
-  );
-  const anyTzActive = (country != null && country.tz !== KST_TZ)
-    || Object.values(paneCountry).some((c) => c != null && c.tz !== KST_TZ)
-    || Object.values(paneCountryU).some((c) => c != null && c.tz !== KST_TZ)
-    || anyResourceColTz;
-  // 국가 필터 모집단: 그 국가 학생 id 집합(country 미지정 학생은 KR로 간주 — 국내 기본).
-  //  'US-W'(서부)는 학생 country 'US'와 매칭(대표 tz만 다른 동일 국가).
-  const countryStudentIds = useMemo(() => {
-    if (!country) return null;
-    const want = country.code.split("-")[0];
-    return new Set(
-      allStudents.filter((st) => ((st.countryCode ?? "KR").toUpperCase() === want)).map((st) => Number(st.id)),
-    );
-  }, [country, allStudents]);
 
   // [감사 M4] 시차 변환 결과 캐시 — filtered가 바뀔 때만 초기화, 같은 렌더/리렌더에서 tz별 1회만 변환.
   const tzRowsCacheRef = useRef<{ src: ScheduleRow[] | null; map: Map<string, ScheduleRow[]> }>({ src: null, map: new Map() });
@@ -458,45 +299,29 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   const resizingRef = useRef<Resizing | null>(null);
   const previewRef = useRef<{ id: number; start: number; end: number; dStart: number; dEnd: number } | null>(null);
 
-  const weekStart = useMemo(() => mondayOf(anchor), [anchor]);
   // [TBO-29D ⑤] 학원 공통 일정(입시 설명회·모의고사·휴원 등) — 역할 무관 전 직원에게 표시.
   const { data: academyEvents = [] } = useAcademyEvents();
-  // 기간(period)을 지정하면 **뷰 자체가 그 날짜들로 재구성**(피드백: 4일 선택=4일만 표시). 상한 14일.
-  const dates = useMemo(() => {
-    if (pickedDates.length) return [...new Set(pickedDates)].sort().slice(0, 14); // cherry-pick 우선
-    if (!period) return weekDates(weekStart);
-    const out: string[] = [];
-    for (let d = period.from; d <= period.to && out.length < 14; d = addDaysISO(d, 1)) out.push(d);
-    return out.length ? out : [period.from];
-  }, [pickedDates, period, weekStart]);
-
-  // 조회 기간(월/주/일/표). 표는 주간 기준.
-  const range = useMemo(() => {
-    if (view === "month") {
-      const ym = anchor.slice(0, 7);
-      const last = new Date(Date.UTC(Number(anchor.slice(0, 4)), Number(anchor.slice(5, 7)), 0)).getUTCDate();
-      return { from: `${ym}-01`, to: `${ym}-${pad(last)}` };
-    }
-    if (view === "day") return { from: anchor, to: anchor };
-    return { from: dates[0], to: dates[dates.length - 1] };
-  }, [view, anchor, dates]);
-
   // [A안] 파생 selected: 리소스 필터 합계가 정확히 1명일 때 그 유저 = 개인 모드.
   //  (필터바 어떤 경로로든 1명만 남으면 자동으로 개인 스케줄 혜택 — 밴드·상세 카드·서버 파라미터)
   const selected: ScheduleResource | null = useMemo(() => {
-    const total = fInstructors.size + fStudents.size + fRooms.size;
-    if (total !== 1 || !resources) return null;
-    if (fInstructors.size === 1) {
-      const id = [...fInstructors][0];
+    if (!resources) return null;
+    const { instructorIds, studentIds, roomIds } = activeCalendarPane.filters;
+    const total = instructorIds.length + studentIds.length + roomIds.length;
+    if (total === 0 && isInstructor && myInstructorId != null) {
+      return resources.instructors.find((resource) => Number(resource.id) === myInstructorId) ?? null;
+    }
+    if (total !== 1) return null;
+    if (instructorIds.length === 1) {
+      const id = instructorIds[0];
       return resources.instructors.find((r) => Number(r.id) === id) ?? null;
     }
-    if (fStudents.size === 1) {
-      const id = [...fStudents][0];
+    if (studentIds.length === 1) {
+      const id = studentIds[0];
       return resources.students.find((r) => Number(r.id) === id) ?? null;
     }
-    const id = [...fRooms][0];
+    const id = roomIds[0];
     return resources.rooms.find((r) => Number(r.id) === id) ?? null;
-  }, [fInstructors, fStudents, fRooms, resources]);
+  }, [activeCalendarPane.filters, isInstructor, myInstructorId, resources]);
 
   // [TBO-14 C2b] 선택 자원의 불가/가용 블록 = allBlocks에서 owner 파생(단일 소스 — 별도 fetch 제거).
   //  api.availability.list(type,id)와 동치(백엔드 list=all의 owner 필터). 밴드 편집→invalidate→allBlocks 재조회→자동 재계산.
@@ -510,57 +335,17 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   const [infoTarget, setInfoTarget] = useState<ScheduleResource | null>(null);
   const cardTarget = infoTarget ?? selected; // 카드 표시 대상: 명시 선택 > 파생 개인 모드(필터 1명)
 
-  // 개인 필터 적용(명시적) — 해당 차원 필터를 그 1명으로 세팅(다른 리소스 차원은 비움).
-  //  해제(null)는 리소스 필터만 클리어(상태·기간·국가 등 나머지 필터는 유지).
-  const selectResource = (r: ScheduleResource | null) => {
-    if (isInstructor && myInstructorId != null) {
-      setFInstructors(new Set([myInstructorId]));
-      setFStudents(new Set());
-      if (r?.type === "room") setFRooms(new Set([Number(r.id)]));
-      else if (!r) setFRooms(new Set());
-      return;
-    }
-    if (!r) { setFInstructors(new Set()); setFStudents(new Set()); setFRooms(new Set()); return; }
-    const id = Number(r.id);
-    setFInstructors(r.type === "instructor" ? new Set([id]) : new Set());
-    setFStudents(r.type === "student" ? new Set([id]) : new Set());
-    setFRooms(r.type === "room" ? new Set([id]) : new Set());
-  };
-
-  // 선택 자원 → 서버 필터(개인 스케줄) — 파생 selected 기반(필터와 항상 일치, 교집합 혼동 제거)
-  const selQuery = useMemo(() => {
-    if (isInstructor && myInstructorId != null) return { instructorId: myInstructorId };
-    if (!selected) return {};
-    if (selected.type === "instructor") return { instructorId: selected.id };
-    if (selected.type === "room") return { roomId: selected.id };
-    return { studentId: selected.id };
-  }, [isInstructor, myInstructorId, selected]);
-
-  // 기간 필터가 설정되면 뷰 파생 기간 대신 사용(우측 리스트가 기간 전체를 봄).
-  // [L3] 월간 뷰는 월 그리드가 기준 — 기간 override를 무시(그리드-데이터 불일치 방지)
-  const effRange = view === "month" ? range : (period ?? range);
-  // [TBO-12 P0] 시차 뷰 조회 확장: 변환으로 날짜가 ±1일 밀린 세션(예: 월 12:30 KST = 일 23:30 ET,
-  //  일 오전 KST = 토 심야 ET)이 그리드 날짜 축 밖 데이터라 미표시되던 한계 → 조회만 ±1일 넓힌다.
-  //  KST 리스트·시수·건수는 아래 inRange로 원래 기간을 유지(오염 방지), 그리드는 변환 후
-  //  컬럼 날짜 매칭이 표시 범위를 자연 결정.
-
-  // [이슈3] 표별 캘린더 범위가 전역 기간을 벗어나면 그만큼 조회 범위 확장(그 날짜 세션도 로드).
-  const pickedBounds = Object.values(panePicked)
-    .filter((a): a is string[] => !!a?.length)
-    .map((a) => { const s = [...a].sort(); return { from: s[0], to: s[s.length - 1] }; });
-  const paneBounds = [...Object.values(paneRange).filter((r): r is { from: string; to: string } => !!r?.from), ...pickedBounds];
-  const spanFrom = paneBounds.reduce((a, r) => (r.from < a ? r.from : a), effRange.from);
-  const spanTo = paneBounds.reduce((a, r) => { const t = r.to && r.to >= r.from ? r.to : r.from; return t > a ? t : a; }, effRange.to);
-  const baseRange = { from: spanFrom, to: spanTo };
-  const fetchRange = anyTzActive
-    ? { from: addDaysISO(baseRange.from, -1), to: addDaysISO(baseRange.to, 1) }
-    : baseRange;
-
   // [TBO-14] 스케줄 데이터층 = TanStack Query 단일 소스(useCalendarSchedule). 기간·선택자원 키.
   //  · rows(로컬)는 이 쿼리를 feed 받아 낙관적 편집(드래그·리사이즈·생성·삭제)에만 사용 — 즉시 반영 유지.
   //  · 세션 변경(PATCH/생성/삭제·강사출결)은 qk.schedule.all 무효화 → 이 쿼리 자동 refetch → rows 재동기화.
   //    → 출석부/상세에서 강사 출결을 바꿔도 캘린더가 자동 갱신(M1 invalidate 단절 근본 해소).
-  const scheduleQ = useCalendarSchedule({ ...fetchRange, ...selQuery });
+  const paneFetchRange = useMemo(() => {
+    return calendarPanesFetchRange(calendarPanesState);
+  }, [calendarPanesState]);
+  // Pane resource selection is a client-side intersection over one bounded population.
+  // Never narrow the server query to a selected resource: adding/splitting a pane must not
+  // require a second resource-shaped cache or hide rows needed by another pane.
+  const scheduleQ = useCalendarSchedule(paneFetchRange);
   useEffect(() => {
     if (scheduleQ.data) setRows(scopeCalendarRowsToInstructor(scheduleQ.data, scopeInstructorId));
   }, [scheduleQ.data, scopeInstructorId]);
@@ -601,113 +386,18 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
     [colorBy],
   );
 
-  const globalFacetFilters = useMemo<CalendarFacetFilters>(() => ({
-    subjects: fSubjects,
-    statuses: fStatuses,
-    modes: fModes,
-    groupOnly,
-  }), [fSubjects, fStatuses, fModes, groupOnly]);
-
   // ── 필터 적용 ──
   const visibleRows = useMemo(
     () => scopeCalendarRowsToInstructor(rows, scopeInstructorId),
     [rows, scopeInstructorId],
   );
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return visibleRows.filter((r) => {
-      // 강사·학생 = 합집합(OR), 강의실 = AND — 동시 다중선택 교집합 버그 수정(lantiv.matchesResourceFilter).
-      if (!matchesResourceFilter(r, { instructors: fInstructors, students: fStudents, rooms: fRooms })) return false;
-      if (pickedDates.length && !dates.includes(r.sessionDate)) return false; // cherry-pick — 그리드·리스트·시수 동일 모집단
-      if (!matchesCalendarFacetFilters(r, attBySession.get(Number(r.id)) ?? [], globalFacetFilters)) return false;
-      // 국가 필터: 그 국가 학생이 참가자에 포함된 세션만(해외 학생에게 보낼 시간표 추출용)
-      if (countryStudentIds && !(r.studentIds ?? []).some((id) => countryStudentIds.has(Number(id)))) return false;
-      if (needle) {
-        const hay =
-          `${r.courseName} ${r.subjectName} ${r.instructorName} ${r.roomName ?? ""} ${(r.studentNames ?? []).join(" ")} ${r.topic ?? ""}`.toLowerCase();
-        if (!hay.includes(needle)) return false;
-      }
-      return true;
-    });
-  }, [visibleRows, q, fInstructors, fRooms, fStudents, globalFacetFilters, attBySession, countryStudentIds, pickedDates, dates]);
-
-  const anyFilter =
-    q.trim() !== "" || (!isInstructor && fInstructors.size) || fSubjects.size || fRooms.size || fStudents.size ||
-    fStatuses.size || fModes.size || groupOnly || period != null || pickedDates.length || country != null;
-  const clearFilters = () => {
-    setQ("");
-    setFInstructors(isInstructor && myInstructorId != null ? new Set([myInstructorId]) : new Set());
-    setFSubjects(new Set());
-    setFRooms(new Set());
-    setFStudents(new Set());
-    setFStatuses(new Set());
-    setFModes(new Set());
-    setPickedDates([]);
-    setGroupOnly(false);
-    setPeriod(null);
-    setCountry(null);
-    setPaneCountry({});
-    setManualPanes([]);
-    setPaneCountryU({});
-    setPaneFacets({});
-    setResourceTzOverride({});
-    setActivePresetId(null);
-  };
-
-  // [TBO-12 P0] tz 확장 조회분(±1일)은 그리드 변환 표시 전용 — KST 기준 리스트·시수·건수는 원래 기간만.
-  const inRange = useMemo(
-    () => (anyTzActive ? filtered.filter((r) => r.sessionDate >= effRange.from && r.sessionDate <= effRange.to) : filtered),
-    [filtered, anyTzActive, effRange.from, effRange.to],
-  );
-  const hrs = teachingHours(inRange);
-
-  // ── 스플릿(피드백 2026-07-02 최종, Lantiv): 필터 선택에서 **자동 파생** ──
-  //  · 강사+학생 둘 다 선택 → 표 2개(강사 표 | 학생 표), 각 표 = (날짜 × 그 차원 선택) 데일리 스플릿
-  //  · 한 차원만 2명 이상 → 단일 그리드 데일리 스플릿(월요일 열 안에 사람별 서브컬럼)
-  //  · 표 ✕ 닫기 → 남은 화면은 원래(단일 그리드) 렌더, 필터 선택은 그대로 유지(상태 저장)
-  const instPicks: MixedPick[] = useMemo(
-    () => (resources?.instructors ?? []).filter((r) => fInstructors.has(Number(r.id))).map((r) => ({ id: Number(r.id), name: r.name, type: "instructor" as const })),
-    [resources, fInstructors],
-  );
-  const studPicks: MixedPick[] = useMemo(
-    () => (resources?.students ?? []).filter((r) => fStudents.has(Number(r.id))).map((r) => ({ id: Number(r.id), name: r.name, type: "student" as const })),
-    [resources, fStudents],
-  );
-  const roomPicks: MixedPick[] = useMemo(
-    () => rooms.filter((r) => fRooms.has(Number(r.id))).map((r) => ({ id: Number(r.id), name: r.name, type: "room" as const })),
-    [rooms, fRooms],
-  );
-  // ✕로 닫은 표(차원) — 필터는 유지한 채 표만 접음.
-  // [TBO-29C C4.5 useEffect 개편] "선택이 비면 닫힘 해제"는 effect+setState가 아니라 **파생 상태**다 —
-  //  렌더마다 raw 닫힘 상태에서 유효분만 계산(you-might-not-need-an-effect 규칙, 재렌더 1회 절약).
-  const [closedPanesRaw, setClosedPanes] = useState<Set<SplitDim>>(new Set());
-  const closedPanes = useMemo(() => {
-    const n = new Set(closedPanesRaw);
-    if (instPicks.length === 0) n.delete("instructor");
-    if (studPicks.length === 0) n.delete("student");
-    return n;
-  }, [closedPanesRaw, instPicks.length, studPicks.length]);
-  const panes = useMemo(() => {
-    const out: { dim: SplitDim; title: string; picks: MixedPick[] }[] = [];
-    if (instPicks.length && !closedPanes.has("instructor"))
-      out.push({ dim: "instructor", title: `강사 시간표 (${Math.min(instPicks.length, MAX_SPLIT)})`, picks: instPicks.slice(0, MAX_SPLIT) });
-    if (studPicks.length && !closedPanes.has("student"))
-      out.push({ dim: "student", title: `학생 시간표 (${Math.min(studPicks.length, MAX_SPLIT)})`, picks: studPicks.slice(0, MAX_SPLIT) });
-    return out;
-  }, [instPicks, studPicks, closedPanes]);
-  const twoPanes = panes.length === 2 && (view !== "month");
-  // 단일 그리드 데일리 스플릿 대상(표 2개가 아닐 때): 남은 표 1개(≥2명) 또는 강의실 다중선택
-  // [렌더 최적화] 파생 배열 메모화 — 매 렌더 새 배열로 columns 재계산·자식 리렌더 유발 방지
-  const singleSplitPicks: MixedPick[] = useMemo(() => !twoPanes
-    ? (panes[0]?.picks.length ?? 0) >= 2
-      ? panes[0].picks
-      : roomPicks.length >= 2 && instPicks.length === 0 && studPicks.length === 0
-        ? roomPicks.slice(0, MAX_SPLIT)
-        : []
-    : [], [twoPanes, panes, roomPicks, instPicks.length, studPicks.length]);
-  const isSplit = (twoPanes || singleSplitPicks.length >= 2) && view !== "month";
-  const splitDim: SplitDim | null = twoPanes ? "instructor" : (singleSplitPicks[0]?.type ?? null);
-
+  const calendarRowsByPane = useMemo(() => new Map(
+    calendarPanesState.panes.map((pane) => [
+      pane.id,
+      calendarRowsForPane(visibleRows, pane, { attendanceBySession: attBySession, subjectIdOf }),
+    ]),
+  ), [calendarPanesState.panes, visibleRows, attBySession, subjectIdOf]);
+  const activeCalendarRows = calendarRowsByPane.get(activeCalendarPane.id) ?? EMPTY_SCHEDULE_ROWS;
   // 컬럼: 데일리 스플릿=(날짜×리소스, 표별 prefix로 key 유일) · week=날짜 · day=강의실
   type Col = {
     key: string; label: string; sub?: string; date: string; roomId?: number;
@@ -715,71 +405,13 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
     resType?: SplitDim; resId?: number; firstOfDate?: boolean;
     tzc?: CountryInfo; // owner 개별 시차(country/timeZone 파생 — 학생·강사 공통)
   };
-  // [이슈1 2026-07-03] paneDates: 표(패널)별 날짜 배열 — 왼쪽 3일·오른쪽 5일처럼 표마다 기간을 다르게.
-  //  미지정 시 전역 dates 사용(기존 동작).
-  const colsFor = useCallback((picks: MixedPick[], prefix = "", paneDates: string[] = dates): Col[] =>
-    buildMixedSplitColumns(view === "day" ? [anchor] : paneDates, picks).map((c) => ({
-      key: prefix + c.key, label: c.label,
-      sub: view === "week" || period ? `${WD[weekdayOf(c.date)]} ${c.date.slice(5)}` : undefined,
-      date: c.date, roomId: c.roomId, resType: c.resType, resId: c.resId, firstOfDate: c.firstOfDate,
-      tzc: c.resType && c.resType !== "subject" ? resourceTzFor(c.resType, c.resId) : undefined,
-    })), [anchor, dates, period, resourceTzFor, view]);
-  // 표별 날짜 = 그 표의 캘린더 범위(from~to, 최대 14일). 미설정이면 전역 dates.
-  const paneDatesOf = (dim: SplitDim): string[] => {
-    const picked = panePicked[dim];
-    if (picked?.length) return [...new Set(picked)].sort().slice(0, 14); // cherry-pick 우선(정렬·중복 제거·상한 14)
-    const r = paneRange[dim];
-    if (!r?.from) return dates;
-    const out: string[] = [];
-    const to = r.to && r.to >= r.from ? r.to : r.from;
-    for (let d = r.from; d <= to && out.length < 14; d = addDaysISO(d, 1)) out.push(d);
-    return out.length ? out : dates;
-  };
-  // [렌더 최적화] 단일 그리드 컬럼 메모화(스플릿 곱·요일 파생 재계산 방지)
-  const columns: Col[] = useMemo(() => singleSplitPicks.length >= 2
-    ? colsFor(singleSplitPicks)
-    : view === "day"
-      ? [
-          ...rooms.map((r) => ({ key: `r${r.id}`, label: r.name, date: anchor, roomId: r.id }) as Col),
-          { key: "r-none", label: "미지정", date: anchor, noRoom: true } as Col, // [L1] 강의실 없는 세션도 보이게
-        ]
-      : dates.map((d) => ({ key: d, label: WD[weekdayOf(d)], sub: d.slice(5), date: d })),
-    // colsFor가 owner 개별 시차와 기간 의존성을 캡슐화하므로 컬럼 계산은 같은 callback을 재사용한다.
-    [singleSplitPicks, view, rooms, anchor, dates, colsFor]);
-
-  const picksForManualPane = (mp: ManualPaneState): MixedPick[] => {
-    const opts =
-      mp.dim === "instructor" ? (resources?.instructors ?? []).map((r) => ({ id: Number(r.id), name: r.name }))
-        : mp.dim === "student" ? (resources?.students ?? []).map((r) => ({ id: Number(r.id), name: r.name }))
-          : mp.dim === "room" ? rooms.map((r) => ({ id: Number(r.id), name: r.name }))
-            : subjectOpts.map((s) => ({ id: s.id, name: s.name }));
-    return mp.ids.map((id) => ({ id, name: opts.find((o) => o.id === id)?.name ?? `#${id}`, type: mp.dim }));
-  };
-
-  const moveManualPane = (uid: number, dir: -1 | 1) => {
-    setManualPanes((prev) => {
-      const idx = prev.findIndex((p) => p.uid === uid);
-      const nextIdx = idx + dir;
-      if (idx < 0 || nextIdx < 0 || nextIdx >= prev.length) return prev;
-      const next = [...prev];
-      [next[idx], next[nextIdx]] = [next[nextIdx], next[idx]];
-      return next;
-    });
-  };
-
-  const autoTzPanes = useMemo(() => {
-    if (manualPanes.length || view === "month") return [];
-    return buildTimezonePaneGroups(
-      [
-        { dim: "instructor" as const, picks: closedPanes.has("instructor") ? [] : instPicks },
-        { dim: "student" as const, picks: closedPanes.has("student") ? [] : studPicks },
-      ],
-      (dim, id) => resourceTzFor(dim, id),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- resourceTzFor는 resourcesByType·override 파생
-  }, [manualPanes.length, view, instPicks, studPicks, closedPanes, resourcesByType, resourceTzOverride]);
-
-  const rowsOfColumn = (c: Col, src: ScheduleRow[] = filtered) =>
+  const columnsForCalendarPane = useCallback((pane: CalendarPaneState): Col[] =>
+    calendarPaneDates(pane).map((date) => ({
+      key: `${pane.id}:${date}`,
+      label: calendarPaneColumnLabel(date),
+      date,
+    })), []);
+  const rowsOfColumn = (c: Col, src: ScheduleRow[]) =>
     src.filter(
       (r) =>
         r.sessionDate === c.date &&
@@ -832,12 +464,11 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
     if (selected) return selBlocks.length > 0;
     const hasOwnerBlocks = (dim: SplitDim, ids: number[]) =>
       dim !== "subject" && ids.some((id) => allBlocks.some((b) => b.ownerType === dim && Number(b.ownerId) === id));
-    if (manualPanes.some((p) => hasOwnerBlocks(p.dim, p.ids))) return true;
-    if (singleSplitPicks.some((p) => hasOwnerBlocks(p.type, [p.id]))) return true;
-    if (panes.some((p) => hasOwnerBlocks(p.dim, p.picks.map((x) => x.id)))) return true;
-    if (autoTzPanes.some((pane) => hasOwnerBlocks(pane.dim, pane.picks.map((pick) => pick.id)))) return true;
-    return instPicks.length > 0 && hasOwnerBlocks("instructor", instPicks.map((x) => x.id));
-  }, [allBlocks, autoTzPanes, instPicks, manualPanes, panes, selected, selBlocks, singleSplitPicks]);
+    return calendarPanesState.panes.some((pane) =>
+      hasOwnerBlocks("instructor", pane.filters.instructorIds)
+      || hasOwnerBlocks("student", pane.filters.studentIds)
+      || hasOwnerBlocks("room", pane.filters.roomIds));
+  }, [allBlocks, calendarPanesState.panes, selected, selBlocks]);
 
   function approvalImpactOf(e: unknown): AvailabilityImpact[] | null {
     const data = (e as { response?: { data?: Partial<AvailabilityImpactConflict> } })?.response?.data;
@@ -1383,27 +1014,28 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
     }
   });
 
-  // [감사 M6] 국가(시차) 변경 시 stale 커서·선택 해제 — KST 좌표 커서가 tz 뷰에 남아 오배치되는 것 방지.
-  useEffect(() => { setCursor(null); setSelEvent(null); }, [country, paneCountry]);
-
   // 다운로드 파일명은 로그인 계정이 아니라 실제로 렌더 중인 강사/학생을 pane 순서대로 사용한다.
   function downloadName(ext: string) {
     // [C4.5] 인물 해석은 순수 함수(lib/domain/calendar-export.resolveExportPeople)로 분리 — 단위 테스트 대상.
     const nameOf = (dim: "instructor" | "student", id: number) =>
       (dim === "instructor" ? resources?.instructors : resources?.students)?.find((option) => Number(option.id) === Number(id))?.name;
+    const basePanes = calendarPanesState.panes.flatMap((pane) => [
+      { dim: "instructor" as const, ids: pane.filters.instructorIds },
+      { dim: "student" as const, ids: pane.filters.studentIds },
+    ]).filter((pane) => pane.ids.length > 0);
     const people = resolveExportPeople({
-      manualPanes: manualPanes.map((pane) => ({ dim: pane.dim, ids: pane.ids })),
-      autoTzPanes: autoTzPanes.map((pane) => ({ dim: pane.dim, ids: pane.picks.map((pick) => pick.id) })),
-      basePanes: panes.map((pane) => ({ dim: pane.dim, ids: pane.picks.map((pick) => pick.id) })),
-      instructorIds: instPicks.map((pick) => pick.id),
-      studentIds: studPicks.map((pick) => pick.id),
+      manualPanes: [],
+      autoTzPanes: [],
+      basePanes,
+      instructorIds: [],
+      studentIds: [],
       selected,
       nameOf,
     });
     return calendarExportFilename({
       people,
       currentDate: todayISO(),
-      view,
+      view: "week",
       ext: ext === "jpg" ? "jpg" : "png",
     });
   }
@@ -1646,23 +1278,6 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
     window.addEventListener("pointerup", onResizeUp, { once: true });
   };
 
-  // ── 기간 이동 ──
-  const nav = (dir: number) => {
-    if (view === "month") {
-      const d = new Date(Date.UTC(Number(anchor.slice(0, 4)), Number(anchor.slice(5, 7)) - 1 + dir, 1));
-      setAnchor(d.toISOString().slice(0, 10));
-    } else if (period) {
-      const len = dates.length;
-      setPeriod({ from: addDaysISO(period.from, len * dir), to: addDaysISO(period.to, len * dir) });
-    } else setAnchor(addDaysISO(anchor, (view === "day" ? 1 : 7) * dir));
-  };
-  const periodLabel =
-    view === "month"
-      ? `${anchor.slice(0, 4)}년 ${Number(anchor.slice(5, 7))}월`
-      : view === "day"
-        ? anchor
-        : `${dates[0]} ~ ${dates[dates.length - 1]}${period ? ` (기간 ${dates.length}일)` : ""}`;
-  const isGrid = view === "week" || view === "day";
   // 현재 시각 인디케이터(빨간 선)용 — 오늘 컬럼에 표시
   const _now = new Date();
   const nowMin = _now.getHours() * 60 + _now.getMinutes();
@@ -1670,9 +1285,13 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   const showNow = mounted && nowMin >= GRID_MIN && nowMin <= END_H * 60; // [TBO-21 B2] mount 후에만(하이드레이션 불일치 방지)
 
   // ── 우측 패널 데이터: 위=필터 결과 리스트(날짜 오름차순) · 아래=클릭 세션 상세(ScheduleRow DTO) ──
-  const listRows = useMemo(() => sortByDateAsc(inRange), [inRange]);
+  const listRows = activeCalendarRows;
   // 그룹 토글 차원: 학생 선택 시 학생별(스펙), 그 외 강의실 > 강사 순 폴백
-  const listGroupDim: Exclude<ListGroupBy, "none"> = fStudents.size ? "student" : fRooms.size ? "room" : "instructor";
+  const listGroupDim: Exclude<ListGroupBy, "none"> = activeCalendarPane.filters.studentIds.length
+    ? "student"
+    : activeCalendarPane.filters.roomIds.length
+      ? "room"
+      : "instructor";
   const detailRow = detailId != null ? (rows.find((r) => r.id === detailId) ?? null) : null;
   // QA(2026-07-02): 리스트 클릭 시 상세 패널이 뷰포트 아래에 있어 안 보임 → 선택 시 자동 스크롤.
   const detailPanelRef = useRef<HTMLDivElement>(null);
@@ -1687,7 +1306,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   // [스플릿 높이 정렬 2026-07-07] 한 표(그리드)의 시간축(startH~endH)을 산출(순수). 스플릿 표들이 서로
   //  높이가 어긋나지 않도록, 호출부에서 여러 표의 축을 unionAxis로 합쳐 axisOverride로 넘긴다.
   //  시차 표(tz)·개별 시차 컬럼은 0~24h로 확장(expandAxis) — 시차까지 고려한 공통 축이 됨.
-  const computeAxis = (cols: Col[], tzc?: CountryInfo | null): { startH: number; endH: number } => {
+  const computeAxis = (cols: Col[], sourceRows: ScheduleRow[], tzc?: CountryInfo | null): { startH: number; endH: number } => {
     // [KST 고정] kstFixed면 시차 반영 안 함(전 컬럼 KST 축) → 축이 08~22 + 콘텐츠 확장.
     const tzActive = !kstFixed && !!tzc && tzc.tz !== KST_TZ;
     const anyColTz = !kstFixed && !tzActive && cols.some((c) => c.tzc != null);
@@ -1695,7 +1314,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
     let contentLo = START_H * 60, contentHi = END_H * 60;
     if (!axisTz) {
       const colDates = new Set(cols.map((c) => c.date));
-      for (const r of filtered) {
+      for (const r of sourceRows) {
         if (colDates.has(r.sessionDate)) { contentLo = Math.min(contentLo, startMinOf(r)); contentHi = Math.max(contentHi, endMinOf(r)); }
         // [R-9] 전일 자정 크로스 세션의 익일 잔여(00:00~) — 다음날 컬럼이 보이면 축을 0시까지.
         if (endMinOf(r) > 1440 && colDates.has(addDaysISO(r.sessionDate, 1))) contentLo = 0;
@@ -1712,24 +1331,31 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   const unionAxis = (list: { startH: number; endH: number }[]): { startH: number; endH: number } =>
     list.length ? { startH: Math.min(...list.map((a) => a.startH)), endH: Math.max(...list.map((a) => a.endH)) } : { startH: START_H, endH: END_H };
 
-  const renderTimeGrid = (cols: Col[], tzc?: CountryInfo | null, paneFilters?: CalendarFacetFilters, availW?: number, axisOverride?: { startH: number; endH: number }) => {
+  const renderTimeGrid = (
+    cols: Col[],
+    tzc: CountryInfo | null | undefined,
+    paneFilters: CalendarFacetFilters | undefined,
+    availW: number | undefined,
+    axisOverride: { startH: number; endH: number } | undefined,
+    sourceRows: ScheduleRow[],
+  ) => {
     // [KST 고정] kstFixed면 tz 위치 변환·편집 변환 없음(전 컬럼 KST). 국가정보는 칩 현지시각 라벨용으로만 유지.
     const tzActive = !kstFixed && !!tzc && tzc.tz !== KST_TZ;
     // 학생 개별 시차(피드백 2026-07-03 #1): 그리드 tz(전역/표별 — 명시 선택)가 없을 때만
     //  학생 컬럼의 country 파생 tz가 동작. 축은 컬럼 하나라도 tz면 0~24h(다른 나라 새벽 대비).
     const anyColTz = !kstFixed && !tzActive && cols.some((c) => c.tzc != null);
     // [스플릿 높이 정렬] 축은 공통(axisOverride) 우선 — 없으면 이 표 자체 축. 시차·심야 콘텐츠 확장은 computeAxis가 처리.
-    const { startH, endH } = axisOverride ?? computeAxis(cols, tzc);
+    const { startH, endH } = axisOverride ?? computeAxis(cols, sourceRows, tzc);
     const gridMin = startH * 60, gridMax = endH * 60, gridH = (endH - startH) * HOUR_H;
     const clampAxis = (mm: number) => clampToAxis(mm, gridMin, gridMax); // [이슈2] 이 그리드 축 경계
     // 변환 캐시(같은 filtered·tz면 재사용) — 표 2개/컬럼별 tz/리렌더에서 tz별 1회만 O(n) 변환(감사 M4)
     const cache = tzRowsCacheRef.current;
-    if (cache.src !== filtered) { cache.src = filtered; cache.map.clear(); }
+    if (cache.src !== sourceRows) { cache.src = sourceRows; cache.map.clear(); }
     const rowsForTz = (tz: string): ScheduleRow[] => {
-      if (tz === KST_TZ) return filtered;
+      if (tz === KST_TZ) return sourceRows;
       const hit = cache.map.get(tz);
       if (hit) return hit;
-      const shifted = shiftRowsToTz(filtered, tz);
+      const shifted = shiftRowsToTz(sourceRows, tz);
       cache.map.set(tz, shifted);
       return shifted;
     };
@@ -1741,7 +1367,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
     // [C3] 일별 컬럼은 표 개수·날짜 수가 늘어도 한 화면 비교가 되도록 최소폭만 남기고 압축한다.
     const netW = Math.max(80, (availW ?? mainW) - GUTTER_W - 10);
     const fitDayW = Math.floor(netW / Math.max(1, dayCount));
-    const minDayW = compactCols ? 18 * perDay : 24 * perDay;
+    const minDayW = 24 * perDay;
     const dayW = Math.max(minDayW, fitDayW);
     const subW = isSplitGrid ? Math.max(24, Math.floor(dayW / perDay)) : Math.max(24, dayW);
     // 텍스트 밀도 단계(서브열 폭 기준) — 단일 함수 densityOf(lib/domain/lantiv, vitest)로 통일(R2)
@@ -1759,7 +1385,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
           ? "컬럼마다 현지 시각 축입니다."
           : "한국 표준시 축입니다.";
     return (
-              <div className="card overflow-hidden">
+              <div className="card overflow-x-auto overflow-y-hidden">
                 <div className="flex" /* [고정폭] minWidth 강제 제거 — 스크롤 없음 */>
                   {/* 시간 거터 */}
                   <div className="shrink-0 sticky left-0 z-10 bg-canvas" style={{ width: GUTTER_W }}>
@@ -1811,12 +1437,12 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
                         attBySession.get(Number(r.id)) ?? [],
                         paneFilters,
                       );
-                      const colRows = rowsOfColumn(c, colTz ? rowsForTz(colTzc.tz) : filtered).filter(panePass);
+                      const colRows = rowsOfColumn(c, colTz ? rowsForTz(colTzc.tz) : sourceRows).filter(panePass);
                       // [R-9] 전일 자정 크로스 세션의 익일 연속 블록(00:00~잔여) — **표시 전용**(상호작용은
                       //  시작일 원본 블록에서). KST 컬럼 전용 — 시차 컬럼은 shiftRowToTz가 현지 좌표로
                       //  통변환하므로(대개 크로스가 풀림) 기존 tzOverflowEnd 배지 규칙을 유지.
                       const contRows = !colTz
-                        ? rowsOfColumn({ ...c, date: addDaysISO(c.date, -1) }, filtered).filter(panePass).filter((r) => endMinOf(r) > 1440)
+                        ? rowsOfColumn({ ...c, date: addDaysISO(c.date, -1) }, sourceRows).filter(panePass).filter((r) => endMinOf(r) > 1440)
                         : [];
                       // [B-4 #9] 강사 본인 pending 요청 고스트(승인 대기 시각화) — KST 컬럼 전용·표시 전용.
                       //  세션 요청과 availability 요청을 분리해 타입별 geometry를 각각 계산한다.
@@ -1946,7 +1572,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
                                   </span>
                                 )}
                               </>
-                            ) : view === "week" ? (
+                            ) : (
                               <>
                                 <span className={`text-micro ${isToday ? "text-accent font-semibold" : "text-fg-subtle"}`}>
                                   {c.label}
@@ -1958,8 +1584,6 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
                                   {Number(c.date.slice(8))}
                                 </span>
                               </>
-                            ) : (
-                              <span className="text-body font-semibold truncate px-1">{c.label}</span>
                             )}
                           </div>
                           <div
@@ -2248,7 +1872,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
                                   )}
                                   {textMode === "full" && (
                                     <div className="opacity-80 truncate">
-                                      {r.memo ? r.memo : view === "week" ? (r.roomName ?? "") : r.instructorName}
+                                      {r.memo ? r.memo : (r.roomName ?? "")}
                                     </div>
                                   )}
                                   {textMode === "vtitle" && (
@@ -2279,18 +1903,12 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
     );
   };
 
-  // [스플릿 높이 정렬 2026-07-07] 스플릿(수동/자동 2표) 렌더 전에 모든 표의 축을 union → 공통 축으로 렌더.
-  //  각 표가 제 콘텐츠·시차로 축을 따로 잡아 높이가 어긋나던 문제 해소(나란히 비교 가능). 시차 표는 0~24h로
-  //  확장되어 union에 반영 = 시차까지 고려한 공통 눈금.
-  const manualPanesAxis = manualPanes.length
-    ? unionAxis(manualPanes.map((mp) => computeAxis(colsFor(picksForManualPane(mp), `m${mp.uid}|`), paneCountryU[mp.uid] ?? null)))
-    : undefined;
-  const autoTzPanesAxis = autoTzPanes.length
-    ? unionAxis(autoTzPanes.map((pane, index) => computeAxis(colsFor(pane.picks, `tz${index}|`), pane.country)))
-    : undefined;
-  const twoPanesAxis = twoPanes
-    ? unionAxis(panes.map((g) => computeAxis(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim))))
-    : undefined;
+  const calendarPaneModels = calendarPanesState.panes.map((pane) => ({
+    pane,
+    columns: columnsForCalendarPane(pane),
+    rows: calendarRowsByPane.get(pane.id) ?? [],
+  }));
+  const calendarPanesAxis = unionAxis(calendarPaneModels.map((model) => computeAxis(model.columns, model.rows)));
 
   return (
     <div className="mx-auto max-w-page-wide p-3 sm:p-6">
@@ -2299,64 +1917,21 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
         title="스케줄 캘린더"
         sub={
           <>
-            {periodLabel}
+            {calendarPanePeriodLabel(activeCalendarPane)}
             <span className="text-fg-subtle">
-              {" "}· {inRange.length}건{anyFilter ? ` / 전체 ${visibleRows.length}` : ""} · 시수 {hrs.hours}h
+              {" "}· {activeCalendarRows.length}건 · 시수 {teachingHours(activeCalendarRows).hours}h · 표 {calendarPanesState.panes.length}개
             </span>
-            {selected && <span className="text-accent"> · {selected.name} 개인 스케줄</span>}
-            {isSplit && (
-              <span className="text-accent">
-                {" "}· {twoPanes
-                  ? `표 2개(강사 ${panes[0].picks.length} | 학생 ${panes[1].picks.length})`
-                  : `데일리 스플릿(${splitDim === "instructor" ? "강사" : splitDim === "student" ? "학생" : "강의실"} ${singleSplitPicks.length})`}
-              </span>
-            )}
           </>
         }
         actions={
           <>
-            <div className="flex rounded-md overflow-hidden border">
-              {(["month", "week", "day"] as View[]).map((v) => (
-                <button
-                  key={v}
-                  className={`btn btn-sm rounded-none border-0 ${view === v ? "badge-accent" : ""}`}
-                  onClick={() => setView(v)}
-                >
-                  {v === "month" ? "월간" : v === "week" ? "주간" : "일간(강의실)"}
-                </button>
-              ))}
-            </div>
-            <button className="btn btn-sm" onClick={() => nav(-1)}>◀</button>
-            <button className="btn btn-sm" onClick={() => setAnchor(todayISO())}>오늘</button>
-            <button className="btn btn-sm" onClick={() => nav(1)}>▶</button>
-            {view === "day" && (
-              <input type="date" className="input h-7 w-36" value={anchor} onChange={(e) => setAnchor(e.target.value)} />
-            )}
-            {/* 표 분할은 필터 선택에서 자동(강사+학생 동시 선택 → 표 2개) — 수동 버튼 제거(피드백) */}
             {canAdd && resources && (
               <button
                 className="btn btn-sm btn-primary"
-                onClick={() => setCreating({ date: view === "day" ? anchor : (dates.find((d) => d === todayISO()) ?? dates[0]) })}
+                onClick={() => setCreating({ date: activeCalendarDates.find((date) => date === todayISO()) ?? activeCalendarDates[0] })}
               >
                 + 스케줄 추가{isInstructor ? " (내 수업)" : ""}
               </button>
-            )}
-            {/* 국가 시차 뷰(전역): 선택 시 그 국가 학생 세션 필터 + 그리드가 그 나라 시간으로 — PNG로 그대로 추출 */}
-            <CountryInput value={country} onSelect={setCountry} />
-            {/* [KST 고정 축] 여러 시차를 나란히 비교할 때 — 모든 컬럼을 KST 위치로(같은 가로선=같은 순간). 해외 칩엔 현지시각 병기 */}
-            <span
-              className="badge badge-accent text-caption"
-              title="모든 표는 KST 00~24시 기준으로 고정됩니다. 해외 표는 시간 라벨 아래에 현지 시각을 병기합니다."
-            >
-              🇰🇷 KST 기준
-            </span>
-            {anyTzActive && (
-              <span
-                className="badge text-caption"
-                title={kstFixed ? "표 행은 KST 기준으로 맞추고, 각 수업 칩에 현지 시각을 병기합니다." : "시차 표는 현지 시간 축으로 표시됩니다."}
-              >
-                시차 적용 중 · {kstFixed ? "행 정렬 KST" : "현지 축"}
-              </span>
             )}
             <button className="btn btn-sm" disabled={busyImg} onClick={() => saveImage("png")} title="현재 화면을 PNG로 저장(시차 뷰면 그 국가 시간 기준)">
               PNG
@@ -2367,11 +1942,11 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
             <HelpPopover title="캘린더 조작법">
               <p>드래그 = 이동 · Ctrl+드래그 = 복제</p>
               <p>Ctrl+C/V = 복사·붙여넣기 · 빈 시간 클릭 = 커서</p>
-              <p>강사+학생 동시 선택 = 표 2개(스플릿)</p>
-              <p>표 사이 드래그 = 이동/재배정(강사·1:1 학생)</p>
+              <p>표 나누기 = 현재 표의 대상·기간·필터 복제</p>
+              <p>기간 입력 드래그 = 범위 · Ctrl/Cmd+클릭 = 개별 날짜</p>
               <p>시차 컬럼도 편집 가능 — 저장은 KST 자동 변환</p>
               <p>가용 밴드: 클릭=선택 · 끝 드래그=시간 조절 · ✕=삭제</p>
-              <p>우측 리스트 유저 클릭 = 개인 스케줄 필터</p>
+              <p>같은 필터 안은 OR, 다른 필터 사이는 AND</p>
             </HelpPopover>
           </>
         }
@@ -2381,101 +1956,6 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
         {/* 좌측 추천 패널 제거(피드백 2026-07-02 #5) — 스플릿뷰로 강사·학생 스케줄을 직접 비교·배치. */}
         {/* 본문 */}
         <div ref={mainRef} className="flex-1 min-w-0 space-y-4">
-          {/* ── Lantiv형 필터 바: 리소스 다중선택(스플릿) + 상태/그룹/기간 + 검색/색 기준.
-                 [압축 2026-07-06] 뷰 도구(열 좁게·뷰 프리셋)를 별도 행 대신 필터 카드 2행에 통합 — 세로 1행 절약 ── */}
-          <CalendarFilterBar
-            tools={
-              <>
-                <button
-                  type="button"
-                  className={`btn btn-sm ${compactCols ? "badge-accent" : ""}`}
-                  title="하루 열 상한 축소(128→80px) — 컬럼은 항상 컨테이너에 맞는 고정폭(스크롤 없음)"
-                  onClick={() => setCompactCols((v) => !v)}
-                >⇤ 열 좁게</button>
-                <CalendarViewTabs
-                  activeId={activePresetId}
-                  onApply={applyPreset}
-                  onSaveCurrent={saveCurrentPreset}
-                  onMsg={setMsg}
-                />
-                <span className="w-px h-5 bg-line" />
-                {/* [#2 2026-07-06] 수동 표 빌더 — 강사·학생·강의실·과목 임의 조합(동일차원 2표 허용) */}
-                <button
-                  type="button"
-                  className={`btn btn-sm ${manualPanes.length ? "badge-accent" : ""}`}
-                  title="원하는 기준(강사·학생·강의실·과목)으로 표를 나눠 나란히 보기 — 표를 여러 개 추가 가능(학생×학생 등)"
-                  onClick={addManualPane}
-                  disabled={view === "month"}
-                >⊞ 표 나누기{manualPanes.length ? ` (${manualPanes.length})` : ""}</button>
-                <span className="w-px h-5 bg-line" />
-              </>
-            }
-            resources={resources}
-            rooms={rooms}
-            q={q}
-            onQ={setQ}
-            colorBy={colorBy}
-            onColorBy={setColorBy}
-            fInstructors={fInstructors}
-            fStudents={fStudents}
-            fRooms={fRooms}
-            onToggleId={(dim, id) => {
-              if (isInstructor && (dim === "instructor" || dim === "student")) return;
-              const setter = dim === "instructor" ? setFInstructors : dim === "student" ? setFStudents : setFRooms;
-              setter((prev) => {
-                const n = new Set(prev);
-                if (n.has(id)) n.delete(id);
-                else n.add(id);
-                return n;
-              });
-            }}
-            onClearDim={(dim) =>
-              isInstructor && (dim === "instructor" || dim === "student")
-                ? undefined
-                : (dim === "instructor" ? setFInstructors : dim === "student" ? setFStudents : setFRooms)(new Set())
-            }
-            subjectOptions={subjectFilterOptions}
-            fSubjects={fSubjects}
-            onToggleSubject={(s) => setFSubjects((prev) => { const n = new Set(prev); if (n.has(s)) n.delete(s); else n.add(s); return n; })}
-            onClearSubjects={() => setFSubjects(new Set())}
-            fStatuses={fStatuses}
-            onToggleStatus={(s) =>
-              setFStatuses((prev) => {
-                const n = new Set(prev);
-                if (n.has(s)) n.delete(s);
-                else n.add(s);
-                return n;
-              })
-            }
-            fModes={fModes}
-            onToggleMode={(k) =>
-              setFModes((prev) => {
-                const n = new Set(prev);
-                if (n.has(k)) n.delete(k);
-                else n.add(k);
-                return n;
-              })
-            }
-            groupOnly={groupOnly}
-            onGroupOnly={setGroupOnly}
-            period={period}
-            onPeriod={(p) => { if (p) setPickedDates([]); /* [배타] 기간 설정 시 체리픽 해제 */ setPeriod(p); }}
-            pickedDates={pickedDates}
-            onPickDate={(d) => { setPeriod(null); /* [배타 2026-07-06] 체리픽 전환 시 기간 초기화(대표 지적 4) */ setPickedDates((prev) => (prev.includes(d) || prev.length >= 14 ? prev : [...prev, d].sort())); }}
-            onUnpickDate={(d) => setPickedDates((prev) => prev.filter((x) => x !== d))}
-            onClearPicked={() => setPickedDates([])}
-            anyFilter={!!anyFilter}
-            onClearAll={clearFilters}
-            hideResourceFilters={manualPanes.length > 0}
-            resourceFilterDims={isInstructor ? INSTRUCTOR_RESOURCE_FILTER_DIMS : undefined}
-            resourceFilterNotice={manualPanes.length || isInstructor ? (
-              <span className="badge text-micro">
-                {manualPanes.length
-                  ? `스플릿 모드 · ${isInstructor ? "강의실/과목" : "강사/학생/강의실"}은 각 표에서 선택`
-                  : `내 일정 · ${selected?.name ?? access.account?.name ?? `강사 #${myInstructorId ?? "-"}`}`}
-              </span>
-            ) : undefined}
-          />
           {hasAvailabilityLegend && (
             <p className="text-caption text-fg-subtle inline-flex items-center gap-2 flex-wrap">
               <span className="inline-flex items-center gap-1">
@@ -2494,8 +1974,8 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
           {/* [TBO-29D ⑤] 학원 공통 일정 스트립 — 현재 보이는 날짜와 겹치는 이벤트(전 직원 공통·조회 전용).
               CUD는 관리자 화면(매니저 이상 — 요구 ⑥). 강사 개인 필터와 무관하게 항상 노출된다. */}
           {(() => {
-            const visibleFrom = dates[0];
-            const visibleTo = dates[dates.length - 1];
+            const visibleFrom = activeCalendarDates[0];
+            const visibleTo = activeCalendarDates[activeCalendarDates.length - 1];
             const visible = academyEvents.filter((ev) => ev.startDate <= visibleTo && ev.endDate >= visibleFrom);
             // [B5 2026-07-16 대표 결정 ③] 일반수업+진단고사+모의고사(행사)+상담을 한 캘린더에서 —
             //  모의고사(type=exam) 등 학원 일정을 캘린더에서 바로 추가(매니저 이상, EventForm 재사용).
@@ -2546,165 +2026,34 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
           )}
 
           <div ref={captureRef} className="bg-canvas">
-            {view === "month" ? (
-              <MonthGrid
-                anchor={anchor}
-                rows={filtered}
-                colorOf={colorOf}
-                onPick={(r) => openEditor(r)}
-                onPickDay={(d) => {
-                  setAnchor(d);
-                  setView("day");
-                }}
-                onCreateDay={(d) => canAdd && setCreating({ date: d })}
-              />
-            ) : autoTzPanes.length > 0 ? (
-              /* 학생과 강사가 같은 다중 시차 분리 함수를 사용한다. 혼합 시차 차원은 리소스별 표,
-                 같은 시차의 동반 차원은 한 표의 서브컬럼으로 유지한다. */
-              <div className="flex gap-3 items-start overflow-hidden">
-                {autoTzPanes.map((autoPane, index) => {
-                  const ids = autoPane.picks.map((pick) => pick.id);
-                  const paneCount = autoTzPanes.length;
-                  const w = Math.max(1, (mainW - 12 * Math.max(0, paneCount - 1)) / Math.max(1, paneCount));
-                  const key = `auto:${autoPane.dim}:${ids.join(",")}`;
-                  const uid = (autoPane.dim === "instructor" ? 900000 : 910000) + ids[0];
-                  const setIds = (next: number[]) => {
-                    if (autoPane.dim === "instructor") setFInstructors(new Set(next));
-                    else setFStudents(new Set(next));
-                  };
-                  return (
-                    <div key={key} className="min-w-0" style={{ width: w }}>
-                      <CalendarSplitPane
-                        pane={{ uid, dim: autoPane.dim, ids }}
-                        fixedDim
-                        resources={resources}
-                        rooms={rooms}
-                        onChange={(patch) => { if (patch.ids) setIds(patch.ids); }}
-                        onRemove={() => {
-                          const removed = new Set(ids);
-                          const current = autoPane.dim === "instructor" ? fInstructors : fStudents;
-                          setIds([...current].filter((id) => !removed.has(id)));
-                          setPaneFacets((facets) => { const next = { ...facets }; delete next[key]; return next; });
-                        }}
-                        headerExtra={
-                          <CalendarPaneFilters value={facetOf(key)} subjectOptions={subjectFilterOptions} onChange={(next) => setFacet(key, next)} />
-                        }
-                      >
-                        {renderTimeGrid(colsFor(autoPane.picks, `tz${index}|`), autoPane.country, facetOf(key), w, autoTzPanesAxis)}
-                      </CalendarSplitPane>
-                    </div>
+            {calendarPaneModels.length ? (
+              <div className="flex items-start gap-3 overflow-hidden">
+                {calendarPaneModels.map((model, index) => {
+                  const paneWidth = Math.max(
+                    280,
+                    (mainW - 12 * Math.max(0, calendarPaneModels.length - 1)) / calendarPaneModels.length,
                   );
-                })}
-              </div>
-            ) : manualPanes.length > 0 ? (
-              /* [#2 2026-07-06] 수동 표 빌더 — 임의 차원(강사·학생·강의실·과목) 조합·동일차원 2표 허용.
-                 [Chunk 2H] 첫 클릭 시 현재 resource filter를 pane 1로 옮기고 pane 2를 추가한다.
-                 전역 resource filter는 비워서 각 표 헤더가 리소스 선택의 단일 소스가 된다. */
-              <div className="flex gap-3 items-start overflow-hidden">
-                {manualPanes.map((mp) => {
-                  const picks = picksForManualPane(mp);
-                  const paneCount = manualPanes.length;
-                  const w = Math.max(120, (mainW - 12 * Math.max(0, paneCount - 1)) / paneCount);
                   return (
-                    <div key={mp.uid} className="min-w-0" style={{ width: w }}>
-                      <CalendarSplitPane
-                        pane={{ uid: mp.uid, dim: mp.dim, ids: mp.ids }}
+                    <div key={model.pane.id} className="min-w-0" style={{ width: paneWidth }}>
+                      <CalendarPane
+                        pane={model.pane}
+                        active={calendarPanesState.activePaneId === model.pane.id}
                         resources={resources}
                         rooms={rooms}
                         subjects={subjectOpts}
+                        dispatch={dispatchCalendarPanes}
+                        paneIndex={index}
+                        paneCount={calendarPaneModels.length}
                         allowedDimensions={isInstructor ? INSTRUCTOR_SPLIT_DIMS : undefined}
-                        onChange={(patch) => setManualPanes((prev) => prev.map((x) => (x.uid === mp.uid ? { ...x, ...patch } : x)))}
-                        onRemove={() => {
-                          setManualPanes((prev) => prev.filter((x) => x.uid !== mp.uid));
-                          setPaneCountryU((prev) => { const n = { ...prev }; delete n[mp.uid]; return n; });
-                          setPaneFacets((prev) => { const n = { ...prev }; delete n[manualFacetKey(mp.uid)]; return n; });
-                        }}
-                        onMoveLeft={() => moveManualPane(mp.uid, -1)}
-                        onMoveRight={() => moveManualPane(mp.uid, 1)}
-                        headerExtra={
-                          <CalendarPaneFilters value={facetOf(manualFacetKey(mp.uid))} subjectOptions={subjectFilterOptions} onChange={(next) => setFacet(manualFacetKey(mp.uid), next)} />
-                        }
                       >
-                        {renderTimeGrid(colsFor(picks, `m${mp.uid}|`), paneCountryU[mp.uid] ?? null, facetOf(manualFacetKey(mp.uid)), w, manualPanesAxis)}
-                      </CalendarSplitPane>
+                        {renderTimeGrid(model.columns, null, undefined, paneWidth, calendarPanesAxis, model.rows)}
+                      </CalendarPane>
                     </div>
                   );
                 })}
               </div>
-            ) : twoPanes ? (
-              /* 강사+학생 동시 필터 → 표 2개 자동(각 표 = 날짜×선택 데일리 스플릿). ✕=표 닫기(필터 유지) */
-              <div className="flex gap-3 items-start overflow-hidden">{/* 표 개수에 맞춰 폭을 줄여 한 화면에 유지 */}
-                {panes.map((g) => (
-                  <CalendarSplitPane
-                    key={g.dim}
-                    pane={{ uid: g.dim === "instructor" ? 1 : 2, dim: g.dim, ids: g.picks.map((x) => x.id) }}
-                    fixedDim
-                    resources={resources}
-                    rooms={rooms}
-                    onChange={(patch) => {
-                      if (!patch.ids) return;
-                      const setter = g.dim === "instructor" ? setFInstructors : setFStudents;
-                      setter(new Set(patch.ids)); // 표의 픽커 = 상단 필터와 단일 상태(양방향 동기화)
-                    }}
-                    onRemove={() => {
-                      setClosedPanes((prev) => new Set(prev).add(g.dim));
-                      // [감사 M8] 닫힌 표의 국가 override 정리 — 다시 열면 전역 국가를 따름
-                      setPaneCountry((prev) => { const n = { ...prev }; delete n[g.dim]; return n; });
-                    }}
-                    headerExtra={
-                      /* 표별 날짜와 단계형 수업 필터. 좁은 표에서도 컨트롤은 줄바꿈되고 표 밖으로 넘치지 않는다. */
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {/* [이슈3] 이 표의 날짜 범위 — 캘린더(from~to)로 표마다 다르게. 비우면 전역 기간. */}
-                        <input type="date" className="input h-7 px-1.5 text-caption w-[120px]" title="이 표 시작일"
-                          value={paneRange[g.dim]?.from ?? (dates[0] ?? "")}
-                          onChange={(e) => setPaneRange((prev) => ({ ...prev, [g.dim]: { from: e.target.value, to: prev[g.dim]?.to ?? e.target.value } }))} />
-                        <span className="text-caption text-fg-subtle">~</span>
-                        <input type="date" className="input h-7 px-1.5 text-caption w-[120px]" title="이 표 종료일"
-                          value={paneRange[g.dim]?.to ?? (dates[dates.length - 1] ?? "")}
-                          min={paneRange[g.dim]?.from ?? dates[0]}
-                          onChange={(e) => setPaneRange((prev) => ({ ...prev, [g.dim]: { from: prev[g.dim]?.from ?? (dates[0] ?? e.target.value), to: e.target.value } }))} />
-                        {(paneRange[g.dim] || panePicked[g.dim]?.length) && (
-                          <button type="button" className="btn btn-sm h-7 px-1.5" title="전역 기간으로(범위·선택 날짜 해제)"
-                            onClick={() => { setPaneRange((prev) => { const n = { ...prev }; delete n[g.dim]; return n; }); setPanePicked((prev) => { const n = { ...prev }; delete n[g.dim]; return n; }); }}>↺</button>
-                        )}
-                        {/* [B-3 #5] cherry-pick: 원하는 날짜만 여러 개 — 선택 시 범위(from~to)보다 우선 */}
-                        <input type="date" className="input h-7 px-1.5 text-caption w-[120px]" title="날짜 추가(cherry-pick) — 고르면 그 날짜들만 표시"
-                          value=""
-                          onChange={(e) => { const d = e.target.value; if (!d) return; setPaneRange((prev) => { const n = { ...prev }; delete n[g.dim]; return n; }); /* [배타] */ setPanePicked((prev) => { const cur = prev[g.dim] ?? []; if (cur.includes(d) || cur.length >= 14) return prev; return { ...prev, [g.dim]: [...cur, d].sort() }; }); }} />
-                        {(panePicked[g.dim] ?? []).map((d) => (
-                          <span key={d} className="badge text-micro mono cursor-pointer" title="클릭=이 날짜 제거"
-                            onClick={() => setPanePicked((prev) => { const cur = (prev[g.dim] ?? []).filter((x) => x !== d); const n = { ...prev }; if (cur.length) n[g.dim] = cur; else delete n[g.dim]; return n; })}>
-                            {d.slice(5)} ✕
-                          </span>
-                        ))}
-                        <span className="w-px h-5 bg-line" />
-                        <CalendarPaneFilters
-                          value={facetOf(dimFacetKey(g.dim))}
-                          subjectOptions={subjectFilterOptions}
-                          onChange={(next) => setFacet(dimFacetKey(g.dim), next)}
-                        />
-                        <CountryInput
-                          compact
-                          value={paneTzOf(g.dim)}
-                          onSelect={(c) => setPaneCountry((prev) => ({ ...prev, [g.dim]: c }))}
-                          placeholder="🌐 국가"
-                        />
-                      </div>
-                    }
-                  >
-                    {renderTimeGrid(colsFor(g.picks, `p${g.dim}|`, paneDatesOf(g.dim)), paneTzOf(g.dim), facetOf(dimFacetKey(g.dim)), panes.length >= 2 ? Math.max(120, (mainW - 12 * Math.max(0, panes.length - 1)) / panes.length) : mainW, twoPanesAxis)}
-                  </CalendarSplitPane>
-                ))}
-              </div>
-            ) : (
-              renderTimeGrid(columns, country)
-            )}
+            ) : null}
           </div>
-          {isGrid && selected?.type === "instructor" && (
-            <p className="text-caption text-fg-subtle">
-              개인 스케줄: {selected.name} · {inRange.length}개 수업 · 시수 {hrs.hours}h
-            </p>
-          )}
         </div>
 
         {/* 우측 컬럼(Lantiv): 유저별 스케줄(단일 선택) + 수업 리스트(날짜순·그룹 토글) + 선택 수업 상세(DTO) */}
@@ -2715,12 +2064,21 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
               resources={resources}
               selected={infoTarget}
               onSelect={setInfoTarget}
-              filterIds={{ instructor: fInstructors, student: fStudents, room: fRooms }}
+              filterIds={{
+                instructor: new Set(activeCalendarPane.filters.instructorIds),
+                student: new Set(activeCalendarPane.filters.studentIds),
+                room: new Set(activeCalendarPane.filters.roomIds),
+              }}
               onToggleFilter={(dim, id) => {
                 if (isInstructor && (dim === "instructor" || dim === "student")) return;
-                // 필터바 onToggleId와 동일 로직(단일 소스) — 리스트 클릭 = 필터 선택/해제(UX 제안 2026-07-06)
-                const setter = dim === "instructor" ? setFInstructors : dim === "student" ? setFStudents : setFRooms;
-                setter((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+                const filter = dim === "instructor" ? "instructorIds" : dim === "student" ? "studentIds" : "roomIds";
+                const values = activeCalendarPane.filters[filter];
+                dispatchCalendarPanes({
+                  type: "pane/set-resource-filter",
+                  paneId: activeCalendarPane.id,
+                  filter,
+                  values: values.includes(id) ? values.filter((value) => value !== id) : [...values, id],
+                });
               }}
               allowedTypes={isInstructor ? INSTRUCTOR_RESOURCE_PANEL_TYPES : undefined}
             />
@@ -2733,9 +2091,20 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
           {cardTarget && (
             <ResourceDetailCard
               selected={cardTarget}
-              isFiltered={selected != null && selected.type === cardTarget.type && Number(selected.id) === Number(cardTarget.id)}
-              onFocusView={() => selectResource(cardTarget)}
-              onClearFocus={() => { selectResource(null); setInfoTarget(cardTarget); }}
+              isFiltered={cardTarget.type === "instructor"
+                ? activeCalendarPane.filters.instructorIds.includes(Number(cardTarget.id))
+                : cardTarget.type === "student"
+                  ? activeCalendarPane.filters.studentIds.includes(Number(cardTarget.id))
+                  : activeCalendarPane.filters.roomIds.includes(Number(cardTarget.id))}
+              onFocusView={() => {
+                const filter = cardTarget.type === "instructor" ? "instructorIds" : cardTarget.type === "student" ? "studentIds" : "roomIds";
+                dispatchCalendarPanes({ type: "pane/set-resource-filter", paneId: activeCalendarPane.id, filter, values: [Number(cardTarget.id)] });
+              }}
+              onClearFocus={() => {
+                const filter = cardTarget.type === "instructor" ? "instructorIds" : cardTarget.type === "student" ? "studentIds" : "roomIds";
+                dispatchCalendarPanes({ type: "pane/set-resource-filter", paneId: activeCalendarPane.id, filter, values: [] });
+                setInfoTarget(cardTarget);
+              }}
               onMsg={setMsg}
               onSaved={load}
               onAddSchedule={
@@ -2743,7 +2112,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
                   ? () =>
                       setCreating({
                         // 기준일: 전역 추가 버튼과 동일 규칙(오늘이 뷰에 있으면 오늘, 아니면 첫 날)
-                        date: view === "day" ? anchor : (dates.find((d) => d === todayISO()) ?? dates[0]),
+                        date: activeCalendarDates.find((date) => date === todayISO()) ?? activeCalendarDates[0],
                         owner: cardTarget,
                         defaultInstructorId: cardTarget?.type === "instructor" ? Number(cardTarget.id) : undefined,
                       })
@@ -2754,7 +2123,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
           <SessionListPanel
             emptyHint={
               listRows.length ? undefined
-                : `${effRange.from === effRange.to ? effRange.from : `${effRange.from}~${effRange.to}`} 기간${selected ? ` · ${selected.name} 개인 필터` : ""} 기준 — 기간을 넓히거나 필터를 확인하세요`
+                : `${calendarPanePeriodLabel(activeCalendarPane)} 기준 — 기간을 넓히거나 필터를 확인하세요`
             }
             rows={listRows}
             groupBy={listGrouped ? listGroupDim : "none"}
@@ -2765,7 +2134,14 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
               setDetailId(r.id);
               setSelEvent(r.id);
               // 리스트 항목이 현재 뷰 기간 밖이면 그 날짜로 이동(그리드에서 바로 보이게)
-              if (r.sessionDate < range.from || r.sessionDate > range.to) setAnchor(r.sessionDate);
+              if (!activeCalendarDates.includes(r.sessionDate)) {
+                dispatchCalendarPanes({
+                  type: "pane/set-range",
+                  paneId: activeCalendarPane.id,
+                  anchorDate: r.sessionDate,
+                  currentDate: r.sessionDate,
+                });
+              }
               scrollDetailIntoView();
             }}
             colorOf={colorOf}

@@ -6,7 +6,7 @@ import type { InstructorAttendanceLedgerEntry, StaffAttendanceRecord } from "@km
 import { DateRangeControl } from "@/components/DateRangeControl";
 import { ReasonModal } from "@/components/ReasonModal";
 import { Badge, ClickableTableRow, EmptyState, LoadingState, SectionCard, StatCard, TableWrap } from "@/components/ui";
-import { MultiPick } from "@/features/calendar/CalendarFilterBar";
+import { MultiPick } from "@/features/calendar/CalendarFilterControls";
 import { apiErrorMessage } from "@/lib/api-error";
 import {
   staffAttendanceStatusTone,

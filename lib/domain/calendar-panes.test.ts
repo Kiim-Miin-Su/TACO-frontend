@@ -1,78 +1,35 @@
 import { describe, expect, it } from "vitest";
 import {
   activeCalendarPaneFilterLabels,
-  appendCalendarPane,
   calendarPanePeriodLabel,
+  calendarPaneColumnLabel,
+  calendarPaneDates,
+  calendarRowsForPane,
   calendarPanesFetchRange,
   calendarPanesReducer,
-  companionPaneSeed,
   createCalendarPanesState,
-  currentPaneSeeds,
-  primaryPaneSeed,
 } from "./calendar-panes";
+import type { ScheduleRow } from "@/types";
 
-describe("calendar pane seed helpers", () => {
-  it("moves the current resource filter into the first manual pane", () => {
-    expect(primaryPaneSeed({ instructors: [1, 2], students: [10], rooms: [] })).toEqual({
-      dim: "instructor",
-      ids: [1, 2],
-    });
-    expect(primaryPaneSeed({ instructors: [], students: [10], rooms: [3] })).toEqual({
-      dim: "student",
-      ids: [10],
-    });
-    expect(primaryPaneSeed({ instructors: [], students: [], rooms: [3] })).toEqual({
-      dim: "room",
-      ids: [3],
-    });
-  });
-
-  it("uses the logged-in instructor as a concrete fallback owner", () => {
-    expect(primaryPaneSeed({ instructors: [], students: [], rooms: [], fallbackInstructorId: 1 })).toEqual({
-      dim: "instructor",
-      ids: [1],
-    });
-  });
-
-  it("preserves an unfiltered calendar by seeding the instructors visible on screen", () => {
-    expect(currentPaneSeeds({
-      instructors: [],
-      students: [],
-      rooms: [],
-      visibleInstructorIds: [2, 2, 4],
-    })).toEqual([{ dim: "instructor", ids: [2, 4] }]);
-    expect(currentPaneSeeds({
-      instructors: [],
-      students: [10],
-      rooms: [],
-      visibleInstructorIds: [2, 4],
-    })).toEqual([{ dim: "student", ids: [10] }]);
-  });
-
-  it("adds a usable companion pane", () => {
-    expect(companionPaneSeed({ dim: "instructor", ids: [1] })).toEqual({ dim: "instructor", ids: [1] });
-    expect(companionPaneSeed({ dim: "instructor", ids: [] })).toEqual({ dim: "student", ids: [] });
-  });
-
-  it("preserves every active resource dimension when entering manual split mode", () => {
-    expect(currentPaneSeeds({ instructors: [1], students: [10, 11], rooms: [3] })).toEqual([
-      { dim: "instructor", ids: [1] },
-      { dim: "student", ids: [10, 11] },
-      { dim: "room", ids: [3] },
-    ]);
-  });
-
-  it("appends exactly one pane without resetting existing pane state", () => {
-    const current = [
-      { uid: 1, dim: "instructor" as const, ids: [1] },
-      { uid: 2, dim: "student" as const, ids: [10, 11] },
-    ];
-    const next = appendCalendarPane(current, 3);
-    expect(next).toEqual([...current, { uid: 3, dim: "student", ids: [10, 11] }]);
-    expect(next[0]).toBe(current[0]);
-    expect(next[1]).toBe(current[1]);
-  });
-});
+const scheduleRow = (id: number, over: Partial<ScheduleRow> = {}): ScheduleRow => ({
+  id,
+  courseId: 100 + id,
+  instructorId: 1,
+  instructorName: "David",
+  studentIds: [10],
+  studentNames: ["Alice"],
+  roomId: 3,
+  roomName: "A",
+  subjectName: "Writing",
+  courseName: "Writing",
+  sessionDate: "2026-08-18",
+  startTime: "09:00",
+  endTime: "10:00",
+  durationMinutes: 60,
+  status: "scheduled",
+  mode: "in_person",
+  ...over,
+} as ScheduleRow);
 
 describe("calendar pane state SSOT", () => {
   it("starts with one reusable pane on the requested today date", () => {
@@ -224,6 +181,66 @@ describe("calendar pane state SSOT", () => {
       "수업 방식: 비대면",
       "검색: David",
     ]);
+  });
+
+  it("derives full ISO date columns for ranges and Ctrl-picked dates", () => {
+    let state = calendarPanesReducer(createCalendarPanesState("2026-08-18"), {
+      type: "pane/set-range",
+      paneId: "pane-1",
+      anchorDate: "2026-08-18",
+      currentDate: "2026-08-20",
+    });
+    expect(calendarPaneDates(state.panes[0])).toEqual(["2026-08-18", "2026-08-19", "2026-08-20"]);
+    expect(calendarPaneColumnLabel("2026-08-18")).toBe("2026-08-18 (화)");
+
+    state = calendarPanesReducer(state, { type: "pane/toggle-date", paneId: "pane-1", date: "2026-08-22" });
+    state = calendarPanesReducer(state, { type: "pane/toggle-date", paneId: "pane-1", date: "2026-08-25" });
+    expect(calendarPaneDates(state.panes[0])).toEqual(["2026-08-22", "2026-08-25"]);
+  });
+
+  it("does not silently truncate a pane range", () => {
+    let state = createCalendarPanesState("2026-08-01");
+    state = calendarPanesReducer(state, {
+      type: "pane/set-range",
+      paneId: "pane-1",
+      anchorDate: "2026-08-01",
+      currentDate: "2026-08-31",
+    });
+
+    expect(calendarPaneDates(state.panes[0])).toHaveLength(31);
+    expect(calendarPaneDates(state.panes[0], 14)).toHaveLength(14);
+  });
+
+  it("filters pane dimensions with AND across axes and OR inside each axis", () => {
+    let state = createCalendarPanesState("2026-08-18");
+    for (const [filter, values] of [
+      ["instructorIds", [1, 2]],
+      ["studentIds", [10, 11]],
+      ["roomIds", [3]],
+      ["subjectIds", [7]],
+    ] as const) {
+      state = calendarPanesReducer(state, { type: "pane/set-resource-filter", paneId: "pane-1", filter, values: [...values] });
+    }
+    state = calendarPanesReducer(state, { type: "pane/set-mode-filter", paneId: "pane-1", values: ["online"] });
+    const rows = [
+      scheduleRow(1, { instructorId: 1, studentIds: [10], roomId: 3, mode: "online" }),
+      scheduleRow(2, { instructorId: 2, studentIds: [11], roomId: 3, mode: "online" }),
+      scheduleRow(3, { instructorId: 1, studentIds: [99], roomId: 3, mode: "online" }),
+      scheduleRow(4, { instructorId: 1, studentIds: [10], roomId: 4, mode: "online" }),
+      scheduleRow(5, { instructorId: 1, studentIds: [10], roomId: 3, mode: "in_person" }),
+    ];
+    expect(calendarRowsForPane(rows, state.panes[0], { subjectIdOf: () => 7 }).map((row) => row.id)).toEqual([1, 2]);
+  });
+
+  it("does not guess subject identity when the course resolver is unavailable", () => {
+    let state = createCalendarPanesState("2026-08-18");
+    state = calendarPanesReducer(state, {
+      type: "pane/set-resource-filter",
+      paneId: "pane-1",
+      filter: "subjectIds",
+      values: [7],
+    });
+    expect(calendarRowsForPane([scheduleRow(1)], state.panes[0])).toEqual([]);
   });
 
   it("rejects impossible dates at the state boundary", () => {

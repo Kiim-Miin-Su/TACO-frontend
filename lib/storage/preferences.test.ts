@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   booleanPreferenceCodec,
-  enumPreferenceCodec,
   preferenceKeys,
   readPreference,
   stringArrayPreferenceCodec,
@@ -25,19 +24,6 @@ describe("preferences storage", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
-  });
-
-  it("resets corrupt enum values to the fallback", () => {
-    localStorage.setItem(preferenceKeys.calendarView, JSON.stringify("century"));
-
-    const view = readPreference(
-      preferenceKeys.calendarView,
-      "week",
-      enumPreferenceCodec(["month", "week", "day"] as const),
-    );
-
-    expect(view).toBe("week");
-    expect(localStorage.getItem(preferenceKeys.calendarView)).toBeNull();
   });
 
   it("migrates legacy boolean keys into the namespaced key", () => {

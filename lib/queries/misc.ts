@@ -1,5 +1,5 @@
 "use client";
-// 컴포지트(useAppData/useTaskData)·뷰 프리셋·리포트 템플릿·알림 뱃지 훅 — lib/queries.ts에서 분할(순수 이동).
+// 컴포지트(useAppData/useTaskData)·리포트 템플릿·알림 뱃지 훅 — lib/queries.ts에서 분할(순수 이동).
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { addDaysISO, todayKst } from '@/lib/format'; // [P2]
 import { api } from "@/lib/api";
@@ -118,11 +118,7 @@ export function useTaskData() {
   };
 }
 
-// ── 자산화 2차(2026-07-03): 뷰 프리셋·리포트 템플릿 — 클라 휘발 → DB 컬렉션 ──
-export const useViewPresets = () => useQuery({ queryKey: qk.viewPresets.list(), queryFn: () => api.viewPresets.list(), staleTime: CATALOG_STALE });
-export const useCreateViewPreset = () => useMutation({ mutationFn: api.viewPresets.create, onSuccess: useInvalidator([qk.viewPresets.all]) });
-export const useUpdateViewPreset = () => useMutation({ mutationFn: (v: { id: number; input: Parameters<typeof api.viewPresets.update>[1] }) => api.viewPresets.update(v.id, v.input), onSuccess: useInvalidator([qk.viewPresets.all]) });
-export const useRemoveViewPreset = () => useMutation({ mutationFn: api.viewPresets.remove, onSuccess: useInvalidator([qk.viewPresets.all]) });
+// ── 자산화 2차(2026-07-03): 리포트 템플릿 — 클라 휘발 → DB 컬렉션 ──
 export const useReportTemplates = () => useQuery({ queryKey: qk.reportTemplates.list(), queryFn: () => api.reportTemplates.list(), staleTime: CATALOG_STALE });
 export const useEffectiveReportTemplate = (instructorId?: number | null) => useQuery({
   queryKey: qk.reportTemplates.effective(instructorId),
