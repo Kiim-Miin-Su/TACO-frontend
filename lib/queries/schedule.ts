@@ -19,6 +19,32 @@ import type { Instructor } from "@/types";
 import { pushScheduleUndo, sanitizeInversePatch } from '@/lib/schedule-undo'; // [TBO-63] 캘린더 undo 스택
 import { useState } from "react";
 import { CATALOG_STALE, detailRetry, useInvalidator } from "./shared";
+
+// [TBO-104 2A] Inspector 충돌 탭 — 선택 세션의 현재 시간표(날짜·시간·강사·강의실·학생·방식)를
+// 서버 충돌 검사로 재조회한다(read-only POST, 자기 자신은 ignoreSessionId로 제외).
+// 키에 시간표 stamp를 넣어 세션 편집(cache patch) 시 자동 재검사되게 한다.
+export const useSessionConflictCheck = (row: import("@kms545487/contracts").ScheduleRow | null, enabled: boolean) => {
+  const access = useAccountAccess();
+  const stamp = row
+    ? [row.sessionDate, row.startTime ?? "", row.endTime ?? "", row.durationMinutes ?? "", row.instructorId ?? "", row.roomId ?? "", (row.studentIds ?? []).join("/"), row.mode ?? ""].join("|")
+    : "";
+  return useQuery({
+    queryKey: qk.schedule.conflicts(row?.id ?? 0, stamp, access.scope),
+    enabled: enabled && row != null && !!row.startTime,
+    queryFn: () =>
+      api.schedule.conflicts({
+        sessionDate: row!.sessionDate,
+        startTime: row!.startTime!,
+        endTime: row!.endTime,
+        durationMinutes: row!.endTime ? undefined : row!.durationMinutes,
+        instructorId: row!.instructorId ?? undefined,
+        roomId: row!.roomId ?? undefined,
+        studentIds: (row!.studentIds ?? []).map(Number),
+        ignoreSessionId: row!.id,
+        mode: row!.mode,
+      }),
+  });
+};
 import type {
   ClearInstructorAttendanceInput,
   SessionAccountingImpactConflict,

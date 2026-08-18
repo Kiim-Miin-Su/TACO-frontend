@@ -47,8 +47,8 @@ export function OptionPick({
     return () => window.removeEventListener("pointerdown", h);
   }, [open]);
   return (
-    <div className="relative" ref={ref}>
-      <button className={`btn btn-sm ${picked.size ? "badge-accent" : ""}`} onClick={toggle} title={title ?? `${label} 필터(복수=합집합·빈 선택=전체)`}>
+    <div className="relative shrink-0" ref={ref}>
+      <button className={`btn btn-sm h-7 px-2 ${picked.size ? "badge-accent" : ""}`} onClick={toggle} title={title ?? `${label} 필터(복수=합집합·빈 선택=전체)`}>
         {icon} {label}{picked.size > 0 && <span className="ml-1 mono">{picked.size}</span>}<span className="ml-1 text-[10px]">▾</span>
       </button>
       {open && pos && (
@@ -105,9 +105,9 @@ export function MultiPick({
   }, [options, q]);
   const meta = DIM_META[dim];
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative shrink-0" ref={ref}>
       <button
-        className={`btn btn-sm min-w-0 max-w-full ${picked.size ? "badge-accent" : ""}`}
+        className={`btn btn-sm h-7 min-w-0 max-w-full px-2 ${picked.size ? "badge-accent" : ""}`}
         onClick={toggle}
         title={`${meta.label} 다중선택 — 같은 항목 안은 OR, 다른 필터와는 AND`}
       >

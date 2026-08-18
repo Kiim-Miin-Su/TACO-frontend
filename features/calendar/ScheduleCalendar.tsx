@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type Dispatch, type MutableRefObject, type PointerEvent as ReactPointerEvent, type ReactNode, type SetStateAction } from "react";
 import type { ScheduleRow, Conflict, ScheduleResource, AvailabilityBlock, Attendance } from "@/types";
 // [B6 C4] api 값 import 제거 — 이 화면의 쓰기는 전부 중앙 mutation 훅 경유(타입만 사용).
 import type { SchedulePatchBody, ScheduleCreateBody, ScheduleSeriesCreateBody, AvailabilityUpsertBody, CreateScheduleRequestBody } from "@/lib/api";
@@ -68,10 +68,8 @@ import { exportNodeAsImage } from "@/lib/export";
 import { usePersistedState } from "@/lib/usePersistedState";
 import { enumPreferenceCodec, preferenceKeys } from "@/lib/storage/preferences";
 import { useAccountAccess } from "@/lib/useAccountAccess";
-import { ResourcePanel } from "./ResourcePanel";
-import { ResourceDetailCard } from "./ResourceDetailCard";
-import { ParticipantsCard } from "./ParticipantsCard";
 import { CalendarPane } from "./CalendarPane";
+import { CalendarInspector } from "./CalendarInspector";
 import { ConfirmModal, HelpPopover, PageHeader } from "@/components/ui";
 import { AccountingImpactModal } from "@/components/AccountingImpactModal";
 // [B6 C1 2026-07-16] 인라인 사설 모달 6종 → ModalShell 계열로 이관·파일 분리(E1 + EP9 선행 절단).
@@ -89,8 +87,6 @@ import { BlockEditModal } from "./modals/BlockEditModal";
 import { UndoHotkey } from './UndoHotkey'; // [TBO-63] cmd/ctrl+Z
 import { SessionDetailModal } from "./modals/SessionDetailModal";
 import { RecurrencePrompt } from "./modals/RecurrencePrompt";
-import { SessionListPanel } from "./SessionListPanel";
-import { SessionDetailPanel } from "./SessionDetailPanel";
 import type {
   AvailabilityImpactConflict,
   RecurrenceScope,
@@ -104,7 +100,7 @@ import { calendarMinuteAtPointer, calendarRangeBetween, type CalendarMinuteRange
 // [TBO-69 C4] 그리드 상수·순수 헬퍼·상호작용 타입은 calendar-grid.ts로 분리(본문 이동 — 값 무변).
 import {
   START_H, END_H, HOUR_H, SNAP, HEADER_H, GUTTER_W, GRID_MIN, CANCELED_GRAY,
-  INSTRUCTOR_RESOURCE_FILTER_DIMS, INSTRUCTOR_SPLIT_DIMS, INSTRUCTOR_RESOURCE_PANEL_TYPES,
+  INSTRUCTOR_RESOURCE_FILTER_DIMS, INSTRUCTOR_SPLIT_DIMS,
   isCanceledStatus, isSessionCanceled, snap, tzCellToKst, clampToAxis, clampMin, todayISO,
   mondayOf, hashColor, startMinOf, endMinOf,
   type ColorBy, type Resizing, type Pending,
@@ -419,60 +415,13 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   );
   const activeCalendarRows = calendarRowsByPane.get(activeCalendarPane.id) ?? EMPTY_SCHEDULE_ROWS;
   // 컬럼: 데일리 스플릿=(날짜×리소스, 표별 prefix로 key 유일) · week=날짜 · day=강의실
-  type Col = {
-    key: string; label: string; sub?: string; date: string; roomId?: number;
-    noRoom?: boolean; // 일간 '미지정' 컬럼(강의실 없는 세션)
-    resType?: SplitDim; resId?: number; firstOfDate?: boolean;
-    tzc?: CountryInfo; // owner 개별 시차(country/timeZone 파생 — 학생·강사 공통)
-  };
   const columnsForCalendarPane = useCallback((pane: CalendarPaneState): Col[] =>
     calendarPaneDates(pane).map((date) => ({
       key: `${pane.id}:${date}`,
       label: calendarPaneColumnLabel(date),
       date,
     })), []);
-  const rowsOfColumn = (c: Col, src: ScheduleRow[]) =>
-    src.filter(
-      (r) =>
-        r.sessionDate === c.date &&
-        (c.resType != null
-          ? rowInResource(r, c.resType, c.resId!, subjectIdOf) // [#2] 과목 컬럼은 리졸버로 매칭
-          : c.noRoom
-            ? r.roomId == null // [L1] 미지정 컬럼 = 강의실 없는 세션만
-            : c.roomId == null || r.roomId === c.roomId),
-    );
 
-  // 가용/불가(Block) 밴드 — 선택 자원 기준. week=요일 매칭 모든 컬럼, day=룸이면 해당 컬럼만/그 외 전체.
-  type Band = { id: number; kind: AvailabilityBlock["kind"] | "online_only"; startMin: number; endMin: number; top: number; h: number; editable: boolean };
-  // gridMin: 렌더 그리드의 시작 분(개별 시차로 축이 0~24h일 때 top 정합 — renderTimeGrid가 전달)
-  // tz: 컬럼이 비KST(해외 학생 등)면 그 tz — KST 블록을 그 나라 로컬로 변환해 표시(이슈1). KST·tz 모두
-  //  kstBlockToTzWindow 단일 함수로 매칭·변환(세션 엔진 재사용·단위테스트 — 이슈3).
-  const bandsOfColumn = (c: { date: string; roomId?: number; resType?: SplitDim; resId?: number }, gridMin: number = GRID_MIN, gridMax: number = END_H * 60, tz?: string | null): Band[] => {
-    const isTz = !!tz && tz !== KST_TZ;
-    // [버그수정 2026-07-06 2단] KST 클램프를 상수 축(8~22)이 아닌 **이 그리드의 실제 축**으로 —
-    //  expandAxis로 축을 늘려도 여기서 상수로 클램프되면 심야 밴드가 0높이→미렌더되던 원인.
-    const axisClamp = isTz ? (mm: number) => Math.max(0, Math.min(24 * 60, mm)) : (mm: number) => clampToAxis(mm, gridMin, gridMax);
-    // 블록 1건 → 밴드(그 컬럼 날짜에 안 걸리면 null). tz면 표시 전용(editable=false — 드래그는 KST 좌표라).
-    const toBand = (b: AvailabilityBlock, editable: boolean): Band | null => {
-      const w = kstBlockToTzWindow(b, c.date, tz ?? KST_TZ);
-      if (!w) return null;
-      const sMin = axisClamp(w.startMin), eMin = axisClamp(w.endMin);
-      if (eMin <= sMin) return null;
-      return { id: b.id, kind: b.kind, startMin: sMin, endMin: eMin, top: ((sMin - gridMin) / 60) * HOUR_H, h: Math.max(6, ((eMin - sMin) / 60) * HOUR_H), editable: editable && !isTz };
-    };
-    const nonNull = (x: Band | null): x is Band => x != null;
-    // 스플릿 서브컬럼 = 그 컬럼 유저의 가용·불가 · 비스플릿 = 선택 유저(selBlocks).
-    if (c.resType != null && c.resId != null) {
-      if (c.resType === "subject") return [];
-      return allBlocks
-        .filter((b) => b.ownerType === c.resType && Number(b.ownerId) === c.resId)
-        .map((b) => toBand(b, true)).filter(nonNull);
-    }
-    if (!selBlocks.length) return [];
-    return selBlocks
-      .filter(() => selected?.type !== "room" || c.roomId == null || c.roomId === selected.id)
-      .map((b) => toBand(b, true)).filter(nonNull);
-  };
 
   // ── 가용/불가(Block) — 밴드 표시 + 클릭 삭제. 생성은 "스케줄 추가" 모달의 '가용·불가' 탭에서. ──
   // [TBO-14 C2b] 밴드 편집 후 가용/불가 쿼리 무효화 → allBlocks refetch → selBlocks 파생 자동 재계산.
@@ -1432,584 +1381,42 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   const unionAxis = (list: { startH: number; endH: number }[]): { startH: number; endH: number } =>
     list.length ? { startH: Math.min(...list.map((a) => a.startH)), endH: Math.max(...list.map((a) => a.endH)) } : { startH: START_H, endH: END_H };
 
-  const renderTimeGrid = (
-    cols: Col[],
-    tzc: CountryInfo | null | undefined,
-    paneFilters: CalendarFacetFilters | undefined,
-    availW: number | undefined,
-    axisOverride: { startH: number; endH: number } | undefined,
-    sourceRows: ScheduleRow[],
-  ) => {
-    // [KST 고정] kstFixed면 tz 위치 변환·편집 변환 없음(전 컬럼 KST). 국가정보는 칩 현지시각 라벨용으로만 유지.
-    const tzActive = !kstFixed && !!tzc && tzc.tz !== KST_TZ;
-    // 학생 개별 시차(피드백 2026-07-03 #1): 그리드 tz(전역/표별 — 명시 선택)가 없을 때만
-    //  학생 컬럼의 country 파생 tz가 동작. 축은 컬럼 하나라도 tz면 0~24h(다른 나라 새벽 대비).
-    const anyColTz = !kstFixed && !tzActive && cols.some((c) => c.tzc != null);
-    // [스플릿 높이 정렬] 축은 공통(axisOverride) 우선 — 없으면 이 표 자체 축. 시차·심야 콘텐츠 확장은 computeAxis가 처리.
-    const { startH, endH } = axisOverride ?? computeAxis(cols, sourceRows, tzc);
-    const gridMin = startH * 60, gridMax = endH * 60, gridH = (endH - startH) * HOUR_H;
-    const clampAxis = (mm: number) => clampToAxis(mm, gridMin, gridMax); // [이슈2] 이 그리드 축 경계
-    // 변환 캐시(같은 filtered·tz면 재사용) — 표 2개/컬럼별 tz/리렌더에서 tz별 1회만 O(n) 변환(감사 M4)
-    const cache = tzRowsCacheRef.current;
-    if (cache.src !== sourceRows) { cache.src = sourceRows; cache.map.clear(); }
-    const rowsForTz = (tz: string): ScheduleRow[] => {
-      if (tz === KST_TZ) return sourceRows;
-      const hit = cache.map.get(tz);
-      if (hit) return hit;
-      const shifted = shiftRowsToTz(sourceRows, tz);
-      cache.map.set(tz, shifted);
-      return shifted;
-    };
-    const isSplitGrid = cols[0]?.resType != null;
-    // 데일리 스플릿(피드백 최종): 요일 열을 컨테이너 폭에 맞춰 압축하고, 그 안을 인원수로
-    //  서브분할(같은 크기 요일 열을 늘리는 게 아님 — 컴팩트). 일수가 적으면 flex로 화면을 채움.
-    const dayCount = isSplitGrid ? new Set(cols.map((c) => c.date)).size : cols.length;
-    const perDay = isSplitGrid ? Math.max(1, Math.round(cols.length / Math.max(1, dayCount))) : 1;
-    // [C3] 일별 컬럼은 표 개수·날짜 수가 늘어도 한 화면 비교가 되도록 최소폭만 남기고 압축한다.
-    const netW = Math.max(80, (availW ?? mainW) - GUTTER_W - 10);
-    const fitDayW = Math.floor(netW / Math.max(1, dayCount));
-    const minDayW = 24 * perDay;
-    const dayW = Math.max(minDayW, fitDayW);
-    const subW = isSplitGrid ? Math.max(24, Math.floor(dayW / perDay)) : Math.max(24, dayW);
-    // 텍스트 밀도 단계(서브열 폭 기준) — 단일 함수 densityOf(lib/domain/lantiv, vitest)로 통일(R2)
-    const textMode = densityOf(subW, isSplitGrid);
-    const minCol = subW;
-    const axisTzc = kstFixed ? axisCompanionTimezone(cols.map((c) => c.tzc), tzc) : undefined;
-    const axisDate = cols[0]?.date ?? todayISO();
-    const gutterTitle = kstFixed
-      ? axisTzc
-        ? `모든 표가 KST 기준 00~24시 축으로 정렬됩니다. 시간축 아래에는 ${axisTzc.name} 현지 시각을 병기합니다.`
-        : "모든 표가 KST 기준 00~24시 축으로 정렬됩니다. 해외 현지 시각은 컬럼 헤더와 수업 칩에 병기됩니다."
-      : tzActive && tzc
-        ? `${tzc.name} 현지 시각 축입니다.`
-        : anyColTz
-          ? "컬럼마다 현지 시각 축입니다."
-          : "한국 표준시 축입니다.";
-    return (
-              <div className="card overflow-x-auto overflow-y-hidden">
-                <div className="flex" /* [고정폭] minWidth 강제 제거 — 스크롤 없음 */>
-                  {/* 시간 거터 */}
-                  <div className="shrink-0 sticky left-0 z-10 bg-canvas" style={{ width: GUTTER_W }}>
-                    {/* [다중 시차 UX] 세로 눈금의 기준을 명시 — 개별 시차 혼재 시 "현지"(컬럼별), 표 전체 tz면 그 국기, 아니면 KST */}
-                    <div style={{ height: HEADER_H }} className="flex items-end justify-end pr-1.5 pb-1">
-                      <span className="text-[9px] text-fg-subtle mono" title={gutterTitle}>
-                        {kstFixed ? "KST" : tzActive ? tzc!.flag : anyColTz ? "현지" : "KST"}
-                      </span>
-                    </div>
-                    <div className="relative" style={{ height: gridH }}>
-                      {Array.from({ length: endH - startH + 1 }, (_, i) => (
-                        <span
-                          key={i}
-                          className="absolute right-2 text-micro text-fg-subtle mono"
-                          style={{ top: i * HOUR_H - 7 }}
-                        >
-                          {i < endH - startH ? (
-                            <span className="inline-flex flex-col items-end leading-none">
-                              <span>KST {pad(startH + i)}:00</span>
-                              {axisTzc && (
-                                <span className="text-[8px] text-fg-subtle">
-                                  ({axisTzc.name}: {fromMin(((startH + i) * 60 + tzOffsetFromKst(axisTzc.tz, axisDate) + 1440) % 1440)})
-                                </span>
-                              )}
-                            </span>
-                          ) : ""}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  {/* 컬럼들 */}
-                  <div className="flex-1 flex">
-                    {cols.map((c) => {
-                      // 컬럼 유효 tz: 그리드(전역/표별) > 학생 개별(country) > KST
-                      const colTzc = tzActive ? tzc : (c.tzc ?? null);
-                      // [KST 고정] kstFixed면 위치·편집 변환 없음(colTz=false) → 전 컬럼 KST 좌표. 국가는 라벨용으로만.
-                      const colTz = !kstFixed && !!colTzc && colTzc.tz !== KST_TZ;
-                      // 표시용 국가(kstFixed 무관) — 그리드 tz 또는 컬럼 개별 country.
-                      const colCountry = (tzc && tzc.tz !== KST_TZ ? tzc : null) ?? (c.tzc ?? null);
-                      const colIsOverseas = !!colCountry && colCountry.tz !== KST_TZ;
-                      // [다중 시차 UX] 세로 눈금 의미를 명확히 — KST 오프셋. off-모드 개별시차 컬럼 헤더 배지 + kstFixed 칩 현지시각.
-                      const colOff = colIsOverseas ? tzOffsetFromKst(colCountry!.tz, c.date) : 0;
-                      const colOffLabel = colIsOverseas ? `KST${colOff >= 0 ? "+" : "-"}${Math.floor(Math.abs(colOff) / 60)}${Math.abs(colOff) % 60 ? ":" + pad(Math.abs(colOff) % 60) : ""}h` : "";
-                      // kstFixed일 때 칩에 병기할 현지시각 = KST분 + 오프셋(자정 넘김은 24h 모듈로).
-                      const toLocal = (mm: number) => ((mm + colOff) % 1440 + 1440) % 1440;
-                      // 전역 필터와 같은 판정 함수를 쓰되, 이 표의 필터를 추가로 적용한다.
-                      const panePass = (r: ScheduleRow) => matchesCalendarFacetFilters(
-                        r,
-                        attBySession.get(Number(r.id)) ?? [],
-                        paneFilters,
-                      );
-                      const colRows = rowsOfColumn(c, colTz ? rowsForTz(colTzc.tz) : sourceRows).filter(panePass);
-                      // [R-9] 전일 자정 크로스 세션의 익일 연속 블록(00:00~잔여) — **표시 전용**(상호작용은
-                      //  시작일 원본 블록에서). KST 컬럼 전용 — 시차 컬럼은 shiftRowToTz가 현지 좌표로
-                      //  통변환하므로(대개 크로스가 풀림) 기존 tzOverflowEnd 배지 규칙을 유지.
-                      const contRows = !colTz
-                        ? rowsOfColumn({ ...c, date: addDaysISO(c.date, -1) }, sourceRows).filter(panePass).filter((r) => endMinOf(r) > 1440)
-                        : [];
-                      // [B-4 #9] 강사 본인 pending 요청 고스트(승인 대기 시각화) — KST 컬럼 전용·표시 전용.
-                      //  세션 요청과 availability 요청을 분리해 타입별 geometry를 각각 계산한다.
-                      const colGhosts = !colTz && isInstructor
-                        ? pendingGhosts.filter((g) =>
-                            (g.requestKind == null || g.requestKind === "session_create" || g.requestKind === "session_update") &&
-                            g.sessionDate === c.date &&
-                            (c.resType == null || (c.resType === "instructor" && Number(c.resId) === Number(g.instructorId))),
-                          )
-                        : [];
-                      // [오류5] 미리보기 = 자기 프레임 좌표 + 프레임 불변 델타 — 시차 컬럼에서도 그 나라 시간으로 표시
-                      const sOf = (r: ScheduleRow) => (preview && preview.id === r.id ? startMinOf(r) + preview.dStart : startMinOf(r));
-                      const eOf = (r: ScheduleRow) => (preview && preview.id === r.id ? endMinOf(r) + preview.dEnd : endMinOf(r));
-                      const lanes = layoutLanes(colRows.map((r) => ({ id: r.id, start: sOf(r), end: eOf(r) })));
-                      const bands = bandsOfColumn(c, gridMin, gridMax, colTz ? colTzc.tz : null); // [이슈1] 시차 컬럼도 변환해 표시
-                      const availabilityGhosts = !colTz && c.resType && c.resType !== "subject" && c.resId != null
-                        ? availabilityGhostBandsForColumn({
-                            requests: pendingGhosts,
-                            blocks: allBlocks,
-                            date: c.date,
-                            owner: { type: c.resType, id: c.resId },
-                          })
-                        : [];
-                      const isToday = c.date === todayISO();
-                      return (
-                        <div
-                          key={c.key}
-                          className="border-l overflow-hidden shrink-0" /* [고정폭] 컬럼 = 계산된 px 고정(유동 제거) + 클립 */
-                          style={{
-                            borderColor: c.resType && c.firstOfDate ? "var(--color-line)" : "var(--color-line-muted)",
-                            borderLeftWidth: c.resType && c.firstOfDate ? 2 : undefined,
-                            width: minCol,
-                          }}
-                        >
-                          {/* 헤더: 스플릿=날짜+리소스명 · 주간=요일+날짜(오늘 강조) · 일간=강의실 */}
-                          <div
-                            className="flex flex-col items-center justify-center gap-0.5 border-b relative"
-                            style={{ height: HEADER_H }}
-                          >
-                            {c.resType ? (
-                              <>
-                                {c.sub && (
-                                  <span className={`text-[10px] ${isToday ? "text-accent font-semibold" : "text-fg-subtle"}`}>
-                                    {c.sub}
-                                  </span>
-                                )}
-                                {/* [다중 시차 UX] 해외 컬럼 오프셋 배지 — off-모드(개별 시차, 눈금=현지) 또는 kstFixed(눈금=KST, 칩=현지) */}
-                                {colIsOverseas && (colTz || kstFixed) && minCol > 46 && (
-                                  <span className="text-[9px] mono text-fg-subtle leading-none" title={kstFixed ? `${colCountry!.name} · 눈금은 KST, 칩에 현지시각 병기(${colOffLabel})` : `${colCountry!.name} 현지 시각으로 표시 · 세로 눈금은 이 컬럼 현지 기준(${colOffLabel})`}>
-                                    {colCountry!.flag} {colOffLabel}
-                                  </span>
-                                )}
-                                {/* 이름은 truncate, 국기 버튼은 truncate 밖(잘림·클릭 좌표 소실 방지) */}
-                                <span className="flex items-center gap-0.5 max-w-full px-1 min-w-0">
-                                  <span
-                                    className="text-caption font-semibold truncate min-w-0"
-                                    title={`${c.label}${!tzActive && c.tzc ? ` — ${c.tzc.name} 시간(개별 시차)` : ""}`}
-                                  >
-                                    {c.label}
-                                  </span>
-                                  {/* [오류3] 좁은 컬럼(≤46px)에선 + 숨김 — 이름·국기(시차 단서)가 먼저 잘리지 않게(추가는 드래그·우측 카드로 가능) */}
-                                  {canAdd && c.resType != null && c.resId != null && minCol > 46 && (
-                                    <button
-                                      className="shrink-0 hover:opacity-70 text-micro leading-none px-0.5"
-                                      title={`${c.label}에게 추가 — 수업·가용·불가(유저 프리필)`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setCreating({
-                                          date: c.date,
-                                          owner: { type: c.resType!, id: c.resId!, name: c.label } as ScheduleResource,
-                                          defaultInstructorId: c.resType === "instructor" ? c.resId : undefined,
-                                          tz: colTz ? colTzc : undefined, // [이슈1] 비KST 컬럼: 현지→KST 변환
-                                        });
-                                      }}
-                                    >
-                                      ＋
-                                    </button>
-                                  )}
-                                  {/* [2I] owner 컬럼 시차 수동 변경 — 학생/강사 공통. 국기(현재 tz)/🌐(KST) 클릭 = 픽커 */}
-                                  {!tzActive && (c.resType === "student" || c.resType === "instructor") && c.resId != null && (
-                                    <button
-                                      className="shrink-0 hover:opacity-70 text-caption leading-none px-0.5 py-0.5 -my-0.5"
-                                      title={`${c.label} 컬럼 시차 변경`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        const b = (e.currentTarget as HTMLElement).getBoundingClientRect(); // [오류4] fixed 좌표
-                                        setTzPickerFor((prev) => (prev?.colKey === c.key ? null : { colKey: c.key, type: c.resType as Exclude<SplitDim, "subject">, id: c.resId!, x: b.left, y: b.bottom }));
-                                      }}
-                                    >
-                                      {c.tzc ? c.tzc.flag : "🌐"}
-                                    </button>
-                                  )}
-                                </span>
-                                {/* [오류4] 시차 픽커 팝오버 — fixed(뷰포트 기준)로 컬럼 클리핑·옆 컬럼 가림 탈출(최상위 z) */}
-                                {tzPickerFor?.colKey === c.key && (
-                                  <span
-                                    className="fixed z-[70] card shadow-[var(--shadow-overlay)] p-1.5 w-44 block"
-                                    style={{ left: Math.max(8, Math.min(tzPickerFor.x, (typeof window !== "undefined" ? window.innerWidth : 1440) - 188)), top: tzPickerFor.y + 4 }}
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <select
-                                      className="input h-7 w-full text-micro"
-                                      autoFocus
-                                      value={
-                                        resourceTimezoneKey(tzPickerFor.type, tzPickerFor.id) in resourceTzOverride
-                                          ? (resourceTzOverride[resourceTimezoneKey(tzPickerFor.type, tzPickerFor.id)]?.code ?? "KST")
-                                          : "AUTO"
-                                      }
-                                      onChange={(e) => {
-                                        const v = e.target.value;
-                                        setResourceTzOverride((prev) => {
-                                          const key = resourceTimezoneKey(tzPickerFor.type, tzPickerFor.id);
-                                          const n = { ...prev };
-                                          if (v === "AUTO") delete n[key]; // 자동 = owner resource metadata
-                                          else n[key] = v === "KST" ? null : (countryByCode(v) ?? null);
-                                          return n;
-                                        });
-                                        setTzPickerFor(null);
-                                      }}
-                                    >
-                                      <option value="AUTO">자동 — 유저 국가 기준</option>
-                                      <option value="KST">🇰🇷 한국 시간(KST) 고정</option>
-                                      {COUNTRIES.filter((x) => x.code !== "KR").map((x) => (
-                                        <option key={x.code} value={x.code}>{x.flag} {x.name}</option>
-                                      ))}
-                                    </select>
-                                  </span>
-                                )}
-                              </>
-                            ) : (
-                              <>
-                                <span className={`text-micro ${isToday ? "text-accent font-semibold" : "text-fg-subtle"}`}>
-                                  {c.label}
-                                </span>
-                                <span
-                                  className={`grid place-items-center text-section font-semibold rounded-full ${isToday ? "text-white" : "text-fg"}`}
-                                  style={{ width: 28, height: 28, background: isToday ? "var(--color-accent)" : "transparent" }}
-                                >
-                                  {Number(c.date.slice(8))}
-                                </span>
-                              </>
-                            )}
-                          </div>
-                          <div
-                            className="relative"
-                            data-colcell
-                            data-tz={colTz ? "1" : "0"}
-                            data-tzid={colTz ? colTzc.tz : ""}
-                            data-gridmin={gridMin}
-                            data-gridmax={gridMax}
-                            data-colkey={c.key}
-                            data-date={c.date}
-                            data-roomid={c.roomId ?? ""}
-                            data-restype={c.resType ?? ""}
-                            data-resid={c.resId ?? ""}
-                            style={{
-                              height: gridH,
-                              backgroundImage: `repeating-linear-gradient(to bottom, var(--color-line) 0, var(--color-line) 1px, transparent 1px, transparent ${HOUR_H}px), repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_H / 2}px, var(--color-line-muted) ${HOUR_H / 2}px, var(--color-line-muted) ${HOUR_H / 2 + 1}px, transparent ${HOUR_H / 2 + 1}px, transparent ${HOUR_H}px)`,
-                            }}
-                            onPointerDown={(event) => beginEmptyRange(event, c, gridMin, gridMax, colTz ? colTzc : null)}
-                            onClick={(e) => {
-                              if (suppressEmptyClickRef.current) { suppressEmptyClickRef.current = false; return; }
-                              if (e.target !== e.currentTarget) return;
-                              setSelEvent(null); setSelBand(null);
-                              // [이슈2] 시차 컬럼도 커서 허용 — 현지 좌표(tz)를 저장, 붙여넣기 시 KST 변환.
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              const min = clampAxis(snapMove(gridMin + ((e.clientY - rect.top) / HOUR_H) * 60));
-                              setCursor({ colKey: c.key, date: c.date, startMin: min, resType: c.resType, resId: c.resId, roomId: c.roomId, tz: colTz ? colTzc.tz : undefined });
-                            }}
-                            onDoubleClick={(e) => {
-                              // 빈 공간 더블클릭 = 그 시각으로 스케줄 추가(피드백 2026-07-02 #4).
-                              // [이슈1] 비KST 컬럼도 추가 허용 — 입력은 현지 시각, 저장 시 KST 역변환(tz 전달).
-                              if (e.target !== e.currentTarget || !canAdd) return;
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              const min = clampAxis(snapMove(gridMin + ((e.clientY - rect.top) / HOUR_H) * 60));
-                              setCreating({
-                                date: c.date, start: fromMin(min),
-                                // 스플릿 컬럼이면 그 유저 프리필(유저별 추가 — 가용/불가 owner·강사 세션)
-                                owner: c.resType && c.resId != null
-                                  ? ({ type: c.resType, id: c.resId, name: c.label } as ScheduleResource)
-                                  : undefined,
-                                defaultInstructorId: c.resType === "instructor" ? c.resId : undefined,
-                                tz: colTz ? colTzc : undefined, // 현지→KST 변환 기준
-                              });
-                            }}
-                          >
-                            {emptyRangeDraft?.colKey === c.key && (
-                              <div
-                                data-calendar-range-preview
-                                className="absolute left-0.5 right-0.5 z-[1] pointer-events-none border border-accent"
-                                style={{
-                                  top: ((emptyRangeDraft.startMin - gridMin) / 60) * HOUR_H,
-                                  height: Math.max(2, ((emptyRangeDraft.endMin - emptyRangeDraft.startMin) / 60) * HOUR_H),
-                                  background: "color-mix(in srgb, var(--color-accent) 16%, transparent)",
-                                }}
-                              >
-                                <span className="block px-1 py-0.5 text-micro font-semibold text-accent truncate">
-                                  {fromMin(emptyRangeDraft.startMin)}–{fromMin(emptyRangeDraft.endMin)}
-                                </span>
-                              </div>
-                            )}
-                            {/* 가용(초록)/불가(회색) 밴드 — 클릭=선택 · 끝 드래그=시간 조절 · ✕=삭제 (스케줄처럼 관리) */}
-                            {bands.map((b) => {
-                              const on = selBand === b.id;
-                              return (
-                              <div
-                                key={`b${b.id}`}
-                                onPointerDown={on ? (e) => { if (e.target === e.currentTarget) bDown(e, c, b, "move"); } : undefined}
-                                onClick={(e) => {
-                                  if (bMovedRef.current) { bMovedRef.current = false; return; } // 드래그 직후 클릭 무시(선택 유지)
-                                  if (b.editable) { e.stopPropagation(); setSelBand(on ? null : b.id); setSelEvent(null); }
-                                }}
-                                onDoubleClick={(e) => { e.stopPropagation(); const blk = findBlock(b.id); if (blk) setEditingBlock(blk); }}
-                                title={`${AVAILABILITY_KIND_LABEL[b.kind]} — 클릭 선택 · 드래그 이동 · 끝 드래그 시간조절 · 더블클릭 수정`}
-                                className={`absolute left-0 right-0 ${!b.editable ? "pointer-events-none" : on ? "cursor-move" : "cursor-pointer"}`}
-                                style={
-                                  b.kind === "unavailable"
-                                    ? {
-                                        top: b.top, height: b.h,
-                                        background:
-                                          "repeating-linear-gradient(45deg, rgba(110,118,129,.16) 0 6px, rgba(110,118,129,.28) 6px 12px)",
-                                        outline: on ? "2px solid var(--color-fg-muted)" : undefined,
-                                      }
-                                    : b.kind === "online_only"
-                                      ? {
-                                          top: b.top, height: b.h,
-                                          background: "color-mix(in srgb, var(--color-accent) 14%, transparent)",
-                                          borderLeft: "2px solid var(--color-accent)",
-                                          outline: on ? "2px solid var(--color-accent)" : undefined,
-                                        }
-                                      : {
-                                        top: b.top, height: b.h,
-                                        background: "rgba(26,127,55,.10)",
-                                        borderLeft: "2px solid var(--color-success)",
-                                        outline: on ? "2px solid var(--color-success)" : undefined,
-                                      }
-                                }
-                              >
-                                {on && (
-                                  <>
-                                    <div onPointerDown={(e) => bDownResize(e, c, b, "top")} className="absolute left-1/2 -translate-x-1/2 top-0 w-6 h-2 rounded-b cursor-ns-resize bg-fg-muted" />
-                                    <button onClick={(e) => { e.stopPropagation(); deleteBlock(b.id, c.date); }} className="absolute right-0.5 top-0.5 w-4 h-4 grid place-items-center rounded text-[10px] text-white bg-danger" title="삭제">✕</button>
-                                    <div onPointerDown={(e) => bDownResize(e, c, b, "bottom")} className="absolute left-1/2 -translate-x-1/2 bottom-0 w-6 h-2 rounded-t cursor-ns-resize bg-fg-muted" />
-                                  </>
-                                )}
-                              </div>
-                              );
-                            })}
-                            {/* [C2] availability 승인 대기 ghost — DB-backed schedule_requests에서 복원(새로고침 유지). */}
-                            {availabilityGhosts.map((g) => {
-                              const s = clampAxis(g.startMin);
-                              const e = clampAxis(g.endMin);
-                              if (e <= s) return null;
-                              const isDelete = g.requestKind === "availability_delete";
-                              const tone =
-                                g.kind === "unavailable"
-                                  ? "var(--color-fg-muted)"
-                                  : g.kind === "online_only"
-                                    ? "var(--color-accent)"
-                                    : "var(--color-success)";
-                              return (
-                                <div
-                                  key={`availability-ghost-${g.id}`}
-                                  className="absolute left-0 right-0 z-10 pointer-events-none px-1 py-0.5 text-[10px] leading-tight overflow-hidden"
-                                  style={{
-                                    top: ((s - gridMin) / 60) * HOUR_H + 1,
-                                    height: Math.max(18, ((e - s) / 60) * HOUR_H) - 2,
-                                    color: isDelete ? "var(--color-danger)" : tone,
-                                    border: `1.5px dashed ${isDelete ? "var(--color-danger)" : tone}`,
-                                    background: isDelete
-                                      ? "repeating-linear-gradient(45deg, rgba(207,34,46,.08) 0 6px, rgba(207,34,46,.18) 6px 12px)"
-                                      : `color-mix(in srgb, ${tone} 12%, transparent)`,
-                                  }}
-                                  title={g.title}
-                                >
-                                  <div className="font-semibold truncate">⏳ {g.label}</div>
-                                  <div className="mono">{fromMin(g.startMin)}–{fromMin(g.endMin)} 승인 대기</div>
-                                </div>
-                              );
-                            })}
-                            {/* 밴드 리사이즈 미리보기 */}
-                            {bDraft && bDraft.colKey === c.key && (
-                              <div className="absolute left-0 right-0 pointer-events-none" style={{
-                                top: ((bDraft.start - gridMin) / 60) * HOUR_H,
-                                height: Math.max(2, ((bDraft.end - bDraft.start) / 60) * HOUR_H),
-                                background: "rgba(110,118,129,.30)", border: "1px dashed var(--color-fg-subtle)",
-                              }} />
-                            )}
-                            {/* 커서 셀(빈 공간 클릭): 시각 배지 + (클립보드 있으면) 붙여넣기 미리보기 고스트 */}
-                            {cursor && cursor.colKey === c.key && (
-                              <div className="absolute left-0 right-0 z-10 pointer-events-none" style={{ top: ((cursor.startMin - gridMin) / 60) * HOUR_H }}>
-                                <div className="h-0.5 bg-accent" />
-                                <span className="absolute left-1 -top-2.5 px-1 rounded text-[10px] text-white mono bg-accent">
-                                  {fromMin(cursor.startMin)}{clip ? " · Ctrl+V" : ""}
-                                </span>
-                                {clip && (
-                                  <div
-                                    className="absolute left-0.5 right-0.5 rounded-lg"
-                                    style={{
-                                      top: 2, height: Math.max(18, (clip.durationMinutes / 60) * HOUR_H) - 2,
-                                      background: colorOf(clip), opacity: 0.25, border: "1.5px dashed var(--color-accent)",
-                                    }}
-                                  />
-                                )}
-                              </div>
-                            )}
-                            {/* 이벤트 이동 라이브 고스트(30분 스냅) */}
-                            {moveDrag && moveDrag.colKey === c.key && (
-                              <div className="absolute left-0.5 right-0.5 z-30 pointer-events-none rounded-lg text-white text-micro px-1.5 py-1 ring-2 ring-white" style={{
-                                top: ((moveDrag.start - gridMin) / 60) * HOUR_H + 1,
-                                height: Math.max(22, (moveDrag.dur / 60) * HOUR_H) - 2,
-                                background: moveDrag.color, opacity: 0.9,
-                              }}>
-                                <div className="font-semibold mono">{fromMin(moveDrag.start)}–{fromMin((moveDrag.start + moveDrag.dur) % 1440)}{moveDrag.start + moveDrag.dur > 1440 ? " (+1일)" : ""}</div>
-                              </div>
-                            )}
-                            {/* [B-4] 승인 대기 요청 고스트 — 점선·반투명·클릭 불가(승인 시 실제 세션으로 대체) */}
-                            {colGhosts.map((g) => {
-                              // [0.1.18] 요청 필드 optional화(availability 요청 수용) — 고스트는 sessionDate 매칭이라
-                              //  session_create만 도달하지만 타입 방어(기본 00:00/60분).
-                              const gs = toMin(g.startTime ?? "00:00");
-                              // [R-9] 요청의 endTime<start = 익일 종료(자정 크로스) — 래핑해 높이 정상화
-                              const ge = sessionEndMin({ startTime: g.startTime, endTime: g.endTime, durationMinutes: g.durationMinutes ?? 60 });
-                              return (
-                                <div key={`ghost-${g.id}`} className="absolute left-0.5 right-0.5 z-10 pointer-events-none rounded-lg px-1.5 py-1 text-[10px] leading-tight"
-                                  style={{ top: ((clampAxis(gs) - gridMin) / 60) * HOUR_H + 1, height: Math.max(20, ((clampAxis(ge) - clampAxis(gs)) / 60) * HOUR_H) - 2,
-                                    border: "1.5px dashed var(--color-accent)", background: "color-mix(in srgb, var(--color-accent) 12%, transparent)", color: "var(--color-accent)" }}
-                                  title={`승인 대기 요청 — ${g.topic ?? "수업"} ${g.startTime} (매니저 승인 시 확정)`}>
-                                  <div className="font-semibold truncate">⏳ {g.topic ?? "수업"}</div>
-                                  <div className="mono">{g.startTime}{g.endTime ? `–${g.endTime}` : ""} 승인 대기</div>
-                                </div>
-                              );
-                            })}
-                            {/* 현재 시각 인디케이터 */}
-                            {!colTz && showNow && isToday && (
-                              <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: nowTop }}>
-                                <div className="h-px bg-danger" />
-                                <div
-                                  className="absolute rounded-full"
-                                  style={{ width: 8, height: 8, left: -4, top: -4, background: "var(--color-danger)" }}
-                                />
-                              </div>
-                            )}
-                            {/* [R-9] 전일 자정 크로스 잔여(00:00~) 연속 블록 — 표시 전용(pointer-events 차단) */}
-                            {contRows.map((r) => {
-                              const spill = endMinOf(r) - 1440; // 익일 종료 분(00:00 기준)
-                              const s0 = clampAxis(0), e0 = clampAxis(spill);
-                              if (e0 <= s0) return null; // 축이 0시를 안 열었으면(이 컬럼에 스필 미표시) 생략
-                              return (
-                                <div
-                                  key={`cont-${r.id}`}
-                                  className="absolute left-0.5 right-0.5 pointer-events-none rounded-b-lg text-white text-micro leading-tight px-1.5 py-0.5 overflow-hidden"
-                                  style={{
-                                    top: ((s0 - gridMin) / 60) * HOUR_H + 1,
-                                    height: Math.max(14, ((e0 - s0) / 60) * HOUR_H) - 2,
-                                    background: colorOf(r), opacity: 0.5,
-                                    borderTop: "2px dashed rgba(255,255,255,.9)",
-                                  }}
-                                  title={`${labelOf(r)} — 전일 ${r.startTime ?? ""} 시작 수업의 연속(~${fromMin(spill)}) · 편집·선택은 시작일 블록에서`}
-                                >
-                                  <div className="font-semibold truncate" style={{ fontSize: 9.5 }}>↰ {labelOf(r)} (전일 계속)</div>
-                                  <div className="opacity-90 mono" style={{ fontSize: 9 }}>00:00–{fromMin(spill)}</div>
-                                </div>
-                              );
-                            })}
-                            {colRows.map((r) => {
-                              const s = sOf(r),
-                                en = eOf(r);
-                              // [R-9] 자정 크로스는 시작일 컬럼에서 24:00(축 상한)으로 클램프해 그리고,
-                              //  잔여는 "+1일 ~HH:mm" 배지(ovEnd) + 익일 컬럼 연속 블록(위 contRows)으로 표시.
-                              const enC = Math.min(en, gridMax);
-                              const ovEnd = (r as TzShiftedRow).tzOverflowEnd ?? crossMidnightEnd(r); // 시차 클램프(기존) ?? KST 크로스(R-9)
-                              const top = ((s - gridMin) / 60) * HOUR_H;
-                              const h = Math.max(22, ((enC - s) / 60) * HOUR_H);
-                              const ln = lanes[r.id] ?? { lane: 0, lanes: 1 };
-                              const wPct = 100 / ln.lanes;
-                              return (
-                                <div
-                                  key={r.id}
-                                  onPointerDown={(e) => onEventDown(e, r, colTz ? colTzc.tz : undefined)} // [R-1b 2026-07-06] F2 이중 방어
-                                  onClick={(e) => { e.stopPropagation(); if (suppressClickRef.current) { suppressClickRef.current = false; return; } setSelEvent(r.id); setSelBand(null); setDetailId(r.id); }}
-                                  onDoubleClick={(e) => { e.stopPropagation(); openEditor(r, colTz ? colTzc : null); }}
-                                  title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${ovEnd ? ` · 자정 넘김(+1일 ~${ovEnd})` : ""}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 드래그=이동 · 더블클릭=상세`}
-                                  className={`absolute rounded-lg text-white text-micro leading-tight cursor-grab overflow-hidden shadow-sm hover:brightness-105 transition ${textMode === "vtitle" || textMode === "color" ? "px-0.5 py-0.5" : "px-1.5 py-1"} ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
-                                  style={{
-                                    top: top + 1,
-                                    height: h - 2,
-                                    left: `calc(${ln.lane * wPct}% + 2px)`,
-                                    width: `calc(${wPct}% - 4px)`,
-                                    // 색상만 단계에선 결강·보강 모두 회색(피드백) — makeup 포함
-                                    background: textMode === "color" && r.status === "makeup" ? CANCELED_GRAY : colorOf(r),
-                                    // 이동 중엔 원본을 흐리게, Ctrl+복제 중엔 원본 유지(복제임을 시각화)
-                                    opacity: moveDrag?.id === r.id && !moveDrag.copy ? 0.35 : 1,
-                                    outline: selEvent === r.id ? "2px solid var(--color-accent)" : undefined,
-                                    outlineOffset: selEvent === r.id ? "1px" : undefined,
-                                  }}
-                                >
-                                  {/* [개방 2026-07-06] 시차 컬럼에서도 리사이즈 — 커밋은 tzCellToKst로 KST 변환(R-1b·R-9 검증 경로) */}
-                                  {selEvent === r.id && (
-                                    <div onPointerDown={(e) => onResizeDown(e, r, "top", colTz ? colTzc.tz : null, gridMin, gridMax)} className="absolute left-1/2 -translate-x-1/2 top-0 w-6 h-2 rounded-b bg-white/90 cursor-ns-resize" />
-                                  )}
-                                  {/* 텍스트 3단계: full/title=가로 · vtitle=세로 글씨 · color=색상만 */}
-                                  {(textMode === "full" || textMode === "title") && (
-                                    <>
-                                      <div
-                                        className={`font-semibold truncate ${isSessionCanceled(r) ? "line-through opacity-90" : ""}`}
-                                        style={textMode === "title" ? { fontSize: 10 } : undefined}
-                                      >
-                                        {labelOf(r)}{isSessionCanceled(r) ? ` (${isCanceledStatus(r.status) ? STATUS_LABEL[r.status] : "강사 결강"})` : ""}
-                                      </div>
-                                      <div className="opacity-90 mono truncate" style={textMode === "title" ? { fontSize: 9.5 } : undefined}>
-                                        {fromMin(s)}–{fromMin(Math.min(en, 1440))}
-                                        {ovEnd && (
-                                          /* 자정 크로스 잔여(TBO-12 P0·R-9): 이 수업은 다음날 이 시각까지 이어짐 */
-                                          <span className="ml-1 px-1 rounded bg-white/25 text-[9px] font-semibold not-italic">
-                                            +1일 ~{ovEnd}
-                                          </span>
-                                        )}
-                                        {/* [KST 고정] 해외 컬럼 칩에 현지시각 병기 — 눈금은 KST, 실제 순간은 세로 정렬 */}
-                                        {kstFixed && colIsOverseas && (
-                                          <span className="ml-1 px-1 rounded bg-black/20 text-[9px] font-semibold not-italic" title={`${colCountry!.name} ${fromMin(toLocal(s))}–${fromMin(toLocal(Math.min(en, 1440)))}`}>
-                                            {colCountry!.name}: {fromMin(toLocal(s))}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </>
-                                  )}
-                                  {textMode === "full" && (
-                                    <div className="opacity-80 truncate">
-                                      {r.memo ? r.memo : (r.roomName ?? "")}
-                                    </div>
-                                  )}
-                                  {textMode === "vtitle" && (
-                                    // [세로 글씨 최적화 2026-07-07] px-0.5 py-0.5로 padding 축소 → 높이 여유 확보(maxHeight h-4).
-                                    //  촘촘한 자간·lineHeight 1로 더 많은 글자 표시, 단일 열(nowrap)로 좌측 wrap 클립 방지.
-                                    //  전체 이름은 title 툴팁으로 항상 보존(넘치면 세로 방향으로만 자연 클립).
-                                    <div
-                                      className="font-semibold overflow-hidden text-center"
-                                      style={{ writingMode: "vertical-rl", textOrientation: "mixed", fontSize: 9, lineHeight: 1, letterSpacing: "-0.3px", whiteSpace: "nowrap", maxHeight: Math.max(10, h - 4), overflow: "hidden" }}
-                                      title={`${labelOf(r)} ${fromMin(s)}–${fromMin(Math.min(en, 1440))}${ovEnd ? ` (+1일 ~${ovEnd})` : ""}`}
-                                    >
-                                      {labelOf(r)}
-                                    </div>
-                                  )}
-                                  {selEvent === r.id && (
-                                    <div onPointerDown={(e) => onResizeDown(e, r, "bottom", colTz ? colTzc.tz : null, gridMin, gridMax)} className="absolute left-1/2 -translate-x-1/2 bottom-0 w-6 h-2 rounded-t bg-white/90 cursor-ns-resize" />
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-    );
-  };
 
-  const calendarPaneModels = calendarPanesState.panes.map((pane) => ({
-    pane,
-    columns: columnsForCalendarPane(pane),
-    rows: calendarRowsByPane.get(pane.id) ?? [],
-  }));
-  const calendarPanesAxis = unionAxis(calendarPaneModels.map((model) => computeAxis(model.columns, model.rows)));
+  // [TBO-104 2A] grid 이벤트 핸들러 — 커밋마다 최신 클로저로 교체(렌더 중 ref 쓰기 금지 규칙 준수).
+  const gridHandlers: CalendarGridHandlers = {
+    beginEmptyRange, onEventDown, onResizeDown, bDown, bDownResize, deleteBlock, findBlock, openEditor,
+    setCreating, setSelEvent, setSelBand, setCursor, setDetailId, setEditingBlock, setTzPickerFor, setResourceTzOverride,
+  };
+  const gridHandlersRef = useRef<CalendarGridHandlers>(gridHandlers);
+  useLayoutEffect(() => { gridHandlersRef.current = gridHandlers; });
+
+  // [TBO-104 2A] pane model identity 캐시 — 변경 없는 pane의 columns/rows 객체 참조를 유지해야
+  //  CalendarTimeGrid memo가 실제로 bail-out한다(sibling 재조정 제거의 전제). 값이 같은 axis도
+  //  이전 객체를 재사용해 참조 변동만으로 전 pane이 재렌더되는 것을 막는다.
+  const paneModelCacheRef = useRef(new Map<string, { pane: CalendarPaneState; columns: Col[]; rows: ScheduleRow[] }>());
+  const calendarPaneModels = useMemo(() => {
+    const prevCache = paneModelCacheRef.current;
+    const nextCache = new Map<string, { pane: CalendarPaneState; columns: Col[]; rows: ScheduleRow[] }>();
+    const models = calendarPanesState.panes.map((pane) => {
+      const rows = calendarRowsByPane.get(pane.id) ?? EMPTY_SCHEDULE_ROWS;
+      const prev = prevCache.get(pane.id);
+      const model = prev && prev.pane === pane && prev.rows === rows
+        ? prev
+        : { pane, columns: columnsForCalendarPane(pane), rows };
+      nextCache.set(pane.id, model);
+      return model;
+    });
+    paneModelCacheRef.current = nextCache;
+    return models;
+  }, [calendarPanesState.panes, calendarRowsByPane, columnsForCalendarPane]);
+  const axisValueRef = useRef<{ startH: number; endH: number } | null>(null);
+  const rawCalendarPanesAxis = unionAxis(calendarPaneModels.map((model) => computeAxis(model.columns, model.rows)));
+  const calendarPanesAxis =
+    axisValueRef.current
+    && axisValueRef.current.startH === rawCalendarPanesAxis.startH
+    && axisValueRef.current.endH === rawCalendarPanesAxis.endH
+      ? axisValueRef.current
+      : (axisValueRef.current = rawCalendarPanesAxis);
 
   return (
     <div className="mx-auto max-w-page-wide p-3 sm:p-6">
@@ -2131,16 +1538,20 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
             </div>
           )}
 
-          <div ref={captureRef} className="bg-canvas">
+          {/* [TBO-104 2A · 390px 정책] pane 최소폭 280px 보장 — 부족하면 이 컨테이너 안에서만 가로 스크롤.
+              종전에는 wrapper가 flex shrink로 width style 아래(390px 2-pane 실측 177px)까지 눌렸다(shrink-0로 차단).
+              PNG/JPEG 캡처가 잘리지 않도록 captureRef는 스크롤러 안쪽(w-max)에 둔다. */}
+          <div className="overflow-x-auto">
+            <div ref={captureRef} className="w-max min-w-full bg-canvas">
             {calendarPaneModels.length ? (
-              <div className="flex items-start gap-3 overflow-hidden">
+              <div className="flex items-start gap-3">
                 {calendarPaneModels.map((model, index) => {
                   const paneWidth = Math.max(
                     280,
                     (mainW - 12 * Math.max(0, calendarPaneModels.length - 1)) / calendarPaneModels.length,
                   );
                   return (
-                    <div key={model.pane.id} className="min-w-0" style={{ width: paneWidth }}>
+                    <div key={model.pane.id} className="shrink-0" style={{ width: paneWidth }}>
                       <CalendarPane
                         pane={model.pane}
                         active={calendarPanesState.activePaneId === model.pane.id}
@@ -2152,91 +1563,72 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
                         paneCount={calendarPaneModels.length}
                         allowedDimensions={isInstructor ? INSTRUCTOR_SPLIT_DIMS : undefined}
                       >
-                        {renderTimeGrid(model.columns, null, undefined, paneWidth, calendarPanesAxis, model.rows)}
+                        <CalendarTimeGrid
+                          cols={model.columns}
+                          tzc={null}
+                          paneFilters={undefined}
+                          availW={paneWidth}
+                          axis={calendarPanesAxis}
+                          sourceRows={model.rows}
+                          kstFixed={kstFixed}
+                          isInstructor={isInstructor}
+                          canAdd={canAdd}
+                          selected={selected}
+                          attBySession={attBySession}
+                          pendingGhosts={pendingGhosts}
+                          allBlocks={allBlocks}
+                          selBlocks={selBlocks}
+                          subjectIdOf={subjectIdOf}
+                          preview={preview}
+                          emptyRangeDraft={emptyRangeDraft}
+                          bDraft={bDraft}
+                          cursor={cursor}
+                          clip={clip}
+                          moveDrag={moveDrag}
+                          selEvent={selEvent}
+                          selBand={selBand}
+                          showNow={showNow}
+                          nowTop={nowTop}
+                          tzPickerFor={tzPickerFor}
+                          resourceTzOverride={resourceTzOverride}
+                          colorOf={colorOf}
+                          labelOf={labelOf}
+                          tzRowsCache={tzRowsCacheRef}
+                          bMovedRef={bMovedRef}
+                          suppressClickRef={suppressClickRef}
+                          suppressEmptyClickRef={suppressEmptyClickRef}
+                          handlers={gridHandlersRef}
+                        />
                       </CalendarPane>
                     </div>
                   );
                 })}
               </div>
             ) : null}
+            </div>
           </div>
         </div>
 
-        {/* 우측 컬럼(Lantiv): 유저별 스케줄(단일 선택) + 수업 리스트(날짜순·그룹 토글) + 선택 수업 상세(DTO) */}
-        <div className="w-full shrink-0 space-y-3 self-start lg:sticky lg:top-4 lg:w-64">
-          {/* 우측 리스트: row 버튼 = 필터 토글, ⓘ 버튼 = 상세 카드만. 두 동작을 분리해 "상세 카드 열기(뷰는 그대로)" 계약을 지킨다. */}
-          {resources && (
-            <ResourcePanel
-              resources={resources}
-              selected={infoTarget}
-              onSelect={setInfoTarget}
-              filterIds={{
-                instructor: new Set(activeCalendarPane.filters.instructorIds),
-                student: new Set(activeCalendarPane.filters.studentIds),
-                room: new Set(activeCalendarPane.filters.roomIds),
-              }}
-              onToggleFilter={(dim, id) => {
-                if (isInstructor && (dim === "instructor" || dim === "student")) return;
-                const filter = dim === "instructor" ? "instructorIds" : dim === "student" ? "studentIds" : "roomIds";
-                const values = activeCalendarPane.filters[filter];
-                dispatchCalendarPanes({
-                  type: "pane/set-resource-filter",
-                  paneId: activeCalendarPane.id,
-                  filter,
-                  values: values.includes(id) ? values.filter((value) => value !== id) : [...values, id],
-                });
-              }}
-              allowedTypes={isInstructor ? INSTRUCTOR_RESOURCE_PANEL_TYPES : undefined}
-            />
-          )}
-          {/* [피드백 2026-07-03] 스케줄 선택 → 포함 인원 리스트 → 한 명 클릭 → 바로 아래 유저 상세 카드 */}
-          {detailRow && (
-            <ParticipantsCard row={detailRow} picked={cardTarget} onPick={(r) => setInfoTarget(r)} />
-          )}
-          {/* 유저 상세·편집(피드백 2026-07-03 #2·#3): 선택 유저의 정보 확인 + 학생은 국가·상태 즉시 수정 */}
-          {cardTarget && (
-            <ResourceDetailCard
-              selected={cardTarget}
-              isFiltered={cardTarget.type === "instructor"
-                ? activeCalendarPane.filters.instructorIds.includes(Number(cardTarget.id))
-                : cardTarget.type === "student"
-                  ? activeCalendarPane.filters.studentIds.includes(Number(cardTarget.id))
-                  : activeCalendarPane.filters.roomIds.includes(Number(cardTarget.id))}
-              onFocusView={() => {
-                const filter = cardTarget.type === "instructor" ? "instructorIds" : cardTarget.type === "student" ? "studentIds" : "roomIds";
-                dispatchCalendarPanes({ type: "pane/set-resource-filter", paneId: activeCalendarPane.id, filter, values: [Number(cardTarget.id)] });
-              }}
-              onClearFocus={() => {
-                const filter = cardTarget.type === "instructor" ? "instructorIds" : cardTarget.type === "student" ? "studentIds" : "roomIds";
-                dispatchCalendarPanes({ type: "pane/set-resource-filter", paneId: activeCalendarPane.id, filter, values: [] });
-                setInfoTarget(cardTarget);
-              }}
-              onMsg={setMsg}
-              onSaved={load}
-              onAddSchedule={
-                canAdd
-                  ? () =>
-                      setCreating({
-                        // 기준일: 전역 추가 버튼과 동일 규칙(오늘이 뷰에 있으면 오늘, 아니면 첫 날)
-                        date: activeCalendarDates.find((date) => date === todayISO()) ?? activeCalendarDates[0],
-                        owner: cardTarget,
-                        defaultInstructorId: cardTarget?.type === "instructor" ? Number(cardTarget.id) : undefined,
-                      })
-                  : undefined
-              }
-            />
-          )}
-          <SessionListPanel
-            emptyHint={
-              listRows.length ? undefined
-                : `${calendarPanePeriodLabel(activeCalendarPane)} 기준 — 기간을 넓히거나 필터를 확인하세요`
-            }
-            rows={listRows}
-            groupBy={listGrouped ? listGroupDim : "none"}
-            groupDim={listGroupDim}
-            onToggleGroup={() => setListGrouped((v) => !v)}
-            selectedId={detailId}
-            onPick={(r) => {
+        {/* [TBO-104 2A] 우측 = 단일 CalendarInspector(Figma 7104:715) — 종전 5개 카드 스택을
+            Resources/Detail/Activities/Conflicts/Changes 탭 내부 조각으로 수렴. 필터·선택 상태는
+            여전히 pane reducer/부모 state가 단독 소유하고 Inspector는 사본 없이 dispatch/콜백만 쓴다. */}
+        <div className="w-full shrink-0 self-start lg:sticky lg:top-4 lg:w-72">
+          <CalendarInspector
+            pane={activeCalendarPane}
+            dispatchPanes={dispatchCalendarPanes}
+            resources={resources}
+            rooms={rooms}
+            subjects={subjectOpts}
+            isInstructor={isInstructor}
+            canManage={canManage}
+            canAdd={!!canAdd}
+            colorOf={colorOf}
+            listRows={listRows}
+            listGrouped={listGrouped}
+            listGroupDim={listGroupDim}
+            onToggleListGrouped={() => setListGrouped((v) => !v)}
+            detailRow={detailRow}
+            onPickSession={(r) => {
               setDetailId(r.id);
               setSelEvent(r.id);
               // 리스트 항목이 현재 뷰 기간 밖이면 그 날짜로 이동(그리드에서 바로 보이게)
@@ -2250,29 +1642,31 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
               }
               scrollDetailIntoView();
             }}
-            colorOf={colorOf}
-          />
-          <div ref={detailPanelRef}>
-          <SessionDetailPanel
-            onPickStudent={(id, name) => {
-              // [A안 조정] 뷰는 그대로 — 우측에 정보 카드만(수정은 카드에서)
-              const res = resources?.students.find((x) => Number(x.id) === id);
-              setInfoTarget(res ?? ({ type: "student", id, name } as ScheduleResource));
-            }}
-            onPickInstructor={(id, name) => {
-              const res = resources?.instructors.find((x) => Number(x.id) === id);
-              setInfoTarget(res ?? ({ type: "instructor", id, name } as ScheduleResource));
-            }}
-            row={detailRow}
-            rooms={rooms}
-            instructors={(resources?.instructors ?? []).map((i) => ({ id: Number(i.id), name: i.name }))}
-            canEdit={!!canAdd}
-            colorOf={colorOf}
+            listEmptyHint={
+              listRows.length ? undefined
+                : `${calendarPanePeriodLabel(activeCalendarPane)} 기준 — 기간을 넓히거나 필터를 확인하세요`
+            }
+            cardTarget={cardTarget}
+            onSelectResource={setInfoTarget}
             onPatch={(r, patch, label) => requestChange(r, patch, label)}
             onDelete={(r) => deleteSession(r.id)}
             onOpenModal={(r) => openEditor(r)}
+            onSaved={load}
+            onMsg={setMsg}
+            onAddScheduleFor={
+              canAdd
+                ? (owner) =>
+                    setCreating({
+                      // 기준일: 전역 추가 버튼과 동일 규칙(오늘이 뷰에 있으면 오늘, 아니면 첫 날)
+                      date: activeCalendarDates.find((date) => date === todayISO()) ?? activeCalendarDates[0],
+                      owner,
+                      defaultInstructorId: owner?.type === "instructor" ? Number(owner.id) : undefined,
+                    })
+                : undefined
+            }
+            allBlocks={allBlocks}
+            detailAnchorRef={detailPanelRef}
           />
-          </div>
         </div>
       </div>
 
@@ -2443,3 +1837,704 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
 
 // [B6 C1] DetailModal·RecurrencePrompt·승인 요청 모달 3종·BlockEditModal은 modals/로 분리(ModalShell 이관).
 // Field·ColorPicker는 SessionEditFields.tsx에서 import(폼 프리미티브 단일 소스).
+
+// ═══════════════════════════════════════════════════════════════════════════
+// [TBO-104 2A] CalendarTimeGrid — pane별 memo 렌더 경계.
+// 측정 근거(2026-08-18, in-memory 1,000세션·21일·2 pane): 경계가 없으면 pane2 필터 입력마다
+// sibling pane 그리드까지 부모 렌더 안에서 전체 JSX 재구성·재조정되어 키 입력당 long task
+// 719~1097ms, sibling commit 최대 42ms였다. 시각 입력은 전부 props로 받고(변하면 정상 재렌더),
+// 이벤트 핸들러는 handlers ref를 **호출 시점에** 읽어 stale closure 없이 memo bail-out을 얻는다.
+// 주의: custom comparator로 children/props를 무시하지 않는다(선택·드래그 프리뷰 freeze 금지 규칙).
+// ═══════════════════════════════════════════════════════════════════════════
+export type Col = {
+  key: string; label: string; sub?: string; date: string; roomId?: number;
+  noRoom?: boolean; // 일간 '미지정' 컬럼(강의실 없는 세션)
+  resType?: SplitDim; resId?: number; firstOfDate?: boolean;
+  tzc?: CountryInfo; // owner 개별 시차(country/timeZone 파생 — 학생·강사 공통)
+};
+
+type TzPickerState = { colKey: string; type: Exclude<SplitDim, "subject">; id: number; x: number; y: number };
+type CreatingSeed = {
+  date: string; start?: string; end?: string;
+  owner?: ScheduleResource | null; defaultInstructorId?: number;
+  tz?: CountryInfo | null;
+} | null;
+
+// 이벤트 핸들러 — 렌더 결과에는 쓰이지 않고 사용자 이벤트 시점에만 호출되는 함수들.
+// ref로 전달해 memo를 깨지 않으면서 항상 부모의 최신 클로저를 실행한다(useLayoutEffect로 커밋마다 갱신).
+export type CalendarGridHandlers = {
+  beginEmptyRange: (
+    event: ReactPointerEvent<HTMLDivElement>,
+    col: Col,
+    gridMin: number,
+    gridMax: number,
+    tz: CountryInfo | null,
+  ) => void;
+  onEventDown: (e: ReactPointerEvent, r: ScheduleRow, srcTz?: string) => void;
+  onResizeDown: (e: ReactPointerEvent, r: ScheduleRow, edge: "top" | "bottom", tz?: string | null, gm?: number, gmax?: number) => void;
+  bDown: (e: ReactPointerEvent, c: { key: string; date: string }, b: { id: number; kind: string; startMin: number; endMin: number }, edge: "top" | "bottom" | "move") => void;
+  bDownResize: (e: ReactPointerEvent, c: { key: string; date: string }, b: { id: number; kind: string; startMin: number; endMin: number }, edge: "top" | "bottom") => void;
+  deleteBlock: (id: number, weekDate?: string) => void;
+  findBlock: (id: number) => AvailabilityBlock | undefined;
+  openEditor: (r: ScheduleRow, tz?: CountryInfo | null) => void;
+  setCreating: Dispatch<SetStateAction<CreatingSeed>>;
+  setSelEvent: Dispatch<SetStateAction<number | null>>;
+  setSelBand: Dispatch<SetStateAction<number | null>>;
+  setCursor: Dispatch<SetStateAction<(PasteTarget & { colKey: string; tz?: string }) | null>>;
+  setDetailId: Dispatch<SetStateAction<number | null>>;
+  setEditingBlock: Dispatch<SetStateAction<AvailabilityBlock | null>>;
+  setTzPickerFor: Dispatch<SetStateAction<TzPickerState | null>>;
+  setResourceTzOverride: Dispatch<SetStateAction<ResourceTimezoneOverrides>>;
+};
+
+type CalendarTimeGridProps = {
+  cols: Col[];
+  tzc: CountryInfo | null | undefined;
+  paneFilters: CalendarFacetFilters | undefined;
+  availW: number;
+  axis: { startH: number; endH: number };
+  sourceRows: ScheduleRow[];
+  kstFixed: boolean;
+  isInstructor: boolean;
+  canAdd: boolean;
+  selected: ScheduleResource | null;
+  attBySession: Map<number, Attendance[]>;
+  pendingGhosts: Parameters<typeof availabilityGhostBandsForColumn>[0]["requests"];
+  allBlocks: AvailabilityBlock[];
+  selBlocks: AvailabilityBlock[];
+  subjectIdOf: Parameters<typeof rowInResource>[3];
+  preview: { id: number; start: number; end: number; dStart: number; dEnd: number } | null;
+  emptyRangeDraft: (CalendarMinuteRange & { colKey: string; date: string }) | null;
+  bDraft: { colKey: string; start: number; end: number; kind: string } | null;
+  cursor: (PasteTarget & { colKey: string; tz?: string }) | null;
+  clip: ScheduleRow | null;
+  moveDrag: { id: number; colKey: string; start: number; dur: number; color: string; copy: boolean } | null;
+  selEvent: number | null;
+  selBand: number | null;
+  showNow: boolean;
+  nowTop: number;
+  tzPickerFor: TzPickerState | null;
+  resourceTzOverride: ResourceTimezoneOverrides;
+  colorOf: (r: ScheduleRow) => string;
+  labelOf: (r: ScheduleRow) => string;
+  tzRowsCache: MutableRefObject<{ src: ScheduleRow[] | null; map: Map<string, ScheduleRow[]> }>;
+  bMovedRef: MutableRefObject<boolean>;
+  suppressClickRef: MutableRefObject<boolean>;
+  suppressEmptyClickRef: MutableRefObject<boolean>;
+  handlers: MutableRefObject<CalendarGridHandlers>;
+};
+
+const CalendarTimeGrid = memo(function CalendarTimeGrid({
+  cols, tzc, paneFilters, availW, axis, sourceRows,
+  kstFixed, isInstructor, canAdd, selected,
+  attBySession, pendingGhosts, allBlocks, selBlocks, subjectIdOf,
+  preview, emptyRangeDraft, bDraft, cursor, clip, moveDrag, selEvent, selBand,
+  showNow, nowTop, tzPickerFor, resourceTzOverride,
+  colorOf, labelOf, tzRowsCache, bMovedRef, suppressClickRef, suppressEmptyClickRef, handlers,
+}: CalendarTimeGridProps) {
+  const SNAP_MOVE = 30;
+  const snapMove = (m: number) => Math.round(m / SNAP_MOVE) * SNAP_MOVE;
+  const rowsOfColumn = (c: Col, src: ScheduleRow[]) =>
+    src.filter(
+      (r) =>
+        r.sessionDate === c.date &&
+        (c.resType != null
+          ? rowInResource(r, c.resType, c.resId!, subjectIdOf) // [#2] 과목 컬럼은 리졸버로 매칭
+          : c.noRoom
+            ? r.roomId == null // [L1] 미지정 컬럼 = 강의실 없는 세션만
+            : c.roomId == null || r.roomId === c.roomId),
+    );
+  // 가용/불가(Block) 밴드 — 선택 자원 기준. week=요일 매칭 모든 컬럼, day=룸이면 해당 컬럼만/그 외 전체.
+  type Band = { id: number; kind: AvailabilityBlock["kind"] | "online_only"; startMin: number; endMin: number; top: number; h: number; editable: boolean };
+  // gridMin: 렌더 그리드의 시작 분(개별 시차로 축이 0~24h일 때 top 정합 — renderTimeGrid가 전달)
+  // tz: 컬럼이 비KST(해외 학생 등)면 그 tz — KST 블록을 그 나라 로컬로 변환해 표시(이슈1). KST·tz 모두
+  //  kstBlockToTzWindow 단일 함수로 매칭·변환(세션 엔진 재사용·단위테스트 — 이슈3).
+  const bandsOfColumn = (c: { date: string; roomId?: number; resType?: SplitDim; resId?: number }, gridMin: number = GRID_MIN, gridMax: number = END_H * 60, tz?: string | null): Band[] => {
+    const isTz = !!tz && tz !== KST_TZ;
+    // [버그수정 2026-07-06 2단] KST 클램프를 상수 축(8~22)이 아닌 **이 그리드의 실제 축**으로 —
+    //  expandAxis로 축을 늘려도 여기서 상수로 클램프되면 심야 밴드가 0높이→미렌더되던 원인.
+    const axisClamp = isTz ? (mm: number) => Math.max(0, Math.min(24 * 60, mm)) : (mm: number) => clampToAxis(mm, gridMin, gridMax);
+    // 블록 1건 → 밴드(그 컬럼 날짜에 안 걸리면 null). tz면 표시 전용(editable=false — 드래그는 KST 좌표라).
+    const toBand = (b: AvailabilityBlock, editable: boolean): Band | null => {
+      const w = kstBlockToTzWindow(b, c.date, tz ?? KST_TZ);
+      if (!w) return null;
+      const sMin = axisClamp(w.startMin), eMin = axisClamp(w.endMin);
+      if (eMin <= sMin) return null;
+      return { id: b.id, kind: b.kind, startMin: sMin, endMin: eMin, top: ((sMin - gridMin) / 60) * HOUR_H, h: Math.max(6, ((eMin - sMin) / 60) * HOUR_H), editable: editable && !isTz };
+    };
+    const nonNull = (x: Band | null): x is Band => x != null;
+    // 스플릿 서브컬럼 = 그 컬럼 유저의 가용·불가 · 비스플릿 = 선택 유저(selBlocks).
+    if (c.resType != null && c.resId != null) {
+      if (c.resType === "subject") return [];
+      return allBlocks
+        .filter((b) => b.ownerType === c.resType && Number(b.ownerId) === c.resId)
+        .map((b) => toBand(b, true)).filter(nonNull);
+    }
+    if (!selBlocks.length) return [];
+    return selBlocks
+      .filter(() => selected?.type !== "room" || c.roomId == null || c.roomId === selected.id)
+      .map((b) => toBand(b, true)).filter(nonNull);
+  };
+    // [KST 고정] kstFixed면 tz 위치 변환·편집 변환 없음(전 컬럼 KST). 국가정보는 칩 현지시각 라벨용으로만 유지.
+    const tzActive = !kstFixed && !!tzc && tzc.tz !== KST_TZ;
+    // 학생 개별 시차(피드백 2026-07-03 #1): 그리드 tz(전역/표별 — 명시 선택)가 없을 때만
+    //  학생 컬럼의 country 파생 tz가 동작. 축은 컬럼 하나라도 tz면 0~24h(다른 나라 새벽 대비).
+    const anyColTz = !kstFixed && !tzActive && cols.some((c) => c.tzc != null);
+    // [스플릿 높이 정렬] 축은 공통(axisOverride) 우선 — 없으면 이 표 자체 축. 시차·심야 콘텐츠 확장은 computeAxis가 처리.
+    const { startH, endH } = axis;
+    const gridMin = startH * 60, gridMax = endH * 60, gridH = (endH - startH) * HOUR_H;
+    const clampAxis = (mm: number) => clampToAxis(mm, gridMin, gridMax); // [이슈2] 이 그리드 축 경계
+    // 변환 캐시(같은 filtered·tz면 재사용) — 표 2개/컬럼별 tz/리렌더에서 tz별 1회만 O(n) 변환(감사 M4)
+    const cache = tzRowsCache.current;
+    if (cache.src !== sourceRows) { cache.src = sourceRows; cache.map.clear(); }
+    const rowsForTz = (tz: string): ScheduleRow[] => {
+      if (tz === KST_TZ) return sourceRows;
+      const hit = cache.map.get(tz);
+      if (hit) return hit;
+      const shifted = shiftRowsToTz(sourceRows, tz);
+      cache.map.set(tz, shifted);
+      return shifted;
+    };
+    const isSplitGrid = cols[0]?.resType != null;
+    // 데일리 스플릿(피드백 최종): 요일 열을 컨테이너 폭에 맞춰 압축하고, 그 안을 인원수로
+    //  서브분할(같은 크기 요일 열을 늘리는 게 아님 — 컴팩트). 일수가 적으면 flex로 화면을 채움.
+    const dayCount = isSplitGrid ? new Set(cols.map((c) => c.date)).size : cols.length;
+    const perDay = isSplitGrid ? Math.max(1, Math.round(cols.length / Math.max(1, dayCount))) : 1;
+    // [C3] 일별 컬럼은 표 개수·날짜 수가 늘어도 한 화면 비교가 되도록 최소폭만 남기고 압축한다.
+    const netW = Math.max(80, availW - GUTTER_W - 10);
+    const fitDayW = Math.floor(netW / Math.max(1, dayCount));
+    const minDayW = 24 * perDay;
+    const dayW = Math.max(minDayW, fitDayW);
+    const subW = isSplitGrid ? Math.max(24, Math.floor(dayW / perDay)) : Math.max(24, dayW);
+    // 텍스트 밀도 단계(서브열 폭 기준) — 단일 함수 densityOf(lib/domain/lantiv, vitest)로 통일(R2)
+    const textMode = densityOf(subW, isSplitGrid);
+    const minCol = subW;
+    const axisTzc = kstFixed ? axisCompanionTimezone(cols.map((c) => c.tzc), tzc) : undefined;
+    const axisDate = cols[0]?.date ?? todayISO();
+    const gutterTitle = kstFixed
+      ? axisTzc
+        ? `모든 표가 KST 기준 00~24시 축으로 정렬됩니다. 시간축 아래에는 ${axisTzc.name} 현지 시각을 병기합니다.`
+        : "모든 표가 KST 기준 00~24시 축으로 정렬됩니다. 해외 현지 시각은 컬럼 헤더와 수업 칩에 병기됩니다."
+      : tzActive && tzc
+        ? `${tzc.name} 현지 시각 축입니다.`
+        : anyColTz
+          ? "컬럼마다 현지 시각 축입니다."
+          : "한국 표준시 축입니다.";
+    return (
+              <div className="card overflow-x-auto overflow-y-hidden">
+                <div className="flex" /* [고정폭] minWidth 강제 제거 — 스크롤 없음 */>
+                  {/* 시간 거터 */}
+                  <div className="shrink-0 sticky left-0 z-10 bg-canvas" style={{ width: GUTTER_W }}>
+                    {/* [다중 시차 UX] 세로 눈금의 기준을 명시 — 개별 시차 혼재 시 "현지"(컬럼별), 표 전체 tz면 그 국기, 아니면 KST */}
+                    <div style={{ height: HEADER_H }} className="flex items-end justify-end pr-1.5 pb-1">
+                      <span className="text-[9px] text-fg-subtle mono" title={gutterTitle}>
+                        {kstFixed ? "KST" : tzActive ? tzc!.flag : anyColTz ? "현지" : "KST"}
+                      </span>
+                    </div>
+                    <div className="relative" style={{ height: gridH }}>
+                      {Array.from({ length: endH - startH + 1 }, (_, i) => (
+                        <span
+                          key={i}
+                          className="absolute right-2 text-micro text-fg-subtle mono"
+                          style={{ top: i * HOUR_H - 7 }}
+                        >
+                          {i < endH - startH ? (
+                            <span className="inline-flex flex-col items-end leading-none">
+                              <span>KST {pad(startH + i)}:00</span>
+                              {axisTzc && (
+                                <span className="text-[8px] text-fg-subtle">
+                                  ({axisTzc.name}: {fromMin(((startH + i) * 60 + tzOffsetFromKst(axisTzc.tz, axisDate) + 1440) % 1440)})
+                                </span>
+                              )}
+                            </span>
+                          ) : ""}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  {/* 컬럼들 */}
+                  <div className="flex-1 flex">
+                    {cols.map((c) => {
+                      // 컬럼 유효 tz: 그리드(전역/표별) > 학생 개별(country) > KST
+                      const colTzc = tzActive ? tzc : (c.tzc ?? null);
+                      // [KST 고정] kstFixed면 위치·편집 변환 없음(colTz=false) → 전 컬럼 KST 좌표. 국가는 라벨용으로만.
+                      const colTz = !kstFixed && !!colTzc && colTzc.tz !== KST_TZ;
+                      // 표시용 국가(kstFixed 무관) — 그리드 tz 또는 컬럼 개별 country.
+                      const colCountry = (tzc && tzc.tz !== KST_TZ ? tzc : null) ?? (c.tzc ?? null);
+                      const colIsOverseas = !!colCountry && colCountry.tz !== KST_TZ;
+                      // [다중 시차 UX] 세로 눈금 의미를 명확히 — KST 오프셋. off-모드 개별시차 컬럼 헤더 배지 + kstFixed 칩 현지시각.
+                      const colOff = colIsOverseas ? tzOffsetFromKst(colCountry!.tz, c.date) : 0;
+                      const colOffLabel = colIsOverseas ? `KST${colOff >= 0 ? "+" : "-"}${Math.floor(Math.abs(colOff) / 60)}${Math.abs(colOff) % 60 ? ":" + pad(Math.abs(colOff) % 60) : ""}h` : "";
+                      // kstFixed일 때 칩에 병기할 현지시각 = KST분 + 오프셋(자정 넘김은 24h 모듈로).
+                      const toLocal = (mm: number) => ((mm + colOff) % 1440 + 1440) % 1440;
+                      // 전역 필터와 같은 판정 함수를 쓰되, 이 표의 필터를 추가로 적용한다.
+                      const panePass = (r: ScheduleRow) => matchesCalendarFacetFilters(
+                        r,
+                        attBySession.get(Number(r.id)) ?? [],
+                        paneFilters,
+                      );
+                      const colRows = rowsOfColumn(c, colTz ? rowsForTz(colTzc.tz) : sourceRows).filter(panePass);
+                      // [R-9] 전일 자정 크로스 세션의 익일 연속 블록(00:00~잔여) — **표시 전용**(상호작용은
+                      //  시작일 원본 블록에서). KST 컬럼 전용 — 시차 컬럼은 shiftRowToTz가 현지 좌표로
+                      //  통변환하므로(대개 크로스가 풀림) 기존 tzOverflowEnd 배지 규칙을 유지.
+                      const contRows = !colTz
+                        ? rowsOfColumn({ ...c, date: addDaysISO(c.date, -1) }, sourceRows).filter(panePass).filter((r) => endMinOf(r) > 1440)
+                        : [];
+                      // [B-4 #9] 강사 본인 pending 요청 고스트(승인 대기 시각화) — KST 컬럼 전용·표시 전용.
+                      //  세션 요청과 availability 요청을 분리해 타입별 geometry를 각각 계산한다.
+                      const colGhosts = !colTz && isInstructor
+                        ? pendingGhosts.filter((g) =>
+                            (g.requestKind == null || g.requestKind === "session_create" || g.requestKind === "session_update") &&
+                            g.sessionDate === c.date &&
+                            (c.resType == null || (c.resType === "instructor" && Number(c.resId) === Number(g.instructorId))),
+                          )
+                        : [];
+                      // [오류5] 미리보기 = 자기 프레임 좌표 + 프레임 불변 델타 — 시차 컬럼에서도 그 나라 시간으로 표시
+                      const sOf = (r: ScheduleRow) => (preview && preview.id === r.id ? startMinOf(r) + preview.dStart : startMinOf(r));
+                      const eOf = (r: ScheduleRow) => (preview && preview.id === r.id ? endMinOf(r) + preview.dEnd : endMinOf(r));
+                      const lanes = layoutLanes(colRows.map((r) => ({ id: r.id, start: sOf(r), end: eOf(r) })));
+                      const bands = bandsOfColumn(c, gridMin, gridMax, colTz ? colTzc.tz : null); // [이슈1] 시차 컬럼도 변환해 표시
+                      const availabilityGhosts = !colTz && c.resType && c.resType !== "subject" && c.resId != null
+                        ? availabilityGhostBandsForColumn({
+                            requests: pendingGhosts,
+                            blocks: allBlocks,
+                            date: c.date,
+                            owner: { type: c.resType, id: c.resId },
+                          })
+                        : [];
+                      const isToday = c.date === todayISO();
+                      return (
+                        <div
+                          key={c.key}
+                          className="border-l overflow-hidden shrink-0" /* [고정폭] 컬럼 = 계산된 px 고정(유동 제거) + 클립 */
+                          style={{
+                            borderColor: c.resType && c.firstOfDate ? "var(--color-line)" : "var(--color-line-muted)",
+                            borderLeftWidth: c.resType && c.firstOfDate ? 2 : undefined,
+                            width: minCol,
+                          }}
+                        >
+                          {/* 헤더: 스플릿=날짜+리소스명 · 주간=요일+날짜(오늘 강조) · 일간=강의실 */}
+                          <div
+                            className="flex flex-col items-center justify-center gap-0.5 border-b relative"
+                            style={{ height: HEADER_H }}
+                          >
+                            {c.resType ? (
+                              <>
+                                {c.sub && (
+                                  <span className={`text-[10px] ${isToday ? "text-accent font-semibold" : "text-fg-subtle"}`}>
+                                    {c.sub}
+                                  </span>
+                                )}
+                                {/* [다중 시차 UX] 해외 컬럼 오프셋 배지 — off-모드(개별 시차, 눈금=현지) 또는 kstFixed(눈금=KST, 칩=현지) */}
+                                {colIsOverseas && (colTz || kstFixed) && minCol > 46 && (
+                                  <span className="text-[9px] mono text-fg-subtle leading-none" title={kstFixed ? `${colCountry!.name} · 눈금은 KST, 칩에 현지시각 병기(${colOffLabel})` : `${colCountry!.name} 현지 시각으로 표시 · 세로 눈금은 이 컬럼 현지 기준(${colOffLabel})`}>
+                                    {colCountry!.flag} {colOffLabel}
+                                  </span>
+                                )}
+                                {/* 이름은 truncate, 국기 버튼은 truncate 밖(잘림·클릭 좌표 소실 방지) */}
+                                <span className="flex items-center gap-0.5 max-w-full px-1 min-w-0">
+                                  <span
+                                    className="text-caption font-semibold truncate min-w-0"
+                                    title={`${c.label}${!tzActive && c.tzc ? ` — ${c.tzc.name} 시간(개별 시차)` : ""}`}
+                                  >
+                                    {c.label}
+                                  </span>
+                                  {/* [오류3] 좁은 컬럼(≤46px)에선 + 숨김 — 이름·국기(시차 단서)가 먼저 잘리지 않게(추가는 드래그·우측 카드로 가능) */}
+                                  {canAdd && c.resType != null && c.resId != null && minCol > 46 && (
+                                    <button
+                                      className="shrink-0 hover:opacity-70 text-micro leading-none px-0.5"
+                                      title={`${c.label}에게 추가 — 수업·가용·불가(유저 프리필)`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handlers.current.setCreating({
+                                          date: c.date,
+                                          owner: { type: c.resType!, id: c.resId!, name: c.label } as ScheduleResource,
+                                          defaultInstructorId: c.resType === "instructor" ? c.resId : undefined,
+                                          tz: colTz ? colTzc : undefined, // [이슈1] 비KST 컬럼: 현지→KST 변환
+                                        });
+                                      }}
+                                    >
+                                      ＋
+                                    </button>
+                                  )}
+                                  {/* [2I] owner 컬럼 시차 수동 변경 — 학생/강사 공통. 국기(현재 tz)/🌐(KST) 클릭 = 픽커 */}
+                                  {!tzActive && (c.resType === "student" || c.resType === "instructor") && c.resId != null && (
+                                    <button
+                                      className="shrink-0 hover:opacity-70 text-caption leading-none px-0.5 py-0.5 -my-0.5"
+                                      title={`${c.label} 컬럼 시차 변경`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const b = (e.currentTarget as HTMLElement).getBoundingClientRect(); // [오류4] fixed 좌표
+                                        handlers.current.setTzPickerFor((prev) => (prev?.colKey === c.key ? null : { colKey: c.key, type: c.resType as Exclude<SplitDim, "subject">, id: c.resId!, x: b.left, y: b.bottom }));
+                                      }}
+                                    >
+                                      {c.tzc ? c.tzc.flag : "🌐"}
+                                    </button>
+                                  )}
+                                </span>
+                                {/* [오류4] 시차 픽커 팝오버 — fixed(뷰포트 기준)로 컬럼 클리핑·옆 컬럼 가림 탈출(최상위 z) */}
+                                {tzPickerFor?.colKey === c.key && (
+                                  <span
+                                    className="fixed z-[70] card shadow-[var(--shadow-overlay)] p-1.5 w-44 block"
+                                    style={{ left: Math.max(8, Math.min(tzPickerFor.x, (typeof window !== "undefined" ? window.innerWidth : 1440) - 188)), top: tzPickerFor.y + 4 }}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <select
+                                      className="input h-7 w-full text-micro"
+                                      autoFocus
+                                      value={
+                                        resourceTimezoneKey(tzPickerFor.type, tzPickerFor.id) in resourceTzOverride
+                                          ? (resourceTzOverride[resourceTimezoneKey(tzPickerFor.type, tzPickerFor.id)]?.code ?? "KST")
+                                          : "AUTO"
+                                      }
+                                      onChange={(e) => {
+                                        const v = e.target.value;
+                                        handlers.current.setResourceTzOverride((prev) => {
+                                          const key = resourceTimezoneKey(tzPickerFor.type, tzPickerFor.id);
+                                          const n = { ...prev };
+                                          if (v === "AUTO") delete n[key]; // 자동 = owner resource metadata
+                                          else n[key] = v === "KST" ? null : (countryByCode(v) ?? null);
+                                          return n;
+                                        });
+                                        handlers.current.setTzPickerFor(null);
+                                      }}
+                                    >
+                                      <option value="AUTO">자동 — 유저 국가 기준</option>
+                                      <option value="KST">🇰🇷 한국 시간(KST) 고정</option>
+                                      {COUNTRIES.filter((x) => x.code !== "KR").map((x) => (
+                                        <option key={x.code} value={x.code}>{x.flag} {x.name}</option>
+                                      ))}
+                                    </select>
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <span className={`text-micro ${isToday ? "text-accent font-semibold" : "text-fg-subtle"}`}>
+                                  {c.label}
+                                </span>
+                                <span
+                                  className={`grid place-items-center text-section font-semibold rounded-full ${isToday ? "text-white" : "text-fg"}`}
+                                  style={{ width: 28, height: 28, background: isToday ? "var(--color-accent)" : "transparent" }}
+                                >
+                                  {Number(c.date.slice(8))}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          <div
+                            className="relative"
+                            data-colcell
+                            data-tz={colTz ? "1" : "0"}
+                            data-tzid={colTz ? colTzc.tz : ""}
+                            data-gridmin={gridMin}
+                            data-gridmax={gridMax}
+                            data-colkey={c.key}
+                            data-date={c.date}
+                            data-roomid={c.roomId ?? ""}
+                            data-restype={c.resType ?? ""}
+                            data-resid={c.resId ?? ""}
+                            style={{
+                              height: gridH,
+                              backgroundImage: `repeating-linear-gradient(to bottom, var(--color-line) 0, var(--color-line) 1px, transparent 1px, transparent ${HOUR_H}px), repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_H / 2}px, var(--color-line-muted) ${HOUR_H / 2}px, var(--color-line-muted) ${HOUR_H / 2 + 1}px, transparent ${HOUR_H / 2 + 1}px, transparent ${HOUR_H}px)`,
+                            }}
+                            onPointerDown={(event) => handlers.current.beginEmptyRange(event, c, gridMin, gridMax, colTz ? colTzc : null)}
+                            onClick={(e) => {
+                              if (suppressEmptyClickRef.current) { suppressEmptyClickRef.current = false; return; }
+                              if (e.target !== e.currentTarget) return;
+                              handlers.current.setSelEvent(null); handlers.current.setSelBand(null);
+                              // [이슈2] 시차 컬럼도 커서 허용 — 현지 좌표(tz)를 저장, 붙여넣기 시 KST 변환.
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const min = clampAxis(snapMove(gridMin + ((e.clientY - rect.top) / HOUR_H) * 60));
+                              handlers.current.setCursor({ colKey: c.key, date: c.date, startMin: min, resType: c.resType, resId: c.resId, roomId: c.roomId, tz: colTz ? colTzc.tz : undefined });
+                            }}
+                            onDoubleClick={(e) => {
+                              // 빈 공간 더블클릭 = 그 시각으로 스케줄 추가(피드백 2026-07-02 #4).
+                              // [이슈1] 비KST 컬럼도 추가 허용 — 입력은 현지 시각, 저장 시 KST 역변환(tz 전달).
+                              if (e.target !== e.currentTarget || !canAdd) return;
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const min = clampAxis(snapMove(gridMin + ((e.clientY - rect.top) / HOUR_H) * 60));
+                              handlers.current.setCreating({
+                                date: c.date, start: fromMin(min),
+                                // 스플릿 컬럼이면 그 유저 프리필(유저별 추가 — 가용/불가 owner·강사 세션)
+                                owner: c.resType && c.resId != null
+                                  ? ({ type: c.resType, id: c.resId, name: c.label } as ScheduleResource)
+                                  : undefined,
+                                defaultInstructorId: c.resType === "instructor" ? c.resId : undefined,
+                                tz: colTz ? colTzc : undefined, // 현지→KST 변환 기준
+                              });
+                            }}
+                          >
+                            {emptyRangeDraft?.colKey === c.key && (
+                              <div
+                                data-calendar-range-preview
+                                className="absolute left-0.5 right-0.5 z-[1] pointer-events-none border border-accent"
+                                style={{
+                                  top: ((emptyRangeDraft.startMin - gridMin) / 60) * HOUR_H,
+                                  height: Math.max(2, ((emptyRangeDraft.endMin - emptyRangeDraft.startMin) / 60) * HOUR_H),
+                                  background: "color-mix(in srgb, var(--color-accent) 16%, transparent)",
+                                }}
+                              >
+                                <span className="block px-1 py-0.5 text-micro font-semibold text-accent truncate">
+                                  {fromMin(emptyRangeDraft.startMin)}–{fromMin(emptyRangeDraft.endMin)}
+                                </span>
+                              </div>
+                            )}
+                            {/* 가용(초록)/불가(회색) 밴드 — 클릭=선택 · 끝 드래그=시간 조절 · ✕=삭제 (스케줄처럼 관리) */}
+                            {bands.map((b) => {
+                              const on = selBand === b.id;
+                              return (
+                              <div
+                                key={`b${b.id}`}
+                                onPointerDown={on ? (e) => { if (e.target === e.currentTarget) handlers.current.bDown(e, c, b, "move"); } : undefined}
+                                onClick={(e) => {
+                                  if (bMovedRef.current) { bMovedRef.current = false; return; } // 드래그 직후 클릭 무시(선택 유지)
+                                  if (b.editable) { e.stopPropagation(); handlers.current.setSelBand(on ? null : b.id); handlers.current.setSelEvent(null); }
+                                }}
+                                onDoubleClick={(e) => { e.stopPropagation(); const blk = handlers.current.findBlock(b.id); if (blk) handlers.current.setEditingBlock(blk); }}
+                                title={`${AVAILABILITY_KIND_LABEL[b.kind]} — 클릭 선택 · 드래그 이동 · 끝 드래그 시간조절 · 더블클릭 수정`}
+                                className={`absolute left-0 right-0 ${!b.editable ? "pointer-events-none" : on ? "cursor-move" : "cursor-pointer"}`}
+                                style={
+                                  b.kind === "unavailable"
+                                    ? {
+                                        top: b.top, height: b.h,
+                                        background:
+                                          "repeating-linear-gradient(45deg, rgba(110,118,129,.16) 0 6px, rgba(110,118,129,.28) 6px 12px)",
+                                        outline: on ? "2px solid var(--color-fg-muted)" : undefined,
+                                      }
+                                    : b.kind === "online_only"
+                                      ? {
+                                          top: b.top, height: b.h,
+                                          background: "color-mix(in srgb, var(--color-accent) 14%, transparent)",
+                                          borderLeft: "2px solid var(--color-accent)",
+                                          outline: on ? "2px solid var(--color-accent)" : undefined,
+                                        }
+                                      : {
+                                        top: b.top, height: b.h,
+                                        background: "rgba(26,127,55,.10)",
+                                        borderLeft: "2px solid var(--color-success)",
+                                        outline: on ? "2px solid var(--color-success)" : undefined,
+                                      }
+                                }
+                              >
+                                {on && (
+                                  <>
+                                    <div onPointerDown={(e) => handlers.current.bDownResize(e, c, b, "top")} className="absolute left-1/2 -translate-x-1/2 top-0 w-6 h-2 rounded-b cursor-ns-resize bg-fg-muted" />
+                                    <button onClick={(e) => { e.stopPropagation(); handlers.current.deleteBlock(b.id, c.date); }} className="absolute right-0.5 top-0.5 w-4 h-4 grid place-items-center rounded text-[10px] text-white bg-danger" title="삭제">✕</button>
+                                    <div onPointerDown={(e) => handlers.current.bDownResize(e, c, b, "bottom")} className="absolute left-1/2 -translate-x-1/2 bottom-0 w-6 h-2 rounded-t cursor-ns-resize bg-fg-muted" />
+                                  </>
+                                )}
+                              </div>
+                              );
+                            })}
+                            {/* [C2] availability 승인 대기 ghost — DB-backed schedule_requests에서 복원(새로고침 유지). */}
+                            {availabilityGhosts.map((g) => {
+                              const s = clampAxis(g.startMin);
+                              const e = clampAxis(g.endMin);
+                              if (e <= s) return null;
+                              const isDelete = g.requestKind === "availability_delete";
+                              const tone =
+                                g.kind === "unavailable"
+                                  ? "var(--color-fg-muted)"
+                                  : g.kind === "online_only"
+                                    ? "var(--color-accent)"
+                                    : "var(--color-success)";
+                              return (
+                                <div
+                                  key={`availability-ghost-${g.id}`}
+                                  className="absolute left-0 right-0 z-10 pointer-events-none px-1 py-0.5 text-[10px] leading-tight overflow-hidden"
+                                  style={{
+                                    top: ((s - gridMin) / 60) * HOUR_H + 1,
+                                    height: Math.max(18, ((e - s) / 60) * HOUR_H) - 2,
+                                    color: isDelete ? "var(--color-danger)" : tone,
+                                    border: `1.5px dashed ${isDelete ? "var(--color-danger)" : tone}`,
+                                    background: isDelete
+                                      ? "repeating-linear-gradient(45deg, rgba(207,34,46,.08) 0 6px, rgba(207,34,46,.18) 6px 12px)"
+                                      : `color-mix(in srgb, ${tone} 12%, transparent)`,
+                                  }}
+                                  title={g.title}
+                                >
+                                  <div className="font-semibold truncate">⏳ {g.label}</div>
+                                  <div className="mono">{fromMin(g.startMin)}–{fromMin(g.endMin)} 승인 대기</div>
+                                </div>
+                              );
+                            })}
+                            {/* 밴드 리사이즈 미리보기 */}
+                            {bDraft && bDraft.colKey === c.key && (
+                              <div className="absolute left-0 right-0 pointer-events-none" style={{
+                                top: ((bDraft.start - gridMin) / 60) * HOUR_H,
+                                height: Math.max(2, ((bDraft.end - bDraft.start) / 60) * HOUR_H),
+                                background: "rgba(110,118,129,.30)", border: "1px dashed var(--color-fg-subtle)",
+                              }} />
+                            )}
+                            {/* 커서 셀(빈 공간 클릭): 시각 배지 + (클립보드 있으면) 붙여넣기 미리보기 고스트 */}
+                            {cursor && cursor.colKey === c.key && (
+                              <div className="absolute left-0 right-0 z-10 pointer-events-none" style={{ top: ((cursor.startMin - gridMin) / 60) * HOUR_H }}>
+                                <div className="h-0.5 bg-accent" />
+                                <span className="absolute left-1 -top-2.5 px-1 rounded text-[10px] text-white mono bg-accent">
+                                  {fromMin(cursor.startMin)}{clip ? " · Ctrl+V" : ""}
+                                </span>
+                                {clip && (
+                                  <div
+                                    className="absolute left-0.5 right-0.5 rounded-lg"
+                                    style={{
+                                      top: 2, height: Math.max(18, (clip.durationMinutes / 60) * HOUR_H) - 2,
+                                      background: colorOf(clip), opacity: 0.25, border: "1.5px dashed var(--color-accent)",
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            )}
+                            {/* 이벤트 이동 라이브 고스트(30분 스냅) */}
+                            {moveDrag && moveDrag.colKey === c.key && (
+                              <div className="absolute left-0.5 right-0.5 z-30 pointer-events-none rounded-lg text-white text-micro px-1.5 py-1 ring-2 ring-white" style={{
+                                top: ((moveDrag.start - gridMin) / 60) * HOUR_H + 1,
+                                height: Math.max(22, (moveDrag.dur / 60) * HOUR_H) - 2,
+                                background: moveDrag.color, opacity: 0.9,
+                              }}>
+                                <div className="font-semibold mono">{fromMin(moveDrag.start)}–{fromMin((moveDrag.start + moveDrag.dur) % 1440)}{moveDrag.start + moveDrag.dur > 1440 ? " (+1일)" : ""}</div>
+                              </div>
+                            )}
+                            {/* [B-4] 승인 대기 요청 고스트 — 점선·반투명·클릭 불가(승인 시 실제 세션으로 대체) */}
+                            {colGhosts.map((g) => {
+                              // [0.1.18] 요청 필드 optional화(availability 요청 수용) — 고스트는 sessionDate 매칭이라
+                              //  session_create만 도달하지만 타입 방어(기본 00:00/60분).
+                              const gs = toMin(g.startTime ?? "00:00");
+                              // [R-9] 요청의 endTime<start = 익일 종료(자정 크로스) — 래핑해 높이 정상화
+                              const ge = sessionEndMin({ startTime: g.startTime, endTime: g.endTime, durationMinutes: g.durationMinutes ?? 60 });
+                              return (
+                                <div key={`ghost-${g.id}`} className="absolute left-0.5 right-0.5 z-10 pointer-events-none rounded-lg px-1.5 py-1 text-[10px] leading-tight"
+                                  style={{ top: ((clampAxis(gs) - gridMin) / 60) * HOUR_H + 1, height: Math.max(20, ((clampAxis(ge) - clampAxis(gs)) / 60) * HOUR_H) - 2,
+                                    border: "1.5px dashed var(--color-accent)", background: "color-mix(in srgb, var(--color-accent) 12%, transparent)", color: "var(--color-accent)" }}
+                                  title={`승인 대기 요청 — ${g.topic ?? "수업"} ${g.startTime} (매니저 승인 시 확정)`}>
+                                  <div className="font-semibold truncate">⏳ {g.topic ?? "수업"}</div>
+                                  <div className="mono">{g.startTime}{g.endTime ? `–${g.endTime}` : ""} 승인 대기</div>
+                                </div>
+                              );
+                            })}
+                            {/* 현재 시각 인디케이터 */}
+                            {!colTz && showNow && isToday && (
+                              <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: nowTop }}>
+                                <div className="h-px bg-danger" />
+                                <div
+                                  className="absolute rounded-full"
+                                  style={{ width: 8, height: 8, left: -4, top: -4, background: "var(--color-danger)" }}
+                                />
+                              </div>
+                            )}
+                            {/* [R-9] 전일 자정 크로스 잔여(00:00~) 연속 블록 — 표시 전용(pointer-events 차단) */}
+                            {contRows.map((r) => {
+                              const spill = endMinOf(r) - 1440; // 익일 종료 분(00:00 기준)
+                              const s0 = clampAxis(0), e0 = clampAxis(spill);
+                              if (e0 <= s0) return null; // 축이 0시를 안 열었으면(이 컬럼에 스필 미표시) 생략
+                              return (
+                                <div
+                                  key={`cont-${r.id}`}
+                                  className="absolute left-0.5 right-0.5 pointer-events-none rounded-b-lg text-white text-micro leading-tight px-1.5 py-0.5 overflow-hidden"
+                                  style={{
+                                    top: ((s0 - gridMin) / 60) * HOUR_H + 1,
+                                    height: Math.max(14, ((e0 - s0) / 60) * HOUR_H) - 2,
+                                    background: colorOf(r), opacity: 0.5,
+                                    borderTop: "2px dashed rgba(255,255,255,.9)",
+                                  }}
+                                  title={`${labelOf(r)} — 전일 ${r.startTime ?? ""} 시작 수업의 연속(~${fromMin(spill)}) · 편집·선택은 시작일 블록에서`}
+                                >
+                                  <div className="font-semibold truncate" style={{ fontSize: 9.5 }}>↰ {labelOf(r)} (전일 계속)</div>
+                                  <div className="opacity-90 mono" style={{ fontSize: 9 }}>00:00–{fromMin(spill)}</div>
+                                </div>
+                              );
+                            })}
+                            {colRows.map((r) => {
+                              const s = sOf(r),
+                                en = eOf(r);
+                              // [R-9] 자정 크로스는 시작일 컬럼에서 24:00(축 상한)으로 클램프해 그리고,
+                              //  잔여는 "+1일 ~HH:mm" 배지(ovEnd) + 익일 컬럼 연속 블록(위 contRows)으로 표시.
+                              const enC = Math.min(en, gridMax);
+                              const ovEnd = (r as TzShiftedRow).tzOverflowEnd ?? crossMidnightEnd(r); // 시차 클램프(기존) ?? KST 크로스(R-9)
+                              const top = ((s - gridMin) / 60) * HOUR_H;
+                              const h = Math.max(22, ((enC - s) / 60) * HOUR_H);
+                              const ln = lanes[r.id] ?? { lane: 0, lanes: 1 };
+                              const wPct = 100 / ln.lanes;
+                              return (
+                                <div
+                                  key={r.id}
+                                  onPointerDown={(e) => handlers.current.onEventDown(e, r, colTz ? colTzc.tz : undefined)} // [R-1b 2026-07-06] F2 이중 방어
+                                  onClick={(e) => { e.stopPropagation(); if (suppressClickRef.current) { suppressClickRef.current = false; return; } handlers.current.setSelEvent(r.id); handlers.current.setSelBand(null); handlers.current.setDetailId(r.id); }}
+                                  onDoubleClick={(e) => { e.stopPropagation(); handlers.current.openEditor(r, colTz ? colTzc : null); }}
+                                  title={`${r.courseName} · ${r.instructorName} · ${r.roomName ?? "-"}${ovEnd ? ` · 자정 넘김(+1일 ~${ovEnd})` : ""}${r.memo ? " · " + r.memo : ""} — 클릭=선택 · 드래그=이동 · 더블클릭=상세`}
+                                  className={`absolute rounded-lg text-white text-micro leading-tight cursor-grab overflow-hidden shadow-sm hover:brightness-105 transition ${textMode === "vtitle" || textMode === "color" ? "px-0.5 py-0.5" : "px-1.5 py-1"} ${selEvent === r.id ? "ring-2 ring-white" : "ring-1 ring-black/5"}`}
+                                  style={{
+                                    top: top + 1,
+                                    height: h - 2,
+                                    left: `calc(${ln.lane * wPct}% + 2px)`,
+                                    width: `calc(${wPct}% - 4px)`,
+                                    // 색상만 단계에선 결강·보강 모두 회색(피드백) — makeup 포함
+                                    background: textMode === "color" && r.status === "makeup" ? CANCELED_GRAY : colorOf(r),
+                                    // 이동 중엔 원본을 흐리게, Ctrl+복제 중엔 원본 유지(복제임을 시각화)
+                                    opacity: moveDrag?.id === r.id && !moveDrag.copy ? 0.35 : 1,
+                                    outline: selEvent === r.id ? "2px solid var(--color-accent)" : undefined,
+                                    outlineOffset: selEvent === r.id ? "1px" : undefined,
+                                  }}
+                                >
+                                  {/* [개방 2026-07-06] 시차 컬럼에서도 리사이즈 — 커밋은 tzCellToKst로 KST 변환(R-1b·R-9 검증 경로) */}
+                                  {selEvent === r.id && (
+                                    <div onPointerDown={(e) => handlers.current.onResizeDown(e, r, "top", colTz ? colTzc.tz : null, gridMin, gridMax)} className="absolute left-1/2 -translate-x-1/2 top-0 w-6 h-2 rounded-b bg-white/90 cursor-ns-resize" />
+                                  )}
+                                  {/* 텍스트 3단계: full/title=가로 · vtitle=세로 글씨 · color=색상만 */}
+                                  {(textMode === "full" || textMode === "title") && (
+                                    <>
+                                      <div
+                                        className={`font-semibold truncate ${isSessionCanceled(r) ? "line-through opacity-90" : ""}`}
+                                        style={textMode === "title" ? { fontSize: 10 } : undefined}
+                                      >
+                                        {labelOf(r)}{isSessionCanceled(r) ? ` (${isCanceledStatus(r.status) ? STATUS_LABEL[r.status] : "강사 결강"})` : ""}
+                                      </div>
+                                      <div className="opacity-90 mono truncate" style={textMode === "title" ? { fontSize: 9.5 } : undefined}>
+                                        {fromMin(s)}–{fromMin(Math.min(en, 1440))}
+                                        {ovEnd && (
+                                          /* 자정 크로스 잔여(TBO-12 P0·R-9): 이 수업은 다음날 이 시각까지 이어짐 */
+                                          <span className="ml-1 px-1 rounded bg-white/25 text-[9px] font-semibold not-italic">
+                                            +1일 ~{ovEnd}
+                                          </span>
+                                        )}
+                                        {/* [KST 고정] 해외 컬럼 칩에 현지시각 병기 — 눈금은 KST, 실제 순간은 세로 정렬 */}
+                                        {kstFixed && colIsOverseas && (
+                                          <span className="ml-1 px-1 rounded bg-black/20 text-[9px] font-semibold not-italic" title={`${colCountry!.name} ${fromMin(toLocal(s))}–${fromMin(toLocal(Math.min(en, 1440)))}`}>
+                                            {colCountry!.name}: {fromMin(toLocal(s))}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </>
+                                  )}
+                                  {textMode === "full" && (
+                                    <div className="opacity-80 truncate">
+                                      {r.memo ? r.memo : (r.roomName ?? "")}
+                                    </div>
+                                  )}
+                                  {textMode === "vtitle" && (
+                                    // [세로 글씨 최적화 2026-07-07] px-0.5 py-0.5로 padding 축소 → 높이 여유 확보(maxHeight h-4).
+                                    //  촘촘한 자간·lineHeight 1로 더 많은 글자 표시, 단일 열(nowrap)로 좌측 wrap 클립 방지.
+                                    //  전체 이름은 title 툴팁으로 항상 보존(넘치면 세로 방향으로만 자연 클립).
+                                    <div
+                                      className="font-semibold overflow-hidden text-center"
+                                      style={{ writingMode: "vertical-rl", textOrientation: "mixed", fontSize: 9, lineHeight: 1, letterSpacing: "-0.3px", whiteSpace: "nowrap", maxHeight: Math.max(10, h - 4), overflow: "hidden" }}
+                                      title={`${labelOf(r)} ${fromMin(s)}–${fromMin(Math.min(en, 1440))}${ovEnd ? ` (+1일 ~${ovEnd})` : ""}`}
+                                    >
+                                      {labelOf(r)}
+                                    </div>
+                                  )}
+                                  {selEvent === r.id && (
+                                    <div onPointerDown={(e) => handlers.current.onResizeDown(e, r, "bottom", colTz ? colTzc.tz : null, gridMin, gridMax)} className="absolute left-1/2 -translate-x-1/2 bottom-0 w-6 h-2 rounded-t bg-white/90 cursor-ns-resize" />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+    );
+});

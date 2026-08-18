@@ -23,6 +23,9 @@ export const qk = {
     //  "schedule" 루트 하위로 편입 → invalidateCalendarCommand(qk.schedule.all)가 자동 커버.
     instructorAttendanceSummary: (from?: string | null, to?: string | null, instructorId?: number | null) =>
       ["schedule", "instructor-attendance-summary", from ?? null, to ?? null, instructorId ?? null] as const,
+    // [TBO-104 2A] Inspector 충돌 탭 — 세션 현재 시간표 기준 read-only 검사. "schedule" 루트 하위라
+    //  캘린더 명령 무효화가 자동 포함된다(세션이 바뀌면 충돌 결과도 재검사).
+    conflicts: (id: number, stamp: string, scope = "global") => ["schedule", "conflicts", scope, id, stamp] as const,
   },
   availability: {
     all: ["availability"] as const,

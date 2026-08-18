@@ -87,29 +87,38 @@ export function CalendarPane({
       data-calendar-pane={pane.id}
       onPointerDown={() => dispatch({ type: "pane/activate", paneId: pane.id })}
     >
-      <header className="space-y-2 border-b p-3">
-        <div className="flex min-w-0 items-start gap-2">
+      {/* [2026-08-18 대표 피드백] 필터 드롭다운을 세로로 쌓으니 헤더가 쓸데없이 길어진다 →
+          요약 한 줄 + 필터·정렬 도구 한 줄(가로 스크롤)로 압축. 어떤 폭에서도 헤더는 3줄 고정이라
+          pane 헤더 높이가 필터 개수·pane 폭에 따라 출렁이지 않는다(첫 클릭 소실 예방 규칙과 동일 계열). */}
+      <header className="space-y-1.5 border-b p-2">
+        <div className="flex min-w-0 items-center gap-1.5">
           <label className="min-w-0 flex-1">
             <span className="sr-only">표 이름</span>
             <input
-              className="input h-8 w-full min-w-0 font-semibold"
+              className="input h-7 w-full min-w-0 font-semibold"
               placeholder="표 이름"
               value={pane.label}
               onChange={(event) => dispatch({ type: "pane/set-label", paneId: pane.id, label: event.target.value })}
             />
           </label>
-          <button type="button" className="btn btn-sm h-8" onClick={() => dispatch({ type: "pane/split", paneId: pane.id })}>⊞ 표 나누기</button>
-          {paneIndex > 0 && <button type="button" className="btn btn-sm h-8 w-8 p-0" aria-label="표를 왼쪽으로 이동" onClick={() => dispatch({ type: "pane/reorder", paneId: pane.id, toIndex: paneIndex - 1 })}>←</button>}
-          {paneIndex < paneCount - 1 && <button type="button" className="btn btn-sm h-8 w-8 p-0" aria-label="표를 오른쪽으로 이동" onClick={() => dispatch({ type: "pane/reorder", paneId: pane.id, toIndex: paneIndex + 1 })}>→</button>}
-          {paneCount > 1 && <button type="button" className="btn btn-sm h-8 w-8 p-0" aria-label="표 삭제" onClick={() => dispatch({ type: "pane/remove", paneId: pane.id })}>✕</button>}
+          <button type="button" className="btn btn-sm h-7 shrink-0" onClick={() => dispatch({ type: "pane/split", paneId: pane.id })}>⊞ 표 나누기</button>
+          {paneIndex > 0 && <button type="button" className="btn btn-sm h-7 w-7 shrink-0 p-0" aria-label="표를 왼쪽으로 이동" onClick={() => dispatch({ type: "pane/reorder", paneId: pane.id, toIndex: paneIndex - 1 })}>←</button>}
+          {paneIndex < paneCount - 1 && <button type="button" className="btn btn-sm h-7 w-7 shrink-0 p-0" aria-label="표를 오른쪽으로 이동" onClick={() => dispatch({ type: "pane/reorder", paneId: pane.id, toIndex: paneIndex + 1 })}>→</button>}
+          {paneCount > 1 && <button type="button" className="btn btn-sm h-7 w-7 shrink-0 p-0" aria-label="표 삭제" onClick={() => dispatch({ type: "pane/remove", paneId: pane.id })}>✕</button>}
         </div>
 
-        <div className="flex min-w-0 flex-wrap items-center gap-2 text-caption">
-          <span className="badge min-w-0 max-w-full truncate" title={calendarPaneTargetLabel(pane, resolvers)}>대상: {calendarPaneTargetLabel(pane, resolvers)}</span>
-          <span className="badge min-w-0 max-w-full truncate" title={calendarPanePeriodLabel(pane)}>기간: {calendarPanePeriodLabel(pane)}</span>
+        <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto pb-0.5 text-caption">
+          <span className="badge shrink-0 max-w-[240px] truncate" title={calendarPaneTargetLabel(pane, resolvers)}>대상: {calendarPaneTargetLabel(pane, resolvers)}</span>
+          <span className="badge shrink-0 max-w-[280px] truncate" title={calendarPanePeriodLabel(pane)}>기간: {calendarPanePeriodLabel(pane)}</span>
+          {activeLabels.length > 0 && (
+            <span className="flex shrink-0 items-center gap-1" aria-label="작동 중인 필터">
+              <span className="text-micro font-semibold text-fg-muted">작동 중</span>
+              {activeLabels.map((label) => <span key={label} className="badge max-w-[180px] truncate text-micro" title={label}>{label}</span>)}
+            </span>
+          )}
         </div>
 
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto pb-0.5">
           {allowedDimensions.map((dim) => {
             const values = resourceValues(dim);
             const picked = new Set(values);
@@ -164,18 +173,15 @@ export function CalendarPane({
             onSetRange={(anchorDate, currentDate) => dispatch({ type: "pane/set-range", paneId: pane.id, anchorDate, currentDate })}
             onToggleDate={(date) => dispatch({ type: "pane/toggle-date", paneId: pane.id, date })}
           />
-        </div>
-
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <input
             type="search"
-            className="input h-8 min-w-[180px] flex-1"
+            className="input h-7 w-[150px] shrink-0"
             placeholder="과목·강사·학생·강의실 검색"
             value={pane.filters.query}
             onChange={(event) => dispatch({ type: "pane/set-query", paneId: pane.id, query: event.target.value })}
           />
           <select
-            className="input h-8 w-[112px] text-caption"
+            className="input h-7 w-[92px] shrink-0 text-caption"
             value={pane.sort.field}
             aria-label="정렬 기준"
             onChange={(event) => dispatch({ type: "pane/set-sort", paneId: pane.id, sort: { ...pane.sort, field: event.target.value as CalendarPaneSort["field"] } })}
@@ -187,19 +193,13 @@ export function CalendarPane({
           </select>
           <button
             type="button"
-            className="btn btn-sm h-8"
+            className="btn btn-sm h-7 shrink-0"
+            aria-label={pane.sort.direction === "asc" ? "오름차순 (클릭하여 내림차순)" : "내림차순 (클릭하여 오름차순)"}
             onClick={() => dispatch({ type: "pane/set-sort", paneId: pane.id, sort: { ...pane.sort, direction: pane.sort.direction === "asc" ? "desc" : "asc" } })}
           >
             {pane.sort.direction === "asc" ? "오름차순 ↑" : "내림차순 ↓"}
           </button>
         </div>
-
-        {activeLabels.length > 0 && (
-          <div className="flex min-w-0 flex-wrap items-center gap-1" aria-label="작동 중인 필터">
-            <span className="text-micro font-semibold text-fg-muted">작동 중</span>
-            {activeLabels.map((label) => <span key={label} className="badge max-w-full truncate text-micro" title={label}>{label}</span>)}
-          </div>
-        )}
       </header>
       <div className="min-h-[240px] min-w-0 overflow-hidden">{children}</div>
     </section>

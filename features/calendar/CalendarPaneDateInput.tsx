@@ -116,11 +116,11 @@ export function CalendarPaneDateInput({
   };
 
   return (
-    <div ref={rootRef} className="relative min-w-0">
+    <div ref={rootRef} className="relative shrink-0">
       <button
         ref={triggerRef}
         type="button"
-        className="input flex h-8 min-w-[210px] max-w-full items-center justify-between gap-2 px-2 text-left text-caption"
+        className="input flex h-7 w-auto max-w-[200px] items-center justify-between gap-2 px-2 text-left text-caption"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((current) => {

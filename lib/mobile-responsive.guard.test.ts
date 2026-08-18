@@ -47,8 +47,12 @@ describe('[TBO-94] 모바일 우선 공용 셸', () => {
     const controls = read('features/calendar/CalendarFilterControls.tsx');
     expect(calendar).toContain('flex-col items-stretch');
     expect(calendar).toContain('lg:flex-row');
-    expect(calendar).toContain('lg:w-64');
-    expect(pane).toContain('flex-wrap');
+    // [TBO-104 2A] 우측은 단일 CalendarInspector(lg:w-72)로 수렴 — 종전 5카드 스택(lg:w-64) 폐지.
+    expect(calendar).toContain('lg:w-72');
+    expect(calendar).toContain('<CalendarInspector');
+    // [2026-08-18 대표 피드백] pane 헤더 필터는 세로 랩 대신 한 줄 가로 스크롤 툴바 — 헤더 높이 고정.
+    expect(pane).toContain('overflow-x-auto');
+    expect(pane).not.toMatch(/flex min-w-0 flex-wrap items-center gap-2">\s*\{allowedDimensions/);
     expect(controls).toContain('max-h-56 overflow-y-auto');
   });
 });
