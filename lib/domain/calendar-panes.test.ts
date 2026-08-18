@@ -105,7 +105,7 @@ describe("calendar pane state SSOT", () => {
     expect(calendarPanesReducer(next, { type: "pane/remove", paneId: "pane-1" })).toBe(next);
   });
 
-  it("normalizes reverse drag ranges and keeps range/discrete selection mutually exclusive", () => {
+  it("normalizes reverse drag ranges and preserves visible dates when Ctrl/Cmd toggles discrete days", () => {
     let state = calendarPanesReducer(createCalendarPanesState("2026-08-18"), {
       type: "pane/set-range",
       paneId: "pane-1",
@@ -116,11 +116,41 @@ describe("calendar pane state SSOT", () => {
 
     state = calendarPanesReducer(state, { type: "pane/toggle-date", paneId: "pane-1", date: "2026-08-21" });
     state = calendarPanesReducer(state, { type: "pane/toggle-date", paneId: "pane-1", date: "2026-08-18" });
-    expect(state.panes[0].dateSelection).toEqual({ mode: "dates", from: null, to: null, dates: ["2026-08-18", "2026-08-21"] });
+    expect(state.panes[0].dateSelection).toEqual({
+      mode: "dates",
+      from: null,
+      to: null,
+      dates: ["2026-08-18", "2026-08-19", "2026-08-20", "2026-08-22"],
+    });
 
     state = calendarPanesReducer(state, { type: "pane/toggle-date", paneId: "pane-1", date: "2026-08-21" });
     state = calendarPanesReducer(state, { type: "pane/toggle-date", paneId: "pane-1", date: "2026-08-18" });
-    expect(state.panes[0].dateSelection).toEqual({ mode: "range", from: "2026-08-18", to: "2026-08-18", dates: [] });
+    expect(state.panes[0].dateSelection).toEqual({
+      mode: "dates",
+      from: null,
+      to: null,
+      dates: ["2026-08-19", "2026-08-20", "2026-08-21", "2026-08-22"],
+    });
+  });
+
+  it("adds a Ctrl/Cmd-picked date to the default today selection and never empties it", () => {
+    const today = createCalendarPanesState("2026-08-18");
+    const added = calendarPanesReducer(today, {
+      type: "pane/toggle-date",
+      paneId: "pane-1",
+      date: "2026-08-20",
+    });
+    expect(added.panes[0].dateSelection).toEqual({
+      mode: "dates",
+      from: null,
+      to: null,
+      dates: ["2026-08-18", "2026-08-20"],
+    });
+    expect(calendarPanesReducer(today, {
+      type: "pane/toggle-date",
+      paneId: "pane-1",
+      date: "2026-08-18",
+    })).toBe(today);
   });
 
   it("reorders panes without changing the active pane identity", () => {
@@ -196,7 +226,13 @@ describe("calendar pane state SSOT", () => {
 
     state = calendarPanesReducer(state, { type: "pane/toggle-date", paneId: "pane-1", date: "2026-08-22" });
     state = calendarPanesReducer(state, { type: "pane/toggle-date", paneId: "pane-1", date: "2026-08-25" });
-    expect(calendarPaneDates(state.panes[0])).toEqual(["2026-08-22", "2026-08-25"]);
+    expect(calendarPaneDates(state.panes[0])).toEqual([
+      "2026-08-18",
+      "2026-08-19",
+      "2026-08-20",
+      "2026-08-22",
+      "2026-08-25",
+    ]);
   });
 
   it("does not silently truncate a pane range", () => {

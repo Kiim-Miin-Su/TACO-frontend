@@ -224,16 +224,17 @@ export function calendarPanesReducer(state: CalendarPanesState, action: Calendar
     case "pane/toggle-date": {
       assertIsoDate(action.date);
       return replacePane(state, action.paneId, (pane) => {
-        if (pane.dateSelection.mode === "range") {
-          return { ...pane, dateSelection: { mode: "dates", from: null, to: null, dates: [action.date] } };
-        }
-        const selected = pane.dateSelection.dates.includes(action.date);
-        if (selected && pane.dateSelection.dates.length === 1) {
-          return { ...pane, dateSelection: { mode: "range", from: action.date, to: action.date, dates: [] } };
-        }
+        // Ctrl/Cmd selection starts from what the user can already see. Converting a
+        // range to only the clicked date made the default "today + Ctrl-click" flow
+        // silently discard today, so expand the range before toggling one date.
+        const currentDates = pane.dateSelection.mode === "range"
+          ? calendarPaneDates(pane)
+          : pane.dateSelection.dates;
+        const selected = currentDates.includes(action.date);
+        if (selected && currentDates.length === 1) return pane; // at least one visible day
         const dates = selected
-          ? pane.dateSelection.dates.filter((date) => date !== action.date)
-          : normalizeStrings([...pane.dateSelection.dates, action.date]);
+          ? currentDates.filter((date) => date !== action.date)
+          : normalizeStrings([...currentDates, action.date]);
         return { ...pane, dateSelection: { mode: "dates", from: null, to: null, dates } };
       });
     }

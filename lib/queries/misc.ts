@@ -82,21 +82,12 @@ export function useTaskData() {
   const financePayouts = usePayouts().data ?? [];
   const payReadiness = usePayReadiness().data;
   const reportWorklist = useReportWorklist().data;
-  // [TBO-34 C4 2026-07-23] 배지의 classSessions 소비는 sessionDate >= 오늘(다가오는 수업)뿐 —
-  //  전체 이력 대신 미래분만 구독(useCalendarSchedule 재사용, schedule prefix 키라 무효화 자동 포함).
-  //  실측: 전 페이지 첫 로드가 이 훅으로 전 도메인 14목록을 받고 schedule이 페이로드 1위(12.5KB).
-  const upcomingFrom = todayKst(); // [P2] buildTasks와 동일 — KST 진실원
-  const upcomingSessions = useCalendarSchedule({ from: upcomingFrom }).data ?? [];
-  // 시간 변경으로 과거에 놓인 회차의 출결 요구 뱃지는 미래 목록만으로는 사라진다.
-  // 최근 31일을 별도 조회해 서버 파생 attendanceRequired를 합치고 id로 중복 제거한다.
-  const recentSessions = useCalendarSchedule({
-    from: addDaysISO(upcomingFrom, -31),
-    to: upcomingFrom,
-  }).data ?? [];
-  const taskSessions = [...new Map(
-    [...recentSessions.filter((row) => row.attendanceRequired), ...upcomingSessions]
-      .map((row) => [Number(row.id), row]),
-  ).values()];
+  // [TBO-104 Sprint 1D] 향후 수업과 최근 31일 출결 요구를 같은 하한 범위에서 한 번만 조회한다.
+  // 기존에는 overlapping /schedule 2회가 모든 페이지의 첫 로드마다 발생했다. 전용 task-summary
+  // endpoint로 승격하기 전까지는 이 한 목록에서 오늘 이후 또는 attendanceRequired만 파생한다.
+  const today = todayKst(); // buildTasks와 동일한 KST 진실원
+  const taskScheduleRows = useCalendarSchedule({ from: addDaysISO(today, -31) }).data ?? [];
+  const taskSessions = taskScheduleRows.filter((row) => row.sessionDate >= today || row.attendanceRequired);
   return {
     instructors: useInstructors().data ?? [],
     students: useStudents().data ?? [],

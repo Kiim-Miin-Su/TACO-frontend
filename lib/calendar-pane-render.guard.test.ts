@@ -22,6 +22,13 @@ describe("[TBO-104 Sprint 1B] CalendarPane runtime convergence", () => {
     expect(calendar).not.toContain("selQuery");
   });
 
+  it("loads the global task badge schedule population with one overlapping-range query", () => {
+    const queries = read("lib/queries/misc.ts");
+    expect(queries.match(/useCalendarSchedule\(/g)).toHaveLength(1);
+    expect(queries).toContain("useCalendarSchedule({ from: addDaysISO(today, -31) })");
+    expect(queries).not.toMatch(/upcomingSessions|recentSessions/);
+  });
+
   it("keeps schedule rows in the bounded Query cache and reuses unchanged pane selections", () => {
     const calendar = read("features/calendar/ScheduleCalendar.tsx");
     expect(calendar).toContain("updateScheduleListCache(qc, paneFetchRange, access.scope, update)");
