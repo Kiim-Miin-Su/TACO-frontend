@@ -2017,12 +2017,17 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
       <PageHeader
         title="스케줄 캘린더"
         sub={
-          <>
+          /* [TBO-104 1D] 활성 pane이 바뀔 때 부제 길이가 달라져도 헤더 높이가 변하지 않도록 한 줄 고정.
+             높이가 변하면 pointerdown~pointerup 사이에 pane 헤더 버튼이 이동해 첫 클릭이 소실됐다. */
+          <span
+            className="block max-w-full truncate"
+            title={`${calendarPanePeriodLabel(activeCalendarPane)} · ${activeCalendarRows.length}건 · 시수 ${teachingHours(activeCalendarRows).hours}h · 표 ${calendarPanesState.panes.length}개`}
+          >
             {calendarPanePeriodLabel(activeCalendarPane)}
             <span className="text-fg-subtle">
               {" "}· {activeCalendarRows.length}건 · 시수 {teachingHours(activeCalendarRows).hours}h · 표 {calendarPanesState.panes.length}개
             </span>
-          </>
+          </span>
         }
         actions={
           <>

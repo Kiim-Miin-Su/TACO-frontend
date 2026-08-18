@@ -54,6 +54,16 @@ describe("[TBO-104 Sprint 1B] CalendarPane runtime convergence", () => {
     }
   });
 
+  // [TBO-104 1D] 활성 pane 전환으로 헤더 높이가 변하면 pointerdown~pointerup 사이 pane 헤더 버튼이
+  // 이동해 첫 클릭(표 삭제/이동/나누기)이 소실된다. 컨테이너 QA에서 40px 이동을 실측해 고정했다.
+  it("keeps the page header height stable while the active pane changes", () => {
+    const header = read("components/ui/PageHeader.tsx");
+    const calendar = read("features/calendar/ScheduleCalendar.tsx");
+    expect(header).toContain('className="min-w-0 flex-1"');
+    expect(calendar).toContain('className="block max-w-full truncate"');
+    expect(calendar).toMatch(/title=\{`\$\{calendarPanePeriodLabel\(activeCalendarPane\)\}/);
+  });
+
   it("uses the Figma v2 pane controls and full ISO date-column label selector", () => {
     const pane = read("features/calendar/CalendarPane.tsx");
     const calendar = read("features/calendar/ScheduleCalendar.tsx");

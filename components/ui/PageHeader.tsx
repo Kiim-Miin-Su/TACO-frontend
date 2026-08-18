@@ -16,7 +16,9 @@ type PageHeaderProps = {
 export function PageHeader({ title, sub, actions }: PageHeaderProps) {
   return (
     <div className="mb-4 flex flex-wrap items-start justify-between gap-3 sm:mb-5 sm:items-end">
-      <div className="min-w-0">
+      {/* [TBO-104 1D] min-w-0 flex-1: 부제가 길어져도 좌측 열이 줄어들 뿐 actions를 다음 줄로 밀지 않는다.
+          부제가 줄바꿈되면 헤더 높이가 변해 pointerdown~pointerup 사이 레이아웃이 이동하고 첫 클릭이 소실된다. */}
+      <div className="min-w-0 flex-1">
         <h1 className="text-title font-bold">{title}</h1>
         {sub && <p className="mt-0.5 break-keep text-caption text-fg-muted">{sub}</p>}
       </div>
