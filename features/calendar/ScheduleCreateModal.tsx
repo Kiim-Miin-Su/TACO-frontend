@@ -3,12 +3,12 @@
 //  반복 규칙은 lib/domain/series.seriesRuleToKst — 서버(POST /schedule/series)가 날짜를 재계산·발급.
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { addDaysISO } from "@/lib/format"; // [TBO-69 C4]
 import type { AvailabilityUpsertBody, ScheduleCreateBody, ScheduleSeriesCreateBody } from "@/lib/api";
 import type { Room, ScheduleResource, ScheduleResources } from "@/types";
 import type { CreateHistoricalCompletedSessionInput, SessionStatus } from "@kms545487/contracts";
-import { courseRosterFromScheduleResources, coursesForInstructor, explicitCohortForSubmit, instructorScheduleRequestEmptyState, pruneStudentSelection, scheduleResourceName, studentPickerItemsFromScheduleResources } from "@/lib/domain/schedule-resources";
+import { coursesForInstructor, instructorScheduleRequestEmptyState, pruneStudentSelection, scheduleResourceName, selectedParticipantIdsForSubmit, studentPickerItemsFromScheduleResources } from "@/lib/domain/schedule-resources";
 // [B6 C1 2026-07-16] 사설 fixed div → ModalShell 이관(focus trap/Escape/aria 통일 — E1)
 import { EmptyState, Field, ModalShell, SearchableCheckList } from "@/components/ui";
 import { InlineCreateField } from "@/components/InlineCreateField";
@@ -17,8 +17,7 @@ import { MANUAL_SESSION_STATUSES, STATUS_LABEL } from "@/lib/domain/lantiv";
 import { AVAILABILITY_KIND_LABEL } from "@/lib/domain/approvals";
 
 const isCanceledStatus = (s?: string) => s === "canceled" || s === "no_show";
-import { useAllAvailability, useCreateEnrollment } from "@/lib/queries";
-import { apiErrorMessage } from "@/lib/api-error";
+import { useAllAvailability } from "@/lib/queries";
 import { CourseCreateForm, SubjectCreateForm } from "@/features/admin/catalog/CatalogCreateForms";
 import { InstructorCreateForm } from "@/features/admin/instructors/InstructorCreateForm";
 import { RoomCreateForm } from "@/features/rooms/RoomCreateForm";
@@ -33,6 +32,8 @@ import { availabilityKindOf, type ScheduleEntryType } from "@/lib/domain/schedul
 import { ScheduleRepeatFields, type ScheduleRepeat } from "./inputs/ScheduleRepeatFields";
 import { ScheduleTimeRangeFields } from "./inputs/ScheduleTimeRangeFields";
 import { historicalCompletedInput, historicalSessionEnded } from "@/lib/domain/historical-session";
+import { focusFirstFormIssue, issuesByField } from "@/lib/form-issues";
+import { scheduleFormIssues, type ScheduleFormField } from "@/lib/domain/schedule-form";
 
 // [TBO-69 C4] addDaysISO — lib/format 정본 소비(사본 제거)
 // ── 관리자: 스케줄 추가 모달 ──
@@ -128,6 +129,8 @@ export function ScheduleCreateModal({
     }
     return out;
   }
+  // 반복 날짜는 렌더당 한 번만 계산하고 검증·라벨·submit이 같은 snapshot을 쓴다.
+  const occurrenceDays = occurrences();
   const lockedInstructorName = lockInstructorId != null ? resources.instructors.find((i) => i.id === lockInstructorId)?.name : undefined;
   function pickCourse(id: number) {
     setCourseId(id);
@@ -145,7 +148,6 @@ export function ScheduleCreateModal({
   // [R-9] 수업은 end<start = 익일 종료(자정 크로스) 허용 — 같은 시각만 무효. (가용/불가 blockValid는
   //  기존 start<end 유지 — availability는 FE splitKstBand 분할·BE end<=start 400 정책 불변.)
   const crossesMidnight = type === "session" && end < start;
-  const sessionValid = courseId && date && start !== end;
   const historicalKstStart = toKst(date, start);
   const historicalImportEnded = historicalSessionEnded({
     sessionDate: historicalKstStart.date,
@@ -179,21 +181,11 @@ export function ScheduleCreateModal({
     [resources.instructors, instAvailable],
   );
 
-  // ── [TBO-86I Grace ver.2 2.2] 학생 선택 = 재원생 전체 단일 검색 리스트(수강생 먼저).
-  //  미수강생을 숨김 패널로 빼지 않는다 — 같은 리스트에서 검색·선택하면 서버 enrollment 생성(자동
-  //  연결) 뒤 코호트에 들어간다. 강사 요청 모드는 연결 권한이 없으므로 본인 코스 roster만 노출한다.
-  //  수강생 산출은 `/schedule/resources` course.studentIds 한 곳을 사용한다. 강사 모달에서
-  //  전역 /enrollments·/students cache를 읽지 않아 계정 전환 시 타 강사 roster가 섞이지 않는다.
-  const courseRoster = useMemo(
-    () => courseRosterFromScheduleResources(resources, courseId),
-    [resources, courseId],
-  );
+  // 학생 선택은 과목/수강과 독립한다. manager는 활성 학생 전체, 강사는 서버가 권한 범위로 좁힌
+  // resource 학생 전체를 같은 picker에서 선택하며 schedule 명령은 enrollment를 변경하지 않는다.
   const studentPickerItems = useMemo(
-    () =>
-      requestMode
-        ? courseRosterFromScheduleResources(resources, courseId).map((student) => ({ ...student, enrolled: true }))
-        : studentPickerItemsFromScheduleResources(resources, courseId),
-    [requestMode, resources, courseId],
+    () => studentPickerItemsFromScheduleResources(resources),
+    [resources],
   );
   const requestEmptyState = requestMode && lockInstructorId != null
     ? instructorScheduleRequestEmptyState(resources, lockInstructorId, courseId)
@@ -201,35 +193,19 @@ export function ScheduleCreateModal({
   // [TBO-86I-3] 기본은 아무도 선택 안 됨(운영 지시 — 구 전원 자동 체크 폐지). 학생 컬럼/카드에서 연
   //  경우만 그 학생 1명 프리필. 선택 상태는 화면에 보이는 재원생으로만 파생(prune — 원부 삭제·퇴원·
   //  과목 전환 시 유령 선택/카운트 자동 정리, 등록 직후 refetch 도착 시 자동 복원되는 비파괴 파생).
-  const [pickedStudentState, setPickedStudentState] = useState<{ courseId: number; ids: Set<number> } | null>(null);
-  const pickedStudents = pickedStudentState?.courseId === courseId ? pickedStudentState.ids : null;
-  const setPickedStudents = (ids: Set<number>) => setPickedStudentState({ courseId, ids });
   const seedStudentId = defaultOwner?.type === "student" ? Number(defaultOwner.id) : undefined;
-  const rawPicked = pickedStudents ?? (seedStudentId != null ? new Set([seedStudentId]) : new Set<number>());
-  const effPicked = pruneStudentSelection(rawPicked, studentPickerItems);
-  const createEnrollment = useCreateEnrollment();
-  const [studentLinkMessage, setStudentLinkMessage] = useState("");
-
-  function linkStudent(studentId: number) {
-    setStudentLinkMessage("");
-    createEnrollment.mutate({ studentId, courseId }, {
-      // [TBO-87D owner 지시] 성공은 조용히(체크만) — "미수강/자동 연결" 안내·성공 문구 제거.
-      //  실패만 인라인 표면화(조용한 실패는 체크가 안 되는 유령 상태로 보이므로 유지).
-      onSuccess: () => setPickedStudents(new Set([...effPicked, studentId])),
-      onError: (error) => setStudentLinkMessage(apiErrorMessage(error, "학생을 이 수업에 넣지 못했습니다.")),
-    });
-  }
+  const [pickedStudents, setPickedStudents] = useState<Set<number>>(
+    () => seedStudentId != null ? new Set([seedStudentId]) : new Set<number>(),
+  );
+  const effPicked = pruneStudentSelection(pickedStudents, studentPickerItems);
 
   function toggleStudentPick(studentId: number) {
-    const item = studentPickerItems.find((candidate) => candidate.id === studentId);
-    // 미수강 + 미선택 → 자동 연결(성공 시 onSuccess에서 체크). 그 외에는 일반 코호트 토글.
-    if (item && !item.enrolled && !effPicked.has(studentId)) { linkStudent(studentId); return; }
     const next = new Set(effPicked);
     if (next.has(studentId)) next.delete(studentId); else next.add(studentId);
     setPickedStudents(next);
   }
-  // [TBO-86I-3] 수업은 학생 1명 이상 필수 — 빈 선택을 서버에 보내면 roster 파생(전원) 규칙과
-  //  화면(아무도 선택 안 됨)이 어긋나므로 제출 자체를 막는다.
+  // 신규 writer는 참가자를 항상 명시하므로 학생 1명 이상을 요구한다. 빈 배열의 legacy roster
+  // fallback은 구 세션 read 호환에만 남기고 새 화면에서 생성하지 않는다.
   const cohortValid = effPicked.size > 0;
 
   // ── 가용/불가 대상(오너) — 시간·날짜·반복은 수업과 공유 ──
@@ -237,14 +213,43 @@ export function ScheduleCreateModal({
   const [bType, setBType] = useState<"instructor" | "student" | "room">(lockOwner ? "instructor" : (defaultOwner?.type ?? "instructor"));
   const [bId, setBId] = useState<number | "">(lockOwner ? lockInstructorId! : (defaultOwner?.id ?? ""));
   const ownerList = bType === "instructor" ? resources.instructors : bType === "student" ? resources.students : rooms.map((r) => ({ id: r.id, name: r.name }));
-  const blockValid = bId !== "" && start < end && (repeat !== "custom" || customWds.length > 0);
   // [B6 C1] 블록 저장 실패 인라인 에러(구 window.alert 대체) — 모달이 열린 채 실패 사유를 보여준다.
   const [blockError, setBlockError] = useState<string | null>(null);
+  const [validationAttempted, setValidationAttempted] = useState(false);
+  const formRootRef = useRef<HTMLDivElement>(null);
+  const formIssues = scheduleFormIssues({
+    type,
+    courseId,
+    instructorId,
+    participantCount: effPicked.size,
+    date,
+    start,
+    end,
+    repeat,
+    customWeekdays: customWds,
+    occurrencesCount: occurrenceDays.length,
+    availabilityOwnerId: bId,
+    historicalImport,
+    historicalImportEligible,
+    importReason,
+  });
+  const visibleIssues = validationAttempted ? formIssues : [];
+  const issueByField = issuesByField(visibleIssues);
+  const fieldError = (field: ScheduleFormField) => issueByField.get(field)?.message;
+
+  function validateBeforeSubmit(): boolean {
+    setValidationAttempted(true);
+    setBlockError(null);
+    if (!formIssues.length) return true;
+    focusFirstFormIssue(formRootRef.current, formIssues);
+    return false;
+  }
   // 블록 생성: 반복 규칙(그날만=일회성 / 매주 / 커스텀)을 effectiveFrom·effectiveTo로 변환.
   //  - 일회성: 그 날짜 한 주만(effectiveFrom=effectiveTo=date).
   //  - 매주/커스텀: 선택 요일마다 date부터 종료일(untilDate)까지 반복.
   async function submitBlocks() {
     if (type === "session") return;
+    if (!validateBeforeSubmit()) return;
     const kind = availabilityKindOf(type);
     // [이슈1] 비KST 입력: 현지 (date,시각)을 KST로 변환 후 요일·시각 확정. 반복은 KST 시각·요일 기준.
     // [버그수정 2026-07-06] 현지→KST 변환이 자정을 넘으면 두 블록으로 분할(splitKstBand) —
@@ -285,10 +290,9 @@ export function ScheduleCreateModal({
     onClose();
   }
   function submitSession() {
+    if (!validateBeforeSubmit()) return;
     // [TBO-29C C2] 클라이언트 seriesId(Date.now()) 폐기 — 시리즈 ID·규칙은 서버가 발급/자산화.
-    // [TBO-86I-3] 직렬화 단일 규칙: 체크 집합이 수강생 전원과 정확히 일치할 때만 미전송(서버
-    //  파생 — 시리즈가 이후 수강 변동을 따라가는 하위 호환), 그 외에는 명시 코호트 전송.
-    const studentIds = explicitCohortForSubmit(effPicked, courseRoster);
+    const studentIds = selectedParticipantIdsForSubmit(effPicked);
     // [이슈1] 각 발생일(현지)을 KST로 변환해 저장 — 종료는 시작과 같은 현지날짜 기준으로 변환.
     const selectedInstructorId = lockInstructorId
       ?? (instructorId === "unassigned" ? null : (instructorId || undefined));
@@ -298,7 +302,7 @@ export function ScheduleCreateModal({
         kind: kind === "class" ? undefined : kind, price: price !== "" ? Number(price) : undefined, mode: sessionMode,
         ...(!requestMode ? { status, isPublic } : {}) }; // 상태·공개 여부는 관리자 확정 일정에만 적용
     };
-    const days = occurrences();
+    const days = occurrenceDays;
     if (days.length <= 1) {
       const single = mk(days[0] ?? date);
       if (historicalImport) {
@@ -344,27 +348,31 @@ export function ScheduleCreateModal({
       onClose={onClose}
       size="md"
       bodyClassName="space-y-3"
+      bodyRef={formRootRef}
       footer={(
         <>
+          {issueByField.size > 0 && (
+            <span className="text-caption text-danger mr-auto self-center" role="alert">필수 항목 {issueByField.size}개를 확인해 주세요.</span>
+          )}
           {blockError && <span className="text-caption text-danger mr-auto self-center" role="alert">{blockError}</span>}
           <button className="btn" onClick={onClose}>취소</button>
           {type === "session" ? (
-            <button className="btn btn-primary" disabled={!sessionValid || !cohortValid || (repeat !== "none" && occurrences().length === 0)} onClick={submitSession}>
-              {requestMode ? "승인 요청 보내기" : historicalImport ? "완료 수업 저장" : repeat === "none" ? "수업 추가" : `반복 추가 (${occurrences().length}회)`}
+            <button className="btn btn-primary" onClick={submitSession}>
+              {requestMode ? "승인 요청 보내기" : historicalImport ? "완료 수업 저장" : repeat === "none" ? "수업 추가" : `반복 추가 (${occurrenceDays.length}회)`}
             </button>
           ) : (
-            <button className="btn btn-primary" disabled={!blockValid} onClick={submitBlocks}>
+            <button className="btn btn-primary" onClick={submitBlocks}>
               {AVAILABILITY_KIND_LABEL[availabilityKindOf(type)]} 추가
             </button>
           )}
         </>
       )}
     >
-        <ScheduleEntryTypeSelector value={type} onChange={(value) => { setType(value); setBlockError(null); }} />
+        <ScheduleEntryTypeSelector value={type} onChange={(value) => { setType(value); setBlockError(null); setValidationAttempted(false); }} />
         {requestMode && type === "session" && (
           /* [UX H1] 강사에게 실제 동작(승인 요청)을 사전 고지 — 버튼 라벨과 일치 */
           <div className="rounded-md px-2.5 py-1.5 text-caption" style={{ background: "color-mix(in srgb, var(--color-accent) 10%, transparent)", color: "var(--color-accent)" }}>
-            DB에 연결된 내 담당 코스·학생만 선택할 수 있습니다. 수업은 매니저 승인 후 예정 상태로 확정됩니다.
+            내 권한 범위의 학생을 과목 수강 여부와 무관하게 선택할 수 있습니다. 수업은 매니저 승인 후 예정 상태로 확정됩니다.
           </div>
         )}
         {tzActive && (
@@ -378,6 +386,8 @@ export function ScheduleCreateModal({
             {lockedInstructorName && <div className="text-caption text-fg-muted">{lockedInstructorName} (내 수업)</div>}
             <InlineCreateField
               label="과목"
+              field="course"
+              error={fieldError('course')}
               createLabel="새 과목과 수업 과정 등록"
               expanded={inlineCreator === "course"}
               onToggle={() => toggleInlineCreator("course")}
@@ -386,7 +396,7 @@ export function ScheduleCreateModal({
                 myCourses.length === 0 ? (
                   <EmptyState compact message={requestEmptyState?.message ?? '등록된 수업 과정이 없습니다. 새 수업 과정을 등록해 주세요.'} />
                 ) : (
-                  <select className="input" value={courseId} onChange={(event) => pickCourse(Number(event.target.value))}>
+                  <select className="input" value={courseId} aria-invalid={!!fieldError('course') || undefined} onChange={(event) => pickCourse(Number(event.target.value))}>
                     {myCourses.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.subjectName} · {candidate.name}</option>)}
                   </select>
                 )
@@ -415,6 +425,8 @@ export function ScheduleCreateModal({
             </InlineCreateField>
             <InlineCreateField
               label={`담당자 ${typeof instructorId === "number" && !instAvailable(instructorId) ? `· ⚠ ${instAvailabilityLabel(instructorId)}` : ""}`}
+              field="instructor"
+              error={fieldError('instructor')}
               createLabel="새 강사 등록"
               expanded={inlineCreator === "instructor"}
               onToggle={() => toggleInlineCreator("instructor")}
@@ -447,13 +459,11 @@ export function ScheduleCreateModal({
             >
               <RoomCreateForm compact onCreated={(created) => setRoomId(created.id)} />
             </InlineCreateField>
-            {/* [TBO-86I-3] 학생 선택(단체) — 재원생 전체 단일 검색 리스트(수강생 먼저). 기본은 아무도
-                선택 안 됨·분모는 보이는 재원생 전체 수. 미수강생도 같은 리스트에서 검색·선택 — 선택 시
-                서버 enrollment 자동 생성 후 코호트 포함. [TBO-87D owner 지시] 미수강 표기·성공 문구는
-                제거(조용한 자동 등록 — 실패만 인라인). 수강생 전체 버튼은 수강생만 일괄 체크.
-                수업은 학생 1명 이상 선택해야 추가된다. */}
+            {/* 학생 선택은 과목/수강과 독립. 선택 결과만 session.studentIds 참가자 snapshot으로 저장한다. */}
             <InlineCreateField
               label={`학생 (${effPicked.size}/${studentPickerItems.length}명 선택)`}
+              field="students"
+              error={fieldError('students')}
               createLabel="새 학생 등록"
               expanded={inlineCreator === "student"}
               onToggle={() => toggleInlineCreator("student")}
@@ -463,13 +473,13 @@ export function ScheduleCreateModal({
                   <EmptyState
                     compact
                     message={requestMode
-                      ? requestEmptyState?.message ?? '요청에 사용할 수 있는 학생이 없습니다. 관리자에게 수업 연결 상태를 확인해 달라고 요청해 주세요.'
+                      ? requestEmptyState?.message ?? '요청에 사용할 수 있는 학생이 없습니다. 관리자에게 학생 조회 권한을 확인해 달라고 요청해 주세요.'
                       : '선택할 수 있는 재원생이 없습니다. 아래에서 새 학생을 등록해 주세요.'}
                   />
                 ) : (
                   <div className="space-y-1">
                   <div className="flex gap-1">
-                    <button type="button" className="btn btn-sm" onClick={() => setPickedStudents(new Set(courseRoster.map((r) => r.id)))}>수강생 전체</button>
+                    <button type="button" className="btn btn-sm" onClick={() => setPickedStudents(new Set(studentPickerItems.map((item) => item.id)))}>전체 선택</button>
                     <button type="button" className="btn btn-sm" onClick={() => setPickedStudents(new Set())}>해제</button>
                   </div>
                   <SearchableCheckList
@@ -477,25 +487,22 @@ export function ScheduleCreateModal({
                     selected={effPicked}
                     placeholder="재원생 이름 검색"
                     onToggle={toggleStudentPick}
+                    invalid={!!fieldError('students')}
                   />
                   {!cohortValid && (
                     <p className="text-caption text-fg-subtle" role="note">수업에 넣을 학생을 한 명 이상 선택하세요.</p>
                   )}
                   </div>
                 )}
-                {studentLinkMessage && (
-                  <p className="text-caption text-danger" role="alert">{studentLinkMessage}</p>
-                )}
               </div>}
             >
               <StudentRegistrationForm
                 compact
-                initialCourseId={courseId || undefined}
                 onCreated={(result) => setPickedStudents(new Set([...effPicked, result.student.id]))}
               />
             </InlineCreateField>
-            <ScheduleDateField value={date} onChange={setDate} />
-            <ScheduleTimeRangeFields start={start} end={end} onStartChange={changeStart} onEndChange={setEnd} endHint={`진행 ${courseDur}분`} />
+            <ScheduleDateField value={date} onChange={setDate} field="date" error={fieldError('date')} />
+            <ScheduleTimeRangeFields start={start} end={end} onStartChange={changeStart} onEndChange={setEnd} endHint={`진행 ${courseDur}분`} field="time" error={fieldError('time')} />
             {crossesMidnight && (
               /* [R-9] 자정 크로스 안내 — 익일 종료로 저장(단일 세션·sessionDate=시작일) */
               <p className="text-caption text-accent">🌙 종료가 시작보다 이르므로 <b>다음날 {end} 종료</b>(자정 크로스)로 저장됩니다.</p>
@@ -566,9 +573,10 @@ export function ScheduleCreateModal({
                     <span className="block text-caption text-fg-muted">담당 강사와 선택한 학생 전원의 출결을 정상(출석)으로 저장하고 완료 상태를 자동 확정합니다 — 시수 측정에 반영됩니다.</span>
                   </p>
                   {historicalImport && (
-                    <Field label="사유">
+                    <Field label="사유" field="importReason" error={fieldError('importReason')}>
                       <textarea
                         className="input min-h-[52px] py-1.5"
+                        aria-invalid={!!fieldError('importReason') || undefined}
                         rows={2}
                         maxLength={500}
                         placeholder="예: 기존 7월 수업 기록 이관"
@@ -585,7 +593,8 @@ export function ScheduleCreateModal({
               <p className="text-caption text-fg-muted">완료 수업 이관은 실제 출결을 확정하므로 한 회차씩 저장합니다.</p>
             ) : (
               <ScheduleRepeatFields repeat={repeat} onRepeatChange={setRepeat} customWeekdays={customWds} onToggleWeekday={toggleWd}
-                untilDate={untilDate} onUntilDateChange={setUntilDate} startDate={date} occurrencesCount={occurrences().length} noneLabel="그날만" />
+                untilDate={untilDate} onUntilDateChange={setUntilDate} startDate={date} occurrencesCount={occurrenceDays.length} noneLabel="그날만"
+                weekdaysField="weekdays" weekdaysError={fieldError('weekdays')} />
             )}
           </>
         ) : (
@@ -600,17 +609,18 @@ export function ScheduleCreateModal({
                   <option value="room">강의실</option>
                 </select>
               </Field>
-              <Field label={bType === "instructor" ? "강사" : bType === "student" ? "학생" : "강의실"}>
-                <select className="input" value={bId} disabled={lockOwner} onChange={(e) => setBId(e.target.value ? Number(e.target.value) : "")}>
+              <Field label={bType === "instructor" ? "강사" : bType === "student" ? "학생" : "강의실"} field="availabilityOwner" error={fieldError('availabilityOwner')}>
+                <select className="input" value={bId} disabled={lockOwner} aria-invalid={!!fieldError('availabilityOwner') || undefined} onChange={(e) => setBId(e.target.value ? Number(e.target.value) : "")}>
                   <option value="">선택</option>
                   {ownerList.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                 </select>
               </Field>
             </div>
-            <ScheduleDateField value={date} onChange={setDate} />
-            <ScheduleTimeRangeFields start={start} end={end} onStartChange={changeStart} onEndChange={setEnd} />
+            <ScheduleDateField value={date} onChange={setDate} field="date" error={fieldError('date')} />
+            <ScheduleTimeRangeFields start={start} end={end} onStartChange={changeStart} onEndChange={setEnd} field="time" error={fieldError('time')} />
             <ScheduleRepeatFields repeat={repeat} onRepeatChange={setRepeat} customWeekdays={customWds} onToggleWeekday={toggleWd}
-              untilDate={untilDate} onUntilDateChange={setUntilDate} startDate={date} occurrencesCount={occurrences().length} noneLabel="일회성" />
+              untilDate={untilDate} onUntilDateChange={setUntilDate} startDate={date} occurrencesCount={occurrenceDays.length} noneLabel="일회성"
+              weekdaysField="weekdays" weekdaysError={fieldError('weekdays')} />
             <p className="text-caption text-fg-muted">{repeat === "none" ? "일회성 — 이 날짜에 한 번만 적용." : "매주 반복 — 이 날짜부터 종료일까지."}</p>
           </>
         )}

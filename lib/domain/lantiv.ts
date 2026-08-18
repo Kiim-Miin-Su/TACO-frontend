@@ -80,7 +80,7 @@ export function matchesStatusFilter(row: StateInput, studentAtt: Attendance[], a
   return false;
 }
 
-/** 그룹 수업 = 코호트(활성 수강생) 2명 이상. */
+/** 그룹 수업 = 세션 명시 참가자 2명 이상. */
 export const isGroupSession = (r: Pick<ScheduleRow, 'studentIds'>): boolean => (r.studentIds?.length ?? 0) >= 2;
 
 /** 날짜 → 시작시각 → id 오름차순 — 우측 리스트 패널 정렬 규칙(스펙: 날짜별 오름차순). */
@@ -207,7 +207,7 @@ export type SessionDraft = {
  *    durationMinutes로 저장(endTime 미저장·단일 세션). 폼은 "익일 종료로 저장됩니다"를 안내.
  *  - scope는 **시리즈일 때만** 포함(단건에 scope를 보내지 않음 — API 계약 명확화).
  *  - topic 빈 문자열은 미전송(백엔드 merge가 기존값 유지 — 실수로 지워지는 것 방지).
- *  - 학생(코호트)은 이 패치로 편집 불가 — enrollment 파생(참조 무결성).
+ *  - 학생 참가자는 이 폼 패치 범위 밖이며 별도 participant 편집에서 같은 studentIds command를 쓴다.
  */
 export function sessionEditPatch(
   d: SessionDraft,
@@ -250,16 +250,16 @@ export type PasteTarget = {
  * 세션 복제 바디(POST /schedule 입력) — 참조 무결성 규칙:
  *  - 복제본은 **단건**(seriesId 승계 안 함) · status='scheduled' 고정(진행 이력 아님).
  *  - 출결(instructorAttendance)·리포트·정산 연결은 승계하지 않음(시수 이중 계상 방지).
- *  - 스플릿 강사 컬럼에 붙이면 그 강사로 재배정(백엔드 FK·충돌 검증 통과 필요).
- *    학생 컬럼은 재배정 없음(코호트=enrollment 파생) — 원본 코스 그대로.
+ *  - 스플릿 강사 컬럼에 붙이면 그 강사로 재배정한다.
+ *  - 학생 컬럼에 붙이면 원본 과목/코스를 유지하고 대상 학생을 명시 참가자로 저장한다.
  *  - durationMinutes 유지, 시작시각 = 커서(클릭) 시각.
  */
 export function cloneSessionBody(
-  src: Pick<ScheduleRow, 'courseId' | 'instructorId' | 'roomId' | 'durationMinutes' | 'topic' | 'memo' | 'color' | 'isPublic'>,
+  src: Pick<ScheduleRow, 'courseId' | 'instructorId' | 'roomId' | 'durationMinutes' | 'topic' | 'memo' | 'color' | 'isPublic' | 'studentIds'>,
   t: PasteTarget,
 ): {
   courseId: number; instructorId: number; roomId?: number; sessionDate: string;
-  startTime: string; endTime: string; topic?: string; memo?: string; color?: string; isPublic?: boolean; status: 'scheduled';
+  startTime: string; endTime: string; topic?: string; memo?: string; color?: string; isPublic?: boolean; studentIds: number[]; status: 'scheduled';
 } {
   const instructorId = t.resType === 'instructor' && t.resId != null ? t.resId : Number(src.instructorId);
   const roomId =
@@ -277,35 +277,15 @@ export function cloneSessionBody(
     memo: src.memo,
     color: src.color,
     isPublic: src.isPublic,
+    studentIds: t.resType === 'student' && t.resId != null
+      ? [Number(t.resId)]
+      : [...new Set((src.studentIds ?? []).map(Number))],
     status: 'scheduled',
   };
 }
 
 /**
- * [버그수정 2026-07-02] 학생 컬럼 붙여넣기 — 대상 학생의 코스 결정(코호트=enrollment 파생 무결성 유지).
- *  김서연 세션을 이도현 컬럼에 붙일 때, 이도현이 원본 코스 수강 중이면 그대로,
- *  아니면 **같은 과목의 활성 수강 코스** 우선 → 없으면 첫 활성 코스로 재배정 → 활성 수강이 없으면 null(중단).
- *  (임의 코스로 붙이면 세션 코호트에 대상 학생이 없어 유령 세션이 되므로 반드시 수강 기반으로만.)
- */
-export function resolvePasteCourseId(
-  srcCourseId: number,
-  targetStudentId: number,
-  enrollments: { studentId: number | string; courseId: number | string; status?: string }[],
-  courses: { id: number | string; subjectId?: number | string }[],
-): number | null {
-  const active = enrollments.filter(
-    (e) => Number(e.studentId) === targetStudentId && (e.status ?? 'active') === 'active',
-  );
-  if (active.some((e) => Number(e.courseId) === srcCourseId)) return srcCourseId;
-  const subjectOf = new Map(courses.map((c) => [Number(c.id), c.subjectId != null ? Number(c.subjectId) : undefined]));
-  const srcSubject = subjectOf.get(srcCourseId);
-  const sameSubject = srcSubject != null ? active.find((e) => subjectOf.get(Number(e.courseId)) === srcSubject) : undefined;
-  const pick = sameSubject ?? active[0];
-  return pick ? Number(pick.courseId) : null;
-}
-
-/**
- * 행이 컬럼 리소스에 속하는가 — 학생은 코호트(studentIds) 포함 여부(참조 무결성: enrollment 파생).
+ * 행이 컬럼 리소스에 속하는가 — 학생은 세션 참가자 snapshot(studentIds) 포함 여부다.
  * [#2] 과목(subject): ScheduleRow엔 subjectId가 없고 subjectName만 있으므로(subjectId=Course 소유),
  *  courseId→subjectId 리졸버(subjectIdOf)를 주입받아 매칭. 리졸버 없으면 미매칭(A안 — 순수 유지).
  */

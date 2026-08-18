@@ -16,12 +16,17 @@ type FieldProps = {
    *  (버튼 등)으로 전달되고(실측: 학생 라벨 클릭 → "수강생 전체" 오발동), 내부에 체크리스트
    *  <label>이 있으면 중첩 label 무효 마크업이 된다. 단일 입력 필드는 기존 label 유지. */
   asDiv?: boolean;
+  /** validator FormIssue.field와 같은 key. 오류 focus·scroll의 단일 연결점. */
+  field?: string;
+  /** 합성 컨트롤은 error 문구 없이도 외부 오류 상태를 표시할 수 있다. */
+  invalid?: boolean;
 };
 
-export function Field({ label, children, hint, error, asDiv }: FieldProps) {
+export function Field({ label, children, hint, error, asDiv, field, invalid }: FieldProps) {
   const Tag = asDiv ? 'div' : 'label';
+  const hasError = invalid ?? (error != null);
   return (
-    <Tag className="block">
+    <Tag className={`block ${hasError ? 'field-invalid' : ''}`} data-field={field} data-invalid={hasError || undefined}>
       <span className="block text-caption font-medium text-fg-muted mb-1">{label}</span>
       {children}
       {error ? (

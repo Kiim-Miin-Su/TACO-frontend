@@ -1,17 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { ScheduleResources } from '@/types';
 import {
-  calendarEnrollmentRows,
   calendarScheduleCourses,
   calendarSubjectOptions,
-  courseRosterFromScheduleResources,
   coursesForInstructor,
-  courseStudentOptionsFromScheduleResources,
-  explicitCohortForSubmit,
   instructorScheduleRequestEmptyState,
   isInstructorScheduleResource,
   pruneStudentSelection,
   scheduleResourceName,
+  selectedParticipantIdsForSubmit,
   studentPickerItemsFromScheduleResources,
 } from './schedule-resources';
 
@@ -45,37 +42,26 @@ describe('scheduleResourceName', () => {
 });
 
 describe('schedule resources calendar SSOT', () => {
-  it('코스별 roster를 resource student와 조인하고 다른 코스 학생을 섞지 않는다', () => {
-    expect(courseRosterFromScheduleResources(resources, 100)).toEqual([{ id: 10, name: '김학생' }]);
-    expect(courseStudentOptionsFromScheduleResources(resources, 100)).toEqual([
-      { id: 10, name: '김학생', enrolled: true },
-      { id: 11, name: '박학생', enrolled: false },
-    ]);
+  it('캘린더 과정 projection의 과목·학생 ID를 숫자 정규형으로 유지한다', () => {
+    expect(calendarScheduleCourses(resources)[0]).toMatchObject({ id: 100, subjectId: 7, studentIds: [10] });
   });
 
   it('강사 요청 scope와 수업·학생 빈 상태를 같은 resource projection에서 구분한다', () => {
     expect(coursesForInstructor(resources, 1).map((course) => course.id)).toEqual([100, 101]);
     expect(instructorScheduleRequestEmptyState(resources, 2, 0)).toMatchObject({ kind: 'no_courses' });
-    const emptyRoster = {
+    const noVisibleStudents = {
       ...resources,
-      courses: [{ ...resources.courses[0], studentIds: [] }],
+      students: [],
     } as ScheduleResources;
-    expect(instructorScheduleRequestEmptyState(emptyRoster, 1, 100)).toMatchObject({ kind: 'no_students' });
+    expect(instructorScheduleRequestEmptyState(noVisibleStudents, 1, 100)).toMatchObject({ kind: 'no_students' });
     expect(instructorScheduleRequestEmptyState(resources, 1, 100)).toBeNull();
   });
 
-  // [TBO-86I Grace ver.2 2.2] 스케줄 추가 모달 학생 리스트가 roster로 좁혀져 재원생이 안 보이던 결함.
-  //  선택지는 항상 재원생 전체(수강생 먼저)여야 한다. [TBO-87D owner 지시 2026-08-07] "미수강 —
-  //  자동 연결" 표기는 제거(조용한 자동 등록) — description을 되살리면 이 단언이 실패한다.
-  it('생성 모달 학생 선택지는 재원생 전체 한 리스트 — 수강생 먼저, 미수강 표기 없음(조용한 자동 등록)', () => {
-    expect(studentPickerItemsFromScheduleResources(resources, 101)).toEqual([
-      { id: 11, name: '박학생', enrolled: true },
-      { id: 10, name: '김학생', enrolled: false },
+  it('생성 모달 학생 선택지는 과목과 무관한 활성 학생 전체를 이름순으로 제공한다', () => {
+    expect(studentPickerItemsFromScheduleResources(resources)).toEqual([
+      { id: 10, name: '김학생' },
+      { id: 11, name: '박학생' },
     ]);
-    // 미수강생을 숨기지 않는다: 어떤 코스를 골라도 항목 수 = 재원생 전체 수.
-    expect(studentPickerItemsFromScheduleResources(resources, 100)).toHaveLength(2);
-    // 표기 금지 — 어떤 항목에도 description이 붙지 않는다.
-    expect(studentPickerItemsFromScheduleResources(resources, 101).some((item) => 'description' in item && item.description)).toBe(false);
   });
 
   // [TBO-86I-3] 운영 리포트: 원부 삭제/퇴원 후에도 카운트·선택에 유령이 남고, 분모가 수강 roster로
@@ -89,22 +75,14 @@ describe('schedule resources calendar SSOT', () => {
     expect(pruneStudentSelection(new Set(), [{ id: 10 }])).toEqual(new Set());
   });
 
-  it('제출 코호트 — 수강생 전원과 정확히 일치할 때만 미전송(파생), 그 외 명시 코호트', () => {
-    const roster = [{ id: 10 }, { id: 11 }];
-    expect(explicitCohortForSubmit(new Set([10, 11]), roster)).toBeUndefined(); // 전원 = 파생 하위 호환
-    expect(explicitCohortForSubmit(new Set([10]), roster)).toEqual([10]); // 부분 = 명시
-    // 크기만 같고 구성원이 다르면(방금 자동 연결돼 roster refetch 전) 명시 코호트로 보낸다
-    expect(explicitCohortForSubmit(new Set([10, 12]), roster)).toEqual([10, 12]);
-    expect(explicitCohortForSubmit(new Set(), roster)).toEqual([]); // 차단은 모달 valid 게이트 담당
-    expect(explicitCohortForSubmit(new Set(), [])).toBeUndefined(); // roster 0 + 선택 0 = 파생(빈 코스)
+  it('신규 일정 참가자는 enrollment/roster와 무관하게 항상 정렬된 명시 ID로 직렬화한다', () => {
+    expect(selectedParticipantIdsForSubmit(new Set([11, 10]))).toEqual([10, 11]);
+    expect(selectedParticipantIdsForSubmit(new Set([10]))).toEqual([10]);
+    expect(selectedParticipantIdsForSubmit(new Set())).toEqual([]);
   });
 
-  it('과목과 활성 enrollment 투영을 같은 scoped course 집합에서 만든다', () => {
+  it('과목 옵션은 scoped course 집합에서 만든다', () => {
     expect(calendarScheduleCourses(resources).map((course) => course.id)).toEqual([100, 101]);
     expect(calendarSubjectOptions(resources)).toEqual([{ id: 7, name: 'Writing', color: undefined }]);
-    expect(calendarEnrollmentRows(resources)).toEqual([
-      { studentId: 10, courseId: 100, status: 'active' },
-      { studentId: 11, courseId: 101, status: 'active' },
-    ]);
   });
 });

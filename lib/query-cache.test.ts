@@ -191,14 +191,15 @@ describe("invalidateCourseAggregate (TBO-36 36C)", () => {
 });
 
 describe('invalidateClassOpening (TBO-48 48C)', () => {
-  it('원자 개설 성공 후 과목·수업·수강·캘린더·정산 파생 캐시를 모두 갱신한다', async () => {
+  it('원자 개설 성공 후 과목·수업·캘린더 파생 캐시를 갱신하고 enrollment는 건드리지 않는다', async () => {
     const { queryClient, spy } = spyInvalidate();
     await invalidateClassOpening(queryClient);
     expect(spy).toHaveBeenCalledTimes(CLASS_OPENING_SCOPES.length);
     expect(calledRoots(spy)).toEqual(expect.arrayContaining(
-      [['subjects'], ['courses'], ['enrollments'], ['schedule'], ['attendance'], ['reports'], ['payouts'], ['audit']]
+      [['subjects'], ['courses'], ['schedule'], ['attendance'], ['reports'], ['payouts'], ['audit']]
         .map((root) => JSON.stringify(root)),
     ));
+    expect(calledRoots(spy)).not.toContain(JSON.stringify(['enrollments']));
     for (const [options] of spy.mock.calls) expect(options).toMatchObject({ refetchType: 'active' });
   });
 });

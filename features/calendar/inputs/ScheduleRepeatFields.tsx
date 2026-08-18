@@ -16,6 +16,8 @@ type ScheduleRepeatFieldsProps = {
   startDate: string;
   occurrencesCount: number;
   noneLabel: string;
+  weekdaysField?: string;
+  weekdaysError?: string;
 };
 
 /** 네 schedule kind가 같은 반복 규칙과 종료일 입력을 사용한다. */
@@ -29,6 +31,8 @@ export function ScheduleRepeatFields({
   startDate,
   occurrencesCount,
   noneLabel,
+  weekdaysField,
+  weekdaysError,
 }: ScheduleRepeatFieldsProps) {
   return (
     <>
@@ -47,8 +51,8 @@ export function ScheduleRepeatFields({
         </div>
       </Field>
       {repeat === 'custom' && (
-        <Field label="요일">
-          <div className="flex gap-1">
+        <Field label="요일" field={weekdaysField} error={weekdaysError}>
+          <div className="field-group flex gap-1">
             {WEEKDAYS_KO.map((label, weekday) => (
               <button
                 key={weekday}

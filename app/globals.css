@@ -235,6 +235,25 @@
     box-shadow: 0 0 0 3px var(--color-accent-subtle);
   }
 
+  .input[aria-invalid="true"],
+  .field-invalid .input {
+    border-color: var(--color-danger);
+    background-color: var(--color-danger-subtle);
+  }
+
+  .input[aria-invalid="true"]:focus,
+  .field-invalid .input:focus {
+    border-color: var(--color-danger);
+    box-shadow: 0 0 0 3px var(--color-danger-subtle);
+  }
+
+  .field-invalid .field-group {
+    border: 1px solid var(--color-danger);
+    border-radius: 0.375rem;
+    padding: 0.375rem;
+    background-color: var(--color-danger-subtle);
+  }
+
   /* ---------- Table ---------- */
   .table {
     @apply w-full text-[13px] border-collapse;

@@ -211,12 +211,10 @@ export async function invalidateCourseAggregate(queryClient: QueryClient): Promi
   );
 }
 
-// [TBO-48] 수업 개설은 subject/course/enrollment/session을 한 transaction에서 함께 바꾼다.
-// 성공 응답 뒤 네 aggregate 및 파생 출결·리포트·정산·감사 조회를 한 경계로 갱신한다.
+// 수업 개설은 subject/course/session을 함께 바꾼다. 참가자 선택은 enrollment를 변경하지 않는다.
 export const CLASS_OPENING_SCOPES = [
   qk.subjects.all,
   qk.courses.all,
-  qk.enrollments.all,
   ...CALENDAR_COMMAND_SCOPES,
 ] as const;
 

@@ -17,7 +17,6 @@ import {
   sessionStates,
   sortByDateAsc,
   type StatusFilter,
-  resolvePasteCourseId,
 } from './lantiv';
 
 const row = (over: Partial<ScheduleRow> = {}): ScheduleRow =>
@@ -273,12 +272,14 @@ describe('cloneSessionBody — Ctrl+C/V·Ctrl+드래그 복제(무결성 규칙)
     expect(cloneSessionBody(src, { date: '2026-07-08', startMin: 600, resType: 'instructor', resId: 2 }).instructorId).toBe(2);
   });
 
-  it('강의실 컬럼(스플릿 room 또는 일간 roomid) → 그 강의실로, 학생 컬럼은 재배정 없음', () => {
+  it('강의실 컬럼은 강의실로 재배정하고, 학생 컬럼은 원본 코스 유지 + 대상 학생 명시 참가', () => {
     expect(cloneSessionBody(src, { date: '2026-07-08', startMin: 600, resType: 'room', resId: 3 }).roomId).toBe(3);
     expect(cloneSessionBody(src, { date: '2026-07-08', startMin: 600, roomId: 4 }).roomId).toBe(4);
     const st = cloneSessionBody(src, { date: '2026-07-08', startMin: 600, resType: 'student', resId: 9 });
     expect(st.instructorId).toBe(1);
     expect(st.roomId).toBe(2);
+    expect(st.courseId).toBe(10);
+    expect(st.studentIds).toEqual([9]);
   });
 
   it('강의실 미지정 원본은 미지정 유지', () => {
@@ -302,29 +303,6 @@ describe('rowInResource — 컬럼 소속 판정(참조 무결성: 학생=코호
     expect(rowInResource(row({ courseId: 10 }), 'subject', 8, subjectIdOf)).toBe(false);
     expect(rowInResource(row({ courseId: 99 }), 'subject', 7, subjectIdOf)).toBe(false);
     expect(rowInResource(row({ courseId: 10 }), 'subject', 7)).toBe(false); // 리졸버 미주입
-  });
-});
-
-describe('resolvePasteCourseId — 학생 컬럼 붙여넣기 코스 재배정(버그수정 2026-07-02)', () => {
-  const courses = [
-    { id: 10, subjectId: 1 }, // 원본(영어)
-    { id: 11, subjectId: 1 }, // 같은 과목 다른 코스
-    { id: 20, subjectId: 2 }, // 수학
-  ];
-  it('대상 학생이 원본 코스 수강 중이면 그대로 유지', () => {
-    expect(resolvePasteCourseId(10, 2, [{ studentId: 2, courseId: 10, status: 'active' }], courses)).toBe(10);
-  });
-  it('원본 코스 미수강 → 같은 과목의 활성 코스로 재배정(다른 과목보다 우선)', () => {
-    const enr = [
-      { studentId: 2, courseId: 20, status: 'active' },
-      { studentId: 2, courseId: 11, status: 'active' },
-    ];
-    expect(resolvePasteCourseId(10, 2, enr, courses)).toBe(11);
-  });
-  it('같은 과목 없으면 첫 활성 코스 · 활성 수강이 없으면 null(붙여넣기 중단)', () => {
-    expect(resolvePasteCourseId(10, 2, [{ studentId: 2, courseId: 20, status: 'active' }], courses)).toBe(20);
-    expect(resolvePasteCourseId(10, 2, [{ studentId: 2, courseId: 11, status: 'completed' }], courses)).toBeNull();
-    expect(resolvePasteCourseId(10, 2, [{ studentId: 9, courseId: 11, status: 'active' }], courses)).toBeNull();
   });
 });
 

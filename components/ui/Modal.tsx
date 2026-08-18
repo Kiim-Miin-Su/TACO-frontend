@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type Ref } from "react";
 
 /**
  * Modal 계열 — window.prompt/confirm 대체 (DESIGN.md §5).
@@ -31,6 +31,7 @@ export function ModalShell({
   onClose,
   size = "sm",
   bodyClassName = "",
+  bodyRef,
 }: {
   title: ReactNode;
   children: ReactNode;
@@ -38,6 +39,7 @@ export function ModalShell({
   onClose: () => void;
   size?: ModalSize;
   bodyClassName?: string;
+  bodyRef?: Ref<HTMLDivElement>;
 }) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -104,7 +106,7 @@ export function ModalShell({
         className={`card card-pad ${widths[size]} flex max-h-[92dvh] w-full max-w-none flex-col gap-3 rounded-b-none pb-[calc(1rem+env(safe-area-inset-bottom))] sm:max-h-[85vh] sm:max-w-[95vw] sm:rounded-md sm:pb-4`}
       >
         <div id={titleId} className="font-semibold shrink-0">{title}</div>
-        <div className={`min-h-0 overflow-y-auto ${bodyClassName}`}>{children}</div>
+        <div ref={bodyRef} className={`min-h-0 overflow-y-auto ${bodyClassName}`}>{children}</div>
         {footer && <div className="modal-footer flex shrink-0 justify-end gap-2 pt-1">{footer}</div>}
       </div>
     </div>

@@ -14,6 +14,7 @@ type SearchableCheckListProps = {
   onToggle: (id: number) => void;
   placeholder?: string;
   emptyMessage?: string;
+  invalid?: boolean;
 };
 
 /** 캘린더·수업 개설이 함께 쓰는 검색형 다중 선택 입력. */
@@ -23,6 +24,7 @@ export function SearchableCheckList({
   onToggle,
   placeholder = '검색',
   emptyMessage = '검색 결과 없음',
+  invalid,
 }: SearchableCheckListProps) {
   const [query, setQuery] = useState('');
   const filteredItems = useMemo(() => {
@@ -40,6 +42,7 @@ export function SearchableCheckList({
         type="search"
         placeholder={placeholder}
         value={query}
+        aria-invalid={invalid || undefined}
         onChange={(event) => setQuery(event.target.value)}
       />
       <div className="max-h-[192px] overflow-y-auto p-1 space-y-0.5">

@@ -8,12 +8,14 @@ type ScheduleDateFieldProps = {
   label?: string;
   min?: string;
   className?: string;
+  field?: string;
+  error?: string;
 };
 
-export function ScheduleDateField({ value, onChange, label = '날짜', min, className = 'input' }: ScheduleDateFieldProps) {
+export function ScheduleDateField({ value, onChange, label = '날짜', min, className = 'input', field, error }: ScheduleDateFieldProps) {
   return (
-    <Field label={label}>
-      <input type="date" className={className} value={value} min={min} onChange={(event) => onChange(event.target.value)} />
+    <Field label={label} field={field} error={error}>
+      <input type="date" className={className} value={value} min={min} aria-invalid={!!error || undefined} onChange={(event) => onChange(event.target.value)} />
     </Field>
   );
 }

@@ -3,10 +3,10 @@
 //  DetailModal(더블클릭)과 SessionDetailPanel(우측 아래)이 **같은 폼·검증·패치 빌드**를 공유한다
 //  (컴포넌트/검증 통일 — 두 진입점의 동작 차이 원천 차단).
 //  - 편집 가능: 날짜·시작·종료·강사·강의실·상태·색·주제·메모 + (반복이면) 적용 범위 스코프.
-//  - 학생(코호트)은 enrollment 파생이라 여기서 편집하지 않음(참조 무결성) — 수강 등록 화면에서.
+//  - 학생 참가자는 enrollment와 독립이며 전용 참가자 편집 청크에서 같은 session.studentIds command로 연결한다.
 //  - 저장 = 부모의 requestChange → PATCH /schedule/:id 단일 경로(충돌 409/force·FK 검증 재사용).
 //  - 패치 빌드는 lib/domain/lantiv.sessionEditPatch(순수 함수·vitest) — scope는 시리즈일 때만 포함.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Room, ScheduleRow, RecurrenceScope } from "@/types";
 import type { SchedulePatchBody } from "@/lib/api";
 import { fromMin, toMin, WEEKDAYS_KO as WD } from "@/lib/domain/schedule";
@@ -14,6 +14,7 @@ import { editableSessionStatuses, STATUS_LABEL, sessionEditPatch, KIND_FILTERS, 
 import { Field } from "@/components/ui";
 import { ScheduleDateField } from "./inputs/ScheduleDateField";
 import { ScheduleTimeRangeFields } from "./inputs/ScheduleTimeRangeFields";
+import { focusFirstFormIssue, issuesByField, type FormIssue } from "@/lib/form-issues";
 
 // [TBO-70] ColorPicker는 components/ui 공용 승격(프리셋 18 + RGB 커스텀 '+') — 로컬 6색 구현 제거.
 //  기존 소비처(스케줄 추가 모달·과목 개설 폼) import 경로 호환을 위해 재수출.
@@ -61,9 +62,29 @@ export function SessionEditFields({
   const crossesMidnight = d.endTime < d.startTime;
   const valid = d.startTime !== d.endTime;
   const input = compact ? "input h-8 text-caption" : "input";
+  const [validationAttempted, setValidationAttempted] = useState(false);
+  const formRootRef = useRef<HTMLDivElement>(null);
+  const issues: FormIssue<'time'>[] = valid ? [] : [{
+    field: 'time',
+    code: 'invalid_range',
+    message: '종료 시각은 시작 시각과 같을 수 없습니다.',
+  }];
+  const error = issuesByField(validationAttempted ? issues : []).get('time')?.message;
+
+  function save() {
+    setValidationAttempted(true);
+    if (issues.length) {
+      focusFirstFormIssue(formRootRef.current, issues);
+      return;
+    }
+    onSave(
+      sessionEditPatch(d, isSeries),
+      isSeries ? `상세 편집(${SCOPE_LABEL[d.scope]})` : "상세 편집",
+    );
+  }
 
   return (
-    <div className="space-y-3">
+    <div ref={formRootRef} className="space-y-3">
       <ScheduleDateField value={d.sessionDate} onChange={(value) => set("sessionDate", value)} className={input} />
       <ScheduleTimeRangeFields
         start={d.startTime}
@@ -71,6 +92,8 @@ export function SessionEditFields({
         onStartChange={(value) => set("startTime", value)}
         onEndChange={(value) => set("endTime", value)}
         compact={compact}
+        field="time"
+        error={error}
       />
       <div className="grid grid-cols-2 gap-3">
         <Field label="강사">
@@ -138,8 +161,7 @@ export function SessionEditFields({
         <textarea className={`input py-1.5 ${compact ? "min-h-[48px] text-caption" : "min-h-[64px]"}`} rows={compact ? 2 : 3}
           value={d.memo} onChange={(e) => set("memo", e.target.value)} />
       </Field>
-      {/* 학생은 여기서 편집 불가(코호트=수강 등록 파생) — 무결성 안내 */}
-      <p className="text-micro text-fg-subtle">학생(수강생)은 수강 등록에서 관리됩니다 — 학생·부모 탭 참조.</p>
+      <p className="text-micro text-fg-subtle">학생 참가자는 과목 수강 등록과 독립적으로 저장됩니다.</p>
       {isSeries && (
         <Field label="반복 적용 범위">
           <select className={input} value={d.scope} onChange={(e) => set("scope", e.target.value as RecurrenceScope)}>
@@ -149,7 +171,6 @@ export function SessionEditFields({
           </select>
         </Field>
       )}
-      {!valid && <p className="text-caption text-danger">종료 시각이 시작과 같을 수 없습니다.</p>}
       {valid && crossesMidnight && (
         /* [R-9] 자정 크로스 안내 — end<start 입력은 익일 종료로 저장(1레코드·시작일 기준) */
         <p className="text-caption text-accent">🌙 종료가 시작보다 이르므로 <b>다음날 {d.endTime} 종료</b>(자정 크로스)로 저장됩니다.</p>
@@ -163,11 +184,7 @@ export function SessionEditFields({
           <button className={compact ? "btn btn-sm" : "btn"} onClick={onCancel}>취소</button>
           <button
             className={`${compact ? "btn btn-sm" : "btn"} btn-primary`}
-            disabled={!valid}
-            onClick={() => onSave(
-              sessionEditPatch(d, isSeries),
-              isSeries ? `상세 편집(${SCOPE_LABEL[d.scope]})` : "상세 편집",
-            )}
+            onClick={save}
           >
             저장{isSeries ? ` — ${SCOPE_LABEL[d.scope]}` : ""}
           </button>

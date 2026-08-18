@@ -11,6 +11,8 @@ export function InlineCreateField({
   controls,
   children,
   canCreate = true,
+  field,
+  error,
 }: {
   label: string;
   createLabel: string;
@@ -19,12 +21,14 @@ export function InlineCreateField({
   controls: ReactNode;
   children: ReactNode;
   canCreate?: boolean;
+  field?: string;
+  error?: ReactNode;
 }) {
   return (
     // [TBO-86I-3] 인라인 생성 필드는 컨트롤+버튼(+내부 체크리스트 label) 다중 그룹 — label 클릭
     //  전달 오발동과 중첩 label 무효 마크업을 막기 위해 div 렌더를 쓴다(Field asDiv 주석 참조).
-    <Field label={label} asDiv>
-      <div className="space-y-2">
+    <Field label={label} asDiv field={field} error={error}>
+      <div className="field-group space-y-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <div className="flex-1 min-w-0">{controls}</div>
           {canCreate && (

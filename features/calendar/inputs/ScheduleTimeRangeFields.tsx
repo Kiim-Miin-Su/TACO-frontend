@@ -17,6 +17,8 @@ type ScheduleTimeRangeFieldsProps = {
   endHint?: string;
   compact?: boolean;
   showPresets?: boolean;
+  error?: string;
+  field?: string;
 };
 
 /** 수업·가능·불가·온라인만 가능 생성/편집이 공유하는 시간 범위 입력. */
@@ -28,6 +30,8 @@ export function ScheduleTimeRangeFields({
   endHint,
   compact = false,
   showPresets = true,
+  error,
+  field,
 }: ScheduleTimeRangeFieldsProps) {
   const duration = (toMin(end) - toMin(start) + 1440) % 1440;
   const selectClassName = compact ? 'h-8 text-caption' : undefined;
@@ -36,8 +40,8 @@ export function ScheduleTimeRangeFields({
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-3">
         <Field label="시작"><TimeSelect value={start} onChange={onStartChange} className={selectClassName} /></Field>
-        <Field label={`종료${endHint ? ` (${endHint})` : ''}`}>
-          <TimeSelect value={end} onChange={onEndChange} className={selectClassName} />
+        <Field label={`종료${endHint ? ` (${endHint})` : ''}`} field={field} error={error}>
+          <TimeSelect value={end} onChange={onEndChange} className={selectClassName} invalid={!!error} />
         </Field>
       </div>
       {showPresets && (

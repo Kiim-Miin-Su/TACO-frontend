@@ -15,7 +15,7 @@ import { MonthGrid } from "./MonthGrid"; // [B6 C4/EP9] 월간 그리드 파일 
 import {
   PALETTE, STATUS_LABEL, MAX_SPLIT,
   matchesResourceFilter, sortByDateAsc,
-  buildMixedSplitColumns, rowInResource, cloneSessionBody, resolvePasteCourseId,
+  buildMixedSplitColumns, rowInResource, cloneSessionBody,
   type StatusFilter, type SplitDim, type ListGroupBy, type PasteTarget, type MixedPick, densityOf, expandAxis,
   type SessionModeFilter,
   matchesCalendarFacetFilters, emptyCalendarFacetFilters, SUBJECT_KIND_OPTIONS,
@@ -50,7 +50,7 @@ import { serializeViewPreset, presetToState } from "@/lib/domain/presets";
 import { formatScheduleConflicts } from "@/lib/domain/conflict-messages";
 import { applyScheduleRowPatch } from "@/lib/domain/schedule-row";
 import { scopeCalendarRowsToInstructor } from "@/lib/domain/calendar-access";
-import { calendarEnrollmentRows, calendarScheduleCourses, calendarSubjectOptions } from "@/lib/domain/schedule-resources";
+import { calendarScheduleCourses, calendarSubjectOptions } from "@/lib/domain/schedule-resources";
 import { appendCalendarPane, companionPaneSeed, currentPaneSeeds } from "@/lib/domain/calendar-panes";
 import { availabilityGhostBandsForColumn } from "@/lib/domain/pending-ghosts";
 import {
@@ -325,7 +325,6 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
   // 학생 국가·수강·코스·과목은 역할별 `/schedule/resources` 한 query에서만 파생한다.
   // 강사 캘린더가 전역 courses/subjects/enrollments/students cache를 읽지 않으므로 모든 UI 축이 같은 scope다.
   const allStudents = useMemo(() => resources?.students ?? [], [resources?.students]);
-  const allEnrollments = useMemo(() => calendarEnrollmentRows(resources), [resources]);
   const allCourses = useMemo(() => calendarScheduleCourses(resources), [resources]);
   const subjectOpts = useMemo(() => calendarSubjectOptions(resources), [resources]);
   const subjectFilterOptions = useMemo(() => [
@@ -621,7 +620,7 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
       if (!matchesResourceFilter(r, { instructors: fInstructors, students: fStudents, rooms: fRooms })) return false;
       if (pickedDates.length && !dates.includes(r.sessionDate)) return false; // cherry-pick — 그리드·리스트·시수 동일 모집단
       if (!matchesCalendarFacetFilters(r, attBySession.get(Number(r.id)) ?? [], globalFacetFilters)) return false;
-      // 국가 필터: 그 국가 학생이 코호트에 포함된 세션만(해외 학생에게 보낼 시간표 추출용)
+      // 국가 필터: 그 국가 학생이 참가자에 포함된 세션만(해외 학생에게 보낼 시간표 추출용)
       if (countryStudentIds && !(r.studentIds ?? []).some((id) => countryStudentIds.has(Number(id)))) return false;
       if (needle) {
         const hay =
@@ -1353,21 +1352,10 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
 
   // 붙여넣기 — 커서 시각을 시작으로 복제 생성(cloneSessionBody: 단건·scheduled·출결/시리즈 미승계).
   //  충돌·FK·권한(강사=본인 강제)은 기존 createSession 경로 재사용(409 confirm force).
-  //  [버그수정 2026-07-02] 다른 학생 컬럼에 붙여넣기: 대상 학생의 활성 수강 기반으로 코스 재배정
-  //  (원본 코스 수강 중이면 유지 → 같은 과목 코스 → 첫 활성 코스, 없으면 중단 — 유령 세션 방지).
+  // 학생 컬럼에 붙여넣으면 원본 과목/코스는 유지하고 대상 학생만 명시 참가자로 저장한다.
   function pasteAt(src: ScheduleRow, target: PasteTarget) {
     if (isInstructor) { setMsg("수업 복제 배정은 매니저 권한입니다 — '+ 추가'로 요청하세요."); return; } // [TBO-16 #8]
-    let body = cloneSessionBody(src, target);
-    if (target.resType === "student" && target.resId != null
-        && !(src.studentIds ?? []).map(Number).includes(Number(target.resId))) {
-      const cid = resolvePasteCourseId(Number(src.courseId), Number(target.resId), allEnrollments, allCourses);
-      if (cid == null) {
-        setMsg("대상 학생의 활성 수강이 없어 붙여넣을 수 없습니다 — 수강 등록 후 다시 시도하세요");
-        return;
-      }
-      if (cid !== Number(src.courseId)) body = { ...body, courseId: cid };
-    }
-    createSession(body);
+    createSession(cloneSessionBody(src, target));
   }
 
   // 키보드: Ctrl/⌘+C=선택 수업 복사 · Ctrl/⌘+V=커서 위치 붙여넣기 · Esc=커서·선택 해제.
@@ -1578,12 +1566,12 @@ export function ScheduleCalendar({ initialSelection = null }: { initialSelection
       : {};
     // [개방 2026-07-06] 학생 컬럼 드롭 → 1:1 수업이면 그 학생으로 재배정(studentIds 교체 —
     //  BE가 "그 코스 활성 수강생의 부분집합" 검증, 아니면 400 롤백+메시지).
-    //  단체(코호트 2명+)는 임의 재배정 방지 — 코호트 유지, 시간만 이동(안내 토스트).
+    //  단체(참가자 2명+)는 임의 재배정 방지 — 참가자 유지, 시간만 이동(안내 토스트).
     const curCohort = (orig.studentIds ?? []).map(Number);
     const dropStudent = d.resType === "student" && d.resId != null ? Number(d.resId) : null;
     const reassignStudent = dropStudent != null && !curCohort.includes(dropStudent) && curCohort.length === 1;
     if (dropStudent != null && !curCohort.includes(dropStudent) && curCohort.length > 1)
-      setMsg("단체 수업은 학생 재배정 없이 시간만 이동합니다(코호트 유지)");
+      setMsg("단체 수업은 학생 재배정 없이 시간만 이동합니다(참가자 유지)");
     // [#2] 과목 컬럼 드롭 — 과목은 코스 파생이라 변경 불가(무결성). 다른 과목 표에 놓으면 시간만 이동.
     if (d.resType === "subject" && d.resId != null && subjectIdOf(Number(orig.courseId)) !== Number(d.resId))
       setMsg("과목은 변경할 수 없어 시간만 이동합니다");
